@@ -8,13 +8,17 @@ package engine
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -22,6 +26,8 @@ import (
 // InventorySink receives the resources a scan's inventory lists.
 type InventorySink interface {
 	AddResource(r *inventory.Resource)
+	// Fail marks the inventory as unusable: some resources may be missing.
+	Fail(reason string)
 }
 
 // SetInventory makes the inspector report every Terraform resource and data
@@ -46,6 +52,87 @@ func (c *Inspector) newTerraformInventory(lookup moduleProvenanceLookup, externa
 		return nil
 	}
 	return &terraformInventory{sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external}
+}
+
+// fail marks the inventory as unusable.
+func (inv *terraformInventory) fail(reason string) {
+	if inv != nil {
+		inv.sink.Fail(reason)
+	}
+}
+
+// evaluateAllRoots evaluates every root module for the inventory only, when
+// the scan evaluates none because no rule can match what they declare.
+func (inv *terraformInventory) evaluateAllRoots(
+	ctx context.Context, fsys vfs.FS, mergeAllow map[string]struct{}, resolver tfeval.RemoteResolver,
+	filesByDir map[string][]*model.FileMetadata, dirsWithTf map[string]bool,
+) {
+	if inv == nil {
+		return
+	}
+	inv.withEvaluator(ctx, fsys, mergeAllow, resolver, func(evaluator *tfeval.Evaluator) {
+		called, _ := discoverStaticCalls(ctx, evaluator, filesByDir, dirsWithTf, inv.repoPath, resolver, false)
+		roots := make([]string, 0, len(dirsWithTf))
+		for dir := range dirsWithTf {
+			if !called[dir] {
+				roots = append(roots, dir)
+			}
+		}
+		sort.Strings(roots)
+		inv.evaluate(ctx, evaluator, roots)
+	})
+}
+
+// evaluateSkippedRoots evaluates for the inventory only the roots the scan
+// did not evaluate, because no rule can match what they declare.
+func (inv *terraformInventory) evaluateSkippedRoots(
+	ctx context.Context, fsys vfs.FS, mergeAllow map[string]struct{}, resolver tfeval.RemoteResolver,
+	roots, evaluated []string,
+) {
+	if inv == nil || len(evaluated) == len(roots) {
+		return
+	}
+	skipped := rootsOutside(roots, evaluated)
+	inv.withEvaluator(ctx, fsys, mergeAllow, resolver, func(evaluator *tfeval.Evaluator) {
+		inv.evaluate(ctx, evaluator, skipped)
+	})
+}
+
+// withEvaluator runs fn on an evaluator of the inventory's own, so that
+// nothing the findings depend on changes. A panic fails the inventory.
+func (inv *terraformInventory) withEvaluator(
+	ctx context.Context, fsys vfs.FS, mergeAllow map[string]struct{}, resolver tfeval.RemoteResolver,
+	fn func(*tfeval.Evaluator),
+) {
+	defer func() {
+		if r := recover(); r != nil {
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Error().Interface("panic", r).Msg("inventory: recovered from panic while evaluating Terraform")
+			inv.fail(inventory.FailureTerraformPanic)
+		}
+	}()
+	evaluator := tfeval.NewWithFS(fsys)
+	evaluator.SetMergeAllow(mergeAllow)
+	if resolver != nil {
+		evaluator.SetRemoteResolver(resolver)
+	}
+	defer evaluator.ReleaseCaches()
+	fn(evaluator)
+}
+
+// evaluate evaluates each root and reports its resources.
+func (inv *terraformInventory) evaluate(ctx context.Context, evaluator *tfeval.Evaluator, roots []string) {
+	for _, dir := range roots {
+		if ctx.Err() != nil {
+			return
+		}
+		resources, _, _, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
+		evaluator.ReleaseEvalCache()
+		evaluator.ForgetRootParse(dir)
+		if err == nil {
+			inv.addRoot(dir, resources)
+		}
+	}
 }
 
 // addRoot reports the resources of one evaluated root module, once per

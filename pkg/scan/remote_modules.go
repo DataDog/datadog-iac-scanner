@@ -82,6 +82,7 @@ func (c *Client) resolveTerraformModulesForScan(
 			Msg("Terraform module excluded by resource budget")
 	}
 	logModuleResolutionFailures(&contextLogger, result.Failures)
+	c.inventory.noteModuleFailures(result.Failures)
 	if len(result.ScanPaths) > 0 {
 		contextLogger.Info().Msgf("Adding %d remote module file(s) to scan", len(result.ScanPaths))
 	}

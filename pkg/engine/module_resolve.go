@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -351,6 +352,7 @@ func (c *Inspector) resolveModulesSafely(
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
 ) (res moduleResolutionResult) {
+	var inv *terraformInventory
 	defer func() {
 		if r := recover(); r != nil {
 			contextLogger := logger.FromContext(ctx)
@@ -358,6 +360,8 @@ func (c *Inspector) resolveModulesSafely(
 				"instantiateLocalModules: recovered from panic; skipping synthetic module docs",
 			)
 			res = moduleResolutionResult{}
+			// The roots after the panic were not evaluated.
+			inv.fail(inventory.FailureTerraformPanic)
 		}
 	}()
 	var externalModuleFile func(string) bool
@@ -365,9 +369,10 @@ func (c *Inspector) resolveModulesSafely(
 		externalModuleFile = c.isExternalModulePath
 	}
 	lookup := c.buildModuleProvenanceLookup()
+	inv = c.newTerraformInventory(lookup, externalModuleFile)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
-		externalModuleFile, c.newTerraformInventory(lookup, externalModuleFile),
+		externalModuleFile, inv,
 	)
 }
 
@@ -680,6 +685,7 @@ func resolveModuleDocuments(
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	declaresResource := declaresTargetedResource(files, targets)
 	if moduleCalls == nil && !declaresResource {
+		inv.evaluateAllRoots(ctx, fsys, mergeAllow, resolver, filesByDir, dirsWithTf)
 		return moduleResolutionResult{}
 	}
 	// With no resource to resolve, a root only matters for the calls it makes
@@ -743,6 +749,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, filesByDir, repoPath, resolver, unresolvedModuleDirs,
 	)
 	evaluator.ReleaseCaches()
+	inv.evaluateSkippedRoots(ctx, fsys, mergeAllow, resolver, roots, evaluatedRoots)
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement. Keep the root count so the
@@ -851,6 +858,21 @@ func hasUnresolvableModuleCall(files []*model.FileMetadata) bool {
 		}
 	}
 	return false
+}
+
+// rootsOutside returns the roots that are not in subset.
+func rootsOutside(roots, subset []string) []string {
+	in := make(map[string]bool, len(subset))
+	for _, dir := range subset {
+		in[dir] = true
+	}
+	var out []string
+	for _, dir := range roots {
+		if !in[dir] {
+			out = append(out, dir)
+		}
+	}
+	return out
 }
 
 // rootsReaching returns the roots whose module calls lead, through any depth

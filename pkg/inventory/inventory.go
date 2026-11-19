@@ -37,6 +37,10 @@ const (
 // PlatformTerraform is the platform of Terraform rows, the value findings carry.
 const PlatformTerraform = "terraform"
 
+// FailureTerraformPanic marks an inventory whose Terraform evaluation panicked,
+// so that some of its resources may be missing.
+const FailureTerraformPanic = "terraform_evaluation_panic"
+
 // Reasons a file failed.
 const (
 	ReasonParseError       = "parse_error"

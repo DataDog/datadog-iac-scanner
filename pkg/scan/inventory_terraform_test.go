@@ -247,3 +247,71 @@ func TestInventoryDoesNotChangeTerraformFindings(t *testing.T) {
 	with.InventoryPath = filepath.Join(t.TempDir(), "inventory.json")
 	require.Equal(t, without, scanSARIF(t, with))
 }
+
+func TestInventoryTerraformRootsNoRuleTargets(t *testing.T) {
+	// No rule can match these types, so the scan does not evaluate the
+	// modules; the inventory still lists their resources.
+	root := writeRepo(t, map[string]string{
+		"main.tf":           "resource \"random_id\" \"suffix\" {\n  byte_length = 4\n}\n\nmodule \"m\" {\n  source = \"./modules/m\"\n}\n",
+		"modules/m/main.tf": "resource \"null_resource\" \"n\" {}\n",
+	})
+	inv := scanInventory(t, terraformParams(root))
+	rows := rowsByPath(inv)
+	require.Contains(t, rows, "random_id.suffix")
+	require.Contains(t, rows, "module.m.null_resource.n")
+	require.Equal(t, "modules/m", rows["module.m.null_resource.n"].ModuleSource)
+
+	without := scanSARIF(t, *terraformParams(root))
+	with := *terraformParams(root)
+	with.InventoryPath = filepath.Join(t.TempDir(), "inventory.json")
+	require.Equal(t, without, scanSARIF(t, with))
+}
+
+func TestInventoryTerraformRootsSkippedForExternalCalls(t *testing.T) {
+	// The scan evaluates only the roots that reach a fetched module, since no
+	// rule matches what the repository declares; the inventory evaluates the
+	// other root too.
+	root := t.TempDir()
+	_, manifestPath := writeRemoteModuleFixture(t, root)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "other"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "other", "main.tf"),
+		[]byte("resource \"random_id\" \"other\" {\n  byte_length = 4\n}\n"), 0o600))
+	params := terraformParams(root)
+	params.TerraformModules = TerraformModulesOn
+	params.RemoteModulesManifestPath = manifestPath
+
+	rows := rowsByPath(scanInventory(t, params))
+	require.Contains(t, rows, "module.vpc.aws_vpc.this")
+	require.Equal(t, "other|random_id.other", rows["random_id.other"].ResourceRef)
+}
+
+func TestInventoryTerraformUnresolvedModule(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf": "module \"missing\" {\n  source  = \"terraform-aws-modules/missing/aws\"\n  version = \"1.0.0\"\n}\n\nresource \"aws_s3_bucket\" \"b\" {}\n",
+	})
+	params := terraformParams(root)
+	params.TerraformModules = TerraformModulesOn
+	params.NetworkIsolation = true
+
+	inv := scanInventory(t, params)
+	require.Equal(t, inventory.StatusPartial, inv.Status)
+	require.Len(t, inv.UnresolvedSources, 1)
+	got := inv.UnresolvedSources[0]
+	require.Equal(t, inventory.PlatformTerraform, got.Platform)
+	require.Equal(t, "terraform-aws-modules/missing/aws@1.0.0", got.Source)
+	require.NotEmpty(t, got.Reason)
+	t.Logf("reason: %s", got.Reason)
+}
+
+func TestInventoryFailsWhenResourcesMayBeMissing(t *testing.T) {
+	inventoryPath := filepath.Join(t.TempDir(), "inventory.json")
+	c := &Client{ScanParams: &Parameters{InventoryPath: inventoryPath}}
+	c.startInventory(context.Background())
+	c.inventory.collector.Fail(inventory.FailureTerraformPanic)
+
+	status := c.finishInventory(context.Background(), nil)
+	require.Equal(t, InventoryFailed, status.Status)
+	require.Equal(t, inventory.FailureTerraformPanic, status.Reason)
+	_, err := os.Stat(inventoryPath)
+	require.True(t, os.IsNotExist(err))
+}

@@ -37,6 +37,7 @@ type Collector struct {
 	unresolved       []UnresolvedSource
 	links            []FindingLink
 	findingsUnlinked int
+	failure          string
 
 	rootOnce     sync.Once
 	resolvedRoot string
@@ -168,6 +169,23 @@ func (c *Collector) AddFindingLink(l FindingLink) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.links = append(c.links, l)
+}
+
+// Fail marks the inventory as unusable, because some of its resources may be
+// missing. The first reason is kept.
+func (c *Collector) Fail(reason string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.failure == "" {
+		c.failure = reason
+	}
+}
+
+// Failure returns why the inventory is unusable, "" when it is not.
+func (c *Collector) Failure() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.failure
 }
 
 // AddFindingsUnlinked counts findings that map to no resource.

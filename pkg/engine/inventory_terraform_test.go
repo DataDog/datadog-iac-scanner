@@ -7,9 +7,15 @@
 package engine
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
@@ -113,4 +119,33 @@ func TestTerraformProvider(t *testing.T) {
 	require.Equal(t, "aws", terraformProvider(&tfeval.ResolvedResource{Type: "aws_s3_bucket", Body: aliased}))
 	beta := blockBody(t, "resource \"google_storage_bucket\" \"b\" {\n  provider = google-beta\n}\n")
 	require.Equal(t, "google-beta", terraformProvider(&tfeval.ResolvedResource{Type: "google_storage_bucket", Body: beta}))
+}
+
+// collectingSink keeps what the inventory is given.
+type collectingSink struct {
+	rows    []inventory.Resource
+	failure string
+}
+
+func (s *collectingSink) AddResource(r *inventory.Resource) { s.rows = append(s.rows, *r) }
+func (s *collectingSink) Fail(reason string)                { s.failure = reason }
+
+func TestInventoryEvaluatesRootsNoRuleTargets(t *testing.T) {
+	repo := t.TempDir()
+	mainTF := filepath.Join(repo, "main.tf")
+	require.NoError(t, os.WriteFile(mainTF, []byte("resource \"random_id\" \"x\" {\n  byte_length = 4\n}\n"), 0o600))
+	files := model.FileMetadatas{parsedFileMeta(t, "main", mainTF)}
+	// No rule targets random_id: the scan evaluates nothing.
+	targets := &ruleTargets{types: map[string]bool{"aws_s3_bucket": true}}
+
+	without := resolveModuleDocumentsForTest(context.Background(), files, repo, nil, targets, nil, nil, vfs.DiskFS{}, nil)
+	require.False(t, without.ok, "the scan evaluates no root")
+
+	sink := &collectingSink{}
+	inv := &terraformInventory{sink: sink, repoPath: repo}
+	with := resolveModuleDocuments(context.Background(), files, repo, nil, targets, nil, nil, vfs.DiskFS{}, nil, inv)
+	require.Equal(t, without, with, "the inventory changes nothing the findings use")
+	require.Len(t, sink.rows, 1)
+	require.Equal(t, "random_id.x", sink.rows[0].ResourcePath)
+	require.Empty(t, sink.failure)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/google/uuid"
 )
 
@@ -73,6 +74,25 @@ func (run *inventoryRun) sink() engine.InventorySink {
 		return nil
 	}
 	return run.collector
+}
+
+// noteModuleFailures records the remote modules the scan could not resolve.
+func (run *inventoryRun) noteModuleFailures(failures []modulegraph.ResolutionFailure) {
+	if run == nil {
+		return
+	}
+	for i := range failures {
+		f := &failures[i]
+		source := inventory.SanitizeSource(f.Source)
+		if f.Version != "" {
+			source += "@" + f.Version
+		}
+		run.collector.AddUnresolvedSource(inventory.UnresolvedSource{
+			Platform: inventory.PlatformTerraform,
+			Source:   source,
+			Reason:   cmp.Or(f.Code, inventory.ReasonUnknown),
+		})
+	}
 }
 
 // isExternal reports whether path belongs to a fetched remote module.
@@ -144,6 +164,10 @@ func (c *Client) finishInventory(ctx context.Context, results *Results) (status 
 	var extractionMap map[string]model.ExtractedPathObject
 	if results != nil {
 		files, extractionMap = results.Files, results.ExtractedPaths.ExtractionMap
+	}
+	if reason := run.collector.Failure(); reason != "" {
+		contextLogger.Error().Str("reason", reason).Msg("the inventory may miss resources; not writing it")
+		return &InventoryMetadata{Status: InventoryFailed, Reason: reason}
 	}
 	c.recordManifest(run, files)
 	// A resource of a fetched module is named after where the module came
