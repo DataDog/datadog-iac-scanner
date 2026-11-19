@@ -293,7 +293,9 @@ func (g *localGraph) readable(v int, values map[string]cty.Value) cty.Value {
 // dependency order, once each and into values. values holds the other locals
 // the members read, at the value they keep. A local in a cycle is unknown, as
 // Terraform rejects the cycle.
-func (e *Evaluator) resolveLocals(g *localGraph, base *hcl.EvalContext, values map[string]cty.Value, members []int) {
+func (e *Evaluator) resolveLocals(
+	g *localGraph, base *hcl.EvalContext, values map[string]cty.Value, members []int, diagnostics *expressionDiagnostics,
+) {
 	for _, v := range members {
 		name := g.names[v]
 		if g.cyclic[v] {
@@ -302,6 +304,8 @@ func (e *Evaluator) resolveLocals(g *localGraph, base *hcl.EvalContext, values m
 		}
 		ctx := base.NewChild()
 		ctx.Variables = map[string]cty.Value{rootLocal: g.readable(v, values)}
-		values[name] = e.localValue(g.exprs[v], ctx)
+		result := e.memoizedValue(g.exprs[v], ctx, evaluateExpression)
+		values[name] = result.value
+		diagnostics.update(g.exprs[v], result)
 	}
 }

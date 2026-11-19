@@ -389,7 +389,7 @@ func (s *siblingOutputs) localsObject(
 	if len(members) == 0 {
 		values = s.scope.localCache
 	} else {
-		s.e.resolveLocals(s.scope.localGraph, ctx, values, members)
+		s.e.resolveLocals(s.scope.localGraph, ctx, values, members, nil)
 		for _, name := range names {
 			if _, ok := values[name]; !ok {
 				values[name] = s.scope.localCache[name]

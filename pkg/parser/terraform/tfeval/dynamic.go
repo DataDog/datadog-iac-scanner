@@ -96,16 +96,16 @@ const unknownDynamicCount = -1
 const keptAsWritten = -2
 
 func (st *bodyState) recordDynamic(b *hclsyntax.Block, n int) {
-	if st == nil || st.dynamic == nil {
+	if st == nil || st.observations == nil {
 		return
 	}
-	if st.dynamic.counts == nil {
-		st.dynamic.counts = make(DynamicCounts)
+	if st.observations.counts == nil {
+		st.observations.counts = make(DynamicCounts)
 	}
-	if prev, seen := st.dynamic.counts[b]; seen && prev != n {
+	if prev, seen := st.observations.counts[b]; seen && prev != n {
 		n = unknownDynamicCount
 	}
-	st.dynamic.counts[b] = n
+	st.observations.counts[b] = n
 }
 
 // documentScope retains presentation provenance for concrete generated blocks.

@@ -9,7 +9,6 @@ package tfeval
 import (
 	"strconv"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -39,11 +38,6 @@ type localReads struct {
 	refs      []hcl.Traversal
 }
 
-// localValue evaluates a local, sharing its value across module instances.
-func (e *Evaluator) localValue(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
-	return e.memoizedValue(expr, ctx, evalLocal)
-}
-
 // memoizedValue shares locals and iteration-invariant resource attributes
 // across evaluations of the same expression reading the same values.
 //
@@ -54,8 +48,8 @@ func (e *Evaluator) localValue(expr hclsyntax.Expression, ctx *hcl.EvalContext) 
 // what the configuration is reshaped into.
 func (e *Evaluator) memoizedValue(
 	expr hclsyntax.Expression, ctx *hcl.EvalContext,
-	evaluate func(hclsyntax.Expression, *hcl.EvalContext) cty.Value,
-) cty.Value {
+	evaluate func(hclsyntax.Expression, *hcl.EvalContext) expressionValue,
+) expressionValue {
 	// Lookups already reuse their input value. Building a memo key would
 	// walk collections that evaluating the reference itself does not copy.
 	if reusesInputValue(expr) {
@@ -79,7 +73,7 @@ func (e *Evaluator) memoizedValue(
 	}
 	v := evaluate(expr, ctx)
 	if e.localMemo == nil {
-		e.localMemo = make(map[localMemoKey]cty.Value)
+		e.localMemo = make(map[localMemoKey]expressionValue)
 	}
 	e.localMemo[key] = v
 	return v
@@ -101,14 +95,6 @@ func reusesInputValue(expr hclsyntax.Expression) bool {
 	default:
 		return false
 	}
-}
-
-func evalLocal(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
-	v, diags := expr.Value(ctx)
-	if diags.HasErrors() {
-		v = partial.WithUnknownRefs(expr, ctx)
-	}
-	return v
 }
 
 func (e *Evaluator) localReadsOf(expr hclsyntax.Expression) localReads {

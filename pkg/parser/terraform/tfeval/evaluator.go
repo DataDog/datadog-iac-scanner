@@ -29,7 +29,6 @@ import (
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/hashicorp/hcl/v2"
@@ -80,6 +79,7 @@ type ResolvedResource struct {
 	// this instance, so generated blocks can be mapped back to their sources.
 	DynamicCounts DynamicCounts
 	documentScope *documentScope
+	diagnostics   *expressionFailure
 
 	// Data marks an instance of a data block rather than a resource.
 	Data bool
@@ -133,9 +133,10 @@ type ModuleScope struct {
 	// reads; localCache holds the values the last resolution returned. A
 	// re-resolution re-evaluates only the locals reading a root that changed,
 	// and reuses the rest verbatim.
-	localGraph *localGraph
-	localCache map[string]cty.Value
-	static     *dirStatic
+	localGraph  *localGraph
+	localCache  map[string]cty.Value
+	diagnostics expressionDiagnostics
+	static      *dirStatic
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -170,7 +171,7 @@ type Evaluator struct {
 	// localMemo shares locals and invariant resource attributes across module
 	// evaluations reading the same values; localReads records their dependencies.
 	// Both follow the evaluation cache's lifetime.
-	localMemo  map[localMemoKey]cty.Value
+	localMemo  map[localMemoKey]expressionValue
 	localReads map[hclsyntax.Expression]localReads
 	// When set, non-local module sources resolve here and recurse with caller inputs.
 	remoteResolver RemoteResolver
@@ -188,6 +189,8 @@ type Evaluator struct {
 	// its body must stay in the scan even though other instances did resolve.
 	notEvaluatedDirs map[string]bool
 
+	// diagnostics holds source facts from the latest completed evaluation.
+	diagnostics []EvaluationDiagnostic
 	// instances holds the module calls the running EvaluateModule evaluated.
 	// They are only collected when trackInstances is set.
 	instances      []ModuleInstance
@@ -413,6 +416,9 @@ func (e *Evaluator) EvalCacheSize() int { return len(e.cache) }
 // returns all resources materialized by this module and its nested modules.
 // visitedChildDirs contains every child directory that was successfully evaluated
 // as a module (i.e. dirs that should be suppressed from standalone scanning).
+// Unrecovered expression errors are returned separately by TakeDiagnostics;
+// native consumers must carry them alongside values rather than interpret an
+// unknown fallback as a completed, successful evaluation.
 func (e *Evaluator) EvaluateModule(
 	ctx context.Context,
 	dir string,
@@ -431,6 +437,7 @@ func (e *Evaluator) EvaluateModule(
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
 	e.instances = nil
+	e.diagnostics = nil
 	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err == nil {
 		// A canceled or timed-out scan may have stopped mid-expansion. Do not
@@ -439,7 +446,9 @@ func (e *Evaluator) EvaluateModule(
 	}
 	if err != nil {
 		e.instances = nil
+		e.diagnostics = nil
 	}
+	sortEvaluationDiagnostics(e.diagnostics)
 	return resources, outputs, allVisited, err
 }
 
@@ -479,6 +488,7 @@ func (e *Evaluator) evaluate(
 	defer delete(visiting, dir)
 	skippedBefore := e.skipped
 	instancesBefore := len(e.instances)
+	diagnosticsBefore := len(e.diagnostics)
 
 	// Snapshot allVisited so we can determine which dirs this subtree adds.
 	prevAllVisited := make(map[string]bool, len(allVisited))
@@ -492,7 +502,8 @@ func (e *Evaluator) evaluate(
 	}
 	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
 
-	varVals := e.resolveVariables(parsed.varDecls, inputs)
+	var diagnostics expressionDiagnostics
+	varVals := e.resolveVariables(parsed.varDecls, inputs, &diagnostics)
 	shared := e.moduleContext(dir, rootDir)
 
 	evalCtx := &hcl.EvalContext{
@@ -507,11 +518,11 @@ func (e *Evaluator) evaluate(
 
 	scope := &ModuleScope{
 		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
-		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{},
+		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{}, diagnostics: diagnostics,
 	}
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
-	data := newModuleData(e, sources, parsed.locals, parsed.static, addr, chain)
+	data := newModuleData(e, scope, addr, chain)
 	// Module-call preparation retains its existing data view. Without calls,
 	// resources and data are resolved together by the dependency schedule.
 	if len(moduleBlocks) > 0 {
@@ -547,7 +558,9 @@ func (e *Evaluator) evaluate(
 
 	outputs := make(map[string]cty.Value, len(parsed.outputs))
 	for name, expr := range parsed.outputs {
-		outputs[name] = e.evalExpr(expr, evalCtx)
+		result := evaluateAttribute(expr, evalCtx)
+		outputs[name] = result.value
+		scope.diagnostics.update(expr, result)
 	}
 
 	// A canceled or timed-out scan may have stopped mid-expansion. Do not
@@ -555,8 +568,11 @@ func (e *Evaluator) evaluate(
 	// would reuse it as a complete result.
 	if err := ctx.Err(); err != nil {
 		e.instances = e.instances[:instancesBefore]
+		e.diagnostics = e.diagnostics[:diagnosticsBefore]
 		return nil, nil, err
 	}
+
+	e.collectDiagnostics(addr, scope, rootResources, dataInstances)
 
 	// Collect dirs added to allVisited during this evaluation for the cache entry.
 	var visitedDirs []string
@@ -567,7 +583,8 @@ func (e *Evaluator) evaluate(
 	}
 	if inputsKeyOK {
 		e.cacheCompletedEvaluation(
-			cacheKey, skippedBefore, resources, e.instances[instancesBefore:], outputs, visitedDirs, addr, len(chain), depth,
+			cacheKey, skippedBefore, resources, e.instances[instancesBefore:], e.diagnostics[diagnosticsBefore:],
+			outputs, visitedDirs, addr, len(chain), depth,
 		)
 	}
 
@@ -648,6 +665,10 @@ func (e *Evaluator) reuseCachedEvaluation(
 		allVisited[visited] = true
 	}
 	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
+	for _, diagnostic := range entry.diagnostics {
+		diagnostic.ModuleAddress = rebaseAddr(diagnostic.ModuleAddress, entry.baseAddr, addr)
+		e.diagnostics = append(e.diagnostics, diagnostic)
+	}
 	return entry.rebase(addr, chain), entry.outputs, true
 }
 
@@ -676,6 +697,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	skippedBefore uint64,
 	resources []ResolvedResource,
 	instances []ModuleInstance,
+	diagnostics []EvaluationDiagnostic,
 	outputs map[string]cty.Value,
 	visitedDirs []string,
 	addr string,
@@ -688,6 +710,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	e.cache[key] = &evalCacheEntry{
 		resources:    resources,
 		instances:    slices.Clone(instances),
+		diagnostics:  slices.Clone(diagnostics),
 		outputs:      outputs,
 		visitedDirs:  visitedDirs,
 		baseAddr:     addr,
@@ -783,6 +806,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			}
 			childChain := append(cloneChain(chain), instanceSite)
 			instancesBefore := len(e.instances)
+			diagnosticsBefore := len(e.diagnostics)
 
 			childRes, childOuts, cErr := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
@@ -795,6 +819,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				// Deliberately not added to allVisited: the module was not resolved, so
 				// it must keep being scanned where it is written.
 				e.instances = e.instances[:instancesBefore]
+				e.diagnostics = e.diagnostics[:diagnosticsBefore]
 				// What stopped this instance — the depth, a cycle or a directory
 				// that does not resolve — is the same for every instance of the
 				// call. The loop stops instead of redoing the same failing work
@@ -981,13 +1006,14 @@ func (e *Evaluator) expandBlock(
 		if child != evalCtx && (addr != "" || data) {
 			iteration = child.Variables
 		}
-		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
+		state := &bodyState{memo: memo, observations: &bodyObservations{}}
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
 		return ResolvedResource{
 			Type:          typeName,
 			Name:          name,
 			Attributes:    attrs,
-			DynamicCounts: state.dynamic.counts,
+			diagnostics:   state.observations.failure,
+			DynamicCounts: state.observations.counts,
 			documentScope: state.document,
 			Body:          rb.Body,
 			Iteration:     iteration,
@@ -1283,6 +1309,7 @@ func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCou
 func (e *Evaluator) resolveVariables(
 	varDecls map[string]variableDecl,
 	inputs map[string]cty.Value,
+	diagnostics *expressionDiagnostics,
 ) map[string]cty.Value {
 	out := make(map[string]cty.Value, len(varDecls))
 	for name, decl := range varDecls {
@@ -1295,12 +1322,14 @@ func (e *Evaluator) resolveVariables(
 				out[name] = cty.UnknownVal(cty.DynamicPseudoType)
 				continue
 			}
-			def, diags := decl.def.Value(&hcl.EvalContext{Functions: e.funcs})
-			if diags.HasErrors() {
+			value, diags := decl.def.Value(&hcl.EvalContext{Functions: e.funcs})
+			result := expressionOutcome(value, diags, decl.def.Range())
+			diagnostics.update(decl.def, result)
+			if result.failure != nil {
 				out[name] = cty.UnknownVal(cty.DynamicPseudoType)
 				continue
 			}
-			v = def
+			v = result.value
 		}
 		out[name] = decl.conform(v)
 	}
@@ -1336,7 +1365,7 @@ func (e *Evaluator) resolveLocalsIncremental(
 			}
 		}
 	}
-	e.resolveLocals(g, base, scope.localCache, members)
+	e.resolveLocals(g, base, scope.localCache, members, &scope.diagnostics)
 	return objectOrEmpty(scope.localCache)
 }
 
@@ -1356,16 +1385,19 @@ func (e *Evaluator) evalBody(
 // blocks: the memo of expressions that ignore the iteration, and how many
 // blocks each dynamic block generated.
 type bodyState struct {
-	document *documentScope
-	memo     *invariantMemo
-	dynamic  *dynamicRecorder
+	document     *documentScope
+	memo         *invariantMemo
+	observations *bodyObservations
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
 }
 
-type dynamicRecorder struct {
-	counts DynamicCounts
+// bodyObservations accumulates native sidecar facts shared by nested bodies.
+// Failures allocate only when an expression actually fails.
+type bodyObservations struct {
+	counts  DynamicCounts
+	failure *expressionFailure
 }
 
 // withoutMemo shares the dynamic counts but not the memo, for the as-written
@@ -1375,7 +1407,7 @@ func (st *bodyState) withoutMemo() *bodyState {
 	if st == nil {
 		return nil
 	}
-	return &bodyState{dynamic: st.dynamic, document: st.document}
+	return &bodyState{observations: st.observations, document: st.document}
 }
 
 // inDynamic is the state for the content of a dynamic block binding iterator.
@@ -1385,7 +1417,7 @@ func (st *bodyState) inDynamic(iterator string, document *documentScope) *bodySt
 	}
 	names := make([]string, len(st.iterators), len(st.iterators)+1)
 	copy(names, st.iterators)
-	return &bodyState{memo: st.memo, dynamic: st.dynamic, document: document, iterators: append(names, iterator)}
+	return &bodyState{memo: st.memo, observations: st.observations, document: document, iterators: append(names, iterator)}
 }
 
 func (e *Evaluator) evalBodyWith(
@@ -1401,7 +1433,14 @@ func (e *Evaluator) evalBodyWith(
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, evalCtx, st)
+		result := e.evalExprMemo(attr.Expr, evalCtx, st)
+		out[name] = result.value
+		if result.failure != nil && st != nil && st.observations != nil {
+			if st.observations.failure == nil {
+				st.observations.failure = &expressionFailure{}
+			}
+			st.observations.failure.diagnostics = append(st.observations.failure.diagnostics, result.failure.diagnostics...)
+		}
 	}
 
 	blocks := nestedBlocks{out: out}
@@ -1474,13 +1513,13 @@ func (n *nestedBlocks) flushAll() {
 // a dynamic block's iterator across the instances of one resource block and the
 // blocks its dynamic blocks generate, which share a parent context.
 type invariantMemo struct {
-	values map[hclsyntax.Expression]cty.Value
+	values map[hclsyntax.Expression]expressionValue
 	varies map[hclsyntax.Expression]bool
 }
 
 func newInvariantMemo() *invariantMemo {
 	return &invariantMemo{
-		values: make(map[hclsyntax.Expression]cty.Value),
+		values: make(map[hclsyntax.Expression]expressionValue),
 		varies: make(map[hclsyntax.Expression]bool),
 	}
 }
@@ -1504,20 +1543,22 @@ func (m *invariantMemo) readsIteration(expr hclsyntax.Expression, iterators []st
 	return reads
 }
 
-func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, st *bodyState) cty.Value {
+func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext, st *bodyState) expressionValue {
 	if st == nil || st.memo == nil || st.memo.readsIteration(expr, st.iterators) {
-		return e.evalExpr(expr, ctx)
+		return evaluateAttribute(expr, ctx)
 	}
-	if v, ok := st.memo.values[expr]; ok {
-		return v
+	if result, ok := st.memo.values[expr]; ok {
+		return result
 	}
-	// Preserve the object-length fast path before memo keys walk the inputs.
-	v, ok := evalLength(expr, ctx)
-	if !ok {
-		v = e.memoizedValue(expr, ctx, e.evalExpr)
+	// Keep the length fast path before memo keys walk the argument.
+	var result expressionValue
+	if value, ok := evalLength(expr, ctx); ok {
+		result = expressionValue{value: value}
+	} else {
+		result = e.memoizedValue(expr, ctx, evaluateExpression)
 	}
-	st.memo.values[expr] = v
-	return v
+	st.memo.values[expr] = result
+	return result
 }
 
 func addNestedBlock(out map[string]cty.Value, path []string, value cty.Value) {
@@ -1543,17 +1584,12 @@ func addNestedBlock(out map[string]cty.Value, path []string, value cty.Value) {
 	out[key] = objectOrEmpty(nested)
 }
 
-// evalExpr evaluates an expression, returning unknown for what it cannot
-// resolve.
-func (e *Evaluator) evalExpr(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
-	if v, ok := evalLength(expr, ctx); ok {
-		return v
+// evaluateAttribute keeps the object-length fast path before general evaluation.
+func evaluateAttribute(expr hclsyntax.Expression, ctx *hcl.EvalContext) expressionValue {
+	if value, ok := evalLength(expr, ctx); ok {
+		return expressionValue{value: value}
 	}
-	v, diags := expr.Value(ctx)
-	if diags.HasErrors() {
-		return partial.WithUnknownRefs(expr, ctx)
-	}
-	return v
+	return evaluateExpression(expr, ctx)
 }
 
 // evalLength evaluates a one-argument length call once. Object length comes from
@@ -1565,7 +1601,7 @@ func evalLength(expr hclsyntax.Expression, ctx *hcl.EvalContext) (cty.Value, boo
 	}
 	v, diags := call.Args[0].Value(ctx)
 	if diags.HasErrors() {
-		return partial.WithUnknownRefs(expr, ctx), true
+		return cty.NilVal, false
 	}
 	if v.Type().IsObjectType() && !v.IsNull() {
 		if !v.IsKnown() {
@@ -1575,7 +1611,7 @@ func evalLength(expr hclsyntax.Expression, ctx *hcl.EvalContext) (cty.Value, boo
 	}
 	got, err := tffunctions.LengthFunc.Call([]cty.Value{v})
 	if err != nil {
-		return partial.WithUnknownRefs(expr, ctx), true
+		return cty.NilVal, false
 	}
 	return got, true
 }
@@ -1596,8 +1632,10 @@ func (e *Evaluator) preliminaryModuleOutputs(
 ) map[string]cty.Value {
 	// The calls evaluated here are speculative; cache entries keep their own.
 	instancesBefore := len(e.instances)
+	diagnosticsBefore := len(e.diagnostics)
 	defer func() {
 		e.instances = e.instances[:instancesBefore]
+		e.diagnostics = e.diagnostics[:diagnosticsBefore]
 	}()
 
 	out := map[string]cty.Value{}

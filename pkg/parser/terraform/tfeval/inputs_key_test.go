@@ -194,7 +194,7 @@ func TestEvalObjectLength(t *testing.T) {
 			name: "null object",
 			src:  `length(var.config)`,
 			vars: map[string]cty.Value{"config": cty.NullVal(objectType)},
-			ok:   true,
+			ok:   false,
 			want: cty.DynamicVal,
 		},
 		{
@@ -235,7 +235,7 @@ func TestEvalObjectLength(t *testing.T) {
 			require.Equal(t, tc.ok, ok)
 			if ok {
 				require.True(t, got.RawEquals(tc.want))
-				got = New().evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				got = New().evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 				require.True(t, got.RawEquals(tc.want), "resource attributes must preserve length semantics")
 			}
 		})
@@ -254,7 +254,7 @@ func TestEvalExprMemo_ObjectLengthDoesNotScale(t *testing.T) {
 		allocs := testing.AllocsPerRun(3, func() {
 			e := New()
 			for range 50 {
-				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 			}
 		})
 		require.True(t, got.RawEquals(cty.NumberIntVal(int64(size))))
@@ -281,7 +281,7 @@ func BenchmarkEvalExprMemo_ObjectLength(b *testing.B) {
 			for b.Loop() {
 				e := New()
 				for range 50 {
-					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 					if !got.RawEquals(want) {
 						b.Fatal("incorrect object length")
 					}

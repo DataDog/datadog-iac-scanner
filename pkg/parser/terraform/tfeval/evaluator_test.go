@@ -3304,3 +3304,105 @@ func TestNativePolicyValueReads(t *testing.T) {
 		require.Equal(t, false, got.Value)
 	})
 }
+
+func TestEvaluateModule_ExpressionDiagnostics(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": `
+variable "input" {type=string}
+variable "invalid_default" {default=[1][2]}
+data "unresolved_service" "example" {invalid=tonumber("invalid")}
+locals {
+ invalid = tonumber("invalid")
+ independent = "public"
+}
+resource "aws_s3_bucket" "dependency" {}
+resource "aws_s3_bucket" "example" {
+ acl=local.independent
+ invalid=regex("[","value")
+ invalid_default=var.invalid_default
+ nested {invalid=tonumber("invalid")}
+ from_local=local.invalid
+ computed=aws_s3_bucket.dependency.arn
+ unresolved=var.input
+ caught=try(tonumber("invalid"),"public")
+ tested=can(tonumber("invalid"))
+ selected=false ? tonumber("invalid") : 1
+}
+output "invalid" {value=[1][2]}
+`})
+	evaluator := New()
+	for attempt := range 2 {
+		resources, _, _, err := evaluator.EvaluateModule(context.Background(), dir, nil)
+		require.NoError(t, err)
+		resource := findResource(t, resources, "aws_s3_bucket", "example")
+		require.Equal(t, cty.StringVal("public"), resource.Attributes["acl"])
+		require.Equal(t, cty.StringVal("public"), resource.Attributes["caught"])
+		require.True(t, resource.Attributes["tested"].RawEquals(cty.False))
+		require.True(t, resource.Attributes["selected"].RawEquals(cty.NumberIntVal(1)))
+		require.False(t, resource.Attributes["computed"].IsKnown())
+		require.False(t, resource.Attributes["unresolved"].IsKnown())
+		diagnostics := evaluator.TakeDiagnostics()
+		require.Len(t, diagnostics, 6, "attempt %d, including cache hits", attempt)
+		for _, diagnostic := range diagnostics {
+			require.NotEmpty(t, diagnostic.Summary)
+			require.NotEqual(t, "caller modification", diagnostic.Summary)
+			require.NotEmpty(t, diagnostic.Detail)
+			require.Equal(t, filepath.Join(dir, "main.tf"), diagnostic.Subject.Filename)
+			require.Empty(t, diagnostic.ModuleAddress)
+		}
+		diagnostics[0].Summary = "caller modification"
+		require.Empty(t, evaluator.TakeDiagnostics())
+	}
+	require.Empty(t, evaluator.Fork().TakeDiagnostics())
+}
+
+func TestEvaluateModule_DiagnosticsFollowModuleContexts(t *testing.T) {
+	root := t.TempDir()
+	child := writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "pattern" {type=string}
+locals {invalid=regex(var.pattern,"value")}
+resource "aws_s3_bucket" "example" {
+ for_each=toset(["a","b"])
+ acl="public"
+ invalid=local.invalid
+}
+output "value" {value=local.invalid}
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "left" {
+ source="../child"
+ pattern="["
+}
+module "right" {
+ source="../child"
+ pattern="["
+}
+module "valid" {
+ source="../child"
+ pattern="v.*"
+}
+`})
+	evaluator := New()
+	for range 2 {
+		resources, _, _, err := evaluator.EvaluateModule(context.Background(), stack, nil)
+		require.NoError(t, err)
+		require.Len(t, resources, 6)
+		diagnostics := evaluator.TakeDiagnostics()
+		require.Len(t, diagnostics, 2, "identical failures in different calls retain their module identity")
+		require.Equal(t, "module.left", diagnostics[0].ModuleAddress)
+		require.Equal(t, "module.right", diagnostics[1].ModuleAddress)
+		require.Equal(t, diagnostics[0].Subject, diagnostics[1].Subject)
+	}
+	for _, test := range []struct {
+		pattern string
+		count   int
+	}{{"[", 1}, {"v.*", 0}, {"[", 1}} {
+		_, _, _, err := evaluator.EvaluateModule(context.Background(), child, map[string]cty.Value{"pattern": cty.StringVal(test.pattern)})
+		require.NoError(t, err)
+		require.Len(t, evaluator.TakeDiagnostics(), test.count)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, _, err := evaluator.EvaluateModule(ctx, stack, nil)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, evaluator.TakeDiagnostics())
+}
