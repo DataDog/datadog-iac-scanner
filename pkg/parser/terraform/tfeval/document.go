@@ -49,12 +49,10 @@ func newRenderer(scanCtx context.Context, r *ResolvedResource) *partial.Renderer
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
 		return &partial.Renderer{}
 	}
-	ctx := r.Scope.evalCtx
-	if iteration := documentIteration(r); iteration != nil {
-		ctx = ctx.NewChild()
-		ctx.Variables = iteration
+	rd := &partial.Renderer{
+		Ctx: r.Scope.evalCtx, Source: partial.FileSources(r.Scope.sources), Reference: documentReferences(scanCtx, r.Scope),
 	}
-	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources), Reference: documentReferences(scanCtx, r.Scope)}
+	return rd.WithBindings(documentIteration(r))
 }
 
 // Root resources omit their iteration map during evaluation. Recover its
@@ -109,7 +107,7 @@ type documentReferenceRenderer struct {
 	depth     int
 }
 
-func (r *documentReferenceRenderer) resolve(t hcl.Traversal, ctx *hcl.EvalContext) (cty.Value, bool) {
+func (r *documentReferenceRenderer) resolve(t hcl.Traversal, _ *hcl.EvalContext) (cty.Value, bool) {
 	if len(t) < 2 {
 		return cty.NilVal, false
 	}
@@ -125,7 +123,7 @@ func (r *documentReferenceRenderer) resolve(t hcl.Traversal, ctx *hcl.EvalContex
 	}
 	switch t.RootName() {
 	case rootLocal:
-		return r.local(t, name.Name, ctx)
+		return r.local(t, name.Name)
 	case blockTypeData:
 		return r.data(t, name.Name)
 	default:
@@ -133,17 +131,18 @@ func (r *documentReferenceRenderer) resolve(t hcl.Traversal, ctx *hcl.EvalContex
 	}
 }
 
-func (r *documentReferenceRenderer) local(t hcl.Traversal, name string, ctx *hcl.EvalContext) (cty.Value, bool) {
+func (r *documentReferenceRenderer) local(t hcl.Traversal, name string) (cty.Value, bool) {
 	expr := r.scope.Locals[name]
 	if expr == nil {
 		return cty.NilVal, false
 	}
-	alias, known := partial.ReferenceTraversal(expr, ctx)
+	// A module local belongs to its declaration scope, not the consumer loop.
+	alias, known := partial.ReferenceTraversal(expr, r.scope.evalCtx)
 	if !known {
 		return cty.NilVal, false
 	}
 	combined := append(append(hcl.Traversal{}, alias...), t[2:]...)
-	return r.resolve(combined, ctx)
+	return r.resolve(combined, r.scope.evalCtx)
 }
 
 func (r *documentReferenceRenderer) data(t hcl.Traversal, typ string) (cty.Value, bool) {
@@ -201,12 +200,9 @@ func (r *documentReferenceRenderer) render(key documentDataKey, data documentDat
 	}
 	r.visiting[key] = true
 	defer delete(r.visiting, key)
-	ctx := r.scope.evalCtx
-	if data.iteration != nil {
-		ctx = ctx.NewChild()
-		ctx.Variables = data.iteration
-	}
-	rd := &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.scope.sources), Reference: r.resolve}
+	rd := (&partial.Renderer{
+		Ctx: r.scope.evalCtx, Source: partial.FileSources(r.scope.sources), Reference: r.resolve,
+	}).WithBindings(data.iteration)
 	eval := rd.Render
 	if data.json {
 		eval = func(expr hcl.Expression) (cty.Value, bool) {
@@ -231,7 +227,7 @@ func (r *documentReferenceRenderer) render(key documentDataKey, data documentDat
 
 func renderDataJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.Value, bool) {
 	if inner, vars, ok := partial.Unbind(expr); ok {
-		scoped := &partial.Renderer{Ctx: partial.Scope(rd.Ctx, vars), Source: rd.Source, Reference: rd.Reference}
+		scoped := rd.WithBindings(vars)
 		return renderDataJSON(scoped, inner, src)
 	}
 	return rd.Render(jsonExprToHCL(expr, src))
@@ -455,7 +451,7 @@ func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
 // so a resolved subtree is walked once.
 func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) interface{} {
 	if rd != nil && src.bindings != nil {
-		rd = &partial.Renderer{Ctx: partial.Scope(rd.Ctx, src.bindings), Source: rd.Source, Reference: rd.Reference}
+		rd = rd.WithBindings(src.bindings)
 	}
 	if rd != nil {
 		if v.IsWhollyKnown() {
@@ -571,7 +567,7 @@ func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[st
 		body = blocks[0].Body
 		block := blockSource(src, blocks[0])
 		if rd != nil && block.bindings != nil {
-			rd = &partial.Renderer{Ctx: partial.Scope(rd.Ctx, block.bindings), Source: rd.Source, Reference: rd.Reference}
+			rd = rd.WithBindings(block.bindings)
 		}
 		src = &block
 	}

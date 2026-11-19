@@ -257,3 +257,39 @@ func TestRenderForReferences(t *testing.T) {
 		})
 	}
 }
+
+// Lexical bindings govern both evaluation and presentation reference recovery.
+func TestRendererBindings(t *testing.T) {
+	unknown := cty.UnknownVal(cty.String)
+	parent := &Renderer{Ctx: &hcl.EvalContext{Variables: map[string]cty.Value{
+		"local": cty.ObjectVal(map[string]cty.Value{"value": unknown}),
+		"data":  cty.ObjectVal(map[string]cty.Value{"value": unknown}),
+	}}, Reference: func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool) {
+		return cty.StringVal("module-value"), true
+	}}
+	for _, tc := range []struct {
+		name  string
+		src   string
+		value cty.Value
+		want  string
+	}{
+		{"known binding", "local.value", cty.StringVal("bound-value"), "bound-value"},
+		{"unknown binding", "local.value", unknown, "${local.value}"},
+		{"unbound root", "data.value", unknown, "module-value"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, diags := hclsyntax.ParseExpression([]byte(tc.src), "main.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			vars := map[string]cty.Value{"local": cty.ObjectVal(map[string]cty.Value{"value": tc.value})}
+			for _, rd := range []*Renderer{parent, parent.WithBindings(map[string]cty.Value{"local": cty.StringVal("outer")})} {
+				got, ok := rd.WithBindings(vars).Render(expr)
+				require.True(t, ok)
+				require.Equal(t, tc.want, got.AsString())
+				got, ok = rd.Render(Bind(expr, vars))
+				require.True(t, ok)
+				require.Equal(t, tc.want, got.AsString())
+			}
+		})
+	}
+	require.Nil(t, (&Renderer{}).WithBindings(map[string]cty.Value{"local": unknown}).Reference)
+}

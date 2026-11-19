@@ -69,6 +69,7 @@ type Renderer struct {
 	// Reference optionally supplies a partial value for a bare reference during
 	// rendering. It must not install that value in Ctx: content-dependent
 	// expressions must continue to evaluate against authoritative values.
+	// Create lexical child renderers with WithBindings to preserve shadowing.
 	Reference func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool)
 }
 
@@ -85,7 +86,7 @@ func (r *Renderer) ctx() *hcl.EvalContext {
 // false when expr cannot be rendered.
 func (r *Renderer) Render(expr hcl.Expression) (cty.Value, bool) {
 	if b, ok := expr.(bound); ok {
-		return (&Renderer{Ctx: scope(r.Ctx, b.vars), Source: r.Source, Reference: r.Reference}).Render(b.Expression)
+		return r.WithBindings(b.vars).Render(b.Expression)
 	}
 	if v, diags := expr.Value(r.ctx()); !diags.HasErrors() && v.IsWhollyKnown() {
 		v, _ = v.UnmarkDeep()
@@ -541,23 +542,12 @@ func (r *Renderer) forRenderer(e *hclsyntax.ForExpr, key, value cty.Value, base 
 		vars[e.KeyVar] = key
 	}
 	vars[e.ValVar] = value
-	child := &Renderer{Ctx: scope(r.ctx(), vars), Source: r.Source, Reference: r.Reference}
-	child.Reference = func(t hcl.Traversal, ctx *hcl.EvalContext) (cty.Value, bool) {
-		if t.RootName() != e.ValVar {
-			if t.RootName() == e.KeyVar {
-				return cty.NilVal, false
-			}
-			return r.Reference(t, ctx)
-		}
-		if len(base) == 0 {
-			return cty.NilVal, false
-		}
-		composed := append(hcl.Traversal{}, base...)
-		composed = append(composed, hcl.TraverseIndex{Key: key})
-		composed = append(composed, t[1:]...)
-		return r.Reference(composed, r.ctx())
+	var aliases map[string]hcl.Traversal
+	if len(base) != 0 {
+		alias := append(append(hcl.Traversal{}, base...), hcl.TraverseIndex{Key: key})
+		aliases = map[string]hcl.Traversal{e.ValVar: alias}
 	}
-	return child
+	return r.withBindings(vars, aliases)
 }
 
 func (r *Renderer) forIncludes(e *hclsyntax.ForExpr) (include, known bool) {

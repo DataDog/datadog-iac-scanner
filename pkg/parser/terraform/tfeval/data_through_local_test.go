@@ -202,3 +202,92 @@ resource "aws_iam_policy" "consumer" {
 		})
 	}
 }
+
+// Presentation aliases obey their declaration scope and lexical loop bindings.
+func TestPolicyDocumentLexicalScopes(t *testing.T) {
+	const definitions = `
+variable "policy" { type = string }
+variable "arn" { type = string }
+variable "selector" { default = "intended" }
+data "aws_iam_policy_document" "docs" {
+  for_each = toset(["intended", "decoy"])
+  statement {
+    actions = ["${each.key}:*"]
+    resources = [var.arn]
+  }
+}
+locals {
+  value = data.aws_iam_policy_document.docs["decoy"].json
+  picked = data.aws_iam_policy_document.docs[var.selector].json
+}
+`
+	for _, tc := range []struct {
+		name, body, typ, field string
+		wantActions            bool
+	}{
+		{"single dynamic binding", `
+resource "aws_iam_role" "consumer" {
+  dynamic "inline_policy" {
+    iterator = local
+    for_each = {a = var.policy}
+    content {
+      name = local.key
+      policy = local.value
+    }
+  }
+}`, "aws_iam_role", "inline_policy", false},
+		{"repeated dynamic bindings", `
+resource "aws_iam_role" "consumer" {
+  dynamic "inline_policy" {
+    iterator = local
+    for_each = {a = var.policy, b = var.policy}
+    content {
+      name = local.key
+      policy = local.value
+    }
+  }
+}`, "aws_iam_role", "inline_policy", false},
+		{"bound data expression", `
+data "aws_iam_policy_document" "combined" {
+  dynamic "statement" {
+    iterator = local
+    for_each = {a = var.policy}
+    content {
+      actions = ["intended:*"]
+      resources = [local.value]
+    }
+  }
+}
+resource "aws_iam_policy" "consumer" {
+  policy = data.aws_iam_policy_document.combined.json
+}`, "aws_iam_policy", "policy", true},
+		{"module alias under for binding", `
+resource "aws_iam_policy" "consumer" {
+  policy = [for var in [{selector = "decoy"}] : local.picked]
+}`, "aws_iam_policy", "policy", true},
+		{"module alias under dynamic binding", `
+resource "aws_iam_role" "consumer" {
+  dynamic "inline_policy" {
+    iterator = var
+    for_each = [{selector = "decoy"}]
+    content {
+      name = "configured"
+      policy = local.picked
+    }
+  }
+}`, "aws_iam_role", "inline_policy", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resources := evaluateWithChild(t, New(), map[string]string{"main.tf": definitions + tc.body}, callChild)
+			consumer := findResource(t, resources, tc.typ, "consumer")
+			require.False(t, consumer.Attributes[tc.field].IsWhollyKnown())
+			doc := fmt.Sprint(AttributesToDocument(&consumer)[tc.field])
+			require.NotContains(t, doc, "decoy:*")
+			if tc.wantActions {
+				require.Contains(t, doc, "intended:*")
+			} else {
+				require.Contains(t, doc, "${local.value}")
+			}
+		})
+	}
+}
