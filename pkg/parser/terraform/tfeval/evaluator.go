@@ -708,7 +708,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	depth int,
 	visiting map[string]bool,
 ) {
-	if len(moduleBlocks) <= 1 {
+	if len(moduleBlocks) <= 1 || scope.static.moduleOrder != nil {
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
@@ -736,6 +736,9 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	// (module B referencing module C where C appears later in file order) survive the
 	// first iteration's evalCtx.Variables["module"] update.
 	moduleOutputs = publishedModuleOutputs(evalCtx)
+	if len(moduleBlocks) == 0 {
+		return nil, moduleOutputs
+	}
 
 	// Data reading module outputs is refreshed on every publication, so it
 	// keeps being published after every call.
@@ -745,7 +748,14 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			e: e, ctx: ctx, evalCtx: evalCtx, scope: scope, data: data, outputs: moduleOutputs,
 		}
 	}
-	for blockIndex, mb := range moduleBlocks {
+	order := scope.static.moduleOrder
+	results := newModuleCallResources(order)
+	for position := range moduleBlocks {
+		blockIndex := position
+		if order != nil {
+			blockIndex = order[position]
+		}
+		mb := moduleBlocks[blockIndex]
 		callCtx := evalCtx
 		if siblings != nil {
 			callCtx = siblings.contextFor(&reads[blockIndex])
@@ -794,7 +804,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			}
 			e.recordModuleInstance(call.dir, childAddr, childChain)
 			allVisited[call.dir] = true
-			childResources = append(childResources, childRes...)
+			results.add(blockIndex, childRes)
 			outs = append(outs, objectOrEmpty(childOuts))
 		}
 		if value, ok := moduleOutputsValue(plan, outs); ok {
@@ -806,7 +816,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			e.installSiblingModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 		}
 	}
-	return childResources, moduleOutputs
+	return results.values(), moduleOutputs
 }
 
 // noteCycles warns, once per directory, about the cycles among the locals and

@@ -448,3 +448,37 @@ func (s *siblingOutputs) localsFollowing(
 	slices.SortFunc(members, func(a, b int) int { return g.rank[a] - g.rank[b] })
 	return members, values, true
 }
+
+// moduleCallResources preserves declaration order when dependency scheduling
+// reorders calls. Keep child-result slice headers until flattening once; calls
+// already running in declaration order retain their original append path.
+type moduleCallResources struct {
+	resources []ResolvedResource
+	byCall    [][][]ResolvedResource
+}
+
+func newModuleCallResources(order []int) moduleCallResources {
+	for i, index := range order {
+		if i != index {
+			return moduleCallResources{byCall: make([][][]ResolvedResource, len(order))}
+		}
+	}
+	return moduleCallResources{}
+}
+
+func (r *moduleCallResources) add(call int, resources []ResolvedResource) {
+	if r.byCall == nil {
+		r.resources = append(r.resources, resources...)
+	} else {
+		r.byCall[call] = append(r.byCall[call], resources)
+	}
+}
+
+func (r *moduleCallResources) values() []ResolvedResource {
+	for _, results := range r.byCall {
+		for _, resources := range results {
+			r.resources = append(r.resources, resources...)
+		}
+	}
+	return r.resources
+}
