@@ -17,7 +17,8 @@ type PathSegment struct {
 	IsIndex bool
 }
 
-// SourcePath is relative to the parsed document identified by a finding.
+// SourcePath addresses written syntax within a finding's source document.
+// Normalized or generated semantic views require an explicit source adapter.
 type SourcePath []PathSegment
 
 // DisplayKey formats an unambiguous source location for display only.
