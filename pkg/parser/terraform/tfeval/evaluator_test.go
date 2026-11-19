@@ -2952,3 +2952,58 @@ module "b" {
 			"instances in one directory and root share equal file-derived attributes")
 	}
 }
+
+// Provider-owned attributes absent from configuration remain unknown when
+// referenced, while ordinary missing object keys retain HCL error semantics.
+func TestEvaluateModule_ResourceAttributeAccess(t *testing.T) {
+	for _, tc := range []struct {
+		name, read string
+		want       cty.Value
+		can        cty.Value
+	}{
+		{"configured", `terraform_data.single.input.known`, cty.StringVal("configured"), cty.True},
+		{"computed", `terraform_data.single.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"local_alias", `local.alias.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"chained_alias", `local.chained.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"indexed_alias", `local["alias"]["output"]`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"count_instance", `terraform_data.counted[0].output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"each_attribute_key", `terraform_data.keyed.a.output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"each_missing_key", `terraform_data.keyed.missing`, cty.StringVal("fallback"), cty.False},
+		{"each_instance", `terraform_data.keyed["a"].output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"singleton_splat", `terraform_data.single[*].output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"splat", `terraform_data.counted[*].output`, cty.DynamicVal, cty.UnknownVal(cty.Bool)},
+		{"ordinary_object", `local.object.missing`, cty.StringVal("fallback"), cty.False},
+		{"nested_object", `terraform_data.single.input.missing`, cty.StringVal("fallback"), cty.False},
+		{"count_meta_argument", `terraform_data.counted[0].count`, cty.StringVal("fallback"), cty.False},
+		{"for_each_meta_argument", `terraform_data.keyed["a"].for_each`, cty.StringVal("fallback"), cty.False},
+		{"provider_meta_argument", `terraform_data.single.provider`, cty.StringVal("fallback"), cty.False},
+		{"lifecycle_meta_block", `terraform_data.single.lifecycle`, cty.StringVal("fallback"), cty.False},
+		{"missing_instance", `terraform_data.counted[9].output`, cty.StringVal("fallback"), cty.False},
+		{"configured_null", `terraform_data.single.input.empty`, cty.NullVal(cty.DynamicPseudoType), cty.True},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := `
+resource "terraform_data" "single" { input = { known = "configured", empty = null } }
+resource "terraform_data" "counted" { count = 2 }
+resource "terraform_data" "keyed" { for_each = {a = true} }
+locals {
+ alias = terraform_data.single
+ chained = local.alias
+ object = {known = "configured"}
+}
+resource "terraform_data" "result" {
+ input = { value = try(` + tc.read + `, "fallback"), readable = can(` + tc.read + `) }
+}
+`
+			resources := evaluateRoot(t, context.Background(), source)
+			result := resources["/terraform_data.result"].Attributes["input"]
+			if tc.want.IsKnown() {
+				require.True(t, tc.want.RawEquals(result.GetAttr("value")), "got %s", result.GoString())
+			} else {
+				require.False(t, result.GetAttr("value").IsKnown(), result.GoString())
+			}
+			require.True(t, tc.can.RawEquals(result.GetAttr("readable")), "got %s", result.GoString())
+			require.NotContains(t, resources["/terraform_data.single"].Attributes, "output", "reference-only attributes must not become written configuration")
+		})
+	}
+}
