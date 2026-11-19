@@ -2345,6 +2345,128 @@ output "ids" { value = local.ids }
 	})))
 }
 
+// Acyclic sibling input/output chains resolve independently of declaration order,
+// including local aliases and module instance expansion.
+func TestEvaluateModule_SiblingDependencyChains(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		for _, viaLocal := range []bool{false, true} {
+			for _, expansion := range []string{"single", "count", "for_each"} {
+				t.Run(fmt.Sprintf("reverse=%t/local=%t/%s", reverse, viaLocal, expansion), func(t *testing.T) {
+					root := t.TempDir()
+					writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "value" {}
+resource "terraform_data" "node" { input = var.value }
+output "value" { value = var.value }
+`})
+					ref := func(i int) string {
+						address := fmt.Sprintf("module.m%d", i)
+						switch expansion {
+						case "count":
+							address += "[0]"
+						case "for_each":
+							address += `["only"]`
+						}
+						return address + ".value"
+					}
+					const length = 6
+					calls := make([]string, length)
+					for i := range length {
+						value, ready := `"seed"`, "true"
+						if i > 0 {
+							value = ref(i - 1)
+							ready = value + ` == "seed"`
+						}
+						prefix := ""
+						if viaLocal {
+							prefix = fmt.Sprintf("locals { value%d = %s }\n", i, value)
+							value = fmt.Sprintf("local.value%d", i)
+						}
+						meta := ""
+						switch expansion {
+						case "count":
+							meta = "count = " + ready + " ? 1 : 0\n"
+						case "for_each":
+							meta = "for_each = " + ready + ` ? { only = true } : {}` + "\n"
+						}
+						provider := "aws"
+						if i%2 == 0 {
+							provider = "aws.replica"
+						}
+						meta += "providers = { aws = " + provider + " }\n"
+						calls[i] = prefix + fmt.Sprintf("module \"m%d\" {\n source = \"../leaf\"\n %s value = %s\n}\n", i, meta, value)
+					}
+					if reverse {
+						for i, j := 0, len(calls)-1; i < j; i, j = i+1, j-1 {
+							calls[i], calls[j] = calls[j], calls[i]
+						}
+					}
+					files := map[string]string{"main.tf": strings.Join(calls, "\n")}
+					if reverse {
+						files = map[string]string{}
+						for i, call := range calls {
+							files[fmt.Sprintf("%02d.tf", i)] = call
+						}
+					}
+					files["outputs.tf"] = "output \"result\" { value = " + ref(length-1) + " }\n"
+					stack := writeModule(t, root, "stack", files)
+					resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+					require.NoError(t, err)
+					require.Len(t, resources, length)
+					require.Equal(t, cty.StringVal("seed"), outputs["result"])
+					for i, resource := range resources {
+						requireString(t, resource.Attributes, "input", "seed")
+						moduleIndex := i
+						if reverse {
+							moduleIndex = length - 1 - i
+						}
+						require.Equal(t, strings.TrimSuffix(ref(moduleIndex), ".value"), resource.ModuleAddress)
+					}
+				})
+			}
+		}
+	}
+}
+
+// Mutually referenced module calls can have acyclic output dependencies:
+// b reads a.constant, which is independent of a's input from b.value.
+func TestEvaluateModule_SiblingOutputDependencies(t *testing.T) {
+	for _, cycle := range []bool{false, true} {
+		for _, reverse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("cycle=%t/reverse=%t", cycle, reverse), func(t *testing.T) {
+				root := t.TempDir()
+				writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "value" {}
+resource "terraform_data" "node" { input = var.value }
+output "value" { value = var.value }
+output "constant" { value = "seed" }
+`})
+				dependency := "constant"
+				if cycle {
+					dependency = "value"
+				}
+				calls := []string{
+					"module \"a\" {\n source = \"../leaf\"\n value = module.b.value\n}\n",
+					"module \"b\" {\n source = \"../leaf\"\n value = module.a." + dependency + "\n}\n",
+				}
+				if reverse {
+					calls[0], calls[1] = calls[1], calls[0]
+				}
+				stack := writeModule(t, root, "stack", map[string]string{"main.tf": strings.Join(calls, "\n") + `
+output "result" { value = module.a.value }
+`})
+				resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+				require.NoError(t, err)
+				require.Len(t, resources, 2)
+				if cycle {
+					require.False(t, outputs["result"].IsKnown())
+				} else {
+					require.Equal(t, cty.StringVal("seed"), outputs["result"])
+				}
+			})
+		}
+	}
+}
+
 // Each call of a chain sees the output of the call before it, read directly,
 // through a chain of locals, by index or inside a constructed object. A call
 // reading a later declaration still receives its final output.
@@ -2996,6 +3118,54 @@ resource "terraform_data" "result" {
 			}
 			require.True(t, tc.can.RawEquals(result.GetAttr("readable")), "got %s", result.GoString())
 			require.NotContains(t, resources["/terraform_data.single"].Attributes, "output", "reference-only attributes must not become written configuration")
+		})
+	}
+}
+
+// Result collection preserves call and instance order, emitting each available
+// declaration prefix and releasing its buffered slices as soon as it completes.
+func TestModuleCallResources(t *testing.T) {
+	for _, order := range [][]int{nil, {0, 1, 2, 3}, {0, 2, 1, 3}, {3, 2, 1, 0}, {1, 0, 3, 2}} {
+		t.Run(fmt.Sprint(order), func(t *testing.T) {
+			r := newModuleCallResources(order)
+			sequence := order
+			if sequence == nil {
+				sequence = []int{0, 1, 2, 3}
+			}
+			complete := make([]bool, len(sequence))
+			prefix := 0
+			for _, call := range sequence {
+				// Call 1 is empty, as with a skipped call or a zero count.
+				if call != 1 {
+					for instance := range 3 {
+						r.add(call, []ResolvedResource{{Name: fmt.Sprintf("%d:%d", call, instance)}})
+						if r.pending != nil && call == r.next {
+							require.Empty(t, r.pending[call].instances)
+						}
+					}
+				}
+				r.finish(call)
+				complete[call] = true
+				for prefix < len(complete) && complete[prefix] {
+					prefix++
+				}
+				want := []string{}
+				for c := range prefix {
+					if c != 1 {
+						for i := range 3 {
+							want = append(want, fmt.Sprintf("%d:%d", c, i))
+						}
+					}
+					if r.pending != nil {
+						require.Empty(t, r.pending[c].instances)
+					}
+				}
+				got := []string{}
+				for _, resource := range r.values() {
+					got = append(got, resource.Name)
+				}
+				require.Equal(t, want, got)
+			}
 		})
 	}
 }

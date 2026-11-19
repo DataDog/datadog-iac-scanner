@@ -21,6 +21,7 @@ type dirStatic struct {
 	resourceAttrs      map[string][]string
 	resources          *blockGraph
 	siblings           []siblingReads
+	moduleOrder        []int
 	dataReadsData      bool
 	dataReadsLocals    bool
 	dataReadsResources bool
@@ -41,6 +42,11 @@ func newDirStatic(dp *dirParse) *dirStatic {
 	}
 	s.dataReadsResources = s.dataReadsResources || (s.dataReadsLocals && dp.locals.readsResources)
 	s.dataReadsModules = s.dataReadsModules || (s.dataReadsLocals && dp.locals.readsModules)
+	// Module-dependent data needs full output publications between calls;
+	// keep its existing orchestration outside the module/local DAG path.
+	if !s.dataReadsModules {
+		s.moduleOrder = moduleDependencyOrder(dp)
+	}
 	return s
 }
 

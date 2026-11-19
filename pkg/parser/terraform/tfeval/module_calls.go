@@ -448,3 +448,52 @@ func (s *siblingOutputs) localsFollowing(
 	slices.SortFunc(members, func(a, b int) int { return g.rank[a] - g.rank[b] })
 	return members, values, true
 }
+
+// moduleCallResources emits the completed declaration-order prefix immediately.
+// Only calls evaluated ahead of that prefix retain child-result slices.
+type moduleCallResources struct {
+	resources []ResolvedResource
+	pending   []moduleCallResult
+	next      int
+}
+
+type moduleCallResult struct {
+	instances [][]ResolvedResource
+	complete  bool
+}
+
+func newModuleCallResources(order []int) moduleCallResources {
+	for i, index := range order {
+		if i != index {
+			return moduleCallResources{pending: make([]moduleCallResult, len(order))}
+		}
+	}
+	return moduleCallResources{}
+}
+
+func (r *moduleCallResources) add(call int, resources []ResolvedResource) {
+	if r.pending == nil || call == r.next {
+		r.resources = append(r.resources, resources...)
+	} else if len(resources) > 0 {
+		r.pending[call].instances = append(r.pending[call].instances, resources)
+	}
+}
+
+func (r *moduleCallResources) finish(call int) {
+	if r.pending == nil {
+		return
+	}
+	r.pending[call].complete = true
+	for r.next < len(r.pending) && r.pending[r.next].complete {
+		for _, resources := range r.pending[r.next].instances {
+			r.resources = append(r.resources, resources...)
+		}
+		// Drop both the instance headers and their resource backing arrays.
+		r.pending[r.next] = moduleCallResult{}
+		r.next++
+	}
+}
+
+func (r *moduleCallResources) values() []ResolvedResource {
+	return r.resources
+}
