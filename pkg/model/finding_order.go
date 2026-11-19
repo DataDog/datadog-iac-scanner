@@ -26,9 +26,6 @@ func CompareFindings(a, b *Vulnerability) int {
 	if c := cmp.Compare(a.SearchKey, b.SearchKey); c != 0 {
 		return c
 	}
-	if c := cmp.Compare(a.SourcePathID, b.SourcePathID); c != 0 {
-		return c
-	}
 	if c := cmp.Or(
 		cmp.Compare(a.QueryID, b.QueryID),
 		cmp.Compare(a.ResourceType, b.ResourceType),

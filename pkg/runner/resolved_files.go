@@ -104,8 +104,6 @@ func (s *Service) storeResolvedFiles(
 				lineInfoDocument = nil
 			}
 			file := model.FileMetadata{
-				SourceDocumentIndex: docIdx,
-
 				ID:                uuid.New().String(),
 				ScanID:            scanID,
 				Document:          preparedDocument,

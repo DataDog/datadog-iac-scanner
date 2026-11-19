@@ -290,12 +290,10 @@ func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
 
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
-	// SourceDocumentIndex is the document's stable position in its parsed file.
-	SourceDocumentIndex int    `json:"-"`
-	ID                  string `db:"id"`
-	ScanID              string `db:"scan_id"`
-	Document            Document
-	LineInfoDocument    map[string]interface{}
+	ID               string `db:"id"`
+	ScanID           string `db:"scan_id"`
+	Document         Document
+	LineInfoDocument map[string]interface{}
 	// lineInfo, when set, lazily reconstructs LineInfoDocument (a second full
 	// copy of the parsed document tree, kept intact with _dd_lines markers
 	// purely to resolve a confirmed finding's source line) on first access via
@@ -699,8 +697,6 @@ type QueryMetadata struct {
 // Vulnerability is a representation of a detected vulnerability in scanned files
 // after running a query
 type Vulnerability struct {
-	// SourcePathID identifies the structured file-scoped protocol. Empty is legacy.
-	SourcePathID          string           `json:"-"`
 	ID                    int              `json:"id"`
 	ScanID                string           `db:"scan_id" json:"-"`
 	FileID                string           `db:"file_id" json:"-"`

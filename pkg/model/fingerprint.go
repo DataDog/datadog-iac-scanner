@@ -8,7 +8,6 @@ package model
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -32,10 +31,6 @@ func GetDatadogFingerprintHash(
 // FindingIdentity is what a scan reports one finding for: findings of equal
 // identity share a fingerprint, and only the last of them is reported.
 func FindingIdentity(v *Vulnerability) string {
-	if v.SourcePathID != "" {
-		file, _, _ := fingerprintFields(v)
-		return sourceChainedIdentity(v, file).WithChain(v.ModuleCallChain)
-	}
 	fileName, line, ruleID := fingerprintFields(v)
 	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID); ok {
 		return id.WithChain(v.ModuleCallChain)
@@ -55,10 +50,6 @@ type ChainedIdentity struct {
 // IdentityBeforeLine returns v's identity less its call chain. It returns
 // false when v's platform puts the line in the identity.
 func IdentityBeforeLine(v *Vulnerability) (ChainedIdentity, bool) {
-	if v.SourcePathID != "" {
-		file, _, _ := fingerprintFields(v)
-		return sourceChainedIdentity(v, file), true
-	}
 	fileName, _, ruleID := fingerprintFields(v)
 	return chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID)
 }
@@ -129,12 +120,4 @@ func fingerprintInput(
 func stringToHash(str string) string {
 	hash := sha256.Sum256([]byte(str))
 	return hex.EncodeToString(hash[:])
-}
-
-func sourceChainedIdentity(v *Vulnerability, file string) ChainedIdentity {
-	prefix, _ := json.Marshal([]string{
-		"source-finding-v1", strings.ToLower(strings.TrimSpace(v.Platform)), file,
-		utils.ChooseQueryID(v.QueryID, v.LegacyQueryID), v.SourcePathID,
-	})
-	return ChainedIdentity{prefix: string(prefix), chained: true}
 }
