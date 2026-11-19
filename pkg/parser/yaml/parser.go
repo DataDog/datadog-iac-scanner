@@ -19,16 +19,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Resolve - replace or modifies in-memory content before parsing
+// resolve replaces the file references of the documents with the content
+// they reference (see file.Resolver.ResolveYAML). It returns no documents
+// when nothing was resolved.
 func resolve(ctx context.Context, fileContent []byte, filename string,
-	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile) {
+	resolveReferences bool, maxResolverDepth int) (resolved []*yaml.Node, resolvedFiles map[string]model.ResolvedFile) {
 	// Resolve files passed as arguments with file resolver (e.g. file://)
 	res := file.NewResolver(yaml.Unmarshal, yaml.Marshal, SupportedExtensions())
-	resolvedFilesCache := make(map[string]file.ResolvedFile)
-	resolved = res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
+	resolved = res.ResolveYAML(ctx, fileContent, filename, maxResolverDepth, resolveReferences)
 
 	if len(res.ResolvedFiles) == 0 {
-		return fileContent, res.ResolvedFiles
+		return nil, res.ResolvedFiles
 	}
 
 	return resolved, res.ResolvedFiles
@@ -50,6 +51,10 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 // The transform sees the same nodes that line tracking is built from, so
 // in-place value rewrites keep their original line numbers. A nil fn is
 // equivalent to Parse.
+//
+// The returned content is fileContent: resolved references are inlined in the
+// documents only, where the content of a file referenced several times is
+// shared between its references instead of being copied.
 func ParseWithNodeTransform(ctx context.Context, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int, fn func(node *yaml.Node)) (
 	resolved []byte,
@@ -57,9 +62,19 @@ func ParseWithNodeTransform(ctx context.Context, fileContent []byte, filePath st
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolved, resolvedFiles = resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
-	documents, ignoreLines, err = parseNodes(ctx, resolved, filePath, fn)
-	return resolved, documents, ignoreLines, resolvedFiles, err
+	resolvedDocs, resolvedFiles := resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	if resolvedDocs == nil {
+		documents, ignoreLines, err = parseNodes(ctx, fileContent, filePath, fn)
+		return fileContent, documents, ignoreLines, resolvedFiles, err
+	}
+	documents, err = convertResolvedNodes(ctx, resolvedDocs, filePath, fn)
+	if err != nil {
+		return fileContent, nil, []int{}, resolvedFiles, err
+	}
+	// Ignore comments are read from the file itself: resolved nodes carry the
+	// comments of the referenced files too, with no position in this one.
+	ignoreLines = model.GetIgnoreLines(&model.FileMetadata{FilePath: filePath, OriginalData: string(fileContent)})
+	return fileContent, documents, ignoreLines, resolvedFiles, nil
 }
 
 // ParseWithNodeTransformNoResolve is ParseWithNodeTransform without the
@@ -90,24 +105,7 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 		if err := dec.Decode(&node); err != nil {
 			break
 		}
-
-		if IsEmptyDocument(&node) {
-			continue
-		}
-		contentNode := node.Content[0]
-		if fn != nil {
-			fn(contentNode)
-		}
-		doc := model.Document{}
-		if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
-			fixtureutils.WarnUnlessFixture(ctx, filePath).Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
-			continue
-		}
-
-		if len(doc) > 0 {
-			doc["_path"] = filePath
-			documents = append(documents, doc)
-		}
+		documents = appendDocument(ctx, documents, &node, filePath, fn, ignore)
 	}
 
 	if len(documents) == 0 {
@@ -117,6 +115,51 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 	linesToIgnore := ignore.GetLines()
 
 	return documents, linesToIgnore, nil
+}
+
+// convertResolvedNodes converts documents whose file references were resolved,
+// keeping the nodes they share shared (see model.Document.UnmarshalSharedYAML).
+func convertResolvedNodes(ctx context.Context, nodes []*yaml.Node, filePath string, fn func(node *yaml.Node)) (
+	documents []model.Document,
+	err error) {
+	ctx = model.WithYAMLFilePath(ctx, filePath)
+	for _, node := range nodes {
+		documents = appendDocument(ctx, documents, node, filePath, fn, nil)
+	}
+	if len(documents) == 0 {
+		return nil, errors.New("no documents found in yaml file")
+	}
+	return documents, nil
+}
+
+// appendDocument converts one decoded document and appends it to documents,
+// skipping empty and unparseable ones. A nil ignore marks a resolved document,
+// whose nodes can be shared (see model.Document.UnmarshalSharedYAML).
+func appendDocument(ctx context.Context, documents []model.Document, node *yaml.Node, filePath string,
+	fn func(node *yaml.Node), ignore *model.Ignore) []model.Document {
+	if IsEmptyDocument(node) {
+		return documents
+	}
+	contentNode := node.Content[0]
+	if fn != nil {
+		fn(contentNode)
+	}
+	doc := model.Document{}
+	var err error
+	if ignore == nil {
+		err = doc.UnmarshalSharedYAML(ctx, contentNode)
+	} else {
+		err = doc.UnmarshalYAML(ctx, contentNode, ignore)
+	}
+	if err != nil {
+		fixtureutils.WarnUnlessFixture(ctx, filePath).Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
+		return documents
+	}
+	if len(doc) > 0 {
+		doc["_path"] = filePath
+		documents = append(documents, doc)
+	}
+	return documents
 }
 
 // IsEmptyDocument reports whether a decoded YAML document holds nothing, an
@@ -182,8 +225,10 @@ func processCertContent(ctx context.Context, elements map[string]interface{}, co
 }
 
 func processElements(ctx context.Context, elements map[string]interface{}, filePath string) {
-	if elements["certificate"] != nil {
-		processCertContent(ctx, elements, utils.CheckCertificate(elements["certificate"].(string)), filePath)
+	// A map shared by several resolved references is seen once per reference,
+	// and certificate is a map once processed.
+	if certificate, ok := elements["certificate"].(string); ok {
+		processCertContent(ctx, elements, utils.CheckCertificate(certificate), filePath)
 	}
 }
 

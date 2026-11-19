@@ -71,7 +71,68 @@ func isOpenAPI(fileContent []byte) bool {
 	return true
 }
 
-// Resolve - replace or modifies in-memory content before parsing
+// mayReferenceYAMLFiles reports whether the resolution can change a YAML
+// file: it needs a $ref/include_vars key or a scalar naming an external
+// .yaml/.yml file (findFilePath requires the extension in the value; the
+// serverless ${file(...)} form embeds it too), and each of those leaves a
+// literal in the file bytes. Without any of them the resolution is a full
+// parse and walk that returns an equivalent document, so it is skipped.
+func mayReferenceYAMLFiles(fileContent []byte) bool {
+	return bytes.Contains(fileContent, []byte("$ref")) ||
+		bytes.Contains(fileContent, []byte("include_vars")) ||
+		bytes.Contains(fileContent, []byte(".yaml")) ||
+		bytes.Contains(fileContent, []byte(".yml"))
+}
+
+// ResolveYAML replaces the file references of every document of a YAML file
+// with the content they reference, and returns the documents. It returns no
+// documents when the file cannot hold a reference; ResolvedFiles is empty when
+// nothing was resolved.
+//
+// A referenced file is read and resolved once per call, and every reference
+// to it then points at the same nodes instead of a copy of them. When the
+// references form a DAG (a template included from several places, which
+// includes another one from several places, and so on), the result is a graph
+// as large as the files it is made of, where a tree would grow with the number
+// of paths through the references: exponentially with their nesting depth.
+// The nodes are not to be modified, since a change to a shared node shows at
+// every reference to it.
+//
+// The nodes of a referenced file carry no position: line numbers are those
+// of the file being resolved, and the referenced file has its own (see
+// ResolvedFiles).
+func (r *Resolver) ResolveYAML(ctx context.Context, fileContent []byte, path string,
+	maxResolverDepth int, resolveReferences bool) (docs []*yaml.Node) {
+	contextLogger := logger.FromContext(ctx)
+	defer func() {
+		if p := recover(); p != nil {
+			contextLogger.Err(fmt.Errorf("panic: %v", p)).Msg("Recovered from panic during resolve of file " + path)
+			// The file is left unresolved: it must not report resolved files.
+			docs = nil
+			clear(r.ResolvedFiles)
+		}
+	}()
+
+	if (!resolveReferences && isOpenAPI(fileContent)) || !mayReferenceYAMLFiles(fileContent) {
+		return nil
+	}
+
+	resolvedFilesCache := make(map[string]ResolvedFile)
+	dec := yaml.NewDecoder(bytes.NewReader(fileContent))
+	for {
+		var doc yaml.Node
+		if err := dec.Decode(&doc); err != nil {
+			break
+		}
+		resolved := r.resolveYAMLDocument(ctx, fileContent, &doc, path, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
+		docs = append(docs, &resolved)
+	}
+	return docs
+}
+
+// Resolve - replace or modifies in-memory content before parsing.
+// For a YAML file, it returns the first document with the referenced content
+// copied at each reference; ResolveYAML shares it instead.
 func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	resolveCount, maxResolverDepth int, resolvedFilesCache map[string]ResolvedFile,
 	resolveReferences bool) []byte {
@@ -89,17 +150,7 @@ func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	}
 
 	if utils.Contains(filepath.Ext(path), []string{".yml", ".yaml"}) {
-		// A YAML document can only be modified by the resolution below when
-		// it holds a $ref/include_vars key or a scalar naming an external
-		// .yaml/.yml file (findFilePath requires the extension in the value;
-		// the serverless ${file(...)} form embeds it too) — each of those
-		// leaves a literal in the file bytes. Without any of them the resolve
-		// is a full parse + walk + re-marshal that returns an equivalent
-		// document, so return the original bytes and skip it entirely.
-		if !bytes.Contains(fileContent, []byte("$ref")) &&
-			!bytes.Contains(fileContent, []byte("include_vars")) &&
-			!bytes.Contains(fileContent, []byte(".yaml")) &&
-			!bytes.Contains(fileContent, []byte(".yml")) {
+		if !mayReferenceYAMLFiles(fileContent) {
 			return fileContent
 		}
 		return r.yamlResolve(ctx, fileContent, path, resolveCount, maxResolverDepth, resolvedFilesCache, resolveReferences)
@@ -200,15 +251,9 @@ func (r *Resolver) yamlResolve(ctx context.Context, fileContent []byte, path str
 		return fileContent
 	}
 
-	fullObjectCopy := obj
+	obj = r.resolveYAMLDocument(ctx, fileContent, &obj, path, resolveCount, maxResolverDepth, resolvedFilesCache, resolveReferences)
 
-	// resolve the paths
-	obj, _ = r.yamlWalk(
-		ctx,
-		fileContent, &fullObjectCopy, &obj, path, resolveCount,
-		maxResolverDepth, resolvedFilesCache, false, resolveReferences, false)
-
-	if obj.Kind == 1 && len(obj.Content) == 1 {
+	if obj.Kind == yaml.DocumentNode && len(obj.Content) == 1 {
 		obj = *obj.Content[0]
 	}
 
@@ -218,6 +263,19 @@ func (r *Resolver) yamlResolve(ctx context.Context, fileContent []byte, path str
 	}
 
 	return b
+}
+
+// resolveYAMLDocument replaces the file references found in doc, a decoded
+// document of the file at path, with the content they reference.
+func (r *Resolver) resolveYAMLDocument(ctx context.Context, fileContent []byte, doc *yaml.Node, path string,
+	resolveCount, maxResolverDepth int, resolvedFilesCache map[string]ResolvedFile,
+	resolveReferences bool) yaml.Node {
+	fullObjectCopy := *doc
+	resolved, _ := r.yamlWalk(
+		ctx,
+		fileContent, &fullObjectCopy, doc, path, resolveCount,
+		maxResolverDepth, resolvedFilesCache, false, resolveReferences, false)
+	return resolved
 }
 
 func (r *Resolver) yamlWalk(
@@ -280,7 +338,11 @@ func (r *Resolver) yamlWalk(
 				}
 				refMetadataValueNode.Content = append(refMetadataValueNode.Content,
 					originalValueNode, value.Content[i], refAloneKeyNode, refAloneValueNode)
-				resolved.Content = append(resolved.Content, refMetadataKeyNode, refMetadataValueNode)
+				// resolved shares its Content with the referenced node and with
+				// every other reference to it: append to a copy, or the
+				// references would overwrite each other's metadata.
+				resolved.Content = append(resolved.Content[:len(resolved.Content):len(resolved.Content)],
+					refMetadataKeyNode, refMetadataValueNode)
 
 				return resolved, false
 			}
@@ -400,32 +462,50 @@ func (r *Resolver) resolveFile(
 	// read the content
 	fileContent, _ := io.ReadAll(file)
 
-	resolvedFile := r.Resolve(ctx, fileContent, filePath, resolveCount+1, maxResolverDepth, resolvedFilesCache, resolveReferences)
-
 	if yamlResolve {
+		// The nodes are resolved in place and cached as they are, never
+		// serialized: every reference to the file shares them (see ResolveYAML).
 		var obj yaml.Node
-
-		err = r.unmarshler(resolvedFile, &obj) // parse the content
+		err = r.unmarshler(fileContent, &obj) // parse the content
 		if err != nil {
 			return value, true
 		}
+		clearYAMLPositions(&obj)
 
-		if obj.Kind == 1 && len(obj.Content) == 1 {
+		if (resolveReferences || !isOpenAPI(fileContent)) && mayReferenceYAMLFiles(fileContent) {
+			obj = r.resolveYAMLDocument(ctx, fileContent, &obj, filePath, resolveCount+1, maxResolverDepth,
+				resolvedFilesCache, resolveReferences)
+		}
+
+		if obj.Kind == yaml.DocumentNode && len(obj.Content) == 1 {
 			obj = *obj.Content[0]
 		}
-
-		resolvedFilesCache[filePath] = ResolvedFile{fileContent, obj}
-	} else {
-		var obj any
-		err = r.unmarshler(resolvedFile, &obj) // parse the content
-		if err != nil {
+		if obj.Kind == 0 { // empty file: nothing to inline
 			return value, true
 		}
 
 		resolvedFilesCache[filePath] = ResolvedFile{fileContent, obj}
+		return nil, false
 	}
 
+	resolvedFile := r.Resolve(ctx, fileContent, filePath, resolveCount+1, maxResolverDepth, resolvedFilesCache, resolveReferences)
+	var obj any
+	err = r.unmarshler(resolvedFile, &obj) // parse the content
+	if err != nil {
+		return value, true
+	}
+
+	resolvedFilesCache[filePath] = ResolvedFile{fileContent, obj}
 	return nil, false
+}
+
+// clearYAMLPositions drops the line and column of every node of a document
+// inlined in another file, where they would be read as positions in that file.
+func clearYAMLPositions(node *yaml.Node) {
+	node.Line, node.Column = 0, 0
+	for _, child := range node.Content {
+		clearYAMLPositions(child)
+	}
 }
 
 func getPathFromString(path string) string {
@@ -548,19 +628,27 @@ func findSectionYaml(object *yaml.Node, sectionsString string) (yaml.Node, error
 }
 
 func checkIfCircularYaml(circularValue string, yamlSection *yaml.Node) bool {
-	if len(yamlSection.Content) == 0 {
+	return checkIfCircularYamlNode(circularValue, yamlSection, make(map[*yaml.Node]bool))
+}
+
+// checkIfCircularYamlNode visits each node once: resolved content shares its
+// nodes between references, and visiting them per path would take time
+// exponential in the nesting depth of the references.
+func checkIfCircularYamlNode(circularValue string, yamlSection *yaml.Node, visited map[*yaml.Node]bool) bool {
+	if len(yamlSection.Content) == 0 || visited[yamlSection] {
 		return false
 	}
+	visited[yamlSection] = true
 	for index := 0; index < len(yamlSection.Content)-1; index += 1 {
 		// nolint:goconst
 		// if there is a reference to the same value that was resolved it is a circular definition
 		if yamlSection.Content[index].Value == "$ref" && yamlSection.Content[index+1].Value == circularValue {
 			return true
-		} else if checkIfCircularYaml(circularValue, yamlSection.Content[index]) {
+		} else if checkIfCircularYamlNode(circularValue, yamlSection.Content[index], visited) {
 			return true
 		}
 	}
-	return checkIfCircularYaml(circularValue, yamlSection.Content[len(yamlSection.Content)-1])
+	return checkIfCircularYamlNode(circularValue, yamlSection.Content[len(yamlSection.Content)-1], visited)
 }
 
 func findSection(object interface{}, sectionsString string) (interface{}, error) {

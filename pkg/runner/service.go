@@ -511,22 +511,72 @@ var errCyclicDocument = errors.New("cyclic document tree")
 // heap/CPU cost) — the lazy line-info refactor leaves body exclusively owned.
 // Cycles are rejected with errCyclicDocument, as json.Marshal would.
 func sanitizeScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
-	stack := make(map[uintptr]bool)
-	if err := sanitizeScanDocumentNodeInPlace(body, kind, true, true, stack); err != nil {
+	return sanitizeScanDocumentWithMarks(body, kind, sanitizeMarks{state: make(map[uintptr]sanitizeMark)})
+}
+
+// sanitizeSharedScanDocumentInPlace is sanitizeScanDocumentInPlace for a
+// document whose maps can have several parents, as resolved file references
+// do (see file.Resolver.ResolveYAML): each map is sanitized once, where
+// visiting it on every path would take time exponential in the nesting depth
+// of the references. The filter flags only vary at the root of Terraform plan
+// documents, which share no map.
+func sanitizeSharedScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
+	return sanitizeScanDocumentWithMarks(body, kind, sanitizeMarks{state: make(map[uintptr]sanitizeMark), shared: true})
+}
+
+func sanitizeScanDocumentWithMarks(body map[string]interface{}, kind model.FileKind,
+	marks sanitizeMarks) (map[string]interface{}, error) {
+	if err := sanitizeScanDocumentNodeInPlace(body, kind, true, true, marks); err != nil {
 		return nil, err
 	}
 	return body, nil
+}
+
+// sanitizeMarks holds the maps being sanitized, to reject cycles, and those
+// already sanitized when the document shares maps. Other documents forget a
+// map once it is done, which keeps the marks as small as the nesting depth.
+type sanitizeMarks struct {
+	state  map[uintptr]sanitizeMark
+	shared bool
+}
+
+type sanitizeMark uint8
+
+const (
+	sanitizing sanitizeMark = iota + 1
+	sanitized
+)
+
+// enter marks the map at ptr as being sanitized, unless it is done: already
+// sanitized, or being sanitized, which is a cycle (err).
+func (m sanitizeMarks) enter(ptr uintptr) (done bool, err error) {
+	switch m.state[ptr] {
+	case sanitizing:
+		return true, errCyclicDocument
+	case sanitized:
+		return true, nil
+	}
+	m.state[ptr] = sanitizing
+	return false, nil
+}
+
+func (m sanitizeMarks) leave(ptr uintptr) {
+	if m.shared {
+		m.state[ptr] = sanitized
+	} else {
+		delete(m.state, ptr)
+	}
 }
 
 func sanitizeScanDocumentNodeInPlace(
 	body interface{},
 	kind model.FileKind,
 	resolveFilters, atDocumentRoot bool,
-	stack map[uintptr]bool,
+	marks sanitizeMarks,
 ) error {
 	switch bodyType := body.(type) {
 	case map[string]interface{}:
-		return sanitizeScanDocumentValueInPlace(bodyType, kind, resolveFilters, atDocumentRoot, stack)
+		return sanitizeScanDocumentValueInPlace(bodyType, kind, resolveFilters, atDocumentRoot, marks)
 	case []interface{}:
 		for i, indx := range bodyType {
 			if !isCanonicalDocumentValue(indx) {
@@ -534,7 +584,7 @@ func sanitizeScanDocumentNodeInPlace(
 					bodyType[i] = normalized
 				}
 			}
-			if err := sanitizeScanDocumentNodeInPlace(bodyType[i], kind, resolveFilters, false, stack); err != nil {
+			if err := sanitizeScanDocumentNodeInPlace(bodyType[i], kind, resolveFilters, false, marks); err != nil {
 				return err
 			}
 		}
@@ -546,14 +596,13 @@ func sanitizeScanDocumentValueInPlace(
 	bodyType map[string]interface{},
 	kind model.FileKind,
 	resolveFilters, atDocumentRoot bool,
-	stack map[uintptr]bool,
+	marks sanitizeMarks,
 ) error {
 	ptr := reflect.ValueOf(bodyType).Pointer()
-	if stack[ptr] {
-		return errCyclicDocument
+	if done, err := marks.enter(ptr); done {
+		return err
 	}
-	stack[ptr] = true
-	defer delete(stack, ptr)
+	defer marks.leave(ptr)
 
 	delete(bodyType, "_dd_lines")
 	for key, v := range bodyType {
@@ -563,12 +612,12 @@ func sanitizeScanDocumentValueInPlace(
 		}
 		switch value := v.(type) {
 		case map[string]interface{}:
-			if err := sanitizeScanDocumentNodeInPlace(value, kind, childResolveFilters, false, stack); err != nil {
+			if err := sanitizeScanDocumentNodeInPlace(value, kind, childResolveFilters, false, marks); err != nil {
 				return err
 			}
 		case []interface{}:
 			for _, indx := range value {
-				if err := sanitizeScanDocumentNodeInPlace(indx, kind, childResolveFilters, false, stack); err != nil {
+				if err := sanitizeScanDocumentNodeInPlace(indx, kind, childResolveFilters, false, marks); err != nil {
 					return err
 				}
 			}
@@ -579,7 +628,7 @@ func sanitizeScanDocumentValueInPlace(
 				}
 			}
 		default:
-			if err := sanitizeNormalizedValueInPlace(bodyType, key, kind, childResolveFilters, stack); err != nil {
+			if err := sanitizeNormalizedValueInPlace(bodyType, key, kind, childResolveFilters, marks); err != nil {
 				return err
 			}
 		}
@@ -596,17 +645,17 @@ func sanitizeNormalizedValueInPlace(
 	key string,
 	kind model.FileKind,
 	resolveFilters bool,
-	stack map[uintptr]bool,
+	marks sanitizeMarks,
 ) error {
 	if normalized, changed := normalizeDocumentValue(bodyType[key]); changed {
 		bodyType[key] = normalized
 	}
 	switch value := bodyType[key].(type) {
 	case map[string]interface{}:
-		return sanitizeScanDocumentNodeInPlace(value, kind, resolveFilters, false, stack)
+		return sanitizeScanDocumentNodeInPlace(value, kind, resolveFilters, false, marks)
 	case []interface{}:
 		for _, indx := range value {
-			if err := sanitizeScanDocumentNodeInPlace(indx, kind, resolveFilters, false, stack); err != nil {
+			if err := sanitizeScanDocumentNodeInPlace(indx, kind, resolveFilters, false, marks); err != nil {
 				return err
 			}
 		}

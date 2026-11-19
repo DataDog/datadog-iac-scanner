@@ -12,10 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -430,8 +434,9 @@ func Test_Resolve(t *testing.T) {
 		name: test2
 	`
 
-	resolved, _ := resolve(ctx, []byte(have), "test.yaml", true, 15)
-	require.Equal(t, []byte(have), resolved)
+	resolved, resolvedFiles := resolve(ctx, []byte(have), "test.yaml", true, 15)
+	require.Nil(t, resolved, "a file without references is decoded as is")
+	require.Empty(t, resolvedFiles)
 }
 
 func TestYaml_processElements(t *testing.T) {
@@ -525,4 +530,86 @@ func TestParseSkipsUnparseableDocumentAndKeepsOthers(t *testing.T) {
 	_, docs, _, _, err := Parse(context.Background(), content, "mixed.yaml", false, 15)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(docs), 1)
+}
+
+// countPaths returns the number of paths from v to a job named "leaf",
+// counting each shared map once, and adds every map it meets to seen.
+func countPaths(v interface{}, memo map[uintptr]int, seen map[uintptr]bool) int {
+	switch typed := v.(type) {
+	case map[string]interface{}:
+		ptr := reflect.ValueOf(typed).Pointer()
+		if n, ok := memo[ptr]; ok {
+			return n
+		}
+		seen[ptr] = true
+		n := 0
+		if typed["job"] == "leaf" {
+			n = 1
+		}
+		for _, child := range typed {
+			n += countPaths(child, memo, seen)
+		}
+		memo[ptr] = n
+		return n
+	case []interface{}:
+		n := 0
+		for _, child := range typed {
+			n += countPaths(child, memo, seen)
+		}
+		return n
+	}
+	return 0
+}
+
+// A template included from several places is inlined at each of them, with
+// the content of each file shared by its references: the document stays as
+// large as the files, where copying each reference made it grow with the
+// number of paths (and the scan ran out of memory at a depth of about 5).
+func TestParse_TemplateIncludedManyTimesIsSharedAndComplete(t *testing.T) {
+	const fanout, depth = 10, 4
+	root, err := test.WriteTemplateChain(t.TempDir(), fanout, depth, "")
+	require.NoError(t, err)
+	content, err := os.ReadFile(root)
+	require.NoError(t, err)
+
+	_, docs, _, resolvedFiles, err := Parse(context.Background(), content, root, true, 15)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	require.Len(t, resolvedFiles, depth)
+
+	seen := make(map[uintptr]bool)
+	paths := countPaths(map[string]interface{}(docs[0]), make(map[uintptr]int), seen)
+	require.Equal(t, 10_000, paths, "every reference is resolved, at every depth")
+	// Each file has a job and fanout references, each holding a template map
+	// and the shared content it references.
+	require.LessOrEqual(t, len(seen), (2*fanout+2)*(depth+1))
+}
+
+// Resolution keeps every document of the file and the line of each key in
+// it; the content inlined from another file has no line in this one.
+func TestParse_ResolvedFileKeepsDocumentsAndLines(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "owner.yaml"), []byte("team: payments\n"), 0o600))
+	path := filepath.Join(dir, "app.yaml")
+	content := []byte("kind: Deployment\n\n# owner\nowner: owner.yaml\nreplicas: 2\n---\nkind: Service\n")
+	require.NoError(t, os.WriteFile(path, content, 0o600))
+
+	_, docs, _, resolvedFiles, err := Parse(context.Background(), content, path, true, 15)
+	require.NoError(t, err)
+	require.Contains(t, resolvedFiles, "owner.yaml")
+	require.Len(t, docs, 2)
+	require.Equal(t, "Service", docs[1]["kind"])
+
+	owner, ok := docs[0]["owner"].(map[string]interface{})
+	require.True(t, ok, "owner.yaml is inlined")
+	require.Equal(t, "payments", owner["team"])
+
+	lines, ok := docs[0]["_dd_lines"].(map[string]*model.LineObject)
+	require.True(t, ok)
+	require.Equal(t, 4, lines["_dd_owner"].Line)
+	require.Equal(t, 5, lines["_dd_replicas"].Line)
+	ownerLines, ok := owner["_dd_lines"].(map[string]*model.LineObject)
+	require.True(t, ok)
+	require.Equal(t, 4, ownerLines["_dd__default"].Line)
+	require.Zero(t, ownerLines["_dd_team"].Line)
 }

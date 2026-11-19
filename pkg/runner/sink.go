@@ -117,13 +117,6 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	}
 	s.Tracker.TrackFileFoundCountLines(linesResolved)
 
-	if len(documents.ResolvedFiles) > 0 {
-		documents.IgnoreLines = model.GetIgnoreLines(&model.FileMetadata{
-			FilePath:     filename,
-			OriginalData: documents.Content,
-			LinesIgnore:  documents.IgnoreLines,
-		})
-	}
 	// The ignore-lines slice is shared by every document of this file; sort
 	// it once here instead of once per document in sinkDocument.
 	if len(documents.IgnoreLines) > 0 {
@@ -170,7 +163,14 @@ func (s *Service) sinkDocument(
 
 	// Sanitize in place — safe because the tree is exclusively owned (line info is
 	// lazily reparsed) — and reject cycles, as json.Marshal would.
-	preparedDocument, err := sanitizeScanDocumentInPlace(document, documents.Kind)
+	sanitize := sanitizeScanDocumentInPlace
+	if len(documents.ResolvedFiles) > 0 {
+		// Documents are only built from shared nodes when files were resolved
+		// (see file.Resolver.ResolveYAML); for the others this is the same
+		// walk, only costlier.
+		sanitize = sanitizeSharedScanDocumentInPlace
+	}
+	preparedDocument, err := sanitize(document, documents.Kind)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
 		return nil
