@@ -209,7 +209,8 @@ func (r *Renderer) referenceExpression(expr hclsyntax.Expression) (cty.Value, bo
 }
 
 // ReferenceTraversal resolves known index selectors of a pure reference without
-// evaluating its base. It does not turn transformations into references.
+// evaluating its base. A coalesce with only known null/empty predecessors can
+// select its final reference; transformations never become references.
 func ReferenceTraversal(expr hcl.Expression, ctx *hcl.EvalContext) (hcl.Traversal, bool) {
 	var parts []hcl.Traversal
 	for {
@@ -228,6 +229,12 @@ func ReferenceTraversal(expr hcl.Expression, ctx *hcl.EvalContext) (hcl.Traversa
 			}
 			parts = append(parts, hcl.Traversal{hcl.TraverseIndex{Key: key, SrcRange: node.Key.Range()}})
 			expr = node.Collection
+		case *hclsyntax.FunctionCallExpr:
+			selected, ok := selectedCoalesce(node, ctx)
+			if !ok {
+				return nil, false
+			}
+			expr = selected
 		case *hclsyntax.ParenthesesExpr:
 			expr = node.Expression
 		default:
@@ -242,6 +249,28 @@ func ReferenceTraversal(expr hcl.Expression, ctx *hcl.EvalContext) (hcl.Traversa
 			return t, true
 		}
 	}
+}
+
+// selectedCoalesce uses only authoritative values to prove which expression
+// supplies the result. Rendered JSON is never an argument to the function.
+func selectedCoalesce(node *hclsyntax.FunctionCallExpr, ctx *hcl.EvalContext) (hcl.Expression, bool) {
+	if node.Name != "coalesce" || node.ExpandFinal || len(node.Args) < 2 {
+		return nil, false
+	}
+	if _, diags := node.Value(ctx); diags.HasErrors() {
+		return nil, false
+	}
+	for _, arg := range node.Args[:len(node.Args)-1] {
+		v, diags := arg.Value(ctx)
+		if diags.HasErrors() || !v.IsKnown() {
+			return nil, false
+		}
+		v, _ = v.Unmark()
+		if !v.IsNull() && !v.RawEquals(cty.StringVal("")) {
+			return nil, false
+		}
+	}
+	return node.Args[len(node.Args)-1], true
 }
 
 // traversalText is a traversal as written, which keeps spellings such as

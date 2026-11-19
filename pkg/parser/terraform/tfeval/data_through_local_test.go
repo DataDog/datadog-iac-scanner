@@ -173,6 +173,9 @@ locals {
 }
 resource "aws_iam_policy" "consumer" {
  policy = local.policy
+ selected = coalesce(null, "", local.policy)
+ ambiguous = coalesce(var.action, local.policy)
+ selected_contains = strcontains(coalesce(null, local.policy), "s3:*")
  compact = data.aws_iam_policy_document.p.minified_json
  contains_action = strcontains(local.policy, "s3:*")
  configured = true
@@ -180,14 +183,18 @@ resource "aws_iam_policy" "consumer" {
 `, tc.actions)}, callChild)
 			consumer := findResource(t, resources, "aws_iam_policy", "consumer")
 			attrs := consumer.Attributes
-			for _, name := range []string{"policy", "compact", "contains_action"} {
+			for _, name := range []string{"policy", "compact", "contains_action", "selected", "selected_contains"} {
 				require.Equal(t, tc.known, attrs[name].IsWhollyKnown(), "%s = %#v", name, attrs[name])
 			}
 			doc := AttributesToDocument(&consumer)
 			if !tc.known {
 				require.Contains(t, doc["policy"], `"Actions":`)
+				require.Contains(t, doc["selected"], `"Actions":`)
+				require.Contains(t, doc["selected_contains"], "strcontains(")
 				require.Contains(t, doc["contains_action"], "strcontains(")
 			}
+			require.False(t, attrs["ambiguous"].IsWhollyKnown())
+			require.Contains(t, doc["ambiguous"], "coalesce(")
 			require.True(t, attrs["configured"].RawEquals(cty.True))
 			if tc.known {
 				require.Equal(t, tc.contains, attrs["contains_action"].True())
