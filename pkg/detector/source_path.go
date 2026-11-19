@@ -7,7 +7,6 @@ package detector
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"slices"
@@ -18,6 +17,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const sourceReferenceKey = "$ref"
+
 type pathDetector interface {
 	DetectPath(context.Context, *model.FileMetadata, model.SourcePath, int) (model.VulnerabilityLines, error)
 }
@@ -25,11 +26,12 @@ type pathDetector interface {
 // sourceDocumentCache retains only the current source snapshot. It is populated
 // exclusively by structured findings; legacy marker trees are not source authority.
 type sourceDocumentCache struct {
-	mu        sync.Mutex
-	kind      model.FileKind
-	lines     []string
-	documents []*yaml.Node
-	mappings  map[*yaml.Node]*sourceMapping
+	mu            sync.Mutex
+	kind          model.FileKind
+	lines         []string
+	documents     []*yaml.Node
+	jsonDocuments []*jsonSourceNode
+	mappings      map[*yaml.Node]*sourceMapping
 }
 
 type sourceMember struct {
@@ -55,6 +57,13 @@ func (d *DetectLine) DetectPath(ctx context.Context, file *model.FileMetadata, p
 	}
 	d.source.mu.Lock()
 	defer d.source.mu.Unlock()
+	if file.Kind == model.KindJSON {
+		line, err := d.source.jsonLine(ctx, file, path)
+		if err != nil {
+			return model.VulnerabilityLines{}, err
+		}
+		return sourceLines(file, line, d.outputLines)
+	}
 	documents, err := d.source.load(ctx, file)
 	if err != nil {
 		return model.VulnerabilityLines{}, err
@@ -62,9 +71,6 @@ func (d *DetectLine) DetectPath(ctx context.Context, file *model.FileMetadata, p
 	index := file.SourceDocumentIndex
 	if index < 0 || index >= len(documents) {
 		return model.VulnerabilityLines{}, fmt.Errorf("source document index unavailable")
-	}
-	if file.Kind == model.KindJSON && documents[index].Kind != yaml.MappingNode {
-		return model.VulnerabilityLines{}, fmt.Errorf("JSON source document is not an object")
 	}
 	line, err := d.source.writtenNodeLine(ctx, documents[index], path)
 	if err != nil {
@@ -86,18 +92,16 @@ func (cache *sourceDocumentCache) load(ctx context.Context, file *model.FileMeta
 		return cache.documents, nil
 	}
 	source := strings.Join(lines, "\n")
-	if file.Kind == model.KindJSON && !json.Valid([]byte(source)) {
-		return nil, fmt.Errorf("original JSON source unavailable")
-	}
-	documents, err := decodeWrittenDocuments(ctx, source, file.Kind)
+	documents, err := decodeWrittenYAML(ctx, source)
 	if err != nil {
 		return nil, err
 	}
 	cache.kind, cache.lines, cache.documents, cache.mappings = file.Kind, lines, documents, nil
+	cache.jsonDocuments = nil
 	return documents, nil
 }
 
-func decodeWrittenDocuments(ctx context.Context, source string, kind model.FileKind) ([]*yaml.Node, error) {
+func decodeWrittenYAML(ctx context.Context, source string) ([]*yaml.Node, error) {
 	decoder := yaml.NewDecoder(strings.NewReader(source))
 	var documents []*yaml.Node
 	for {
@@ -110,16 +114,17 @@ func decodeWrittenDocuments(ctx context.Context, source string, kind model.FileK
 			break
 		}
 		if err != nil {
+			// Match parseNodes: a malformed later document does not invalidate
+			// the completed documents already accepted from this YAML stream.
+			if len(documents) > 0 {
+				break
+			}
 			return nil, err
 		}
 		if len(document.Content) == 0 {
 			continue
 		}
 		root := document.Content[0]
-		if kind == model.KindJSON && root.Kind == yaml.SequenceNode {
-			documents = append(documents, root.Content...)
-			continue
-		}
 		if root.Kind == yaml.ScalarNode {
 			continue
 		}
@@ -214,7 +219,7 @@ func indexWrittenMapping(ctx context.Context, node *yaml.Node) (*sourceMapping, 
 			continue
 		}
 		index.members[name.Value] = sourceMember{value: value, line: name.Line}
-		if name.Tag == "!!merge" || name.Value == "$ref" {
+		if name.Tag == "!!merge" || name.Value == sourceReferenceKey {
 			index.transformed = true
 		}
 	}
