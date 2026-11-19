@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -31,7 +29,7 @@ data "aws_iam_policy_document" "p" {
 }
 `
 
-func TestRootResourcesReevaluateWhenConsumingDataThroughLocal(t *testing.T) {
+func TestRootResourcesConsumeDataThroughLocal(t *testing.T) {
 	src := resourceViaDataFixture + `
 locals {
   policy = data.aws_iam_policy_document.p.json
@@ -41,22 +39,13 @@ resource "aws_iam_policy" "consumer" {
   policy = local.policy
 }
 `
-	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.Pos{Line: 1, Column: 1})
-	require.False(t, diags.HasErrors(), diags.Error())
-	_, _, _, resourceBlocks, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
-	types := declaredResourceTypes(resourceBlocks)
-	dataLocals := parseLocals(t, src).dataLocals
-	require.True(t, dataLocals["policy"])
-	require.True(t, resourcesReadNamedLocals(resourceBlocks, dataLocals))
-	require.False(t, resourcesReadResources(resourceBlocks, dataRoot))
-	require.False(t, resourcesReadResources(resourceBlocks, types))
 
 	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": src}, callChild)
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "consumer")))
 	require.Contains(t, doc["policy"], `arn:aws:s3:::mybucket`)
 }
 
-func TestRootResourcesReevaluateWhenConsumingDataDirectly(t *testing.T) {
+func TestRootResourcesConsumeDataDirectly(t *testing.T) {
 	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": resourceViaDataFixture + `
 resource "aws_iam_policy" "direct" {
   policy = data.aws_iam_policy_document.p.json
@@ -66,7 +55,7 @@ resource "aws_iam_policy" "direct" {
 	require.Contains(t, doc["policy"], `arn:aws:s3:::mybucket`)
 }
 
-func TestRootResourcesReevaluateWhenConsumingDataThroughIndexedLocal(t *testing.T) {
+func TestRootResourcesConsumeDataThroughIndexedLocal(t *testing.T) {
 	resources := evaluateWithChild(t, New(), map[string]string{"main.tf": resourceViaDataFixture + `
 locals {
   policy = data.aws_iam_policy_document.p.json

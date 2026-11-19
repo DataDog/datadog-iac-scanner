@@ -42,8 +42,6 @@ import (
 const (
 	// defaultMaxDepth caps nested module recursion (cycles, deep graphs).
 	defaultMaxDepth = 15
-	// resourceRefPasses caps passes that install same-module resource attrs for refs.
-	resourceRefPasses = 3
 )
 
 // ErrModuleNotEvaluated reports that a module was skipped rather than evaluated,
@@ -514,7 +512,11 @@ func (e *Evaluator) evaluate(
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
 	data := newModuleData(e, sources, parsed.locals, parsed.static, addr, chain)
-	data.refresh(ctx, evalCtx)
+	// Module-call preparation retains its existing data view. Without calls,
+	// resources and data are resolved together by the dependency schedule.
+	if len(moduleBlocks) > 0 {
+		data.refresh(ctx, evalCtx)
+	}
 
 	e.preinjectResourceRefs(ctx, resourceBlocks, moduleBlocks, scope, evalCtx, data, addr, chain)
 
@@ -529,20 +531,10 @@ func (e *Evaluator) evaluate(
 
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 
-	rootResources := e.evaluateRootResources(
+	rootResources := e.scheduleResources(
 		ctx, resourceBlocks, scope, evalCtx, data, addr, chain,
 	)
 
-	// Re-inject the final-pass resource values so that outputs and locals that
-	// reference the Nth hop of an N-hop chain can resolve. For chains shorter
-	// than resourceRefPasses hops all resources were already injected inside the
-	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
-	if injectResourceRefs(evalCtx, rootResources, scope.static.resourceAttrs) {
-		evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, true, false)
-	}
-	if data.readsOwnResources() {
-		data.refresh(ctx, evalCtx)
-	}
 	scope.Local = evalCtx.Variables["local"]
 	for i := range rootResources {
 		rootResources[i].Scope = scope
@@ -677,18 +669,6 @@ func (e *Evaluator) preinjectResourceRefs(
 	if data.readsOwnResources() {
 		data.refresh(ctx, evalCtx)
 	}
-}
-
-func (e *Evaluator) evaluateRootResources(
-	ctx context.Context,
-	resourceBlocks []*hclsyntax.Block,
-	scope *ModuleScope,
-	evalCtx *hcl.EvalContext,
-	data *moduleData,
-	addr string,
-	chain []CallSite,
-) []ResolvedResource {
-	return e.rootResourcesWithRefPasses(ctx, resourceBlocks, scope, evalCtx, data, addr, chain)
 }
 
 func (e *Evaluator) cacheCompletedEvaluation(
@@ -910,48 +890,6 @@ func (e *Evaluator) resolveModuleDir(
 	return "", "", false
 }
 
-func (e *Evaluator) rootResourcesWithRefPasses(
-	ctx context.Context,
-	resourceBlocks []*hclsyntax.Block,
-	scope *ModuleScope,
-	evalCtx *hcl.EvalContext,
-	data *moduleData,
-	addr string,
-	chain []CallSite,
-) []ResolvedResource {
-	var rootResources []ResolvedResource
-	localsReadOwn := scope.localGraph.readsResources
-	dataReadsOwn := data.readsOwnResources()
-	// Resources may consume refreshed data through locals (data → local →
-	// resource) without a direct data.* traversal in the body.
-	readsOwn := scope.static.resourcesReadOwn || (dataReadsOwn && scope.static.resourcesReadData)
-	for pass := 0; pass < resourceRefPasses; pass++ {
-		rootResources = e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
-		// Always inject so resolved attrs reach evalCtx on every pass including the last.
-		changed := injectResourceRefs(evalCtx, rootResources, scope.static.resourceAttrs)
-		if !changed || !readsOwn {
-			// Nothing the resource blocks or locals read has changed, so
-			// evaluating them again would reproduce these instances.
-			return rootResources
-		}
-		// Refresh locals after every successful injection so that locals referencing
-		// newly-resolved resource attrs are up-to-date before outputs are computed.
-		if localsReadOwn {
-			evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, true, false)
-		}
-		if dataReadsOwn {
-			data.refresh(ctx, evalCtx)
-		}
-		if pass+1 >= resourceRefPasses {
-			break
-		}
-	}
-	// One final evaluation picks up attrs that were only injected on the last pass
-	// (e.g. the Nth resource in an A→B→C→D chain whose evalCtx was updated after the
-	// last evalResourceBlocks call).
-	return e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
-}
-
 // declaredResourceTypes returns the resource types a module declares, the
 // variables injecting its resources can change.
 func declaredResourceTypes(resourceBlocks []*hclsyntax.Block) map[string]struct{} {
@@ -962,53 +900,6 @@ func declaredResourceTypes(resourceBlocks []*hclsyntax.Block) map[string]struct{
 		}
 	}
 	return types
-}
-
-func resourcesReadResources(resourceBlocks []*hclsyntax.Block, types map[string]struct{}) bool {
-	for _, rb := range resourceBlocks {
-		if bodyReadsResource(rb.Body, types) {
-			return true
-		}
-	}
-	return false
-}
-
-// resourcesReadNamedLocals reports whether any resource body reads one of the
-// named locals (for example locals that alias data.*).
-func resourcesReadNamedLocals(resourceBlocks []*hclsyntax.Block, names map[string]bool) bool {
-	if len(names) == 0 {
-		return false
-	}
-	for _, rb := range resourceBlocks {
-		if bodyReadsNamedLocals(rb.Body, names) {
-			return true
-		}
-	}
-	return false
-}
-
-func bodyReadsNamedLocals(body *hclsyntax.Body, names map[string]bool) bool {
-	for _, attr := range body.Attributes {
-		if readsNamedLocals(attr.Expr, names) {
-			return true
-		}
-	}
-	for _, block := range body.Blocks {
-		if bodyReadsNamedLocals(block.Body, names) {
-			return true
-		}
-	}
-	return false
-}
-
-func readsNamedLocals(expr hclsyntax.Expression, names map[string]bool) bool {
-	for _, traversal := range expr.Variables() {
-		name, ok := terraform.LocalTraversalName(traversal)
-		if ok && names[name] {
-			return true
-		}
-	}
-	return false
 }
 
 func bodyReadsResource(body *hclsyntax.Body, types map[string]struct{}) bool {
