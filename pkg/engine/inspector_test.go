@@ -2360,7 +2360,7 @@ DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resour
 				original := append([]string{}, test.ids...)
 				var emitted []string
 				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
-					Reader: entityInventoryFixture{Reader: reader, ids: test.ids}, BatchSize: 1,
+					Reader: entityReaderFixture{Reader: reader, ids: test.ids}, BatchSize: 1,
 					Emit: func(f EntityFinding) error { emitted = append(emitted, f.Subject); return nil },
 				})
 				require.Equal(t, original, test.ids)
@@ -2377,13 +2377,25 @@ DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resour
 	})
 }
 
-type entityInventoryFixture struct {
+type entityReaderFixture struct {
 	policy.Reader
-	ids []string
+	ids    []string
+	symbol string
 }
 
-func (r entityInventoryFixture) Entities(_, _ string) ([]string, error) {
+func (r entityReaderFixture) Entities(kind, typ string) ([]string, error) {
+	if r.ids == nil {
+		return r.Reader.Entities(kind, typ)
+	}
 	return slices.Clone(r.ids), nil
+}
+
+func (r entityReaderFixture) Read(subject string, path policy.Path) (policy.Read, error) {
+	read, err := r.Reader.Read(subject, path)
+	if read.State == policy.Unknown || read.MaybeAbsent {
+		read.Symbol = r.symbol
+	}
+	return read, err
 }
 
 func TestEntityPolicyFocusDomain(t *testing.T) {
@@ -2450,12 +2462,52 @@ DatadogPolicy contains iac.finding(e,` + test.path + `,{}) if {some e in iac.tar
 			for _, size := range []int{1, 2, 0} {
 				var findings []EntityFinding
 				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
-					Reader: entityInventoryFixture{Reader: reader, ids: []string{"b", "a"}}, BatchSize: size,
+					Reader: entityReaderFixture{Reader: reader, ids: []string{"b", "a"}}, BatchSize: size,
 					Emit: func(f EntityFinding) error { findings = append(findings, f); return nil },
 				})
 				require.NoError(t, err)
 				require.Equal(t, test.count, result.Confirmed)
 				require.Len(t, findings, test.count)
+			}
+		})
+	}
+}
+
+func TestEntityPolicyCorrelatedObservations(t *testing.T) {
+	for _, test := range []struct {
+		name, condition string
+		left, right     cty.Value
+		count           int
+		uncertain       bool
+	}{
+		{"shared value with independent optional attributes", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.UnknownVal(cty.Map(cty.String)), 0, true},
+		{"shared value with required peer attribute", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), 0, false},
+		{"shared value with absent peer attribute", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.EmptyObjectVal, 0, true},
+		{"known witness with absent peer attribute", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public")}), cty.EmptyObjectVal, 1, false},
+		{"same present unknown value preserves equality correlation", `iac.raw(e,["acl"])=="public";not iac.raw(other,["acl"])=="public"`, cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), 0, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {
+ some e in iac.targets("resource","bucket")
+ some other in iac.entities("resource","peer")
+ ` + test.condition + `
+}`
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			require.NoError(t, err)
+			reader := entityReaderFixture{Reader: tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+				"a": {Kind: "resource", Type: "bucket", Value: test.left},
+				"b": {Kind: "resource", Type: "peer", Value: test.right},
+			}, true), symbol: "shared-value-origin"}
+			for _, size := range []int{1, 0} {
+				var findings []EntityFinding
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
+				require.NoError(t, err)
+				require.Len(t, findings, test.count)
+				require.Equal(t, test.count, result.Confirmed)
+				require.Equal(t, test.uncertain, result.Indeterminate)
 			}
 		})
 	}

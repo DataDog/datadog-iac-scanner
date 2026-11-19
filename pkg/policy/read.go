@@ -52,6 +52,7 @@ const (
 // MaybeAbsent and NonNull are authoritative refinements, not policy guesses.
 // Symbol optionally correlates repeated reads of the same unknown value across
 // subject/path aliases; an empty symbol gives that read its own stable identity.
+// Value correlation does not establish equal presence for different observations.
 type Read struct {
 	State       State
 	Value       any

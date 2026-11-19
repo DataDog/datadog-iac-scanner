@@ -26,6 +26,7 @@ type entityReadKey struct{ subject, path string }
 type entityReadFact struct {
 	read       policy.Read
 	symbol     string
+	presence   string
 	descriptor *ast.Term
 }
 type entityCachedPath struct {
@@ -92,20 +93,21 @@ func (s *entitySession) fact(subjectTerm, pathTerm *ast.Term) (*entityReadFact, 
 	if err != nil {
 		return nil, err
 	}
-	symbol := ""
+	symbol, presence := "", ""
 	if read.State == policy.Unknown || read.MaybeAbsent {
-		symbol = read.Symbol
-		if symbol == "" {
-			raw, _ := json.Marshal([]string{key.subject, key.path})
-			symbol = "path:" + string(raw)
-		} else {
-			symbol = "origin:" + symbol
+		raw, _ := json.Marshal([]string{key.subject, key.path})
+		presence = "path:" + string(raw)
+		symbol = presence
+		if read.Symbol != "" {
+			symbol = "origin:" + read.Symbol
 		}
 	}
-	fact := &entityReadFact{read: read, symbol: symbol}
+	// An origin identifies a value, not the presence of every attribute that
+	// might hold it. Presence remains tied to this observation's subject/path.
+	fact := &entityReadFact{read: read, symbol: symbol, presence: presence}
 	// Per-evaluation cache, bounded by observations, never by all source values.
 	// Eviction cannot change a symbol: identities are derived from the read key.
-	cost := len(key.subject) + len(key.path) + len(symbol) + entityScalarBytes(read.Value)
+	cost := len(key.subject) + len(key.path) + len(symbol) + len(presence) + entityScalarBytes(read.Value)
 	if cost <= maxEntityCachedFactBytes {
 		if len(s.facts) >= entityReadCacheEntries || s.factBytes+cost > maxEntityCachedFactBytes {
 			clear(s.facts)
@@ -292,7 +294,8 @@ func entityFunctions() []entityFunction {
 				state = "unknown"
 			}
 			value, err := ast.InterfaceToValue(map[string]any{
-				"state": state, "value": r.Value, "maybe_absent": r.MaybeAbsent, "non_null": r.NonNull, "symbol": f.symbol,
+				"state": state, "value": r.Value, "maybe_absent": r.MaybeAbsent,
+				"non_null": r.NonNull, "symbol": f.symbol, "presence_symbol": f.presence,
 			})
 			if err != nil {
 				return nil, err
@@ -398,7 +401,7 @@ _present(entity, path) if {
 	d := dd.describe(entity, path)
 	d.state != "absent"
 	d.maybe_absent
-	input.__dd_symbols.presence[d.symbol] == true
+	input.__dd_symbols.presence[d.presence_symbol] == true
 }
 
 present(entity, path) if {
