@@ -62,6 +62,27 @@ func (d *DetectLine) ReportsScannedFile(file *model.FileMetadata) bool {
 	return ok && det.ReportsScannedFile()
 }
 
+// nodeLocator is a kindDetectLine that resolves rule contract findings, which
+// name a node of the file's rule model instead of giving a search key.
+type nodeLocator interface {
+	LocateNode(ctx context.Context, file *model.FileMetadata, pointer []string) (NodeLocation, bool)
+}
+
+// LocateNode resolves a rule contract finding of file, the node pointer names
+// in the file's rule model, to its location.
+func (d *DetectLine) LocateNode(ctx context.Context, file *model.FileMetadata,
+	pointer []string) (NodeLocation, model.VulnerabilityLines, bool) {
+	det, ok := d.detectors[file.Kind].(nodeLocator)
+	if !ok {
+		return NodeLocation{}, model.VulnerabilityLines{}, false
+	}
+	location, ok := det.LocateNode(ctx, file, pointer)
+	if !ok {
+		return NodeLocation{}, model.VulnerabilityLines{}, false
+	}
+	return location, SourceLines(file, location.Source, d.outputLines), true
+}
+
 // DetectLine will use the correct kindDetectLine according to the files kind
 // if file kind is not in detectors default detect line is called
 func (d *DetectLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string) model.VulnerabilityLines {
