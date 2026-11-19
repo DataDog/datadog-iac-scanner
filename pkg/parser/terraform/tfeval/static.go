@@ -19,9 +19,8 @@ import (
 // of a directory. None of these answers depends on the evaluated input values.
 type dirStatic struct {
 	resourceAttrs      map[string][]string
+	resources          *blockGraph
 	siblings           []siblingReads
-	resourcesReadOwn   bool
-	resourcesReadData  bool
 	dataReadsData      bool
 	dataReadsLocals    bool
 	dataReadsResources bool
@@ -30,11 +29,9 @@ type dirStatic struct {
 
 func newDirStatic(dp *dirParse) *dirStatic {
 	s := &dirStatic{
-		resourceAttrs:    referencedResourceAttrs(dp),
-		siblings:         callSiblingReads(dp.modules),
-		resourcesReadOwn: dp.locals.readsResources || resourcesReadResources(dp.resources, dp.resourceTypes),
-		resourcesReadData: resourcesReadResources(dp.resources, dataRoot) ||
-			resourcesReadNamedLocals(dp.resources, dp.locals.dataLocals),
+		resourceAttrs: referencedResourceAttrs(dp),
+		resources:     newBlockGraph(dp),
+		siblings:      callSiblingReads(dp.modules),
 	}
 	for _, b := range dp.locals.dataBlocks {
 		s.dataReadsData = s.dataReadsData || bodyReadsResource(b.Body, dataRoot)

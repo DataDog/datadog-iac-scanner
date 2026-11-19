@@ -831,25 +831,26 @@ resource "aws_s3_bucket" "this" {
 	}
 }
 
-func TestEvaluateModule_CountZeroSkipped(t *testing.T) {
-	root := t.TempDir()
-	dir := writeModule(t, root, "mod", map[string]string{
-		"main.tf": `
+func TestEvaluateModule_EmptyResourceExpansion(t *testing.T) {
+	for _, meta := range []string{"count = 0", "count = module.empty.count", "for_each = module.empty.keys"} {
+		t.Run(meta, func(t *testing.T) {
+			root := t.TempDir()
+			writeModule(t, root, "empty", map[string]string{"main.tf": `output "count" { value = 0 }
+output "keys" { value = {} }`})
+			source := fmt.Sprintf(`
+module "empty" { source = "../empty" }
 resource "aws_s3_bucket" "this" {
-  count  = 0
-  bucket = "never"
+ %s
+ bucket = "never"
 }
-`,
-	})
-
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	for _, r := range resources {
-		if r.Type == "aws_s3_bucket" && r.Name == "this" {
-			t.Fatal("count=0 resource should not be materialized")
-		}
+output "size" { value = length(aws_s3_bucket.this) }
+`, meta)
+			dir := writeModule(t, root, "stack", map[string]string{"main.tf": source})
+			rs, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			require.Empty(t, rs)
+			require.True(t, outputs["size"].RawEquals(cty.NumberIntVal(0)))
+		})
 	}
 }
 
@@ -1065,66 +1066,6 @@ resource "aws_s3_bucket" "b" {
 	requireString(t, r.Attributes, "role_arn", "arn:dev")
 }
 
-func TestEvaluateModule_OutputResolvedAfterFinalRefPass(t *testing.T) {
-	// Output references a 3-hop chain a→b→c; the final ref pass resolves 'a' but
-	// the fix ensures that resolved value is in evalCtx before outputs are computed.
-	root := t.TempDir()
-	dir := writeModule(t, root, "mod", map[string]string{
-		"main.tf": `
-resource "leaf" "c" {
-  value = "resolved"
-}
-
-resource "mid" "b" {
-  value = leaf.c.value
-}
-
-resource "top" "a" {
-  value = mid.b.value
-}
-
-output "o" { value = top.a.value }
-`,
-	})
-
-	_, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-
-	v, ok := outputs["o"]
-	if !ok {
-		t.Fatal("output 'o' missing")
-	}
-	if !v.IsKnown() || v.Type() != cty.String || v.AsString() != "resolved" {
-		t.Fatalf("output 'o' = %v, want cty.StringVal(\"resolved\")", v)
-	}
-}
-
-func TestEvaluateModule_FourHopResourceChain(t *testing.T) {
-	// A 4-hop dependency chain (a→b→c→d) needs the final evalResourceBlocks pass
-	// so that d sees c's value after c was resolved on the last injection pass.
-	root := t.TempDir()
-	dir := writeModule(t, root, "mod", map[string]string{
-		"main.tf": `
-resource "r" "a" { value = "x" }
-resource "r" "b" { value = r.a.value }
-resource "r" "c" { value = r.b.value }
-resource "r" "d" { value = r.c.value }
-`,
-	})
-
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-
-	for _, want := range []string{"a", "b", "c", "d"} {
-		r := findResource(t, resources, "r", want)
-		requireString(t, r.Attributes, "value", "x")
-	}
-}
-
 func TestCanonicalInputsKey_NullTypeDistinct(t *testing.T) {
 	// cty.NullVal(cty.String) and cty.NullVal(cty.Number) must produce different
 	// cache keys; before the fix both encoded to "x=null\n".
@@ -1135,7 +1076,7 @@ func TestCanonicalInputsKey_NullTypeDistinct(t *testing.T) {
 	}
 }
 
-func TestEvaluateLocalModuleBlocksIgnoresNullPreliminaryOutputs(t *testing.T) {
+func TestEvaluateLocalModuleBlocksIgnoresNullOutputs(t *testing.T) {
 	evalCtx := &hcl.EvalContext{Variables: map[string]cty.Value{
 		"module": cty.NullVal(cty.EmptyObject),
 	}}
@@ -1212,10 +1153,8 @@ locals { greeting = "from-override" }
 }
 
 func TestEvaluateModule_LaterSiblingForwardDepNotDropped(t *testing.T) {
-	// Module B (second) references module C (third, forward dep) as input.
-	// Module A (first) has no outputs. Without seeding moduleOutputs from the
-	// pre-pass, A's first iteration would drop C's pre-pass value from evalCtx,
-	// leaving B with an unknown input.
+	// Module B reads C even though C is declared later; A has no outputs.
+	// Declaration order must not drop a dependency's output.
 	root := t.TempDir()
 
 	writeModule(t, root, "a", map[string]string{
@@ -1257,15 +1196,15 @@ module "c" {
 func TestEvaluateModule_SiblingModuleForwardDependency(t *testing.T) {
 	// Module A inputs reference module C's output (forward dependency).
 	// Module B inputs reference module A's output.
-	// Without incrementally updating evalCtx in evaluateLocalModuleBlocks, B
-	// sees the stale pre-pass value of module.a.val (unknown) and caches a
-	// stale result.
+	// C reads A's independent constant output. A whole-call graph would
+	// incorrectly classify this valid configuration as a cycle.
 	root := t.TempDir()
 
 	writeModule(t, root, "a", map[string]string{
 		"main.tf": `
 variable "x" {}
 output "val" { value = var.x }
+output "constant" { value = "concrete" }
 `,
 	})
 	writeModule(t, root, "b", map[string]string{
@@ -1276,7 +1215,8 @@ resource "aws_s3_bucket" "r" { bucket = var.y }
 	})
 	writeModule(t, root, "c", map[string]string{
 		"main.tf": `
-output "val" { value = "concrete" }
+variable "x" {}
+output "val" { value = var.x }
 `,
 	})
 
@@ -1292,6 +1232,7 @@ module "b" {
 }
 module "c" {
   source = "../c"
+  x = module.a.constant
 }
 `,
 	})
@@ -1302,34 +1243,6 @@ module "c" {
 	}
 	r := findResource(t, resources, "aws_s3_bucket", "r")
 	requireString(t, r.Attributes, "bucket", "concrete")
-}
-
-func TestEvaluateModule_FourHopOutputResolvesCorrectly(t *testing.T) {
-	// The final evalResourceBlocks result must be injected into evalCtx before
-	// outputs are computed, otherwise a 4-hop chain's last value is unknown.
-	root := t.TempDir()
-	dir := writeModule(t, root, "mod", map[string]string{
-		"main.tf": `
-resource "r" "a" { value = "x" }
-resource "r" "b" { value = r.a.value }
-resource "r" "c" { value = r.b.value }
-resource "r" "d" { value = r.c.value }
-
-output "o" { value = r.d.value }
-`,
-	})
-
-	_, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	o, ok := outputs["o"]
-	if !ok {
-		t.Fatal("output 'o' not found")
-	}
-	if !o.IsKnown() || o.AsString() != "x" {
-		t.Errorf("output 'o' = %s, want 'x'", o.GoString())
-	}
 }
 
 func TestEvaluateModule_ModuleInputReferenceSiblingResource(t *testing.T) {
@@ -1370,42 +1283,9 @@ module "child" {
 	requireString(t, r.Attributes, "acl", "sibling-value")
 }
 
-func TestEvaluateModule_LocalResolvesAfterFinalRefPass(t *testing.T) {
-	// local.o = top.a.value, which only resolves on the last ref pass (3-hop chain).
-	// Without refreshing locals after the final injection, output "o" stays unknown.
-	root := t.TempDir()
-	dir := writeModule(t, root, "mod", map[string]string{
-		"main.tf": `
-resource "leaf" "c" { value = "resolved" }
-resource "mid"  "b" { value = leaf.c.value }
-resource "top"  "a" { value = mid.b.value }
-
-locals {
-  o = top.a.value
-}
-
-output "o" { value = local.o }
-`,
-	})
-
-	_, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-
-	v, ok := outputs["o"]
-	if !ok {
-		t.Fatal("output 'o' missing")
-	}
-	if !v.IsKnown() || v.Type() != cty.String || v.AsString() != "resolved" {
-		t.Fatalf("output 'o' = %v, want cty.StringVal(\"resolved\")", v)
-	}
-}
-
-func TestEvaluateModule_MemoizationSiblingPrepassAndMainLoop(t *testing.T) {
-	// When module B uses module A's output as an input the evaluator runs a
-	// sibling pre-pass and then a main loop. With memoization the pre-pass result
-	// is reused by the main loop: each child module is evaluated exactly once.
+func TestEvaluateModule_MemoizationOfDependentCalls(t *testing.T) {
+	// Each call is memoized against its final inputs even when those inputs
+	// depend on another call of the same child module.
 	root := t.TempDir()
 
 	writeModule(t, root, "shared", map[string]string{
@@ -1453,9 +1333,8 @@ module "b" {
 		t.Fatalf("got %d aws_s3_bucket resources, want 2: %v", len(buckets), buckets)
 	}
 
-	// The pre-pass updates evalCtx between siblings, so module.b's inputs are
-	// resolved the same way in both the pre-pass and the main loop → 2 child
-	// cache entries plus 1 for the root = 3 total. No duplicate evaluations.
+	// Two distinct child inputs plus the root produce three cached evaluations;
+	// speculative calls with unresolved inputs must not create extra entries.
 	if got := len(ev.cache); got != 3 {
 		t.Fatalf("cache size = %d, want 3 (2 child instances + root)", got)
 	}
@@ -2430,8 +2309,8 @@ output "ids" { value = local.ids }
 }
 
 // Each call of a chain sees the output of the call before it, read directly,
-// through a chain of locals, by index or as part of module.* as a whole, and
-// a call reading a later sibling still gets its output from the pre-pass.
+// through a chain of locals, by index or inside a constructed object. A call
+// reading a later declaration still receives its final output.
 func TestEvaluateModule_ChainedSiblingModuleOutputs(t *testing.T) {
 	root := t.TempDir()
 	writeModule(t, root, "leaf", map[string]string{
@@ -2466,7 +2345,7 @@ module "m3" {
 }
 module "m4" {
   source = "../leaf"
-  in     = "${length(keys(module))}-${module.m3.out}"
+  in     = "${length(keys({first = module.m0.out, second = module.m1.out}))}-${module.m3.out}"
 }
 module "m5" {
   source = "../leaf"
@@ -2493,13 +2372,13 @@ output "via" { value = local.twice }
 	}
 	want := map[string]string{
 		"module.m0": "a", "module.m1": "ab", "module.m2": "abc-f", "module.m3": "abc-fd",
-		"module.m4": "8-abc-fd", "module.m5": "late-8-abc-fd", "module.m6": "late",
+		"module.m4": "2-abc-fd", "module.m5": "late-2-abc-fd", "module.m6": "late",
 	}
 	for addr, value := range want {
 		require.True(t, buckets[addr].RawEquals(cty.StringVal(value)), "%s = %#v, want %q", addr, buckets[addr], value)
 	}
 	require.False(t, buckets["module.m7"].IsKnown())
-	require.True(t, outputs["last"].RawEquals(cty.StringVal("late-8-abc-fd")))
+	require.True(t, outputs["last"].RawEquals(cty.StringVal("late-2-abc-fd")))
 	require.True(t, outputs["via"].RawEquals(cty.StringVal("abc")))
 }
 
@@ -2950,6 +2829,84 @@ module "b" {
 		}
 		require.True(t, sharesStorage(resources[0].Attributes["tags"], resources[1].Attributes["tags"]),
 			"instances in one directory and root share equal file-derived attributes")
+	}
+}
+
+// Resource chains resolve through direct references and locals, with or
+// without counted instances, independently of declaration order.
+func TestEvaluateModule_BlockDependencies(t *testing.T) {
+	for _, kind := range []string{"resources", "locals", "count"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			for _, reverse := range []bool{false, true} {
+				t.Run(fmt.Sprint(reverse), func(t *testing.T) {
+					var source strings.Builder
+					for pos := range 12 {
+						i := pos
+						if reverse {
+							i = 11 - pos
+						}
+						value := `"resolved"`
+						if i < 11 {
+							value = fmt.Sprintf("r.n%02d.value", i+1)
+						}
+						meta := ""
+						switch kind {
+						case "locals":
+							fmt.Fprintf(&source, "locals { v%02d = %s }\n", i, value)
+							value = fmt.Sprintf("local.v%02d", i)
+						case "count":
+							meta = "count = 2\n"
+							if i < 11 {
+								value = fmt.Sprintf("r.n%02d[count.index].value", i+1)
+							}
+						}
+						fmt.Fprintf(&source, "resource \"r\" \"n%02d\" {\n%svalue = %s\n}\n", i, meta, value)
+					}
+					result := "r.n00.value"
+					if kind == "count" {
+						result = "r.n00[1].value"
+					}
+					fmt.Fprintf(&source, "locals { result = %s }\noutput \"result\" { value = local.result }\n", result)
+					dir := writeModule(t, root, fmt.Sprint(reverse), map[string]string{"main.tf": source.String()})
+					rs, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+					require.NoError(t, err)
+					require.Equal(t, cty.StringVal("resolved"), outputs["result"])
+					for _, r := range rs {
+						require.Equal(t, cty.StringVal("resolved"), r.Attributes["value"])
+					}
+				})
+			}
+		})
+	}
+}
+
+// Cycles have no final Terraform value. A fallback must not turn an invalid
+// cyclic dependency into a concrete result, and independent blocks still run.
+func TestEvaluateModule_BlockCycles(t *testing.T) {
+	for name, source := range map[string]string{
+		"resources": `resource "r" "a" { value = try(r.b.value,"fallback") }
+resource "r" "b" { value = try(r.a.value,"fallback") }`,
+		"data": `data "aws_ami" "x" { name = r.a.value }
+resource "r" "a" { value = try(data.aws_ami.x.name,"fallback") }`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeModule(t, root, "child", map[string]string{"main.tf": `variable "input" {}
+output "value" { value = var.input }`})
+			source += `
+resource "r" "independent" { value = "known" }
+output "result" { value = try(r.a.value,"fallback") }
+`
+			dir := writeModule(t, root, "stack", map[string]string{"main.tf": source})
+			resources, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			require.False(t, outputs["result"].IsKnown())
+			a := findResource(t, resources, "r", "a")
+			requireUnknown(t, a.Attributes, "value")
+			independent := findResource(t, resources, "r", "independent")
+			requireString(t, independent.Attributes, "value", "known")
+		})
 	}
 }
 
