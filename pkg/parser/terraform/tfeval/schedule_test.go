@@ -503,15 +503,25 @@ resource "a" "z" {
   v        = d.plain.not_recorded
   t        = try(e.f[0].name, can(data.g.h.value), module.m.out, ephemeral.i.j.secret)
 }
+locals {
+  key   = var.index
+  value = local["alias"]
+  alias = terraform_data.zone[local.key].output
+}
+resource "a" "local" {
+  for_each = { k = local["value"] }
+}
 `
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
-	got := collectReferencedAttrs([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
+	_, locals, _, _, _ := collectBlocks([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)})
+	got := collectReferencedAttrs([]*hclsyntax.Body{file.Body.(*hclsyntax.Body)}, locals)
 	require.Equal(t, referencedAttrs{
-		{refManaged, "b", "y"}:   {"id"},
-		{refManaged, "c", "w"}:   {"arn"},
-		{refManaged, "e", "f"}:   {"name"},
-		{refData, "g", "h"}:      {"value"},
-		{refEphemeral, "i", "j"}: {"secret"},
+		{refManaged, "b", "y"}:                 {"id"},
+		{refManaged, "c", "w"}:                 {"arn"},
+		{refManaged, "e", "f"}:                 {"name"},
+		{refData, "g", "h"}:                    {"value"},
+		{refEphemeral, "i", "j"}:               {"secret"},
+		{refManaged, "terraform_data", "zone"}: {"output"},
 	}, got)
 }

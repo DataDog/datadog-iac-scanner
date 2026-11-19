@@ -155,6 +155,56 @@ output "plain_can" {
 	}
 }
 
+func TestEvaluateModule_ComputedAttributeThroughLocalKeepsForEachKeys(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), ".", map[string]string{"main.tf": `
+variable "unknown_key" {}
+variable "unknown_keys" {}
+
+locals {
+  keys = { alpha = "one", beta = "two" }
+  via_known_index = { for key, _ in local.keys : key => terraform_data.zone[key].output }
+  via_unknown_index = { for key, _ in local.keys : key => terraform_data.zone[var.unknown_key].output }
+  transitive = local["via_known_index"]
+}
+
+resource "terraform_data" "zone" {
+  for_each = local.keys
+  input    = each.value
+}
+
+resource "r" "known" {
+  for_each = local.transitive
+  value    = each.value
+}
+
+resource "r" "unknown_index" {
+  for_each = local.via_unknown_index
+  value    = each.value
+}
+
+resource "r" "unknown_shape" {
+  for_each = var.unknown_keys
+  value    = each.value
+}
+`})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	require.NoError(t, err)
+
+	for _, name := range []string{`known["alpha"]`, `known["beta"]`, `unknown_index["alpha"]`, `unknown_index["beta"]`} {
+		instance := findResource(t, resources, "r", name)
+		require.False(t, instance.Attributes["value"].IsKnown(), "%s.value should stay provider-computed/unknown", name)
+	}
+	unknownShape := findResource(t, resources, "r", "unknown_shape")
+	require.False(t, unknownShape.InstanceKey.IsKnown(), "unknown for_each shape must remain an unkeyed placeholder")
+	concreteShape := 0
+	for _, resource := range resources {
+		if resource.Type == "r" && (resource.Name == `known["alpha"]` || resource.Name == `known["beta"]`) {
+			concreteShape++
+		}
+	}
+	require.Equal(t, 2, concreteShape, "known map keys must survive an unknown computed attribute")
+}
+
 // A configuration object is not a resource instance because it has the same
 // attributes: try and can step past a key it lacks, as Terraform does.
 func TestEvaluateModule_LookalikeObjectsAreNotResourceInstances(t *testing.T) {

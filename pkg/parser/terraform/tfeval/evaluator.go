@@ -435,7 +435,7 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 		dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, collectDataBlocks(bodies))
 		dp.static = newDirStatic(&dp)
 		dp.units = newUnitGraph(dp.resources, dp.modules, dp.locals)
-		dp.refAttrs = collectReferencedAttrs(bodies)
+		dp.refAttrs = collectReferencedAttrs(bodies, dp.localExprs)
 	}
 
 	e.parseMu.Lock()

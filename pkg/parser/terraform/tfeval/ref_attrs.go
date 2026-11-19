@@ -42,13 +42,25 @@ type referencedAttrs map[refKey][]string
 // collectReferencedAttrs finds the attributes read where an unknown value and
 // a missing key differ: the arguments of try and can, and the count and
 // for_each of a block.
-func collectReferencedAttrs(bodies []*hclsyntax.Body) referencedAttrs {
+func collectReferencedAttrs(bodies []*hclsyntax.Body, localExprs map[string]hclsyntax.Expression) referencedAttrs {
 	refs := referencedAttrs{}
+	seen := map[hclsyntax.Expression]bool{}
 	record := func(expr hclsyntax.Expression) {
-		_ = hclsyntax.VisitAll(expr, func(node hclsyntax.Node) hcl.Diagnostics {
-			refs.addNode(node)
-			return nil
-		})
+		var visit func(hclsyntax.Expression)
+		visit = func(expr hclsyntax.Expression) {
+			if expr == nil || seen[expr] {
+				return
+			}
+			seen[expr] = true
+			_ = hclsyntax.VisitAll(expr, func(node hclsyntax.Node) hcl.Diagnostics {
+				refs.addNode(node)
+				if name, ok := localName(node); ok {
+					visit(localExprs[name])
+				}
+				return nil
+			})
+		}
+		visit(expr)
 	}
 	for _, body := range bodies {
 		_ = hclsyntax.VisitAll(body, func(node hclsyntax.Node) hcl.Diagnostics {
@@ -77,6 +89,25 @@ func collectReferencedAttrs(bodies []*hclsyntax.Body) referencedAttrs {
 		refs[key] = slices.Compact(attrs)
 	}
 	return refs
+}
+
+// localName returns the first local attribute a traversal reads. Following
+// that expression lets an expanding block preserve unknown provider attributes
+// that flow through one or more locals into its count or for_each shape.
+func localName(node hclsyntax.Node) (string, bool) {
+	traversal, ok := node.(*hclsyntax.ScopeTraversalExpr)
+	if !ok || len(traversal.Traversal) < 2 || traversal.Traversal.RootName() != rootLocal {
+		return "", false
+	}
+	switch step := traversal.Traversal[1].(type) {
+	case hcl.TraverseAttr:
+		return step.Name, true
+	case hcl.TraverseIndex:
+		if step.Key.IsKnown() && !step.Key.IsNull() && step.Key.Type() == cty.String {
+			return step.Key.AsString(), true
+		}
+	}
+	return "", false
 }
 
 // expandsBlock reports whether b is a block count and for_each expand.
