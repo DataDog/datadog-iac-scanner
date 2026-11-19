@@ -247,6 +247,7 @@ type Inspector struct {
 	remoteModuleDirs       map[string]RemoteModuleDirectory
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
+	inventory              InventorySink
 	mergeAllow             map[string]struct{}
 	// releaseDocumentsAfterPayload drops each file's Document map once the OPA
 	// payload is built; only a JSON payload export without line-info mode reads it

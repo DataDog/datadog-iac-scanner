@@ -40,6 +40,46 @@ type Collector struct {
 
 	rootOnce     sync.Once
 	resolvedRoot string
+
+	// pathResolver names an absolute path of a resource; see SetPathResolver.
+	pathResolver func(string) string
+}
+
+// SetPathResolver sets how an absolute path of a resource is named, for
+// files outside the repository such as fetched modules. By default a path is
+// made relative to the repository root.
+func (c *Collector) SetPathResolver(resolve func(string) string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pathResolver = resolve
+}
+
+// resourcePath names a path of a resource row.
+func (c *Collector) resourcePath(path string) string {
+	if path == "" || !filepath.IsAbs(path) {
+		return filepath.ToSlash(path)
+	}
+	if c.pathResolver != nil {
+		return c.pathResolver(path)
+	}
+	if rel, ok := c.RelPath(path); ok {
+		return rel
+	}
+	return filepath.ToSlash(path)
+}
+
+// finish names the paths of r and builds its reference.
+func (c *Collector) finish(r *Resource) {
+	r.File = c.resourcePath(r.File)
+	r.CallSiteFile = c.resourcePath(r.CallSiteFile)
+	scope := r.File
+	if r.RootModule != "" {
+		scope = c.resourcePath(r.RootModule)
+	}
+	if r.ResourceRef == "" {
+		r.ResourceRef = scope + "|" + r.ResourcePath
+	}
+	r.RootModule = ""
 }
 
 // NewCollector returns a collector for a scan of the repository at repoRoot.
@@ -153,6 +193,9 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 	slices.SortFunc(files, func(a, b File) int { return strings.Compare(a.Path, b.Path) })
 
 	resources := slices.Clone(c.resources)
+	for i := range resources {
+		c.finish(&resources[i])
+	}
 	sort.Slice(resources, func(i, j int) bool { return compareResources(&resources[i], &resources[j]) < 0 })
 
 	unresolved := slices.Clone(c.unresolved)

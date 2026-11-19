@@ -34,6 +34,9 @@ const (
 	FileFailed  = "failed"
 )
 
+// PlatformTerraform is the platform of Terraform rows, the value findings carry.
+const PlatformTerraform = "terraform"
+
 // Reasons a file failed.
 const (
 	ReasonParseError       = "parse_error"
@@ -106,11 +109,18 @@ type UnresolvedSource struct {
 }
 
 // Resource is one inventory row.
+//
+// A producer may give File, CallSiteFile and RootModule as absolute paths and
+// leave ResourceRef empty: the collector makes the paths relative and builds
+// the reference.
 type Resource struct {
 	// ResourceRef identifies the resource within the repository:
 	// "<root module>|<resource path>" for Terraform, "<file>|<resource path>"
 	// for every other platform. Consumers derive their keys from it.
-	ResourceRef  string `json:"resource_ref"`
+	ResourceRef string `json:"resource_ref"`
+	// RootModule is the root module directory of a Terraform resource. It is
+	// part of the reference, not of the document.
+	RootModule   string `json:"-"`
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`
 	ResourceType string `json:"resource_type"`

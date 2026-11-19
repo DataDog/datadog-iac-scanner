@@ -364,9 +364,10 @@ func (c *Inspector) resolveModulesSafely(
 	if len(c.externalPathRoots) > 0 {
 		externalModuleFile = c.isExternalModulePath
 	}
+	lookup := c.buildModuleProvenanceLookup()
 	return resolveModuleDocuments(
-		ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys,
-		externalModuleFile,
+		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
+		externalModuleFile, c.newTerraformInventory(lookup, externalModuleFile),
 	)
 }
 
@@ -400,13 +401,14 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
+	inv *terraformInventory,
 ) {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
-		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
+		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -452,6 +454,7 @@ type rootMerge struct {
 	resourceCount        *int
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
+	inventory            *terraformInventory
 }
 
 func (m *rootMerge) merge(
@@ -476,6 +479,9 @@ func (m *rootMerge) merge(
 		}
 		return
 	}
+	// Every resource and data source of the root, before instantiation keeps
+	// only what rules can match.
+	m.inventory.addRoot(dir, resources)
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
 	for d := range childDirs {
@@ -648,6 +654,9 @@ func scrubInstantiatedForUnresolvedDirs(
 	}
 }
 
+// resolveModuleDocuments resolves the scan's local modules, as described above
+// evaluateRootModules. When inv is not nil, every evaluated resource is also
+// reported to it.
 func resolveModuleDocuments(
 	ctx context.Context,
 	files model.FileMetadatas,
@@ -658,6 +667,7 @@ func resolveModuleDocuments(
 	mergeAllow map[string]struct{},
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
+	inv *terraformInventory,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -722,7 +732,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv,
 	)
 	if ctx.Err() != nil {
 		// The scan is stopping: report no resolution rather than one whose

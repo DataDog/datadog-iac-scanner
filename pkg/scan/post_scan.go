@@ -133,7 +133,7 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		return metadata, err
 	}
 	// After the reports, so the inventory can neither delay nor change them.
-	inventoryStatus := c.finishInventory(ctx, scanResults.Files)
+	inventoryStatus := c.finishInventory(ctx, scanResults)
 
 	endTime := time.Now()
 	scanDuration := endTime.Sub(c.ScanStartTime)

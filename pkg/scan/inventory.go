@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -66,6 +67,14 @@ func (run *inventoryRun) noteTooLarge(tooLarge map[string]string) {
 	}
 }
 
+// sink is where the engine reports resources, nil without an inventory.
+func (run *inventoryRun) sink() engine.InventorySink {
+	if run == nil {
+		return nil
+	}
+	return run.collector
+}
+
 // isExternal reports whether path belongs to a fetched remote module.
 func (run *inventoryRun) isExternal(path string) bool {
 	if len(run.external) == 0 {
@@ -113,7 +122,7 @@ func (c *Client) startInventory(ctx context.Context) {
 // finishInventory writes the inventory and reports what happened. A failure
 // never fails the scan: the findings are already written, and no inventory
 // file is left behind.
-func (c *Client) finishInventory(ctx context.Context, files model.FileMetadatas) (status *InventoryMetadata) {
+func (c *Client) finishInventory(ctx context.Context, results *Results) (status *InventoryMetadata) {
 	run := c.inventory
 	if run == nil {
 		return nil
@@ -131,7 +140,22 @@ func (c *Client) finishInventory(ctx context.Context, files model.FileMetadatas)
 		}
 	}()
 
+	var files model.FileMetadatas
+	var extractionMap map[string]model.ExtractedPathObject
+	if results != nil {
+		files, extractionMap = results.Files, results.ExtractedPaths.ExtractionMap
+	}
 	c.recordManifest(run, files)
+	// A resource of a fetched module is named after where the module came
+	// from, as in the reports.
+	run.collector.SetPathResolver(func(path string) string {
+		if !run.isExternal(path) {
+			if rel, ok := run.collector.RelPath(path); ok {
+				return rel
+			}
+		}
+		return filepath.ToSlash(model.ReportPath(path, extractionMap, c.ScanParams.RepoPath))
+	})
 	commit := c.ScanParams.SCIInfo.RepositoryCommitInfo
 	inv := run.collector.Build(&inventory.Metadata{
 		ScanID:         run.scanID,

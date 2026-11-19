@@ -154,6 +154,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		inspector.SetRemoteModuleProvenance(remoteModuleProvenance)
 	}
 	inspector.SetExternalModulePaths(remoteModulePaths)
+	inspector.SetInventory(c.inventory.sink())
 	if c.inMemory {
 		inspector.SetMergeAllow(append(append([]string{}, c.inMemoryPaths...), remoteModulePaths...))
 	} else {

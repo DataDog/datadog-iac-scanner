@@ -306,6 +306,13 @@ func CanonicalReportedPath(filePath string, pathExtractionMap map[string]Extract
 	return filePath
 }
 
+// ReportPath names a scanned file as the reports do: a file of an extracted
+// source, such as a fetched module, after where that source came from, and
+// any other file relative to repoDir.
+func ReportPath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
+	return resolvePath(filePath, pathExtractionMap, repoDir)
+}
+
 func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
 	var returnPath string
 	returnPath = replaceIfTemporaryPath(filepath.FromSlash(filePath), pathExtractionMap)
