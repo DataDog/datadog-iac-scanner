@@ -74,7 +74,7 @@ func (b *builder) build(resources []tfeval.ResolvedResource) {
 	}
 	markDuplicates(b.root)
 	resolveProviders(b.root)
-	traceRoot(b.root)
+	traceRoot(b.root, b.refs)
 }
 
 func (b *builder) buildModule(m *Module, resources []*tfeval.ResolvedResource) {

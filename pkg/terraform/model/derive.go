@@ -309,6 +309,9 @@ func expandLocalText(s string, rd *partial.Renderer, m *Module) string {
 		return s
 	}
 	for name, expr := range m.Scope.Locals {
+		if !strings.Contains(s, "${local."+name+"}") {
+			continue
+		}
 		text, ok := rd.Text(expr)
 		if !ok || text == "" {
 			continue

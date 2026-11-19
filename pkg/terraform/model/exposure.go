@@ -40,7 +40,10 @@ func (t *tracer) exposeUnresolved() {
 	if len(root.Unresolved) == 0 {
 		return
 	}
-	x := &tracer{root: root, blocks: t.blocks, modules: t.modules, unresolved: unresolvedCalls(root), outside: true}
+	x := &tracer{
+		root: root, blocks: t.blocks, modules: t.modules, unresolved: unresolvedCalls(root), outside: true,
+		refs: t.refs, ranges: t.ranges,
+	}
 	root.Exposed = map[*Instance]bool{}
 	root.ExposedStrings = map[string]bool{}
 	for _, inst := range root.Unresolved {

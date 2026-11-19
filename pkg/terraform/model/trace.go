@@ -108,6 +108,8 @@ type tracer struct {
 	root    *Root
 	blocks  map[string]map[string][]*Block
 	modules map[string]*Module
+	refs    expressionRefCache
+	ranges  map[hcl.Expression][]hcl.Range
 	// memo caches traces that do not depend on a block instance: each
 	// for_each expression is walked once per block, not once per instance.
 	memo map[traceKey]traceResult
@@ -142,8 +144,14 @@ type target struct {
 	certain bool
 }
 
-func traceRoot(root *Root) {
-	t := &tracer{root: root, blocks: map[string]map[string][]*Block{}, modules: map[string]*Module{}}
+func traceRoot(root *Root, refCache expressionRefCache) {
+	if refCache == nil {
+		refCache = make(expressionRefCache)
+	}
+	t := &tracer{
+		root: root, blocks: map[string]map[string][]*Block{}, modules: map[string]*Module{},
+		refs: refCache, ranges: make(map[hcl.Expression][]hcl.Range),
+	}
 	for _, m := range root.Modules {
 		t.modules[m.Address] = m
 		t.blocks[m.Address] = map[string][]*Block{}
@@ -220,7 +228,10 @@ func (t *tracer) onlyUnresolved(m *Module, inst *Instance, expr hcl.Expression, 
 		return false
 	}
 	if t.resolved == nil {
-		t.resolved = &tracer{root: t.root, blocks: t.blocks, modules: t.modules, unresolved: unresolvedCalls(t.root)}
+		t.resolved = &tracer{
+			root: t.root, blocks: t.blocks, modules: t.modules, unresolved: unresolvedCalls(t.root),
+			refs: t.refs, ranges: t.ranges,
+		}
 	}
 	_, untraced := t.resolved.trace(m, inst, expr, true, shadowed, 0)
 	return !untraced
@@ -295,8 +306,9 @@ func (t *tracer) trace(
 func (t *tracer) traceUncached(
 	m *Module, inst *Instance, expr hcl.Expression, certain bool, shadowed []string, depth int,
 ) (out []target, untraced bool) {
-	mayOnly := mayOnlyRanges(expr)
-	for i, all := 0, refs.Of(expr); i < len(all); i++ {
+	mayOnly := t.expressionMayOnlyRanges(expr)
+	all := t.refs.of(expr)
+	for i := range all {
 		r := &all[i]
 		if slices.Contains(shadowed, r.Traversal.RootName()) {
 			untraced = true
@@ -321,6 +333,18 @@ func (t *tracer) traceUncached(
 		untraced = untraced || u
 	}
 	return out, untraced
+}
+
+func (t *tracer) expressionMayOnlyRanges(expr hcl.Expression) []hcl.Range {
+	if expr == nil {
+		return nil
+	}
+	if ranges, ok := t.ranges[expr]; ok {
+		return ranges
+	}
+	ranges := mayOnlyRanges(expr)
+	t.ranges[expr] = ranges
+	return ranges
 }
 
 func exprPtr(expr hcl.Expression) uintptr {
