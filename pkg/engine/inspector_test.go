@@ -2219,6 +2219,12 @@ func TestEntityPolicyFindingDescriptors(t *testing.T) {
 	}{
 		{"literal", ``, `{"remediation":"enabled = true","remediationType":"addition"}`, true},
 		{"JSON encoding", ``, `{"remediation":json.marshal({"before":"false","after":"true"}),"remediationType":"replacement"}`, true},
+		{"JSON encoding of constant", `base:={"enabled":true}`, `{"remediation":json.marshal(base)}`, true},
+		{"JSON encoding through constant aliases", `base:={"enabled":true}
+ alias:=base
+ encoded:=json.marshal(alias)`, `{"remediation":encoded}`, true},
+		{"conditional argument to constant function", `missing:="value" if false
+ fix(x):={"remediation":"enabled = true"}`, `fix(missing)`, false},
 		{"constant helper", `fix := {"remediation":"enabled = true"}`, `fix`, true},
 		{"pattern-matched descriptor helper", `fix({"allowed":true}):={"remediation":"enabled = true"}`, `fix({"allowed":false})`, false},
 		{"conditional helper", `fix := {"remediation":"enabled = true"} if false`, `fix`, false},
@@ -2335,11 +2341,22 @@ DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resour
 		require.Equal(t, 2, calls)
 	})
 	t.Run("cancellation retains accepted progress", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		result, err := programs["policy"].Evaluate(ctx, EntityEvaluationRequest{Reader: reader, BatchSize: 1, Emit: func(EntityFinding) error { cancel(); return nil }})
-		require.ErrorIs(t, err, context.Canceled)
-		require.Equal(t, 1, result.Confirmed)
+		for _, cancelAt := range []int{1, 3} {
+			for _, size := range []int{1, 0} {
+				ctx, cancel := context.WithCancel(context.Background())
+				accepted := 0
+				result, err := programs["policy"].Evaluate(ctx, EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error {
+					accepted++
+					if accepted == cancelAt {
+						cancel()
+					}
+					return nil
+				}})
+				cancel()
+				require.ErrorIs(t, err, context.Canceled)
+				require.Equal(t, cancelAt, result.Confirmed)
+			}
+		}
 	})
 	t.Run("empty authoritative inventory", func(t *testing.T) {
 		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: tfeval.NewValueReader(nil, true), Emit: func(EntityFinding) error { t.Fatal("unexpected finding"); return nil }})
@@ -2506,6 +2523,42 @@ DatadogPolicy contains iac.finding(e,["acl"],{}) if {
 				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
 				require.NoError(t, err)
 				require.Len(t, findings, test.count)
+				require.Equal(t, test.count, result.Confirmed)
+				require.Equal(t, test.uncertain, result.Indeterminate)
+			}
+		})
+	}
+}
+
+func TestEntityPolicyFindingSetSemantics(t *testing.T) {
+	const source = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[1],{"value":1}) if {some e in iac.targets("resource","bucket")}
+DatadogPolicy contains iac.finding(e,[1.0],{"value":1.0}) if {some e in iac.targets("resource","bucket")}
+DatadogPolicy contains iac.finding(e,[2],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["public"])==true}
+`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name      string
+		public    cty.Value
+		count     int
+		uncertain bool
+	}{
+		{"known", cty.True, 4, false},
+		{"mixed", cty.UnknownVal(cty.Bool), 3, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+				"a": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"public": cty.True})},
+				"b": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"public": test.public})},
+			}, true)
+			for _, size := range []int{1, 2, 0} {
+				count := 0
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
+				require.NoError(t, err)
+				require.Equal(t, test.count, count)
 				require.Equal(t, test.count, result.Confirmed)
 				require.Equal(t, test.uncertain, result.Indeterminate)
 			}

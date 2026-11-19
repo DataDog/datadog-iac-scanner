@@ -56,14 +56,20 @@ func planEntityPolicies(modules map[string]*ast.Module, decisions []string) (map
 			return nil, err
 		}
 	}
-	for d.changed = true; d.changed; {
-		d.changed = false
-		for _, r := range d.active {
-			d.propagate(r)
-			if d.failure != nil {
-				return nil, d.failure
-			}
+	if err := d.propagateRoles(); err != nil {
+		return nil, err
+	}
+	// Pending helper roles are not observations. First converge ground proofs,
+	// then classify unproved totality and propagate those dependencies. This
+	// avoids making the result depend on whether callers or helpers run first.
+	for _, r := range d.active {
+		f := d.functions[r.name]
+		if len(f.rules) != 1 || !d.totalBody(r) {
+			f.result |= roleObservation
 		}
+	}
+	if err := d.propagateRoles(); err != nil {
+		return nil, err
 	}
 	for _, r := range d.active {
 		if err := d.checkMetadata(r); err != nil {
@@ -81,6 +87,19 @@ func planEntityPolicies(modules map[string]*ast.Module, decisions []string) (map
 	}
 	return d.focusPlans()
 }
+func (d *entityDomain) propagateRoles() error {
+	for d.changed = true; d.changed; {
+		d.changed = false
+		for _, r := range d.active {
+			d.propagate(r)
+			if d.failure != nil {
+				return d.failure
+			}
+		}
+	}
+	return nil
+}
+
 func newEntityDomain(modules map[string]*ast.Module, decisions []string) *entityDomain {
 	d := &entityDomain{functions: map[string]*entityDomainFunction{}, roots: map[string]bool{}, rootPrefixes: map[string]bool{}}
 	for _, name := range decisions {
@@ -179,7 +198,6 @@ func (d *entityDomain) propagate(r *entityDomainRule) {
 		role := d.termRole(r, r.rule.Head.Value)
 		if len(f.rules) != 1 || !d.totalBody(r) {
 			role &^= roleGround
-			role |= roleObservation
 		}
 		if f.observed {
 			role |= roleObservation
@@ -392,8 +410,15 @@ func (d *entityDomain) call(r *entityDomainRule, op string, terms []*ast.Term) {
 }
 func (d *entityDomain) builtin(r *entityDomainRule, op string, terms []*ast.Term) {
 	role := roleObservation
-	if d.totalCall(r, terms) {
+	if op == ast.JSONMarshal.Name {
 		role = roleGround
+		for _, argument := range terms[1 : len(terms)-1] {
+			argumentRole := d.termRole(r, argument)
+			if argumentRole&roleGround == 0 {
+				role &^= roleGround
+			}
+			role |= argumentRole & roleObservation
+		}
 	}
 	for _, arg := range terms[1:] {
 		argRole := d.termRole(r, arg)
@@ -418,7 +443,7 @@ func (d *entityDomain) totalCall(r *entityDomainRule, terms []*ast.Term) bool {
 	if len(terms) < 3 {
 		return false
 	}
-	if terms[0].String() != "json.marshal" {
+	if terms[0].String() != ast.JSONMarshal.Name {
 		return false
 	}
 	for _, arg := range terms[1 : len(terms)-1] {

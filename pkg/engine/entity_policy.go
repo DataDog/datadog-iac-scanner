@@ -242,7 +242,7 @@ func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRe
 		}
 		from += count
 	}
-	return result, nil
+	return result, ctx.Err()
 }
 
 func (r EntityEvaluationRequest) validate() (int, error) {
@@ -387,7 +387,7 @@ func (p *EntityProgram) evaluateBatch(
 
 func (p *EntityProgram) symbolicFindings(partial *rego.PartialQueries, reader policy.Reader) (entityBatch, error) {
 	result := entityBatch{symbolic: true}
-	seen := map[string]bool{}
+	seen := ast.NewSet()
 	facts := entitySupportFacts(partial.Support, p.owners)
 	for _, query := range partial.Queries {
 		body, impossible := normalizeEntityResidual(query, facts)
@@ -399,34 +399,33 @@ func (p *EntityProgram) symbolicFindings(partial *rego.PartialQueries, reader po
 			result.indeterminate = true
 			continue
 		}
-		finding, err := entityFinding(value, reader)
+		if seen.Contains(value) {
+			continue
+		}
+		materialized, err := ast.ValueToInterface(value.Value, nil)
 		if err != nil {
 			return entityBatch{}, err
 		}
-		key, err := json.Marshal(value)
+		finding, err := entityFinding(materialized, reader)
 		if err != nil {
 			return entityBatch{}, err
 		}
-		if !seen[string(key)] {
-			seen[string(key)] = true
-			result.findings = append(result.findings, finding)
-		}
+		seen.Add(value)
+		result.findings = append(result.findings, finding)
 	}
 	return result, nil
 }
 
-func entityOutput(body ast.Body) (any, ast.Body) {
-	var value any
+func entityOutput(body ast.Body) (*ast.Term, ast.Body) {
+	var value *ast.Term
 	remaining := ast.Body{}
 	for _, e := range body {
 		if !e.Negated && len(e.With) == 0 && e.IsEquality() {
 			ts := e.Terms.([]*ast.Term)
 			for _, pair := range [][2]*ast.Term{{ts[1], ts[2]}, {ts[2], ts[1]}} {
 				if pair[0].Equal(ast.VarTerm("result")) && pair[1].IsGround() {
-					if v, err := ast.ValueToInterface(pair[1].Value, nil); err == nil {
-						value = v
-						goto captured
-					}
+					value = pair[1]
+					goto captured
 				}
 			}
 		}
