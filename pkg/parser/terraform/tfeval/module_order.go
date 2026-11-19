@@ -45,7 +45,7 @@ func moduleDependencyOrder(dp *dirParse) []int {
 	for cursor := 0; cursor < len(graph.queue); cursor++ {
 		v := graph.queue[cursor]
 		if v < n {
-			if !graph.readBody(v, dp.modules[v].Body) {
+			if !graph.readBody(v, dp.modules[v].Body, true) {
 				return nil
 			}
 			continue
@@ -102,8 +102,13 @@ func (g *moduleOrderGraph) read(v int, t hcl.Traversal) bool {
 	return true
 }
 
-func (g *moduleOrderGraph) readBody(v int, body *hclsyntax.Body) bool {
-	for _, attr := range body.Attributes {
+func (g *moduleOrderGraph) readBody(v int, body *hclsyntax.Body, moduleBody bool) bool {
+	for name, attr := range body.Attributes {
+		// Provider bindings are references to provider configurations, not
+		// child input values. Other bodies may have an ordinary providers key.
+		if moduleBody && name == "providers" {
+			continue
+		}
 		for _, traversal := range attr.Expr.Variables() {
 			if !g.read(v, traversal) {
 				return false
@@ -111,7 +116,7 @@ func (g *moduleOrderGraph) readBody(v int, body *hclsyntax.Body) bool {
 		}
 	}
 	for _, nested := range body.Blocks {
-		if !g.readBody(v, nested.Body) {
+		if !g.readBody(v, nested.Body, false) {
 			return false
 		}
 	}

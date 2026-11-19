@@ -762,6 +762,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
 		if !ok {
+			results.finish(blockIndex)
 			continue
 		}
 		plan := moduleInstances(ctx, mb, callCtx)
@@ -807,6 +808,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			results.add(blockIndex, childRes)
 			outs = append(outs, objectOrEmpty(childOuts))
 		}
+		results.finish(blockIndex)
 		if value, ok := moduleOutputsValue(plan, outs); ok {
 			if siblings != nil {
 				siblings.set(call.label, value)

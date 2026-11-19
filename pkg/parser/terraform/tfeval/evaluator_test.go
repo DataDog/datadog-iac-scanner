@@ -2388,6 +2388,11 @@ output "value" { value = var.value }
 						case "for_each":
 							meta = "for_each = " + ready + ` ? { only = true } : {}` + "\n"
 						}
+						provider := "aws"
+						if i%2 == 0 {
+							provider = "aws.replica"
+						}
+						meta += "providers = { aws = " + provider + " }\n"
 						calls[i] = prefix + fmt.Sprintf("module \"m%d\" {\n source = \"../leaf\"\n %s value = %s\n}\n", i, meta, value)
 					}
 					if reverse {
@@ -3113,6 +3118,54 @@ resource "terraform_data" "result" {
 			}
 			require.True(t, tc.can.RawEquals(result.GetAttr("readable")), "got %s", result.GoString())
 			require.NotContains(t, resources["/terraform_data.single"].Attributes, "output", "reference-only attributes must not become written configuration")
+		})
+	}
+}
+
+// Result collection preserves call and instance order, emitting each available
+// declaration prefix and releasing its buffered slices as soon as it completes.
+func TestModuleCallResources(t *testing.T) {
+	for _, order := range [][]int{nil, {0, 1, 2, 3}, {0, 2, 1, 3}, {3, 2, 1, 0}, {1, 0, 3, 2}} {
+		t.Run(fmt.Sprint(order), func(t *testing.T) {
+			r := newModuleCallResources(order)
+			sequence := order
+			if sequence == nil {
+				sequence = []int{0, 1, 2, 3}
+			}
+			complete := make([]bool, len(sequence))
+			prefix := 0
+			for _, call := range sequence {
+				// Call 1 is empty, as with a skipped call or a zero count.
+				if call != 1 {
+					for instance := range 3 {
+						r.add(call, []ResolvedResource{{Name: fmt.Sprintf("%d:%d", call, instance)}})
+						if r.pending != nil && call == r.next {
+							require.Empty(t, r.pending[call].instances)
+						}
+					}
+				}
+				r.finish(call)
+				complete[call] = true
+				for prefix < len(complete) && complete[prefix] {
+					prefix++
+				}
+				want := []string{}
+				for c := range prefix {
+					if c != 1 {
+						for i := range 3 {
+							want = append(want, fmt.Sprintf("%d:%d", c, i))
+						}
+					}
+					if r.pending != nil {
+						require.Empty(t, r.pending[c].instances)
+					}
+				}
+				got := []string{}
+				for _, resource := range r.values() {
+					got = append(got, resource.Name)
+				}
+				require.Equal(t, want, got)
+			}
 		})
 	}
 }
