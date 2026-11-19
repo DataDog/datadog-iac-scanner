@@ -7,8 +7,10 @@
 package inventory
 
 import (
+	"context"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,4 +62,30 @@ func TestSplitChartPath(t *testing.T) {
 
 	_, _, ok = splitChartPath("/repo/k8s/web.yaml")
 	require.False(t, ok)
+}
+
+func TestDocumentResourcesInterleavedFiles(t *testing.T) {
+	a := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a0\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: a1\n"
+	b := "apiVersion: v1\nkind: Service\nmetadata:\n  name: b0\n---\n\napiVersion: v1\nkind: Pod\nmetadata:\n  name: b1\n"
+	doc := func(path, content, id, kind, name string) *model.FileMetadata {
+		return &model.FileMetadata{ID: id, FilePath: path, OriginalData: content, Platform: PlatformKubernetes,
+			Document: model.Document{"apiVersion": "v1", "kind": kind, "metadata": map[string]interface{}{"name": name}}}
+	}
+	// Concurrent parsers store the documents of two files mixed.
+	files := model.FileMetadatas{
+		doc("a.yaml", a, "a0", "ConfigMap", "a0"),
+		doc("b.yaml", b, "b0", "Service", "b0"),
+		nil,
+		doc("a.yaml", a, "a1", "Secret", "a1"),
+		doc("b.yaml", b, "b1", "Pod", "b1"),
+	}
+	lines := make(map[string]lineRange)
+	for _, r := range DocumentResources(context.Background(), files) {
+		require.Equal(t, r.DocumentID, r.ResourceName)
+		lines[r.DocumentID] = lineRange{r.LineStart, r.LineEnd}
+	}
+	require.Equal(t, map[string]lineRange{
+		"a0": {1, 4}, "a1": {6, 9},
+		"b0": {1, 4}, "b1": {7, 10},
+	}, lines, "each document gets its own lines")
 }

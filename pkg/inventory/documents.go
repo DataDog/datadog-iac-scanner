@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
@@ -31,14 +32,25 @@ const (
 // stores them.
 func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resource {
 	e := documentEnumerator{ctx: ctx, charts: make(map[string]chartInfo)}
-	var rows []Resource
-	docIndex := make(map[string]int)
+	// One path at a time, so that only one decoded file is held at once. The
+	// documents of a path need not be next to each other in files, as
+	// concurrent parsers store them; the stable sort keeps their order.
+	byPath := make([]*model.FileMetadata, 0, len(files))
 	for _, f := range files {
-		if f == nil || f.Document == nil {
-			continue
+		if f != nil && f.Document != nil {
+			byPath = append(byPath, f)
 		}
-		index := docIndex[f.FilePath]
-		docIndex[f.FilePath] = index + 1
+	}
+	slices.SortStableFunc(byPath, func(a, b *model.FileMetadata) int { return strings.Compare(a.FilePath, b.FilePath) })
+
+	var rows []Resource
+	index := 0
+	for i, f := range byPath {
+		if i > 0 && f.FilePath == byPath[i-1].FilePath {
+			index++
+		} else {
+			index = 0
+		}
 		first := len(rows)
 		switch {
 		case f.Kind == model.KindDOCKER:
@@ -57,8 +69,8 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 			rows = append(rows, e.ansibleRows(f, index)...)
 		}
 		// The findings raised on the document link to its rows.
-		for i := first; i < len(rows); i++ {
-			rows[i].DocumentID = f.ID
+		for j := first; j < len(rows); j++ {
+			rows[j].DocumentID = f.ID
 		}
 	}
 	return rows
@@ -66,9 +78,10 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 
 type documentEnumerator struct {
 	ctx context.Context
-	// yaml caches each YAML file decoded once, whatever its documents.
-	yaml   map[string]*yamlFile
-	charts map[string]chartInfo
+	// yaml is the file at yamlPath, decoded once for all its documents.
+	yamlPath string
+	yaml     *yamlFile
+	charts   map[string]chartInfo
 }
 
 type lineRange struct{ start, end int }
@@ -162,15 +175,10 @@ func (e *documentEnumerator) documentNode(f *model.FileMetadata, index int) (*ya
 }
 
 func (e *documentEnumerator) yamlFile(f *model.FileMetadata) *yamlFile {
-	if e.yaml == nil {
-		e.yaml = make(map[string]*yamlFile)
+	if e.yaml == nil || e.yamlPath != f.FilePath {
+		e.yamlPath, e.yaml = f.FilePath, parseYAMLFile(f.OriginalData)
 	}
-	file, ok := e.yaml[f.FilePath]
-	if !ok {
-		file = parseYAMLFile(f.OriginalData)
-		e.yaml[f.FilePath] = file
-	}
-	return file
+	return e.yaml
 }
 
 // parseYAMLFile decodes the documents of a YAML file. A document ends at its
