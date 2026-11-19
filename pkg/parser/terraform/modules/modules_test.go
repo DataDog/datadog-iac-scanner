@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -328,7 +329,8 @@ func TestParseTerraformModules_ParseFailureLogLevel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			var logs bytes.Buffer
-			ctx := zerolog.New(&logs).Level(zerolog.DebugLevel).WithContext(t.Context())
+			log := zerolog.New(&logs).Level(zerolog.DebugLevel)
+			ctx := log.WithContext(t.Context())
 			path := filepath.Join(repo, filepath.FromSlash(tt.path))
 			files := model.FileMetadatas{
 				{FilePath: path, OriginalData: `module "broken" {`},
@@ -338,18 +340,37 @@ func TestParseTerraformModules_ParseFailureLogLevel(t *testing.T) {
 				},
 			}
 
+			// Other scan logs may surround the parse failure event.
+			log.Debug().Msg("before module parsing")
 			modules, err := ParseTerraformModules(ctx, nil, files, 1)
+			log.Debug().Msg("after module parsing")
 			require.NoError(t, err)
 			require.Len(t, modules, 1)
 			for _, module := range modules {
 				require.Equal(t, "valid", module.Name)
 			}
 
-			var event map[string]interface{}
-			require.NoError(t, json.Unmarshal(logs.Bytes(), &event))
-			require.Equal(t, tt.wantLevel, event["level"])
-			require.Contains(t, event["message"], "Skipping file "+path+" due to parse errors:")
-			require.Contains(t, event["message"], "Unclosed configuration block")
+			decoder := json.NewDecoder(&logs)
+			matched := 0
+			for {
+				var event struct {
+					Level   string `json:"level"`
+					Message string `json:"message"`
+				}
+				err := decoder.Decode(&event)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				if !strings.HasPrefix(event.Message, "Skipping file ") {
+					continue
+				}
+				matched++
+				require.Equal(t, tt.wantLevel, event.Level)
+				require.Contains(t, event.Message, "Skipping file "+path+" due to parse errors:")
+				require.Contains(t, event.Message, "Unclosed configuration block")
+			}
+			require.Equal(t, 1, matched, "expected one parse failure event")
 		})
 	}
 }

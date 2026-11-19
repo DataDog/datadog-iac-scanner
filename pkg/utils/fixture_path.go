@@ -6,10 +6,13 @@
 package utils
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/rs/zerolog"
 )
 
 var testFixtureDirs = map[string]struct{}{
@@ -34,4 +37,13 @@ func IsTestFixturePath(path string) bool {
 		}
 	}
 	return false
+}
+
+// WarnUnlessFixture returns a Debug event for test fixture paths and a Warn event otherwise.
+func WarnUnlessFixture(ctx context.Context, path string) *zerolog.Event {
+	contextLogger := logger.FromContext(ctx)
+	if IsTestFixturePath(path) {
+		return contextLogger.Debug()
+	}
+	return contextLogger.Warn()
 }

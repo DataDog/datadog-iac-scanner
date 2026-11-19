@@ -487,7 +487,7 @@ func parseDirModules(
 		}
 		extract, diags := extractForContent(extracts, content, file.FilePath)
 		if diags.HasErrors() {
-			logModuleParseFailure(ctx, file.FilePath, diags)
+			utils.WarnUnlessFixture(ctx, file.FilePath).Msgf("Skipping file %s due to parse errors: %s", file.FilePath, diags.Error())
 			continue
 		}
 		if extract == nil {
@@ -524,15 +524,6 @@ func parseDirModules(
 		)
 	}
 	return modules, nil
-}
-
-func logModuleParseFailure(ctx context.Context, filePath string, diags hcl.Diagnostics) {
-	contextLogger := logger.FromContext(ctx)
-	event := contextLogger.Warn()
-	if utils.IsTestFixturePath(filePath) {
-		event = contextLogger.Debug()
-	}
-	event.Msgf("Skipping file %s due to parse errors: %s", filePath, diags.Error())
 }
 
 // dirModuleFile is one configuration file's module blocks, in file order.

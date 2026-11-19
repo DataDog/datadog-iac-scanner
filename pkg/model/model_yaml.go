@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
@@ -579,13 +578,8 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 	}
 	var resolved interface{}
 	if err := val.Decode(&resolved); err != nil {
-		contextLogger := logger.FromContext(ctx)
 		filePath, _ := ctx.Value(yamlFilePathContextKey{}).(string)
-		event := contextLogger.Warn()
-		if utils.IsTestFixturePath(filePath) {
-			event = contextLogger.Debug()
-		}
-		event.Msgf("failed to decode scalar in yaml parser for %s: %q", filePath, val.Value)
+		utils.WarnUnlessFixture(ctx, filePath).Msgf("failed to decode scalar in yaml parser for %s: %q", filePath, val.Value)
 		return val.Value
 	}
 	return normalizeScalar(resolved)
