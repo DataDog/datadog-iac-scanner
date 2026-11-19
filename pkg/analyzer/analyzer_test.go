@@ -458,6 +458,61 @@ func TestClassifyFile_SwaggerOpenAPI(t *testing.T) {
 	require.Equal(t, "openapi", got)
 }
 
+// GitHub Actions workflows are recognized by the on and jobs keys of their
+// root, not by any key ending in "on" (condition:, version:) or a nested on::
+// Azure Pipelines files also have jobs, and must not be scanned as workflows.
+func TestClassifyFile_CICDNeedsTopLevelOnAndJobs(t *testing.T) {
+	for name, tt := range map[string]struct {
+		content string
+		want    bool
+	}{
+		"azure pipelines template": {
+			content: "jobs:\n  - job: build\n    condition: succeeded()\n  - template: t0.yml\n",
+		},
+		"azure pipelines template with an unindented sequence": {
+			content: "jobs:\n- job: build\n  condition: succeeded()\n- template: t0.yml\n",
+		},
+		"azure pipelines deployment hooks": {
+			content: "jobs:\n  - deployment: deploy\n    strategy:\n      runOnce:\n        deploy:\n" +
+				"          steps:\n            - script: echo deploy\n        on:\n          failure:\n" +
+				"            steps:\n              - script: echo rollback\n",
+		},
+		"workflow": {
+			content: "name: ci\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
+			want:    true,
+		},
+		"workflow with double-quoted on": {
+			content: "\"on\": [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
+			want:    true,
+		},
+		"workflow with single-quoted on": {
+			content: "'on':\n  push:\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
+			want:    true,
+		},
+		"workflow with an indented root": {
+			content: "  on: push\n  jobs:\n    build:\n      runs-on: ubuntu-latest\n",
+			want:    true,
+		},
+		"workflow with a BOM": {
+			content: "\xef\xbb\xbfon: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
+			want:    true,
+		},
+		"workflow with CRLF line endings": {
+			content: "on: push\r\njobs:\r\n  build:\r\n    runs-on: ubuntu-latest\r\n",
+			want:    true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "pipeline.yml")
+			require.NoError(t, os.WriteFile(path, []byte(tt.content), 0o600))
+
+			got := ClassifyFile(context.Background(), nil, path, []byte(tt.content), []string{""})
+
+			require.Equal(t, tt.want, got == cicd, "classified as %q", got)
+		})
+	}
+}
+
 func TestClassifyFile_DockerCompose(t *testing.T) {
 	content := []byte("services:\n  web:\n    image: nginx:latest\n")
 	path := filepath.Join(t.TempDir(), "compose.yaml")

@@ -166,6 +166,28 @@ func TestSanitizeScanDocumentInPlaceRejectsCyclicAnchorTree(t *testing.T) {
 	cyclic["self"] = cyclic
 	_, err := sanitizeScanDocumentInPlace(cyclic, model.KindYAML)
 	require.ErrorIs(t, err, errCyclicDocument)
+	_, err = sanitizeSharedScanDocumentInPlace(cyclic, model.KindYAML)
+	require.ErrorIs(t, err, errCyclicDocument)
+}
+
+// TestSanitizeSharedScanDocumentInPlaceVisitsMapsOnce sanitizes a document in
+// which each map is shared by the two keys of its parent, as resolved YAML
+// references are: 2^40 paths lead to the innermost map, so it only finishes
+// if each map is sanitized once.
+func TestSanitizeSharedScanDocumentInPlaceVisitsMapsOnce(t *testing.T) {
+	const depth = 40
+	maps := make([]map[string]interface{}, depth+1)
+	maps[depth] = map[string]interface{}{"leaf": true, "_dd_lines": "x"}
+	for i := depth - 1; i >= 0; i-- {
+		maps[i] = map[string]interface{}{"a": maps[i+1], "b": []interface{}{maps[i+1]}, "_dd_lines": "x"}
+	}
+
+	_, err := sanitizeSharedScanDocumentInPlace(maps[0], model.KindYAML)
+
+	require.NoError(t, err)
+	for _, m := range maps {
+		require.NotContains(t, m, "_dd_lines")
+	}
 }
 
 // TestShareableParse verifies the sharing gate: only parses that are pure

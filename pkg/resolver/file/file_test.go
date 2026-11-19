@@ -288,3 +288,38 @@ func TestCheckServerlessFileReference(t *testing.T) {
 	require.Equal(t, "config/settings.yaml", checkServerlessFileReference("${file(config/settings.yaml)}"))
 	require.Equal(t, "plain/path.yml", checkServerlessFileReference("plain/path.yml"))
 }
+
+// mappingValue returns the value of key in a YAML mapping node.
+func mappingValue(t *testing.T, mapping *yaml.Node, key string) *yaml.Node {
+	t.Helper()
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1]
+		}
+	}
+	t.Fatalf("no key %q", key)
+	return nil
+}
+
+// Every reference to a file points at the same resolved nodes, keeps its own
+// reference metadata, and has no position in the referencing file.
+func TestResolver_ResolveYAML_SharesReferencedFile(t *testing.T) {
+	dir := t.TempDir()
+	schema := "type: object\nrequired:\n  - id\nproperties:\n  id:\n    type: integer\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "schema.yaml"), []byte(schema), 0o600))
+	path := filepath.Join(dir, "main.yaml")
+	content := []byte("a:\n  $ref: ./schema.yaml\nb:\n  $ref: ./schema.yaml\n  description: second\n")
+
+	r := NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"})
+	docs := r.ResolveYAML(context.Background(), content, path, 15, true)
+
+	require.Len(t, docs, 1)
+	require.Contains(t, r.ResolvedFiles, "./schema.yaml")
+	root := docs[0].Content[0]
+	a, b := mappingValue(t, root, "a"), mappingValue(t, root, "b")
+	require.Same(t, mappingValue(t, a, "properties"), mappingValue(t, b, "properties"))
+	require.Equal(t, "true", mappingValue(t, mappingValue(t, a, "RefMetadata"), "alone").Value)
+	require.Equal(t, "false", mappingValue(t, mappingValue(t, b, "RefMetadata"), "alone").Value)
+	require.Equal(t, 1, root.Content[0].Line)
+	require.Zero(t, mappingValue(t, a, "properties").Line)
+}

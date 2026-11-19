@@ -133,14 +133,28 @@ func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore, visited map[*yaml.N
 
 // UnmarshalYAML is a custom yaml parser that places line information in the payload
 func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *Ignore) error {
+	return m.unmarshalYAML(ctx, value, nil, ignore)
+}
+
+// UnmarshalSharedYAML is UnmarshalYAML for a document whose file references
+// were resolved, where a node can be reached through several parents (see
+// file.Resolver.ResolveYAML). Such a node is converted once, and its value is
+// shared by every parent, so the values must not be modified in place
+// differently at each place they appear. Ignore comments are not read: the
+// shared nodes hold the comments of the referenced files.
+func (m *Document) UnmarshalSharedYAML(ctx context.Context, value *yaml.Node) error {
+	return m.unmarshalYAML(ctx, value, newSharedNodes(), nil)
+}
+
+func (m *Document) unmarshalYAML(ctx context.Context, value *yaml.Node, shared *sharedNodes, ignore *Ignore) error {
 	ctx = withCloudFormation(ctx, isCloudFormationDocument(value))
-	dpc := unmarshal(ctx, value, ignore)
+	dpc := unmarshal(ctx, value, shared, ignore)
 	if mapDcp, ok := dpc.(map[string]interface{}); ok {
 		if isCloudFormationContext(ctx) {
 			expandCloudFormationForEach(mapDcp)
 		}
 		// set line information for root level objects
-		mapDcp["_dd_lines"] = getLines(value, 0)
+		mapDcp["_dd_lines"] = getLines(value, 0, shared)
 
 		// mapDcp is freshly built and exclusively owned: assign it directly instead of
 		// deep-copying via a JSON round-trip (the dominant YAML parse cost);
@@ -380,14 +394,53 @@ func removeForEachLineInfo(resources map[string]interface{}, foreachKey string) 
 	MappingNode -> map
 
 */
+// sharedNodes memoizes the value and the line information built for each node
+// of a document whose file references were resolved: the content of a file
+// referenced from several places is shared between its references, so its
+// nodes are reached through several parents. Converting them once and sharing
+// the result keeps the document as small as the files it is made of, where
+// converting them on every path made it grow exponentially with the nesting
+// depth of the references. It is nil for other documents.
+type sharedNodes struct {
+	values map[*yaml.Node]interface{}
+	lines  map[linesKey]map[string]*LineObject
+}
+
+type linesKey struct {
+	node *yaml.Node
+	def  int
+}
+
+func newSharedNodes() *sharedNodes {
+	return &sharedNodes{
+		values: make(map[*yaml.Node]interface{}),
+		lines:  make(map[linesKey]map[string]*LineObject),
+	}
+}
+
+// forAlias returns the memo to convert the target of an alias with: each alias
+// gets its own copy of the target, which its parent then modifies.
+func (s *sharedNodes) forAlias() *sharedNodes {
+	if s == nil {
+		return nil
+	}
+	return newSharedNodes()
+}
+
 // unmarshal is the function that will parse the yaml elements and call the functions needed
 // to place their line information in the payload
-func unmarshal(ctx context.Context, val *yaml.Node, ignore *Ignore) interface{} {
-	return unmarshalWithDepth(ctx, val, make(map[*yaml.Node]bool), ignore)
+func unmarshal(ctx context.Context, val *yaml.Node, shared *sharedNodes, ignore *Ignore) interface{} {
+	return unmarshalWithDepth(ctx, val, make(map[*yaml.Node]bool), shared, ignore)
 }
 
 // unmarshalWithDepth handles recursive unmarshaling with circular reference detection
-func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) interface{} { //nolint:gocyclo
+func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, //nolint:gocyclo
+	shared *sharedNodes, ignore *Ignore) interface{} {
+	if shared != nil {
+		if value, ok := shared.values[val]; ok {
+			return value
+		}
+	}
 	if visited[val] {
 		return nil
 	}
@@ -404,7 +457,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 	if val.Kind == yaml.SequenceNode {
 		contentArray := make([]interface{}, 0)
 		for _, contentEntry := range val.Content {
-			contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, ignore))
+			contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, shared, ignore))
 		}
 		tmp["playbooks"] = contentArray
 	} else if val.Kind == yaml.ScalarNode {
@@ -413,9 +466,9 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 		// iterate two by two, since first iteration is the key and the second is the value
 		for i := 0; i < len(val.Content); i += 2 {
 			if val.Content[i].Kind == yaml.ScalarNode {
-				if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val.Content[i+1], visited, ignore); ok {
+				if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val.Content[i+1], visited, shared, ignore); ok {
 					if m, ok := rewritten.(map[string]interface{}); ok {
-						m["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
+						m["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line, shared)
 					}
 					tmp[internYAMLScalar(val.Content[i].Value)] = rewritten
 					continue
@@ -426,9 +479,9 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 				// in case value iteration is a map
 				case yaml.MappingNode:
 					// unmarshall map value and get its line information
-					result := unmarshalWithDepth(ctx, val.Content[i+1], visited, ignore)
+					result := unmarshalWithDepth(ctx, val.Content[i+1], visited, shared, ignore)
 					if tt, ok := result.(map[string]interface{}); ok {
-						tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
+						tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line, shared)
 						tmp[internYAMLScalar(val.Content[i].Value)] = tt
 					} else {
 						tmp[internYAMLScalar(val.Content[i].Value)] = result
@@ -438,14 +491,15 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 					contentArray := make([]interface{}, 0)
 					// unmarshall each iteration of the array
 					for _, contentEntry := range val.Content[i+1].Content {
-						contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, ignore))
+						contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, shared, ignore))
 					}
 					tmp[internYAMLScalar(val.Content[i].Value)] = contentArray
 				case yaml.AliasNode:
 					if val.Content[i+1].Alias != nil {
-						result := unmarshalWithDepth(ctx, val.Content[i+1].Alias, visited, ignore)
+						aliasShared := shared.forAlias()
+						result := unmarshalWithDepth(ctx, val.Content[i+1].Alias, visited, aliasShared, ignore)
 						if tt, ok := result.(map[string]interface{}); ok {
-							tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line)
+							tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line, aliasShared)
 							utils.MergeMaps(tmp, tt)
 						}
 						if v, ok := result.(string); ok {
@@ -456,12 +510,28 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 			}
 		}
 	}
+	if shared != nil {
+		shared.values[val] = tmp
+	}
 	return tmp
 }
 
 // getLines creates the map containing the line information for the yaml Node
 // def is the line to be used as "_dd__default"
-func getLines(val *yaml.Node, def int) map[string]*LineObject {
+func getLines(val *yaml.Node, def int, shared *sharedNodes) map[string]*LineObject {
+	if shared == nil {
+		return buildLines(val, def, nil)
+	}
+	key := linesKey{node: val, def: def}
+	if lines, ok := shared.lines[key]; ok {
+		return lines
+	}
+	lines := buildLines(val, def, shared)
+	shared.lines[key] = lines
+	return lines
+}
+
+func buildLines(val *yaml.Node, def int, shared *sharedNodes) map[string]*LineObject {
 	lineMap := make(map[string]*LineObject)
 
 	// line information map
@@ -472,7 +542,7 @@ func getLines(val *yaml.Node, def int) map[string]*LineObject {
 
 	// if yaml Node is an Array use func getSeqLines
 	if val.Kind == yaml.SequenceNode {
-		return getSeqLines(val, def)
+		return getSeqLines(val, def, shared)
 	}
 
 	// iterate two by two, since first iteration is the key and the second is the value
@@ -487,7 +557,7 @@ func getLines(val *yaml.Node, def int) map[string]*LineObject {
 				} else if contentEntry.Kind == yaml.MappingNode && len(contentEntry.Content) > 0 {
 					defaultLine = contentEntry.Content[0].Line
 				}
-				lineArr = append(lineArr, getLines(contentEntry, defaultLine))
+				lineArr = append(lineArr, getLines(contentEntry, defaultLine, shared))
 			}
 		}
 
@@ -503,13 +573,13 @@ func getLines(val *yaml.Node, def int) map[string]*LineObject {
 
 // getSeqLines iterates through the elements of an Array
 // creating a map with each iteration lines information
-func getSeqLines(val *yaml.Node, def int) map[string]*LineObject {
+func getSeqLines(val *yaml.Node, def int, shared *sharedNodes) map[string]*LineObject {
 	lineMap := make(map[string]*LineObject)
 	lineArr := make([]map[string]*LineObject, 0)
 
 	// get line information slice of every element in the array
 	for _, cont := range val.Content {
-		lineArr = append(lineArr, getLines(cont, cont.Line))
+		lineArr = append(lineArr, getLines(cont, cont.Line, shared))
 	}
 
 	// create line information of array with its line and elements line information
@@ -573,7 +643,7 @@ func internedScalarNodeResolver(ctx context.Context, val *yaml.Node) interface{}
 
 // scalarNodeResolver transforms a ScalarNode value in its correct type
 func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
-	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, nil, nil); ok {
+	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, nil, nil, nil); ok {
 		return rewritten
 	}
 	var resolved interface{}
@@ -627,7 +697,8 @@ func normalizeScalar(resolved interface{}) interface{} {
 
 // rewriteCFNShortFormIntrinsic converts a short-form CFN intrinsic to its long-form map.
 // It is a no-op for documents that are not CloudFormation templates.
-func rewriteCFNShortFormIntrinsic(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) (interface{}, bool) {
+func rewriteCFNShortFormIntrinsic(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool,
+	shared *sharedNodes, ignore *Ignore) (interface{}, bool) {
 	if val == nil || !isCloudFormationContext(ctx) {
 		return nil, false
 	}
@@ -651,7 +722,7 @@ func rewriteCFNShortFormIntrinsic(ctx context.Context, val *yaml.Node, visited m
 	case yaml.SequenceNode:
 		seq := make([]interface{}, 0, len(val.Content))
 		for _, child := range val.Content {
-			seq = append(seq, decodeIntrinsicChild(ctx, child, visited, ignore))
+			seq = append(seq, decodeIntrinsicChild(ctx, child, visited, shared, ignore))
 		}
 		return map[string]interface{}{longForm: seq}, true
 	case yaml.MappingNode:
@@ -659,16 +730,17 @@ func rewriteCFNShortFormIntrinsic(ctx context.Context, val *yaml.Node, visited m
 		if v == nil {
 			v = make(map[*yaml.Node]bool)
 		}
-		return map[string]interface{}{longForm: unmarshalWithDepth(ctx, val, v, ignore)}, true
+		return map[string]interface{}{longForm: unmarshalWithDepth(ctx, val, v, shared, ignore)}, true
 	}
 	return nil, false
 }
 
-func decodeIntrinsicChild(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, ignore *Ignore) interface{} {
+func decodeIntrinsicChild(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool,
+	shared *sharedNodes, ignore *Ignore) interface{} {
 	if val == nil {
 		return nil
 	}
-	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, visited, ignore); ok {
+	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, visited, shared, ignore); ok {
 		return rewritten
 	}
 	v := visited
@@ -679,11 +751,11 @@ func decodeIntrinsicChild(ctx context.Context, val *yaml.Node, visited map[*yaml
 	case yaml.ScalarNode:
 		return internedScalarNodeResolver(ctx, val)
 	case yaml.MappingNode:
-		return unmarshalWithDepth(ctx, val, v, ignore)
+		return unmarshalWithDepth(ctx, val, v, shared, ignore)
 	case yaml.SequenceNode:
 		seq := make([]interface{}, 0, len(val.Content))
 		for _, child := range val.Content {
-			seq = append(seq, decodeIntrinsicChild(ctx, child, v, ignore))
+			seq = append(seq, decodeIntrinsicChild(ctx, child, v, shared, ignore))
 		}
 		return seq
 	}

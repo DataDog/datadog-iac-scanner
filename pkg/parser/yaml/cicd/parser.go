@@ -7,6 +7,7 @@ package cicd
 
 import (
 	"context"
+	"reflect"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -207,12 +208,14 @@ func parseRunBlocksInSteps(ctx context.Context, steps []interface{}) {
 // enhanceWithParsedExpressions walks through documents and parses GitHub Actions expressions
 func (p *Parser) enhanceWithParsedExpressions(ctx context.Context, documents []model.Document) {
 	for _, doc := range documents {
-		p.parseExpressionsInValue(ctx, doc)
+		p.parseExpressionsInValue(ctx, doc, make(map[uintptr]bool))
 	}
 }
 
-// parseExpressionsInValue recursively walks a value and parses any expressions found
-func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{}) {
+// parseExpressionsInValue recursively walks a value and parses any expressions found.
+// seen holds the maps already walked: the content of a resolved file reference
+// is shared by every reference to it, and is walked once.
+func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{}, seen map[uintptr]bool) {
 	contextLogger := logger.FromContext(ctx)
 	switch v := value.(type) {
 	case model.Document, map[string]interface{}:
@@ -224,24 +227,15 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{})
 		} else {
 			m = v.(map[string]interface{})
 		}
+		ptr := reflect.ValueOf(m).Pointer()
+		if seen[ptr] {
+			return
+		}
+		seen[ptr] = true
 
 		var parsedByKey map[string][]ParsedExpression
 		for key, val := range m {
-			// Collect all expressions found in this value (string or array)
-			var allExpressions []ExpressionMatch
-
-			// Check if the value is a string with expressions
-			switch typedValue := val.(type) {
-			case string:
-				allExpressions = extractExpressionsFromString(typedValue)
-			case []interface{}:
-				for _, elem := range typedValue {
-					if strElem, ok := elem.(string); ok {
-						expressions := extractExpressionsFromString(strElem)
-						allExpressions = append(allExpressions, expressions...)
-					}
-				}
-			}
+			allExpressions := expressionsInValue(val)
 
 			// If we found any expressions, parse and store them
 			if len(allExpressions) > 0 {
@@ -260,7 +254,7 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{})
 			}
 
 			// Recurse into nested structures
-			p.parseExpressionsInValue(ctx, val)
+			p.parseExpressionsInValue(ctx, val, seen)
 		}
 
 		// The map is only written once its iteration is over.
@@ -270,9 +264,27 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{})
 
 	case []interface{}:
 		for _, item := range v {
-			p.parseExpressionsInValue(ctx, item)
+			p.parseExpressionsInValue(ctx, item, seen)
 		}
 	}
+}
+
+// expressionsInValue collects the expressions found in a value: a string, or
+// the strings of an array.
+func expressionsInValue(value interface{}) []ExpressionMatch {
+	switch typedValue := value.(type) {
+	case string:
+		return extractExpressionsFromString(typedValue)
+	case []interface{}:
+		var allExpressions []ExpressionMatch
+		for _, elem := range typedValue {
+			if strElem, ok := elem.(string); ok {
+				allExpressions = append(allExpressions, extractExpressionsFromString(strElem)...)
+			}
+		}
+		return allExpressions
+	}
+	return nil
 }
 
 // parsedExpressionsKeyPrefix prefixes the map key under which the parsed expressions

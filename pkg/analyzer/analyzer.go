@@ -73,8 +73,8 @@ var (
 	pulumiResourcesRegex                            = regexp.MustCompile(`resources\s*:`)
 	serverlessServiceRegex                          = regexp.MustCompile(`service\s*:`)
 	serverlessProviderRegex                         = regexp.MustCompile(`(^|\n)provider\s*:`)
-	cicdOnRegex                                     = regexp.MustCompile(`\s*on:\s*`)
-	cicdJobsRegex                                   = regexp.MustCompile(`\s*jobs:\s*`)
+	cicdOnRegex                                     = regexp.MustCompile(`on["']?\s*:`)
+	cicdJobsRegex                                   = regexp.MustCompile(`jobs:`)
 	githubActionManifestRunsRegex                   = regexp.MustCompile(`(^|\n)runs:\s*`)
 	githubActionManifestUsingRegex                  = regexp.MustCompile(`\s*using:\s*['"]?(composite|docker|node\d+)`)
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
@@ -316,6 +316,9 @@ var types = map[string]regexSlice{
 			serverlessProviderRegex,
 		},
 	},
+	// The regexes only discard the files that cannot be a workflow cheaply
+	// (they also match condition:, runs-on: or "on":); matchesType then checks
+	// that on and jobs are keys of the document root (see isWorkflow).
 	"cicd": {
 		[]*regexp.Regexp{
 			cicdOnRegex,
@@ -812,7 +815,25 @@ func matchesType(key string, content []byte) bool {
 			return false
 		}
 	}
-	return key != kubernetes || !isCatalogEntity(content)
+	switch key {
+	case kubernetes:
+		return !isCatalogEntity(content)
+	case cicd:
+		return isWorkflow(content)
+	}
+	return true
+}
+
+// isWorkflow reports whether content is a GitHub Actions workflow: a mapping
+// with on and jobs keys at its root. Any YAML with a jobs key (Azure Pipelines
+// files, for instance) has keys that merely end in "on", such as condition:,
+// and an on: can be nested (deployment hooks), so the root has to be read.
+func isWorkflow(content []byte) bool {
+	root, err := yamlDocumentRoot(content)
+	if err != nil || !yamlRootIsMapping(root) {
+		return false
+	}
+	return yamlMapKeyNode(root, "on") != nil && yamlMapKeyNode(root, "jobs") != nil
 }
 
 // isCatalogEntity reports whether every root apiVersion is a service catalog

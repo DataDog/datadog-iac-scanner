@@ -8,6 +8,7 @@ package model
 import (
 	"context"
 	json "encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1244,4 +1245,51 @@ func TestClearYAMLScalarInterner(t *testing.T) {
 
 	got := internYAMLScalar("apiVersion")
 	require.Equal(t, "apiVersion", got)
+}
+
+// UnmarshalSharedYAML builds the same document as UnmarshalYAML, aliases and
+// merge keys included: each alias still gets its own copy of its target.
+func TestDocument_UnmarshalSharedYAML_MatchesUnmarshalYAML(t *testing.T) {
+	ctx := context.Background()
+	for _, content := range []string{
+		"base: &base\n  image: nginx\n  ports:\n    - 80\nweb:\n  <<: *base\n  name: web\nother: *base\n",
+		"list:\n  - &item {a: 1}\n  - *item\n  - [1, [2, 3]]\nname: &n x\nalias: *n\n",
+		"AWSTemplateFormatVersion: '2010-09-09'\nResources:\n  Bucket:\n    Type: AWS::S3::Bucket\n" +
+			"    Properties:\n      BucketName: !Sub '${AWS::StackName}-b'\n      Tags: !If [c, [a], [b]]\n",
+		"- hosts: all\n  tasks:\n    - name: t\n      debug:\n        msg: x\n",
+	} {
+		var root yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(content), &root))
+		want, got := Document{}, Document{}
+		require.NoError(t, want.UnmarshalYAML(ctx, root.Content[0], nil))
+		require.NoError(t, got.UnmarshalSharedYAML(ctx, root.Content[0]))
+		wantJSON, err := json.Marshal(want)
+		require.NoError(t, err)
+		gotJSON, err := json.Marshal(got)
+		require.NoError(t, err)
+		require.JSONEq(t, string(wantJSON), string(gotJSON), content)
+	}
+}
+
+// A node reached through several parents, as the file resolver shares the
+// content of a file between its references, is converted once.
+func TestDocument_UnmarshalSharedYAML_SharesNodeReachedTwice(t *testing.T) {
+	scalar := func(v string, line int) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Value: v, Line: line} }
+	inner := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{scalar("image", 0), scalar("nginx", 0)}}
+	// Each reference gets its own copy of the referenced root, sharing its content.
+	shared := []*yaml.Node{scalar("container", 0), inner}
+	root := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		scalar("a", 1), {Kind: yaml.MappingNode, Content: shared},
+		scalar("b", 2), {Kind: yaml.MappingNode, Content: shared},
+	}}
+
+	doc := Document{}
+	require.NoError(t, doc.UnmarshalSharedYAML(context.Background(), root))
+
+	a := doc["a"].(map[string]interface{})
+	b := doc["b"].(map[string]interface{})
+	require.Equal(t, 1, a["_dd_lines"].(map[string]*LineObject)["_dd__default"].Line)
+	require.Equal(t, 2, b["_dd_lines"].(map[string]*LineObject)["_dd__default"].Line)
+	require.Equal(t, "nginx", a["container"].(map[string]interface{})["image"])
+	require.Equal(t, reflect.ValueOf(a["container"]).Pointer(), reflect.ValueOf(b["container"]).Pointer())
 }

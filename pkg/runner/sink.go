@@ -170,7 +170,12 @@ func (s *Service) sinkDocument(
 
 	// Sanitize in place — safe because the tree is exclusively owned (line info is
 	// lazily reparsed) — and reject cycles, as json.Marshal would.
-	preparedDocument, err := sanitizeScanDocumentInPlace(document, documents.Kind)
+	sanitize := sanitizeScanDocumentInPlace
+	if len(documents.ResolvedFiles) > 0 {
+		// The content of a file referenced several times is shared.
+		sanitize = sanitizeSharedScanDocumentInPlace
+	}
+	preparedDocument, err := sanitize(document, documents.Kind)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
 		return nil
