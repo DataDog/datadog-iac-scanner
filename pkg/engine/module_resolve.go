@@ -483,7 +483,7 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -936,7 +936,7 @@ type docContentKey struct{ a, b uint64 }
 // recorded in extras so their findings are cloned after evaluation, keeping
 // per-call-site attribution without re-evaluating identical input.
 func instantiatedDocs(
-	resources []tfeval.ResolvedResource,
+	ctx context.Context, resources []tfeval.ResolvedResource,
 	byAbsPath map[string]*model.FileMetadata,
 	repoPath string,
 	targets *ruleTargets,
@@ -972,7 +972,7 @@ func instantiatedDocs(
 		}
 		cck := callChainKey(r, repoPath)
 		base := tfeval.ResourceBaseName(r.Name)
-		attrs := tfeval.AttributesToDocument(r)
+		attrs := tfeval.AttributesToDocumentWithContext(ctx, r)
 		entry := instantiatedResource{
 			typ:       kind,
 			baseName:  base,

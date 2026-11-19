@@ -197,3 +197,99 @@ func TestWithUnknownRefsManyAttributesOfOneRoot(t *testing.T) {
 	require.Equal(t, cty.StringVal("x"), v.Index(cty.NumberIntVal(4)))
 	require.False(t, v.Index(cty.NumberIntVal(5)).IsKnown())
 }
+
+// Reference recovery only supplies placed values; it must not determine a
+// collection's membership, object keys, or downstream content decisions.
+func TestRenderForReferences(t *testing.T) {
+	unknown := cty.UnknownVal(cty.String)
+	ctx := &hcl.EvalContext{Functions: functions.TerraformFuncs, Variables: map[string]cty.Value{
+		"var": cty.ObjectVal(map[string]cty.Value{"x": unknown, "y": unknown, "key": unknown, "flag": cty.UnknownVal(cty.Bool)}),
+		"data": cty.ObjectVal(map[string]cty.Value{"policy": cty.ObjectVal(map[string]cty.Value{
+			"p": cty.ObjectVal(map[string]cty.Value{"a": cty.ObjectVal(map[string]cty.Value{"json": unknown}), "b": cty.ObjectVal(map[string]cty.Value{"json": unknown})}),
+		})}),
+	}}
+	for _, tc := range []struct{ name, src, want string }{
+		{"direct elements", `[for p in data.policy.p : p.json]`, `["policy-a","policy-b"]`},
+		{"shared key and value name", `[for p, p in {a = "b"} : data.policy.p[p].json]`, `["policy-b"]`},
+		{"shadowed namespace", `[for data in data.policy.p : data.json]`, `["policy-a","policy-b"]`},
+		{"list", `[for k in ["a", "b"] : data.policy.p[k].json]`, `["policy-a","policy-b"]`},
+		{"filtered direct elements", `[for k, p in data.policy.p : p.json if k == "a"]`, `["policy-a"]`},
+		{"filter", `[for k in ["a", "b"] : data.policy.p[k].json if k != "b"]`, `["policy-a"]`},
+		{"object", `{for k in ["a", "b"] : k => data.policy.p[k].json}`, `{"a":"policy-a","b":"policy-b"}`},
+		{"grouping", `{for k in ["a", "b"] : "all" => data.policy.p[k].json...}`, `{"all":["policy-a","policy-b"]}`},
+		{"empty", `[for k in [] : data.policy.p[k].json]`, `[]`},
+		{"unknown filter", `[for k in ["a"] : data.policy.p[k].json if var.flag]`, ""},
+		{"unknown key", `{for k in ["a"] : var.key => data.policy.p[k].json}`, ""},
+		{"unknown set membership", `[for k in toset([var.x, var.y]) : data.policy.p.a.json]`, ""},
+		{"duplicate keys", `{for k in ["a", "b"] : "all" => data.policy.p[k].json}`, ""},
+		{"content decision", `[for k in ["a"] : strcontains(data.policy.p[k].json, "policy")]`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, diags := hclsyntax.ParseExpression([]byte(tc.src), "main.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			rd := &Renderer{Ctx: ctx, Source: BytesSource([]byte(tc.src)), Reference: func(traversal hcl.Traversal, _ *hcl.EvalContext) (cty.Value, bool) {
+				if len(traversal) == 5 && traversal.RootName() == "data" {
+					typ, typeOK := traversal[1].(hcl.TraverseAttr)
+					name, nameOK := traversal[2].(hcl.TraverseAttr)
+					attr, attrOK := traversal[4].(hcl.TraverseAttr)
+					if !typeOK || !nameOK || !attrOK || typ.Name != "policy" || name.Name != "p" || attr.Name != "json" {
+						return cty.NilVal, false
+					}
+					if index, ok := traversal[3].(hcl.TraverseIndex); ok {
+						return cty.StringVal("policy-" + index.Key.AsString()), true
+					}
+				}
+				return cty.NilVal, false
+			}}
+			value, ok := rd.Render(expr)
+			if tc.name == "content decision" {
+				require.False(t, ok)
+				return
+			}
+			require.True(t, ok)
+			if tc.want == "" {
+				require.Equal(t, "${"+tc.src+"}", value.AsString())
+			} else {
+				got, err := ctyjson.Marshal(value, value.Type())
+				require.NoError(t, err)
+				require.JSONEq(t, tc.want, string(got))
+			}
+		})
+	}
+}
+
+// Lexical bindings govern both evaluation and presentation reference recovery.
+func TestRendererBindings(t *testing.T) {
+	unknown := cty.UnknownVal(cty.String)
+	parent := &Renderer{Ctx: &hcl.EvalContext{Variables: map[string]cty.Value{
+		"local": cty.ObjectVal(map[string]cty.Value{"value": unknown}),
+		"data":  cty.ObjectVal(map[string]cty.Value{"value": unknown}),
+	}}, Reference: func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool) {
+		return cty.StringVal("module-value"), true
+	}}
+	for _, tc := range []struct {
+		name  string
+		src   string
+		value cty.Value
+		want  string
+	}{
+		{"known binding", "local.value", cty.StringVal("bound-value"), "bound-value"},
+		{"unknown binding", "local.value", unknown, "${local.value}"},
+		{"unbound root", "data.value", unknown, "module-value"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, diags := hclsyntax.ParseExpression([]byte(tc.src), "main.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			vars := map[string]cty.Value{"local": cty.ObjectVal(map[string]cty.Value{"value": tc.value})}
+			for _, rd := range []*Renderer{parent, parent.WithBindings(map[string]cty.Value{"local": cty.StringVal("outer")})} {
+				got, ok := rd.WithBindings(vars).Render(expr)
+				require.True(t, ok)
+				require.Equal(t, tc.want, got.AsString())
+				got, ok = rd.Render(Bind(expr, vars))
+				require.True(t, ok)
+				require.Equal(t, tc.want, got.AsString())
+			}
+		})
+	}
+	require.Nil(t, (&Renderer{}).WithBindings(map[string]cty.Value{"local": unknown}).Reference)
+}

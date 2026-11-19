@@ -10,9 +10,11 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -33,26 +35,210 @@ const UnknownAttributePlaceholder = partial.UnknownPlaceholder
 // rules do not fire false positives on unresolved expressions and a string
 // interpolating an unresolved value still carries the rest of its content.
 func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
-	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(r))
+	return AttributesToDocumentWithContext(context.Background(), r)
+}
+
+// AttributesToDocumentWithContext is AttributesToDocument with cancellation for
+// any data-source expansion needed to render unresolved document references.
+func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) map[string]interface{} {
+	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, r.documentScope, newRenderer(ctx, r))
 }
 
 // newRenderer renders r's attributes in the context they were evaluated in.
-func newRenderer(r *ResolvedResource) *partial.Renderer {
+func newRenderer(scanCtx context.Context, r *ResolvedResource) *partial.Renderer {
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
 		return &partial.Renderer{}
 	}
-	ctx := r.Scope.evalCtx
-	if r.Iteration != nil {
-		ctx = ctx.NewChild()
-		ctx.Variables = r.Iteration
+	rd := &partial.Renderer{
+		Ctx: r.Scope.evalCtx, Source: partial.FileSources(r.Scope.sources), Reference: documentReferences(scanCtx, r.Scope),
 	}
-	return &partial.Renderer{Ctx: ctx, Source: partial.FileSources(r.Scope.sources)}
+	return rd.WithBindings(documentIteration(r))
+}
+
+// Root resources omit their iteration map during evaluation. Recover its
+// bindings from the concrete key and the already narrowed for_each value,
+// without evaluating or copying the original collection for every consumer.
+func documentIteration(r *ResolvedResource) map[string]cty.Value {
+	if r.Iteration != nil {
+		return r.Iteration
+	}
+	if r.InstanceKey == cty.NilVal || !ctyutil.Materialized(r.InstanceKey) {
+		return nil
+	}
+	if r.InstanceKey.Type() == cty.Number {
+		return map[string]cty.Value{"count": cty.ObjectVal(map[string]cty.Value{"index": r.InstanceKey})}
+	}
+	value := cty.DynamicVal
+	if collection, ok := r.Attributes[metaArgForEach]; ok && ctyutil.Materialized(collection) && collection.CanIterateElements() {
+		it := collection.ElementIterator()
+		if it.Next() {
+			_, value = it.Element()
+		}
+	}
+	return map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{"key": r.InstanceKey, "value": value})}
+}
+
+const (
+	maxDocumentReferenceDepth   = 32
+	dataAttributeTraversalSteps = 4
+)
+
+// documentReferences recovers partial data-source output only when an
+// expression places a reference's value into a document. Its values never enter
+// the evaluation context. Completed results are memoized by scope; recursion
+// state belongs to this rendering, and canceled or truncated results are not shared.
+func documentReferences(ctx context.Context, scope *ModuleScope) func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool) {
+	cache := scope.renderedData
+	if cache == nil {
+		cache = &sync.Map{}
+	}
+	r := &documentReferenceRenderer{
+		scope: scope, ctx: ctx, rendered: cache, visiting: map[documentDataKey]bool{}, cacheable: true,
+	}
+	return r.resolve
+}
+
+type documentReferenceRenderer struct {
+	scope     *ModuleScope
+	ctx       context.Context
+	rendered  *sync.Map
+	cacheable bool
+	visiting  map[documentDataKey]bool
+	depth     int
+}
+
+func (r *documentReferenceRenderer) resolve(t hcl.Traversal, _ *hcl.EvalContext) (cty.Value, bool) {
+	if len(t) < 2 {
+		return cty.NilVal, false
+	}
+	if r.depth >= maxDocumentReferenceDepth {
+		r.cacheable = false
+		return cty.NilVal, false
+	}
+	r.depth++
+	defer func() { r.depth-- }()
+	name, ok := t[1].(hcl.TraverseAttr)
+	if !ok {
+		return cty.NilVal, false
+	}
+	switch t.RootName() {
+	case rootLocal:
+		return r.local(t, name.Name)
+	case blockTypeData:
+		return r.data(t, name.Name)
+	default:
+		return cty.NilVal, false
+	}
+}
+
+func (r *documentReferenceRenderer) local(t hcl.Traversal, name string) (cty.Value, bool) {
+	expr := r.scope.Locals[name]
+	if expr == nil {
+		return cty.NilVal, false
+	}
+	// A module local belongs to its declaration scope, not the consumer loop.
+	alias, known := partial.ReferenceTraversal(expr, r.scope.evalCtx)
+	if !known {
+		return cty.NilVal, false
+	}
+	combined := append(append(hcl.Traversal{}, alias...), t[2:]...)
+	return r.resolve(combined, r.scope.evalCtx)
+}
+
+func (r *documentReferenceRenderer) data(t hcl.Traversal, typ string) (cty.Value, bool) {
+	if len(t) < dataAttributeTraversalSteps {
+		return cty.NilVal, false
+	}
+	label, ok := t[2].(hcl.TraverseAttr)
+	if !ok {
+		return cty.NilVal, false
+	}
+	key := documentDataKey{typ: typ, name: label.Name}
+	end := 3
+	if index, indexed := t[end].(hcl.TraverseIndex); indexed {
+		value, _ := index.Key.Unmark()
+		if !ctyutil.Materialized(value) {
+			return cty.NilVal, false
+		}
+		key.instance = value.GoString()
+		end++
+	}
+	data, exists := r.scope.dataSources[key]
+	if !exists {
+		return cty.NilVal, false
+	}
+	v, ok := r.render(key, data)
+	if !ok {
+		return cty.NilVal, false
+	}
+	v, diags := t[end:].TraverseRel(v)
+	return v, !diags.HasErrors()
+}
+
+type documentDataKey struct {
+	typ, name, instance string
+}
+
+type documentDataSource struct {
+	source    localdata.Source
+	body      hcl.Body
+	iteration map[string]cty.Value
+	filename  string
+	json      bool
+}
+
+func (r *documentReferenceRenderer) render(key documentDataKey, data documentDataSource) (cty.Value, bool) {
+	if v, ok := r.rendered.Load(key); ok {
+		return v.(cty.Value), true
+	}
+	if r.visiting[key] {
+		r.cacheable = false
+		return cty.NilVal, false
+	}
+	if r.ctx.Err() != nil {
+		return cty.NilVal, false
+	}
+	r.visiting[key] = true
+	defer delete(r.visiting, key)
+	rd := (&partial.Renderer{
+		Ctx: r.scope.evalCtx, Source: partial.FileSources(r.scope.sources), Reference: r.resolve,
+	}).WithBindings(data.iteration)
+	eval := rd.Render
+	if data.json {
+		eval = func(expr hcl.Expression) (cty.Value, bool) {
+			return renderDataJSON(rd, expr, r.scope.sources[data.filename])
+		}
+	}
+	attrs := data.source(r.ctx, data.body, eval)
+	if r.ctx.Err() != nil {
+		r.cacheable = false
+		return cty.NilVal, false
+	}
+	values := make(map[string]cty.Value, len(attrs))
+	for name, value := range attrs {
+		values[name] = cty.StringVal(value)
+	}
+	v := objectOrEmpty(values)
+	if r.cacheable {
+		r.rendered.Store(key, v)
+	}
+	return v, true
+}
+
+func renderDataJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.Value, bool) {
+	if inner, vars, ok := partial.Unbind(expr); ok {
+		scoped := rd.WithBindings(vars)
+		return renderDataJSON(scoped, inner, src)
+	}
+	return rd.Render(jsonExprToHCL(expr, src))
 }
 
 // attrSource locates the HCL that produced a value so unresolved values can fall
 // back to their reference text. Exactly one field is set, or none when the value
 // cannot be traced back to a specific expression or block.
 type attrSource struct {
+	scope      *documentScope
+	bindings   map[string]cty.Value
 	expr       hclsyntax.Expression // attribute value expression
 	body       *hclsyntax.Body      // body of a single nested block
 	blocks     []*hclsyntax.Block   // nested blocks sharing one type
@@ -147,11 +333,11 @@ func (s *attrSource) blocksFromCounts(n int) (blocks []*hclsyntax.Block, ok bool
 }
 
 func attributesToDocument(
-	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, rd *partial.Renderer,
+	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, scope *documentScope, rd *partial.Renderer,
 ) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
 	for key, val := range attrs {
-		src := sourceFor(body, key, dynamic, nil)
+		src := sourceFor(body, key, dynamic, nil, scope)
 		out[key] = ctyValueToDocument(val, &src, rd)
 	}
 	return out
@@ -159,12 +345,12 @@ func attributesToDocument(
 
 // sourceFor finds the attribute expression or nested blocks that produced key,
 // under the iterators of the dynamic blocks enclosing body.
-func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterators []string) attrSource {
+func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterators []string, scope *documentScope) attrSource {
 	if body == nil {
 		return attrSource{}
 	}
 	if attr, ok := body.Attributes[key]; ok && attr != nil {
-		return attrSource{expr: attr.Expr, iterators: iterators}
+		return attrSource{expr: attr.Expr, iterators: iterators, scope: scope}
 	}
 	var blocks []*hclsyntax.Block
 	var counts []int
@@ -176,6 +362,15 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterator
 				counts = append(counts, count)
 			}
 		case dynamicblock.Is(b) && dynamicblock.GeneratedType(b) == key:
+			if scope != nil {
+				if generated, ok := scope.generated[b]; ok {
+					for _, marker := range generated {
+						blocks = append(blocks, marker)
+						counts = append(counts, 1)
+					}
+					continue
+				}
+			}
 			// Every dynamic block of this type stands in as one marker; counts
 			// say how many blocks it generated, none when kept as written.
 			if marker, ok := generatedMarker(b); ok {
@@ -188,7 +383,7 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterator
 	if dynamic == nil {
 		counts = nil
 	}
-	return attrSource{blocks: blocks, counts: counts, dynamic: dynamic, iterators: iterators}
+	return attrSource{blocks: blocks, counts: counts, dynamic: dynamic, iterators: iterators, scope: scope}
 }
 
 // anyLabel stands for a label of a generated block that is only known once
@@ -255,6 +450,9 @@ func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
 // rd renders unresolved values; it is nil once v is known to be wholly known,
 // so a resolved subtree is walked once.
 func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) interface{} {
+	if rd != nil && src.bindings != nil {
+		rd = rd.WithBindings(src.bindings)
+	}
 	if rd != nil {
 		if v.IsWhollyKnown() {
 			rd = nil
@@ -329,11 +527,11 @@ func seqElementSources(src *attrSource, n int) []attrSource {
 		out := make([]attrSource, n)
 		for i, b := range blocks {
 			if src.labelDepth >= len(b.Labels) {
-				out[i] = attrSource{body: b.Body, iterators: src.iterators, dynamic: src.dynamic}
+				out[i] = blockSource(src, b)
 			} else {
 				out[i] = attrSource{
 					blocks: []*hclsyntax.Block{b}, labelDepth: src.labelDepth, counts: singleCount(src),
-					iterators: src.iterators, dynamic: src.dynamic,
+					iterators: src.iterators, dynamic: src.dynamic, scope: src.scope,
 				}
 			}
 		}
@@ -349,12 +547,29 @@ func seqElementSources(src *attrSource, n int) []attrSource {
 	return nil
 }
 
+// blockSource enters one concrete generated block's presentation scope.
+func blockSource(src *attrSource, block *hclsyntax.Block) attrSource {
+	out := attrSource{body: block.Body, iterators: src.iterators, dynamic: src.dynamic, scope: src.scope}
+	if src.scope != nil {
+		if child := src.scope.children[block]; child != nil {
+			out.scope = child
+			out.bindings = child.variables
+		}
+	}
+	return out
+}
+
 // ctyMapToDocument converts an object/map to a Go map; non-string or unknown
 // keys are skipped (keys are always strings in well-formed Terraform).
 func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[string]interface{} {
 	body := src.body
 	if blocks := src.blocksFor(1); body == nil && len(blocks) == 1 && src.labelDepth >= len(blocks[0].Labels) {
 		body = blocks[0].Body
+		block := blockSource(src, blocks[0])
+		if rd != nil && block.bindings != nil {
+			rd = rd.WithBindings(block.bindings)
+		}
+		src = &block
 	}
 	items := objectConsSources(src.expr)
 
@@ -368,7 +583,7 @@ func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[st
 		var es attrSource
 		switch {
 		case body != nil:
-			es = sourceFor(body, name, src.dynamic, src.iterators)
+			es = sourceFor(body, name, src.dynamic, src.iterators, src.scope)
 		case items[name] != nil:
 			es = attrSource{expr: items[name], iterators: src.iterators}
 		case len(src.blocks) > 0:
@@ -390,7 +605,7 @@ func labeledBlockSource(src *attrSource, label string) attrSource {
 			blocks = append(blocks, block)
 			if len(src.counts) == len(src.blocks) {
 				count := src.counts[i]
-				if block.Type == generatedBlockType {
+				if block.Type == generatedBlockType && (src.scope == nil || src.scope.children[block] == nil) {
 					// Only some of the blocks it generated carry this label.
 					count = unknownDynamicCount
 				}
@@ -398,7 +613,10 @@ func labeledBlockSource(src *attrSource, label string) attrSource {
 			}
 		}
 	}
-	return attrSource{blocks: blocks, labelDepth: src.labelDepth + 1, counts: counts, iterators: src.iterators, dynamic: src.dynamic}
+	return attrSource{
+		blocks: blocks, labelDepth: src.labelDepth + 1, counts: counts,
+		iterators: src.iterators, dynamic: src.dynamic, scope: src.scope,
+	}
 }
 
 // singleCount is the counts of a source reduced to one block of its own.

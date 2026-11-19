@@ -37,11 +37,25 @@ func (e *Evaluator) addDynamicBlocks(
 		return
 	}
 	st.recordDynamic(b, len(scopes))
+	if st.document == nil {
+		st.document = &documentScope{}
+	}
+	if st.document.generated == nil {
+		st.document.generated = make(map[*hclsyntax.Block][]*hclsyntax.Block)
+		st.document.children = make(map[*hclsyntax.Block]*documentScope)
+	}
+	st.document.generated[b] = nil
 	for i, scope := range scopes {
 		if ctx.Err() != nil {
 			break
 		}
-		out.add(paths[i], objectOrEmpty(e.evalBodyWith(ctx, content, scope, nil, st.inDynamic(name))))
+		// Retain only this concrete block's binding, not its evaluation context.
+		// Nested dynamic blocks get their own children, even when their AST is shared.
+		document := &documentScope{variables: scope.Variables}
+		marker := &hclsyntax.Block{Type: generatedBlockType, Labels: paths[i][1:], Body: content}
+		st.document.generated[b] = append(st.document.generated[b], marker)
+		st.document.children[marker] = document
+		out.add(paths[i], objectOrEmpty(e.evalBodyWith(ctx, content, scope, nil, st.inDynamic(name, document))))
 	}
 }
 
@@ -92,4 +106,12 @@ func (st *bodyState) recordDynamic(b *hclsyntax.Block, n int) {
 		n = unknownDynamicCount
 	}
 	st.dynamic.counts[b] = n
+}
+
+// documentScope retains presentation provenance for concrete generated blocks.
+// It shares source bodies and cty values, and never keeps an evaluation context.
+type documentScope struct {
+	variables map[string]cty.Value
+	generated map[*hclsyntax.Block][]*hclsyntax.Block
+	children  map[*hclsyntax.Block]*documentScope
 }
