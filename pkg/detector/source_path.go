@@ -53,7 +53,14 @@ func detectDocumentPath(file *model.FileMetadata, path model.SourcePath, output 
 			component = strconv.Itoa(seg.Index)
 		}
 		components = append(components, component)
-		if candidate := GetLineBySearchLine(components, file); candidate > 0 {
+		var candidate int
+		if len(components) == 1 {
+			// Root properties carry their markers on the document itself.
+			candidate = lineAtPath(file.LineInfoDocument, []string{"_dd_lines", "_dd_" + component, "_dd_line"})
+		} else {
+			candidate = GetLineBySearchLine(components, file)
+		}
+		if candidate > 0 {
 			line = candidate
 		}
 		node = next

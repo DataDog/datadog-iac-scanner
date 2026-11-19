@@ -84,6 +84,11 @@ func sourceBodyPath(body *hclsyntax.Body, path model.SourcePath, anchor hcl.Rang
 	if len(path) == 1 {
 		return blocks[0].DefRange(), nil
 	}
+	// The parser exposes one unlabeled block as an object and repeated blocks
+	// as an array. Source traversal must follow that same shape.
+	if len(blocks) == 1 && len(blocks[0].Labels) == 0 {
+		return sourceBodyPath(blocks[0].Body, path[1:], blocks[0].DefRange())
+	}
 	selector := path[1]
 	if !selector.IsIndex || selector.Index < 0 || selector.Index >= len(blocks) {
 		return hcl.Range{}, fmt.Errorf("nested source block requires a valid index")
