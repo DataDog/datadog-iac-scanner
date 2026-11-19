@@ -81,6 +81,7 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 	documents []model.Document,
 	ignoreLines []int,
 	err error) {
+	ctx = model.WithYAMLFilePath(ctx, filePath)
 	ignore := &model.Ignore{}
 
 	contextLogger := logger.FromContext(ctx)

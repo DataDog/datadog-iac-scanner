@@ -45,6 +45,13 @@ var cfnShortFormTags = map[string]string{
 	"!ToJsonString": "Fn::ToJsonString",
 }
 
+type yamlFilePathContextKey struct{}
+
+// WithYAMLFilePath adds the source file path to YAML parsing diagnostics.
+func WithYAMLFilePath(ctx context.Context, filePath string) context.Context {
+	return context.WithValue(ctx, yamlFilePathContextKey{}, filePath)
+}
+
 // cfnContextKey marks a parsing context as belonging to a CloudFormation
 // template, gating short-form intrinsic rewriting to that platform only.
 type cfnContextKey struct{}
@@ -570,10 +577,15 @@ func scalarNodeResolver(ctx context.Context, val *yaml.Node) interface{} {
 	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, nil, nil); ok {
 		return rewritten
 	}
-	contextLogger := logger.FromContext(ctx)
 	var resolved interface{}
 	if err := val.Decode(&resolved); err != nil {
-		contextLogger.Error().Msgf("failed to decode scalar in yaml parser: %q", val.Value)
+		contextLogger := logger.FromContext(ctx)
+		filePath, _ := ctx.Value(yamlFilePathContextKey{}).(string)
+		event := contextLogger.Warn()
+		if utils.IsTestFixturePath(filePath) {
+			event = contextLogger.Debug()
+		}
+		event.Msgf("failed to decode scalar in yaml parser for %s: %q", filePath, val.Value)
 		return val.Value
 	}
 	return normalizeScalar(resolved)
