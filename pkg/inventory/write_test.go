@@ -1,0 +1,72 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+
+package inventory
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestWriteFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory.json")
+	require.NoError(t, os.WriteFile(path, []byte("stale"), 0o600))
+
+	inv := NewCollector(dir).Build(testMetadata())
+	require.NoError(t, WriteFile(path, inv))
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var got Inventory
+	require.NoError(t, json.Unmarshal(data, &got))
+	require.Equal(t, inv.ScanID, got.ScanID)
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "the temporary file must not be left behind")
+
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(filePerms), info.Mode().Perm())
+	}
+}
+
+func TestWriteFileFailureLeavesNoFile(t *testing.T) {
+	dir := t.TempDir()
+	// The target is a directory, so the final rename fails.
+	path := filepath.Join(dir, "inventory.json")
+	require.NoError(t, os.MkdirAll(filepath.Join(path, "child"), 0o755))
+
+	require.Error(t, WriteFile(path, NewCollector(dir).Build(testMetadata())))
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the directory that blocked the write remains")
+
+	require.Error(t, WriteFile(filepath.Join(dir, "missing", "inventory.json"), &Inventory{}))
+}
+
+func TestRemoveStale(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory.json")
+
+	require.NoError(t, RemoveStale(path), "a missing file is not an error")
+
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o600))
+	require.NoError(t, RemoveStale(path))
+	_, err := os.Stat(path)
+	require.True(t, os.IsNotExist(err))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(path, "child"), 0o755))
+	require.Error(t, RemoveStale(path), "a non-empty directory cannot be removed")
+}

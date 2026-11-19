@@ -21,6 +21,22 @@ type ScanMetadata struct {
 	PeakRSSBytes uint64 `json:",omitempty"`
 	// PeakRSSPhase is the scan phase in which PeakRSSBytes was reached.
 	PeakRSSPhase string `json:",omitempty"`
+	// Inventory reports the resource inventory, when the scan was asked for one.
+	Inventory *InventoryMetadata `json:",omitempty"`
+}
+
+// InventoryMetadata reports what happened to the resource inventory.
+type InventoryMetadata struct {
+	// Status is "written" or "failed". A failed inventory leaves no file.
+	Status string
+	// Reason is a short code for a failure: stale_file, write_error or panic.
+	Reason string `json:",omitempty"`
+	// Error is the failure message.
+	Error string `json:",omitempty"`
+	// Resources, Files and FilesFailed count what the written inventory holds.
+	Resources   int
+	Files       int
+	FilesFailed int
 }
 
 type ScanStats struct {

@@ -445,6 +445,9 @@ func (c *Client) getFileSystemSourceProvider(
 	if c.ScanParams.PayloadPath != "" {
 		excludePaths = append(excludePaths, c.ScanParams.PayloadPath)
 	}
+	if c.ScanParams.InventoryPath != "" {
+		excludePaths = append(excludePaths, c.ScanParams.InventoryPath)
+	}
 
 	if len(c.ScanParams.Config.IgnorePaths) > 0 {
 		excludePaths = append(excludePaths, c.ScanParams.Config.IgnorePaths...)

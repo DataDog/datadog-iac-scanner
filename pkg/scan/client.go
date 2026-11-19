@@ -63,6 +63,7 @@ type Parameters struct {
 	RepoPath                    string
 	Path                        []string
 	PayloadPath                 string
+	InventoryPath               string
 	PreviewLines                int
 	QueriesPath                 []string
 	LibrariesPath               string
@@ -139,6 +140,8 @@ type Client struct {
 	// rendered documents are still scanned.
 	chartFilter  *provider.PathFilter
 	contentCache map[string][]byte
+	// inventory is set while a scan that asked for an inventory runs.
+	inventory *inventoryRun
 }
 
 // ClientOption customizes a Client at construction time.
@@ -262,6 +265,7 @@ func (c *Client) PerformScan(ctx context.Context) (ScanMetadata, error) {
 	ctx, watcher := memwatch.Start(ctx, &contextLogger)
 	defer watcher.Stop()
 
+	c.startInventory(ctx)
 	scanResults, err := c.executeScan(ctx)
 
 	if err != nil {

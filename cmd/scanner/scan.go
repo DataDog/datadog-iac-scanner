@@ -56,6 +56,10 @@ var scanAction = &cli.Command{
 			Name:  "metadata-path",
 			Usage: "file name to store the scan metadata JSON",
 		},
+		&cli.StringFlag{
+			Name:  "inventory-path",
+			Usage: "file name to store the resource inventory JSON",
+		},
 		&cli.IntFlag{
 			Name:  "max-file-size",
 			Usage: "maximum file size that will be scanned, in MB",
@@ -247,13 +251,20 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	inventoryPath, err := getAbsolutePath(c.String("inventory-path"))
+	if err != nil {
+		return err
+	}
 	if outputPath != "" {
 		if err := os.MkdirAll(outputPath, dirPerms); err != nil {
 			return err
 		}
 	}
-	if payloadPath != "" {
-		if err := os.MkdirAll(filepath.Dir(payloadPath), dirPerms); err != nil {
+	for _, filePath := range []string{payloadPath, inventoryPath} {
+		if filePath == "" {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(filePath), dirPerms); err != nil {
 			return err
 		}
 	}
@@ -373,6 +384,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxFileSizeFlag:             c.Int("max-file-size"),
 		MaxResolverDepth:            c.Int("max-resolver-depth"),
 		PayloadPath:                 payloadPath,
+		InventoryPath:               inventoryPath,
 		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
