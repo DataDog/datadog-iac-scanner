@@ -132,9 +132,9 @@ func TestBuildIsSortedAndDeduplicated(t *testing.T) {
 	for i := range rows {
 		c.AddResource(&rows[i])
 	}
-	c.AddFindingLink(FindingLink{FindingFingerprint: "f2", ResourceRef: ".|aws_s3_bucket.a"})
-	c.AddFindingLink(FindingLink{FindingFingerprint: "f1", ResourceRef: ".|aws_s3_bucket.b"})
-	c.AddFindingLink(FindingLink{FindingFingerprint: "f1", ResourceRef: ".|aws_s3_bucket.b"})
+	c.AddFinding(&Finding{Fingerprint: "f2", File: "main.tf", BlockStart: 1})
+	c.AddFinding(&Finding{Fingerprint: "f1", File: "main.tf", BlockStart: 9})
+	c.AddFinding(&Finding{Fingerprint: "f1", File: "main.tf", BlockStart: 9})
 	c.AddUnresolvedSource(UnresolvedSource{Platform: "terraform", Source: "s", Reason: "timeout"})
 	c.AddUnresolvedSource(UnresolvedSource{Platform: "terraform", Source: "s", Reason: "timeout"})
 	c.AddFindingsUnlinked(2)

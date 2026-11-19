@@ -80,9 +80,11 @@ func TestEncodeIsTheJSONOfTheInventory(t *testing.T) {
 	c.AddResource(&Resource{ResourcePath: "aws_s3_bucket.a", Platform: "terraform", ResourceType: "aws_s3_bucket",
 		ResourceName: "a", File: "a.tf", LineStart: 1, LineEnd: 3, Completeness: CompletenessComplete, ModulePath: `[{"name":"x"}]`})
 	c.AddResource(&Resource{ResourcePath: "v1/Service//web", Platform: "kubernetes", ResourceType: "Service",
-		ResourceName: "web", File: "k.yaml", LineStart: 1, Completeness: CompletenessComplete})
-	c.AddFindingLink(FindingLink{FindingFingerprint: "f", ResourceRef: "a.tf|aws_s3_bucket.a"})
-	for _, inv := range []*Inventory{c.Build(testMetadata()), NewCollector(t.TempDir()).Build(testMetadata())} {
+		ResourceName: "web", File: "k.yaml", LineStart: 1, Completeness: CompletenessComplete, DocumentID: "doc"})
+	c.AddFinding(&Finding{Fingerprint: "f", DocumentID: "doc"})
+	full := c.Build(testMetadata())
+	require.Len(t, full.FindingLinks, 1)
+	for _, inv := range []*Inventory{full, NewCollector(t.TempDir()).Build(testMetadata())} {
 		var want bytes.Buffer
 		enc := json.NewEncoder(&want)
 		enc.SetEscapeHTML(false)

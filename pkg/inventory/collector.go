@@ -36,7 +36,6 @@ type Collector struct {
 	files            map[string]*File
 	resources        []Resource
 	unresolved       []UnresolvedSource
-	links            []FindingLink
 	findings         []Finding
 	findingsUnlinked int
 	failure          string
@@ -167,13 +166,6 @@ func (c *Collector) AddUnresolvedSource(u UnresolvedSource) {
 	c.unresolved = append(c.unresolved, u)
 }
 
-// AddFindingLink links a finding fingerprint to a resource.
-func (c *Collector) AddFindingLink(l FindingLink) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.links = append(c.links, l)
-}
-
 // Fail marks the inventory as unusable, because some of its resources may be
 // missing. The first reason is kept.
 func (c *Collector) Fail(reason string) {
@@ -231,8 +223,7 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 	})
 	unresolved = slices.Compact(unresolved)
 
-	found, unlinked := c.linkFindings(resources, repeats)
-	links := append(slices.Clone(c.links), found...)
+	links, unlinked := c.linkFindings(resources, repeats)
 	slices.SortFunc(links, func(a, b FindingLink) int {
 		return cmp.Or(
 			strings.Compare(a.FindingFingerprint, b.FindingFingerprint),
