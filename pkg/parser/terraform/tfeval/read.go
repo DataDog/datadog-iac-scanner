@@ -60,6 +60,17 @@ func readValueStep(value cty.Value, step policy.Step) (next cty.Value, uncertain
 		}
 		return value.Index(cty.NumberIntVal(index)), false, false, nil
 	case typ.IsListType():
+		// HasIndex does not use unknown collection length refinements.
+		// ReadValue tracks ancestor nullability independently.
+		if !value.IsKnown() {
+			bounds := value.Range()
+			if index >= int64(bounds.LengthUpperBound()) {
+				return cty.NilVal, false, true, nil
+			}
+			if index < int64(bounds.LengthLowerBound()) {
+				return cty.UnknownVal(typ.ElementType()), false, false, nil
+			}
+		}
 		return readValueIndex(value, cty.NumberIntVal(index))
 	case typ.IsSetType():
 		return cty.NilVal, false, false, &policy.Unsupported{Operation: "indexing a Terraform set"}
@@ -116,7 +127,11 @@ func scalarPolicyRead(value cty.Value, maybe bool) (policy.Read, error) {
 	case cty.String:
 		scalar = value.AsString()
 	case cty.Number:
-		scalar = json.Number(value.AsBigFloat().Text('f', -1))
+		number := value.AsBigFloat()
+		if number.IsInf() {
+			return policy.Read{}, &policy.Unsupported{Operation: "observing a non-finite Terraform number"}
+		}
+		scalar = json.Number(number.Text('f', -1))
 	default:
 		return policy.Read{}, &policy.Unsupported{Operation: "observing a whole Terraform collection or object"}
 	}
