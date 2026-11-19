@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1960,7 +1961,7 @@ DatadogPolicy contains iac.finding(e,["encrypted"],{}) if {some e in iac.targets
 			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque:1": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": test.acl, "encrypted": test.encrypted, "unrelated": cty.DynamicVal})}}, true)
 			var gotFindings []EntityFinding
 
-			got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+			got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(f EntityFinding) error {
 				gotFindings = append(gotFindings, f)
 				return nil
 			}})
@@ -1977,7 +1978,7 @@ DatadogPolicy contains iac.finding(e,["encrypted"],{}) if {some e in iac.targets
 		reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque:1": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal}}, true)
 		var gotFindings []EntityFinding
 
-		got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+		got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(f EntityFinding) error {
 			gotFindings = append(gotFindings, f)
 			return nil
 		}})
@@ -1991,13 +1992,13 @@ DatadogPolicy contains iac.finding(e,["encrypted"],{}) if {some e in iac.targets
 			"b": {Kind: "resource", Type: "bucket", Err: fmt.Errorf("native evaluation failed")},
 		}, true)
 		emitted := 0
-		result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: 1, Emit: func(EntityFinding) error { emitted++; return nil }})
+		result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: 1, Emit: func(EntityFinding) error { emitted++; return nil }})
 		require.ErrorContains(t, err, "native evaluation failed")
 		require.Equal(t, 1, result.Confirmed)
 		require.Equal(t, 1, emitted)
 	})
 	t.Run("open inventory", func(t *testing.T) {
-		_, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: tfeval.NewValueReader(nil, false), Emit: func(f EntityFinding) error {
+		_, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: tfeval.NewValueReader(nil, false)}, Emit: func(f EntityFinding) error {
 			return nil
 		}})
 		require.ErrorContains(t, err, "open Terraform inventory")
@@ -2044,7 +2045,7 @@ DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("reso
 				t.Parallel()
 				reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{test.id: {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": test.acl})}}, true)
 				var findings []EntityFinding
-				result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
+				result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
 				require.NoError(t, err)
 				require.Len(t, findings, test.want)
 				require.Equal(t, test.symbolic, result.Symbolic)
@@ -2061,7 +2062,7 @@ DatadogPolicy contains iac.finding(e,[],{%q:"author-supplied"}) if {some e in ia
 			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
 			require.NoError(t, err)
 			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"subject": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal}}, true)
-			_, err = programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(EntityFinding) error { t.Fatal("invalid reporting metadata emitted"); return nil }})
+			_, err = programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(EntityFinding) error { t.Fatal("invalid reporting metadata emitted"); return nil }})
 			require.ErrorContains(t, err, field)
 		}
 	})
@@ -2121,7 +2122,7 @@ DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("reso
 			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.UnknownVal(cty.Map(cty.String))}}, true)
 			var gotFindings []EntityFinding
 
-			got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+			got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(f EntityFinding) error {
 				gotFindings = append(gotFindings, f)
 				return nil
 			}})
@@ -2149,7 +2150,7 @@ DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("reso
 	require.Same(t, programs["public"].symbolic, programs["private"].symbolic)
 	require.Nil(t, programs["public"].symbolic.programs)
 	uncertain := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)})}}, true)
-	summary, err := programs["public"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: uncertain, Emit: func(EntityFinding) error { return nil }})
+	summary, err := programs["public"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: uncertain}, Emit: func(EntityFinding) error { return nil }})
 	require.NoError(t, err)
 	require.True(t, summary.Indeterminate)
 	require.Len(t, programs["public"].symbolic.programs, 2)
@@ -2158,7 +2159,7 @@ DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("reso
 		t.Run(id, func(t *testing.T) {
 			t.Parallel()
 			var resultFindings []EntityFinding
-			_, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+			_, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(f EntityFinding) error {
 				resultFindings = append(resultFindings, f)
 				return nil
 			}})
@@ -2182,7 +2183,7 @@ DatadogPolicy contains iac.finding(e,["0",0,1.0,"with.dot[0]"],{"_dd_id":"unregi
 	require.NoError(t, err)
 	reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal}}, true)
 	var resultFindings []EntityFinding
-	_, err = program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+	_, err = program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(f EntityFinding) error {
 		resultFindings = append(resultFindings, f)
 		return nil
 	}})
@@ -2251,7 +2252,7 @@ DatadogPolicy contains iac.finding(e,["acl"],` + test.details + `) if {
 			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public"), "other": cty.DynamicVal})}}, true)
 			var resultFindings []EntityFinding
 
-			result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+			result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(f EntityFinding) error {
 				resultFindings = append(resultFindings, f)
 				return nil
 			}})
@@ -2298,7 +2299,7 @@ DatadogPolicy contains iac.finding(e,["peer"],{}) if {
 			for _, size := range []int{1, 2, 8, 0} {
 				var findings []EntityFinding
 				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
-					Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil },
+					Unit: entityUnitFixture{reader: reader}, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil },
 				})
 				require.NoError(t, err)
 				require.Equal(t, test.count, result.Confirmed)
@@ -2329,7 +2330,7 @@ DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resour
 	t.Run("emitter failure retains accepted progress", func(t *testing.T) {
 		failure := errors.New("finding sink failed")
 		calls := 0
-		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: 1, Emit: func(EntityFinding) error {
+		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: 1, Emit: func(EntityFinding) error {
 			calls++
 			if calls == 2 {
 				return failure
@@ -2345,7 +2346,7 @@ DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resour
 			for _, size := range []int{1, 0} {
 				ctx, cancel := context.WithCancel(context.Background())
 				accepted := 0
-				result, err := programs["policy"].Evaluate(ctx, EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error {
+				result, err := programs["policy"].Evaluate(ctx, EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: size, Emit: func(EntityFinding) error {
 					accepted++
 					if accepted == cancelAt {
 						cancel()
@@ -2359,7 +2360,7 @@ DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resour
 		}
 	})
 	t.Run("empty authoritative inventory", func(t *testing.T) {
-		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: tfeval.NewValueReader(nil, true), Emit: func(EntityFinding) error { t.Fatal("unexpected finding"); return nil }})
+		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: tfeval.NewValueReader(nil, true)}, Emit: func(EntityFinding) error { t.Fatal("unexpected finding"); return nil }})
 		require.NoError(t, err)
 		require.Zero(t, result)
 	})
@@ -2377,7 +2378,7 @@ DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resour
 				original := append([]string{}, test.ids...)
 				var emitted []string
 				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
-					Reader: entityReaderFixture{Reader: reader, ids: test.ids}, BatchSize: 1,
+					Unit: entityUnitFixture{reader: entityReaderFixture{Reader: reader, ids: test.ids}}, BatchSize: 1,
 					Emit: func(f EntityFinding) error { emitted = append(emitted, f.Subject); return nil },
 				})
 				require.Equal(t, original, test.ids)
@@ -2479,7 +2480,7 @@ DatadogPolicy contains iac.finding(e,` + test.path + `,{}) if {some e in iac.tar
 			for _, size := range []int{1, 2, 0} {
 				var findings []EntityFinding
 				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
-					Reader: entityReaderFixture{Reader: reader, ids: []string{"b", "a"}}, BatchSize: size,
+					Unit: entityUnitFixture{reader: entityReaderFixture{Reader: reader, ids: []string{"b", "a"}}}, BatchSize: size,
 					Emit: func(f EntityFinding) error { findings = append(findings, f); return nil },
 				})
 				require.NoError(t, err)
@@ -2520,7 +2521,7 @@ DatadogPolicy contains iac.finding(e,["acl"],{}) if {
 			}, true), symbol: "shared-value-origin"}
 			for _, size := range []int{1, 0} {
 				var findings []EntityFinding
-				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
 				require.NoError(t, err)
 				require.Len(t, findings, test.count)
 				require.Equal(t, test.count, result.Confirmed)
@@ -2556,7 +2557,7 @@ DatadogPolicy contains iac.finding(e,[2],{}) if {some e in iac.targets("resource
 			}, true)
 			for _, size := range []int{1, 2, 0} {
 				count := 0
-				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
 				require.NoError(t, err)
 				require.Equal(t, test.count, count)
 				require.Equal(t, test.count, result.Confirmed)
@@ -2564,4 +2565,145 @@ DatadogPolicy contains iac.finding(e,[2],{}) if {some e in iac.targets("resource
 			}
 		})
 	}
+}
+
+func TestEntityPolicyNativeEvaluationOutcomes(t *testing.T) {
+	const source = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","aws_s3_bucket");iac.raw(e,["acl"])=="public"}
+DatadogPolicy contains iac.finding(e,["flag"],{}) if {some e in iac.targets("resource","aws_s3_bucket");iac.raw(e,["flag"])==true}
+`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	require.NoError(t, err)
+	t.Run("aborted producer cannot become a clean empty policy result", func(t *testing.T) {
+		producerCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		evaluation, err := tfeval.New().EvaluateModule(producerCtx, t.TempDir(), nil)
+		require.ErrorIs(t, err, context.Canceled)
+		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
+			Unit: evaluation.PolicyUnit(tfeval.NewValueReader(nil, true)),
+			Emit: func(EntityFinding) error { t.Fatal("aborted producer emitted a finding"); return nil },
+		})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, result.Confirmed)
+	})
+
+	for _, test := range []struct {
+		name, source string
+		child        bool
+		confirmed    int
+	}{
+		{"failed output without resource inventory", `output "invalid" {value=tonumber("invalid")}`, false, 0},
+		{"failed child without resource inventory", `module "child" {source="./child"}`, true, 0},
+		{"failed child preserves independent witness", `module "child" {source="./child"}
+resource "aws_s3_bucket" "example" {acl="public"}`, true, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(test.source), 0600))
+			if test.child {
+				require.NoError(t, os.Mkdir(filepath.Join(dir, "child"), 0700))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "child", "main.tf"), []byte(`output "name" {value="unused"}`), 0600))
+			}
+			evaluator := tfeval.New()
+			if test.child {
+				evaluator = tfeval.NewWithFS(directoryFailureFS{FS: vfs.DiskFS{}, dir: filepath.Join(dir, "child")})
+			}
+			evaluation, err := evaluator.EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			subjects := map[string]tfeval.ValueSubject{}
+			for _, resource := range evaluation.Resources {
+				subjects[resource.Name] = tfeval.ValueSubject{Kind: "resource", Type: resource.Type, Value: cty.ObjectVal(resource.Attributes)}
+			}
+			emitted := 0
+			result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
+				Unit: evaluation.PolicyUnit(tfeval.NewValueReader(subjects, true)),
+				Emit: func(EntityFinding) error { emitted++; return nil },
+			})
+			var diagnostic *tfeval.EvaluationDiagnostic
+			require.ErrorAs(t, err, &diagnostic)
+			require.Equal(t, test.confirmed, result.Confirmed)
+			require.Equal(t, test.confirmed, emitted)
+			if test.child {
+				require.Equal(t, "module.child", diagnostic.ModuleAddress)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name, flag, other             string
+		confirmed                     int
+		indeterminate, failed, cancel bool
+	}{
+		{"known", `false`, `"unused"`, 1, false, false, false},
+		{"known violations", `true`, `"unused"`, 2, false, false, false},
+		{"irrelevant unknown stays silent", `false`, `var.input`, 1, false, false, false},
+		{"relevant unknown stays indeterminate", `var.input`, `"unused"`, 1, true, false, false},
+		{"unrelated producer failure preserves witness", `false`, `tonumber("invalid")`, 1, false, true, false},
+		{"failed predicate is not a successful unknown", `tonumber("invalid")`, `"unused"`, 1, true, true, false},
+		{"producer failure and cancellation both survive", `false`, `tonumber("invalid")`, 1, false, true, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			nativeSource := fmt.Sprintf(`variable "input" {type=bool}
+resource "aws_s3_bucket" "example" {
+ acl="public"
+ flag=%s
+ other=%s
+}`, test.flag, test.other)
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(nativeSource), 0600))
+			evaluation, err := tfeval.New().EvaluateModule(context.Background(), dir, nil)
+			require.NoError(t, err)
+			require.Len(t, evaluation.Resources, 1)
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"entity": {Kind: "resource", Type: evaluation.Resources[0].Type, Value: cty.ObjectVal(evaluation.Resources[0].Attributes)}}, true)
+			diagnostics := evaluation.Diagnostics()
+			originalSummary := ""
+			if len(diagnostics) > 0 {
+				originalSummary = diagnostics[0].Summary
+				diagnostics[0].Summary = "caller changed the inspection snapshot"
+			}
+			unit := evaluation.PolicyUnit(reader)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var findings []EntityFinding
+			result, err := programs["policy"].Evaluate(ctx, EntityEvaluationRequest{Unit: unit, Emit: func(f EntityFinding) error {
+				findings = append(findings, f)
+				if test.cancel {
+					cancel()
+				}
+				return nil
+			}})
+			require.Len(t, findings, test.confirmed)
+			require.Equal(t, test.confirmed, result.Confirmed)
+			require.Equal(t, test.indeterminate, result.Indeterminate)
+			if test.failed {
+				var diagnostic *tfeval.EvaluationDiagnostic
+				require.ErrorAs(t, err, &diagnostic)
+				require.Equal(t, originalSummary, diagnostic.Summary)
+			} else {
+				require.NoError(t, err)
+			}
+			if test.cancel {
+				require.ErrorIs(t, err, context.Canceled)
+			}
+		})
+	}
+}
+
+type entityUnitFixture struct{ reader policy.Reader }
+
+func (u entityUnitFixture) Reader() policy.Reader { return u.reader }
+func (u entityUnitFixture) Failure() error        { return nil }
+
+type directoryFailureFS struct {
+	vfs.FS
+	dir string
+}
+
+func (f directoryFailureFS) ReadDir(dir string) ([]fs.DirEntry, error) {
+	if filepath.Clean(dir) == filepath.Clean(f.dir) {
+		return nil, fs.ErrPermission
+	}
+	return f.FS.ReadDir(dir)
 }

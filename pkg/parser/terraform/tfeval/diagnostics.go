@@ -7,10 +7,14 @@ package tfeval
 
 import (
 	"cmp"
+	"errors"
+	"fmt"
+
 	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -61,29 +65,60 @@ func expressionOutcome(value cty.Value, diagnostics hcl.Diagnostics, fallback hc
 
 // expressionDiagnostics replaces failures when a changing local is re-evaluated
 // successfully. A speculative context must not publish into this recorder.
-type expressionDiagnostics map[hcl.Range]*expressionFailure
+type expressionDiagnostics map[hclsyntax.Expression]*expressionFailure
 
 func (d *expressionDiagnostics) update(expr hclsyntax.Expression, result expressionValue) {
 	if d == nil {
 		return
 	}
 	if result.failure == nil {
-		delete(*d, expr.Range())
+		delete(*d, expr)
 		return
 	}
 	if *d == nil {
 		*d = expressionDiagnostics{}
 	}
-	(*d)[expr.Range()] = result.failure
+	(*d)[expr] = result.failure
 }
 
-// TakeDiagnostics transfers the completed evaluation's expression diagnostics
-// to the caller. Cache entries retain independent slices; forks start empty.
-// This does not enable CLI reporting or classify unresolved inventory expansion.
-func (e *Evaluator) TakeDiagnostics() []EvaluationDiagnostic {
-	diagnostics := e.diagnostics
-	e.diagnostics = nil
-	return diagnostics
+// Diagnostics returns a caller-owned inspection snapshot. Discarding or
+// modifying it cannot detach producer failures from PolicyUnit.
+func (r *ModuleEvaluation) Diagnostics() []EvaluationDiagnostic {
+	return slices.Clone(r.diagnostics)
+}
+
+// PolicyUnit binds the policy view to the same evaluation's producer failures.
+// It does not select subjects or infer inventory completeness; those remain
+// responsibilities of the platform adapter constructing the reader.
+func (r *ModuleEvaluation) PolicyUnit(reader policy.Reader) policy.Unit {
+	if r.failure == nil && len(r.diagnostics) == 0 {
+		return &modulePolicyUnit{reader: reader}
+	}
+	failures := make([]error, 0, len(r.diagnostics)+1)
+	if r.failure != nil {
+		failures = append(failures, r.failure)
+	}
+	for i := range r.diagnostics {
+		diagnostic := r.diagnostics[i]
+		failures = append(failures, &diagnostic)
+	}
+	return &modulePolicyUnit{reader: reader, failure: errors.Join(failures...)}
+}
+
+type modulePolicyUnit struct {
+	reader  policy.Reader
+	failure error
+}
+
+func (u *modulePolicyUnit) Reader() policy.Reader { return u.reader }
+func (u *modulePolicyUnit) Failure() error        { return u.failure }
+
+func (d *EvaluationDiagnostic) Error() string {
+	location := d.Subject.String()
+	if d.ModuleAddress != "" {
+		location += " (" + d.ModuleAddress + ")"
+	}
+	return fmt.Sprintf("%s: %s: %s", location, d.Summary, d.Detail)
 }
 
 func (e *Evaluator) collectDiagnostics(addr string, scope *ModuleScope, resources, data []ResolvedResource) {
@@ -97,6 +132,9 @@ func (e *Evaluator) collectDiagnostics(addr string, scope *ModuleScope, resource
 			seen[diagnostic] = struct{}{}
 			e.diagnostics = append(e.diagnostics, diagnostic)
 		}
+	}
+	for diagnostic := range scope.inputDiagnostics {
+		add([]EvaluationDiagnostic{diagnostic})
 	}
 	for _, failure := range scope.diagnostics {
 		add(failure.diagnostics)
@@ -127,5 +165,16 @@ func sortEvaluationDiagnostics(diagnostics []EvaluationDiagnostic) {
 			return c
 		}
 		return strings.Compare(a.Detail, b.Detail)
+	})
+}
+
+// recordModuleFailure retains an authoritative child failure after discarding
+// its partial work. Deliberate depth/cycle skips remain coverage observations.
+func (e *Evaluator) recordModuleFailure(err error, address string, anchor hcl.Range) {
+	if errors.Is(err, ErrModuleNotEvaluated) {
+		return
+	}
+	e.diagnostics = append(e.diagnostics, EvaluationDiagnostic{
+		Summary: "Module evaluation failed", Detail: err.Error(), Subject: anchor, ModuleAddress: address,
 	})
 }

@@ -417,12 +417,14 @@ func evaluateRootModules(
 		return
 	}
 	for _, dir := range roots[next:] {
-		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
+		evaluation, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
 		// The cache key includes rootDir, so the next root cannot reuse these
 		// evaluations. Release their subtree slices and memo keys before building
 		// documents; resources and instances keep the values merging still needs.
 		evaluator.ReleaseEvalCache()
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
+		// Legacy projection consumes only its document and attribution fields;
+		// v2 execution binds the full native result through PolicyUnit instead.
+		m.merge(dir, evaluation.Resources, evaluation.ModuleInstances, evaluation.VisitedChildDirs, err)
 	}
 }
 
@@ -575,8 +577,10 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 		r.notEvaluated = worker.TakeNotEvaluatedDirs()
 		worker.ReleaseEvalCache()
 	}()
-	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
-	r.instances = worker.TakeModuleInstances()
+	evaluation, err := worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
+	// Drop unused outputs before queuing the legacy projection: a large output
+	// must not stay resident until an earlier root finishes merging.
+	r.resources, r.instances, r.childDirs, r.err = evaluation.Resources, evaluation.ModuleInstances, evaluation.VisitedChildDirs, err
 	return r
 }
 

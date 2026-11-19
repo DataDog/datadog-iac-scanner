@@ -132,7 +132,7 @@ func parseJSONInterpolation(expr hcl.Expression, src []byte) hclsyntax.Expressio
 	if err != nil {
 		unquoted = strings.TrimSpace(raw)
 	}
-	parsed, diags := hclsyntax.ParseExpression([]byte(strconv.Quote(unquoted)), "", expr.Range().Start)
+	parsed, diags := hclsyntax.ParseExpression([]byte(strconv.Quote(unquoted)), expr.Range().Filename, expr.Range().Start)
 	if diags.HasErrors() {
 		return nil
 	}

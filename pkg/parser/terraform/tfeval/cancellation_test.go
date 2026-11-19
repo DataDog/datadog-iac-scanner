@@ -134,7 +134,9 @@ module "m" {
 			canceled, cancel := context.WithCancel(context.Background())
 			cancel()
 			require.NotPanics(t, func() {
-				resources, outputs, _, err := New().EvaluateModule(canceled, dir, inputs)
+				evaluation, err := New().EvaluateModule(canceled, dir, inputs)
+				resources := evaluation.Resources
+				outputs := evaluation.Outputs
 				require.ErrorIs(t, err, context.Canceled)
 				require.Empty(t, resources)
 				require.Empty(t, outputs)
@@ -146,7 +148,8 @@ module "m" {
 			deadline, dl := context.WithTimeout(context.Background(), 200*time.Millisecond)
 			defer dl()
 			require.NotPanics(t, func() {
-				resources, _, _, err := New().EvaluateModule(deadline, dir, inputs)
+				evaluation, err := New().EvaluateModule(deadline, dir, inputs)
+				resources := evaluation.Resources
 				require.ErrorIs(t, err, context.DeadlineExceeded)
 				require.Empty(t, resources)
 			})
@@ -171,13 +174,14 @@ module "m" {
 `})
 		e := New()
 		deadline, dl := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		_, _, _, err := e.EvaluateModule(deadline, dir, nil)
+		_, err := e.EvaluateModule(deadline, dir, nil)
 		dl()
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 
 		// A reused partial root would come back short or with the context
 		// error; a fresh evaluation produces every instance.
-		resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+		evaluation, err := e.EvaluateModule(context.Background(), dir, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		require.Len(t, resources, 50000)
 	})

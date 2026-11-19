@@ -137,7 +137,8 @@ module "m" {
   in     = "out-${count.index}"
 }
 `, pastLimitN-1, pastLimitN)})
-		resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+		evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		require.Len(t, resources, pastLimitN+1)
 		// A local reading module.m[<last>].out only resolves to its value when
@@ -168,7 +169,8 @@ module "m" {
   in       = "out-${each.key}"
 }
 `, pastLimitN-1, strings.Join(keyList, ", "))})
-		resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+		evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		require.Len(t, resources, pastLimitN+1)
 		probe := findResource(t, resources, "aws_s3_bucket", "probe")
@@ -188,7 +190,8 @@ module "m" {
   in     = "in-${count.index}"
 }
 `, pastLimitN)})
-		resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+		evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		// Module instances keep the child resource's name; the instance index
 		// lives in the module address, so every instance is named b.
@@ -218,7 +221,9 @@ module "m" {
 }
 `, pastLimitN)})
 	e := New()
-	resources, _, visited, err := e.EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
+	visited := evaluation.VisitedChildDirs
 	require.NoError(t, err)
 	require.Len(t, resources, pastLimitN)
 	child := filepath.Join(root, "child")

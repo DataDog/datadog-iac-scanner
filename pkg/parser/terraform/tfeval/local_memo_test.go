@@ -59,7 +59,8 @@ module "acl" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	byAddr := resourcesByAddress(resources)
 
@@ -101,7 +102,8 @@ module "child" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	byAddr := resourcesByAddress(resources)
 	x := byAddr[`module.child["x"]/aws_sqs_queue.this`]
@@ -130,7 +132,8 @@ module "child" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	byAddr := resourcesByAddress(resources)
 	requireString(t, byAddr[`module.child["x"]/aws_s3_bucket.logs`].Attributes, "bucket", "x-logs")
@@ -158,7 +161,8 @@ resource "aws_sqs_queue" "this" { name = local.version }
 
 	e := New()
 	for i, v := range []string{"one", "two"} {
-		resources, _, _, err := e.EvaluateModule(context.Background(), stacks[i], nil)
+		evaluation, err := e.EvaluateModule(context.Background(), stacks[i], nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		requireString(t, resourcesByAddress(resources)["module.child/aws_sqs_queue.this"].Attributes, "name", v)
 	}

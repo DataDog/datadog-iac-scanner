@@ -133,10 +133,11 @@ type ModuleScope struct {
 	// reads; localCache holds the values the last resolution returned. A
 	// re-resolution re-evaluates only the locals reading a root that changed,
 	// and reuses the rest verbatim.
-	localGraph  *localGraph
-	localCache  map[string]cty.Value
-	diagnostics expressionDiagnostics
-	static      *dirStatic
+	localGraph       *localGraph
+	localCache       map[string]cty.Value
+	diagnostics      expressionDiagnostics
+	inputDiagnostics map[EvaluationDiagnostic]struct{}
+	static           *dirStatic
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -316,7 +317,7 @@ func (e *Evaluator) Fork() *Evaluator {
 }
 
 // SetTrackModuleInstances makes evaluations record the module calls they
-// evaluate, for TakeModuleInstances. Forks inherit the setting.
+// evaluate in ModuleEvaluation.ModuleInstances. Forks inherit the setting.
 func (e *Evaluator) SetTrackModuleInstances(track bool) { e.trackInstances = track }
 
 // DataBlockEvaluations reports how many data block expansions ran, counting
@@ -329,14 +330,6 @@ func (e *Evaluator) TakeNotEvaluatedDirs() []string {
 	dirs := e.NotEvaluatedDirs()
 	e.notEvaluatedDirs = make(map[string]bool)
 	return dirs
-}
-
-// TakeModuleInstances returns the module calls the last EvaluateModule
-// evaluated, nothing when it failed, and forgets them.
-func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
-	instances := e.instances
-	e.instances = nil
-	return instances
 }
 
 // recordModuleInstance notes an evaluated call when instances are tracked. The
@@ -412,18 +405,29 @@ func (e *Evaluator) KeyMemoSize() int { return len(e.keyMemo.entries) }
 // EvalCacheSize reports memoized module evaluations.
 func (e *Evaluator) EvalCacheSize() int { return len(e.cache) }
 
-// EvaluateModule evaluates the module rooted at dir with the given inputs and
-// returns all resources materialized by this module and its nested modules.
-// visitedChildDirs contains every child directory that was successfully evaluated
-// as a module (i.e. dirs that should be suppressed from standalone scanning).
-// Unrecovered expression errors are returned separately by TakeDiagnostics;
-// native consumers must carry them alongside values rather than interpret an
-// unknown fallback as a completed, successful evaluation.
+// ModuleEvaluation is the output of one module evaluation. Values, module
+// occurrences and diagnostics share one invocation lifetime. Native values and
+// attribution structures are immutable and may share cache storage. Diagnostics
+// returns inspection snapshots; PolicyUnit binds the producer-owned facts.
+// This is not certification of Terraform coverage.
+type ModuleEvaluation struct {
+	Resources        []ResolvedResource
+	Outputs          map[string]cty.Value
+	VisitedChildDirs map[string]bool
+	ModuleInstances  []ModuleInstance
+	diagnostics      []EvaluationDiagnostic
+	failure          error
+}
+
+// EvaluateModule returns the materialized resources and native observations of
+// this invocation together. A later evaluation cannot replace its diagnostics.
+// V2 consumers bind their reader through ModuleEvaluation.PolicyUnit so producer
+// failures reach policy execution without optional evaluator-side drain calls.
 func (e *Evaluator) EvaluateModule(
 	ctx context.Context,
 	dir string,
 	inputs map[string]cty.Value,
-) (resources []ResolvedResource, outputs map[string]cty.Value, visitedChildDirs map[string]bool, err error) {
+) (ModuleEvaluation, error) {
 	ctx = pathutil.WithResolvedPathCache(ctx)
 	// fsys.Abs, not filepath.Abs: a content-push FS keeps the pushed path shape,
 	// and resolving against the process CWD would break key matching against
@@ -438,7 +442,7 @@ func (e *Evaluator) EvaluateModule(
 	allVisited := map[string]bool{}
 	e.instances = nil
 	e.diagnostics = nil
-	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
+	resources, outputs, err := e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err == nil {
 		// A canceled or timed-out scan may have stopped mid-expansion. Do not
 		// return that partial tree as a completed evaluation.
@@ -449,7 +453,13 @@ func (e *Evaluator) EvaluateModule(
 		e.diagnostics = nil
 	}
 	sortEvaluationDiagnostics(e.diagnostics)
-	return resources, outputs, allVisited, err
+	result := ModuleEvaluation{
+		Resources: resources, Outputs: outputs, VisitedChildDirs: allVisited,
+		ModuleInstances: e.instances, diagnostics: e.diagnostics, failure: err,
+	}
+	e.instances = nil
+	e.diagnostics = nil
+	return result, err
 }
 
 // evaluate is the recursive worker; visiting tracks dirs on the current stack for cycle
@@ -797,7 +807,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				break
 			}
 			instance := plan.At(i)
-			modInputs := e.evalBody(ctx, mb.Body, instance.ctx, reservedModuleAttrs)
+			modInputs := e.evaluateModuleInputs(ctx, mb.Body, instance.ctx, scope)
 			childAddr := instance.address(addr, call.label)
 			instanceSite := site
 			instanceSite.InstanceKey = instance.key
@@ -820,6 +830,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				// it must keep being scanned where it is written.
 				e.instances = e.instances[:instancesBefore]
 				e.diagnostics = e.diagnostics[:diagnosticsBefore]
+				e.recordModuleFailure(cErr, childAddr, mb.Range())
 				// What stopped this instance — the depth, a cycle or a directory
 				// that does not resolve — is the same for every instance of the
 				// call. The loop stops instead of redoing the same failing work
@@ -1006,7 +1017,7 @@ func (e *Evaluator) expandBlock(
 		if child != evalCtx && (addr != "" || data) {
 			iteration = child.Variables
 		}
-		state := &bodyState{memo: memo, observations: &bodyObservations{}}
+		state := &bodyState{memo: memo, observations: &bodyObservations{}, expandDynamic: true}
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
 		return ResolvedResource{
 			Type:          typeName,
@@ -1369,25 +1380,14 @@ func (e *Evaluator) resolveLocalsIncremental(
 	return objectOrEmpty(scope.localCache)
 }
 
-// evalBody evaluates an HCL body into the shape produced by the Terraform parser.
-// It passes no body state, so it never expands dynamic blocks: they are kept
-// as written.
-func (e *Evaluator) evalBody(
-	ctx context.Context,
-	body *hclsyntax.Body,
-	evalCtx *hcl.EvalContext,
-	skip map[string]bool,
-) map[string]cty.Value {
-	return e.evalBodyWith(ctx, body, evalCtx, skip, nil)
-}
-
 // bodyState carries what evaluating a resource body shares across its nested
 // blocks: the memo of expressions that ignore the iteration, and how many
 // blocks each dynamic block generated.
 type bodyState struct {
-	document     *documentScope
-	memo         *invariantMemo
-	observations *bodyObservations
+	expandDynamic bool
+	document      *documentScope
+	memo          *invariantMemo
+	observations  *bodyObservations
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
@@ -1407,7 +1407,7 @@ func (st *bodyState) withoutMemo() *bodyState {
 	if st == nil {
 		return nil
 	}
-	return &bodyState{observations: st.observations, document: st.document}
+	return &bodyState{observations: st.observations, document: st.document, expandDynamic: st.expandDynamic}
 }
 
 // inDynamic is the state for the content of a dynamic block binding iterator.
@@ -1417,7 +1417,10 @@ func (st *bodyState) inDynamic(iterator string, document *documentScope) *bodySt
 	}
 	names := make([]string, len(st.iterators), len(st.iterators)+1)
 	copy(names, st.iterators)
-	return &bodyState{memo: st.memo, observations: st.observations, document: document, iterators: append(names, iterator)}
+	return &bodyState{
+		memo: st.memo, observations: st.observations, document: document,
+		iterators: append(names, iterator), expandDynamic: st.expandDynamic,
+	}
 }
 
 func (e *Evaluator) evalBodyWith(
@@ -1448,7 +1451,7 @@ func (e *Evaluator) evalBodyWith(
 		if ctx.Err() != nil {
 			break
 		}
-		if st != nil && dynamicblock.Is(b) {
+		if st != nil && st.expandDynamic && dynamicblock.Is(b) {
 			e.addDynamicBlocks(ctx, &blocks, b, evalCtx, st)
 			continue
 		}
@@ -1681,7 +1684,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 				break
 			}
 			instance := plan.At(i)
-			modInputs := e.evalBody(ctx, mb.Body, instance.ctx, reservedModuleAttrs)
+			modInputs := e.evalBodyWith(ctx, mb.Body, instance.ctx, reservedModuleAttrs, nil)
 			instanceSite := site
 			instanceSite.InstanceKey = instance.key
 			if instance.unknownKey {

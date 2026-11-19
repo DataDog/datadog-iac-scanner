@@ -105,7 +105,8 @@ module "c" {
   principal = "*"
 }
 `})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	return resources
 }
@@ -122,11 +123,13 @@ func TestDataPolicyDocumentResolvesInModule(t *testing.T) {
 				evaluator := New()
 				inputs := map[string]cty.Value{"principal": cty.StringVal("*")}
 				ctx, cancel := context.WithCancel(context.Background())
-				_, _, _, err = evaluator.EvaluateModule(ctx, dir, inputs)
+				_, err = evaluator.EvaluateModule(ctx, dir, inputs)
 				cancel()
 				require.NoError(t, err)
 				// Reusing an evaluated module must not retain the caller's old lifetime.
-				resources, _, _, err = evaluator.EvaluateModule(context.Background(), dir, inputs)
+				evaluation, evaluationErr := evaluator.EvaluateModule(context.Background(), dir, inputs)
+				resources = evaluation.Resources
+				err = evaluationErr
 				require.NoError(t, err)
 			}
 
@@ -162,7 +165,8 @@ func TestDataCacheInvalidatesPerSource(t *testing.T) {
 		writeModule(t, root, "inner", map[string]string{"main.tf": inner})
 		dir := writeModule(t, root, "stack", map[string]string{"main.tf": stack})
 		e := New()
-		resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+		evaluation, err := e.EvaluateModule(context.Background(), dir, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		return resources, e.DataBlockEvaluations()
 	}
@@ -221,7 +225,7 @@ func TestDataCacheInvalidatesPerLocalAndModule(t *testing.T) {
 		writeModule(t, root, "inner", map[string]string{"main.tf": inner})
 		dir := writeModule(t, root, "stack", map[string]string{"main.tf": stack})
 		e := New()
-		_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+		_, err := e.EvaluateModule(context.Background(), dir, nil)
 		require.NoError(t, err)
 		return e.DataBlockEvaluations()
 	}
@@ -283,7 +287,7 @@ output "region" {
 
 	e := New()
 	require.NotPanics(t, func() {
-		_, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+		_, err := e.EvaluateModule(context.Background(), dir, nil)
 		require.NoError(t, err)
 	})
 	require.Equal(t, 1, e.DataBlockEvaluations())
@@ -343,7 +347,8 @@ func evaluateWithChild(t *testing.T, e *Evaluator, child map[string]string, root
 	root := t.TempDir()
 	writeModule(t, root, "child", child)
 	dir := writeModule(t, root, "root", map[string]string{"main.tf": rootSrc})
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	return resources
 }
@@ -443,7 +448,8 @@ resource "aws_sqs_queue_policy" "p" {
 }
 `})
 	dir := writeModule(t, root, "root", map[string]string{"main.tf": callChild})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "p")))
 	require.Contains(t, doc["policy"], `arn:aws:sqs:us-east-1:1:q`)
@@ -571,7 +577,8 @@ module "c" {
   suffix = "x"
 }
 `})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "p")))
@@ -667,7 +674,8 @@ variable "in" {}
 output "out" { value = var.in }
 `})
 	dir := writeModule(t, root, "child", map[string]string{"main.tf": src})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	for i := range resources {
 		raw, err := json.Marshal(AttributesToDocument(&resources[i]))
@@ -702,7 +710,8 @@ resource "aws_s3_bucket" "consumer" {
   bucket = jsonencode(local.l0)
 }
 `, expr)})
-			resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+			resources := evaluation.Resources
 			require.NoError(t, err)
 			for i := range resources {
 				raw, err := json.Marshal(AttributesToDocument(&resources[i]))
@@ -734,7 +743,8 @@ resource "aws_sqs_queue_policy" "q" {
   policy = data.aws_iam_policy_document.p.json
 }
 `})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	policy := AttributesToDocument(ptr(findResource(t, resources, "aws_sqs_queue_policy", "q")))["policy"]
 	require.Contains(t, policy, "s3:GetObject")

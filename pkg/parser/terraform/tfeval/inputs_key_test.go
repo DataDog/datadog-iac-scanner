@@ -151,7 +151,8 @@ resource "aws_s3_bucket" "b" {
 	})
 
 	e := New()
-	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	require.Len(t, resources, 40)
 	names := make(map[string]struct{}, len(resources))

@@ -71,7 +71,8 @@ func TestAttributesToDocumentPreservesUnknownKeys(t *testing.T) {
 // documentFor evaluates dir and returns the document of one resolved resource.
 func documentFor(t *testing.T, dir, typ, name string) map[string]interface{} {
 	t.Helper()
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}

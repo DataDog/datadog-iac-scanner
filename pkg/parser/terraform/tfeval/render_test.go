@@ -191,7 +191,8 @@ module "c" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatal(err)
 	}
