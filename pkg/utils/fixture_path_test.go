@@ -6,9 +6,15 @@
 package utils
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsTestFixturePath(t *testing.T) {
@@ -37,5 +43,35 @@ func TestIsTestFixturePath_OnlyInsideTheRepository(t *testing.T) {
 	}
 	if !IsTestFixturePath(filepath.Join(repo, "testdata", "main.tf")) {
 		t.Error("a fixture directory inside the checkout is a fixture")
+	}
+}
+
+func TestWarnUnlessFixture(t *testing.T) {
+	tests := []struct {
+		path      string
+		minLevel  zerolog.Level
+		wantLevel string
+	}{
+		{"stack/main.tf", zerolog.DebugLevel, "warn"},
+		{"testdata/main.tf", zerolog.DebugLevel, "debug"},
+		{"testdata/main.tf", zerolog.WarnLevel, ""},
+		{"stack/main.tf", zerolog.WarnLevel, "warn"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path+"/"+tt.minLevel.String(), func(t *testing.T) {
+			var logs bytes.Buffer
+			ctx := zerolog.New(&logs).Level(tt.minLevel).WithContext(t.Context())
+			WarnUnlessFixture(ctx, tt.path).Err(errors.New("invalid content")).Msg("skipping file")
+
+			if tt.wantLevel == "" {
+				require.Empty(t, logs.String())
+				return
+			}
+			var event map[string]string
+			require.NoError(t, json.Unmarshal(logs.Bytes(), &event))
+			require.Equal(t, tt.wantLevel, event["level"])
+			require.Equal(t, "skipping file", event["message"])
+			require.Equal(t, "invalid content", event["error"])
+		})
 	}
 }

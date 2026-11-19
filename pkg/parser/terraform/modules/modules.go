@@ -487,7 +487,7 @@ func parseDirModules(
 		}
 		extract, diags := extractForContent(extracts, content, file.FilePath)
 		if diags.HasErrors() {
-			contextLogger.Warn().Msgf("Skipping file %s due to parse errors: %s", file.FilePath, diags.Error())
+			utils.WarnUnlessFixture(ctx, file.FilePath).Msgf("Skipping file %s due to parse errors: %s", file.FilePath, diags.Error())
 			continue
 		}
 		if extract == nil {

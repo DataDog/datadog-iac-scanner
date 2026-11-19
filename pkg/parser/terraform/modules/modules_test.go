@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -311,6 +312,67 @@ func TestParseTerraformModules_CanceledContext(t *testing.T) {
 
 	_, err := ParseTerraformModules(ctx, nil, files, 0)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestParseTerraformModules_ParseFailureLogLevel(t *testing.T) {
+	repo := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
+	tests := []struct {
+		path, wantLevel string
+	}{
+		{"stack/main.tf", "warn"},
+		{"nested/testdata/main.tf", "debug"},
+		{"fixtures/main.tf", "debug"},
+		{"__fixtures__/main.tf", "debug"},
+		{"testdata-example/main.tf", "warn"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			var logs bytes.Buffer
+			log := zerolog.New(&logs).Level(zerolog.DebugLevel)
+			ctx := log.WithContext(t.Context())
+			path := filepath.Join(repo, filepath.FromSlash(tt.path))
+			files := model.FileMetadatas{
+				{FilePath: path, OriginalData: `module "broken" {`},
+				{
+					FilePath:     filepath.Join(filepath.Dir(path), "valid.tf"),
+					OriginalData: `module "valid" { source = "terraform-aws-modules/vpc/aws" }`,
+				},
+			}
+
+			// Other scan logs may surround the parse failure event.
+			log.Debug().Msg("before module parsing")
+			modules, err := ParseTerraformModules(ctx, nil, files, 1)
+			log.Debug().Msg("after module parsing")
+			require.NoError(t, err)
+			require.Len(t, modules, 1)
+			for _, module := range modules {
+				require.Equal(t, "valid", module.Name)
+			}
+
+			decoder := json.NewDecoder(&logs)
+			matched := 0
+			for {
+				var event struct {
+					Level   string `json:"level"`
+					Message string `json:"message"`
+				}
+				err := decoder.Decode(&event)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				if !strings.HasPrefix(event.Message, "Skipping file ") {
+					continue
+				}
+				matched++
+				require.Equal(t, tt.wantLevel, event.Level)
+				require.Contains(t, event.Message, "Skipping file "+path+" due to parse errors:")
+				require.Contains(t, event.Message, "Unclosed configuration block")
+			}
+			require.Equal(t, 1, matched, "expected one parse failure event")
+		})
+	}
 }
 
 // TestParseDirModules_CanceledContext guards per-directory extraction: once the

@@ -84,7 +84,6 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 	ctx = model.WithYAMLFilePath(ctx, filePath)
 	ignore := &model.Ignore{}
 
-	contextLogger := logger.FromContext(ctx)
 	dec := yaml.NewDecoder(bytes.NewReader(resolved))
 	for {
 		var node yaml.Node
@@ -101,11 +100,7 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 		}
 		doc := model.Document{}
 		if err := doc.UnmarshalYAML(ctx, contentNode, ignore); err != nil {
-			event := contextLogger.Warn()
-			if fixtureutils.IsTestFixturePath(filePath) {
-				event = contextLogger.Debug()
-			}
-			event.Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
+			fixtureutils.WarnUnlessFixture(ctx, filePath).Err(err).Msgf("skipping unparseable yaml document in %s", filePath)
 			continue
 		}
 

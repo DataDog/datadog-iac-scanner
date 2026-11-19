@@ -9,8 +9,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -35,23 +38,41 @@ func TestParse_InvalidScalarLogging(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var logs bytes.Buffer
-			ctx := zerolog.New(&logs).Level(tt.logLevel).WithContext(t.Context())
+			log := zerolog.New(&logs).Level(tt.logLevel)
+			ctx := log.WithContext(t.Context())
+			log.Debug().Msg("before YAML parsing")
 			_, docs, _, _, err := Parse(ctx, []byte("count: !!int invalid-number\n"), tt.filePath, false, 0)
+			log.Debug().Msg("after YAML parsing")
 			require.NoError(t, err)
 			require.Len(t, docs, 1)
 			require.Equal(t, "invalid-number", docs[0]["count"])
 			require.Equal(t, tt.filePath, docs[0]["_path"])
 
-			if tt.wantLevel == "" {
-				require.Empty(t, logs.String())
-				return
+			decoder := json.NewDecoder(&logs)
+			matched := 0
+			for {
+				var event struct {
+					Level   string `json:"level"`
+					Message string `json:"message"`
+				}
+				err := decoder.Decode(&event)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				if !strings.HasPrefix(event.Message, "failed to decode scalar in yaml parser ") {
+					continue
+				}
+				matched++
+				require.Equal(t, tt.wantLevel, event.Level)
+				require.Contains(t, event.Message, tt.filePath)
+				require.Contains(t, event.Message, "invalid-number")
 			}
-			var event map[string]interface{}
-			require.NoError(t, json.Unmarshal(logs.Bytes(), &event))
-			require.Equal(t, tt.wantLevel, event["level"])
-			require.Contains(t, event["message"], "failed to decode scalar in yaml parser")
-			require.Contains(t, event["message"], tt.filePath)
-			require.Contains(t, event["message"], "invalid-number")
+			wantEvents := 1
+			if tt.wantLevel == "" {
+				wantEvents = 0
+			}
+			require.Equal(t, wantEvents, matched, "unexpected number of scalar parse failure events")
 		})
 	}
 }
