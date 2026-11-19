@@ -93,6 +93,13 @@ func TestEvaluateModule_ResourceDeclarations(t *testing.T) {
 		{"no labels", `resource {}`, 1},
 		{"type only", `resource "test_resource" {}`, 1},
 		{"type and name", `resource "test_resource" "other" {}`, 2},
+		{"count-like resource name", `resource "test_resource" "other[0]" {}`, 2},
+		{"for_each-like resource name", `resource "test_resource" "other[\"key\"]" {}`, 2},
+		{"count expansion", `resource "test_resource" "other" { count = 1 }`, 2},
+		{"for_each expansion", `resource "test_resource" "other" { for_each = { key = "value" } }`, 2},
+		{"data name", `data "test_data" "other" {}`, 2},
+		{"count-like data name", `data "test_data" "other[0]" {}`, 2},
+		{"for_each-like data name", `data "test_data" "other[\"key\"]" {}`, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := writeModule(t, t.TempDir(), "mod", map[string]string{
@@ -2922,8 +2929,6 @@ resource "r" "a" { value = try(data.aws_ami.x.name,"fallback") }`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
-			writeModule(t, root, "child", map[string]string{"main.tf": `variable "input" {}
-output "value" { value = var.input }`})
 			source += `
 resource "r" "independent" { value = "known" }
 output "result" { value = try(r.a.value,"fallback") }

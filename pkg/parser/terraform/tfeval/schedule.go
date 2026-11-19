@@ -251,12 +251,19 @@ func (s *resourceSchedule) reference(unit int) cty.Value {
 		}
 	}
 	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	referenced := s.scope.static.resourceAttrs
-	if b.Type == blockTypeData {
-		referenced = nil
+	var referenced map[string][]string
+	if b.Type == scheduledResource {
+		referenced = s.scope.static.resourceAttrs
 	}
 	injectResourceRefs(ctx, instances, referenced)
-	v := ctx.Variables[b.Labels[0]].GetAttr(b.Labels[1])
+	// Reference injection groups expanded instance names under their base name.
+	// A malformed declaration may itself use instance-like labels, so its
+	// declared name is not guaranteed to exist in that namespace.
+	v := cty.DynamicVal
+	if refs, ok := ctx.Variables[b.Labels[0]]; ok && refs.IsKnown() && !refs.IsNull() &&
+		refs.Type().IsObjectType() && refs.Type().HasAttribute(b.Labels[1]) {
+		v = refs.GetAttr(b.Labels[1])
+	}
 	s.references[unit] = v
 	return v
 }
