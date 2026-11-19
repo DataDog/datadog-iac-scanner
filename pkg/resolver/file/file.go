@@ -107,7 +107,9 @@ func (r *Resolver) ResolveYAML(ctx context.Context, fileContent []byte, path str
 	defer func() {
 		if p := recover(); p != nil {
 			contextLogger.Err(fmt.Errorf("panic: %v", p)).Msg("Recovered from panic during resolve of file " + path)
+			// The file is left unresolved: it must not report resolved files.
 			docs = nil
+			clear(r.ResolvedFiles)
 		}
 	}()
 

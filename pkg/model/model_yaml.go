@@ -138,10 +138,10 @@ func (m *Document) UnmarshalYAML(ctx context.Context, value *yaml.Node, ignore *
 
 // UnmarshalSharedYAML is UnmarshalYAML for a document whose file references
 // were resolved, where a node can be reached through several parents (see
-// file.Resolver.ResolveYAML). Such a node is converted once, and its value is
-// shared by every parent, so the values must not be modified in place
-// differently at each place they appear. Ignore comments are not read: the
-// shared nodes hold the comments of the referenced files.
+// file.Resolver.ResolveYAML, which states what sharing implies for callers).
+// Such a node is converted once, and its value is shared by every parent.
+// Ignore comments are not read: the shared nodes hold the comments of the
+// referenced files.
 func (m *Document) UnmarshalSharedYAML(ctx context.Context, value *yaml.Node) error {
 	return m.unmarshalYAML(ctx, value, newSharedNodes(), nil)
 }

@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	filePerm          = 0o600
 	positive          = "positive.tf"
 	positiveYamlSonar = "../../../test/fixtures/test_critical_custom_queries/amazon_mq_broker_encryption_disabled/test/positive1.yaml"
 	positiveYaml      = "test/fixtures/test_critical_custom_queries/amazon_mq_broker_encryption_disabled/test/positive1.yaml"
@@ -35,6 +36,31 @@ func ChangeCurrentDir(desiredDir string) error {
 		return fmt.Errorf("could not change working directory to `%s`: %w", currentDir, err)
 	}
 	return nil
+}
+
+// WriteTemplateChain writes templates t0.yml..t<depth>.yml in dir, each with a
+// job with a condition and fanout references to the previous template, each
+// file starting with header. A DAG of fanout^depth paths leads from the
+// returned outermost template to t0.yml, which a copy of every reference
+// would expand, but a resolution that shares the referenced content does not.
+func WriteTemplateChain(dir string, fanout, depth int, header string) (string, error) {
+	write := func(name, content string) error {
+		return os.WriteFile(filepath.Join(dir, name), []byte(header+content), filePerm)
+	}
+	if err := write("t0.yml", "jobs:\n  - job: leaf\n    condition: succeeded()\n"); err != nil {
+		return "", err
+	}
+	for k := 1; k <= depth; k++ {
+		var b strings.Builder
+		fmt.Fprintf(&b, "jobs:\n  - job: level%d\n    condition: succeeded()\n", k)
+		for range fanout {
+			fmt.Fprintf(&b, "  - template: t%d.yml\n", k-1)
+		}
+		if err := write(fmt.Sprintf("t%d.yml", k), b.String()); err != nil {
+			return "", err
+		}
+	}
+	return filepath.Join(dir, fmt.Sprintf("t%d.yml", depth)), nil
 }
 
 // GetCurrentDirName returns current working directory

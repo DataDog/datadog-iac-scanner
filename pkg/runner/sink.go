@@ -117,13 +117,6 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	}
 	s.Tracker.TrackFileFoundCountLines(linesResolved)
 
-	if len(documents.ResolvedFiles) > 0 {
-		documents.IgnoreLines = model.GetIgnoreLines(&model.FileMetadata{
-			FilePath:     filename,
-			OriginalData: documents.Content,
-			LinesIgnore:  documents.IgnoreLines,
-		})
-	}
 	// The ignore-lines slice is shared by every document of this file; sort
 	// it once here instead of once per document in sinkDocument.
 	if len(documents.IgnoreLines) > 0 {
@@ -172,7 +165,9 @@ func (s *Service) sinkDocument(
 	// lazily reparsed) — and reject cycles, as json.Marshal would.
 	sanitize := sanitizeScanDocumentInPlace
 	if len(documents.ResolvedFiles) > 0 {
-		// The content of a file referenced several times is shared.
+		// Documents are only built from shared nodes when files were resolved
+		// (see file.Resolver.ResolveYAML); for the others this is the same
+		// walk, only costlier.
 		sanitize = sanitizeSharedScanDocumentInPlace
 	}
 	preparedDocument, err := sanitize(document, documents.Kind)

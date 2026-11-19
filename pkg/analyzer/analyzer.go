@@ -828,9 +828,14 @@ func matchesType(key string, content []byte) bool {
 // with on and jobs keys at its root. Any YAML with a jobs key (Azure Pipelines
 // files, for instance) has keys that merely end in "on", such as condition:,
 // and an on: can be nested (deployment hooks), so the root has to be read.
+// A file that cannot be parsed (tabs, templating) stays a workflow candidate,
+// so that its parse error is reported rather than the file being left out.
 func isWorkflow(content []byte) bool {
 	root, err := yamlDocumentRoot(content)
-	if err != nil || !yamlRootIsMapping(root) {
+	if err != nil {
+		return true
+	}
+	if !yamlRootIsMapping(root) {
 		return false
 	}
 	return yamlMapKeyNode(root, "on") != nil && yamlMapKeyNode(root, "jobs") != nil

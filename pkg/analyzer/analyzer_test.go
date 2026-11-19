@@ -497,6 +497,10 @@ func TestClassifyFile_CICDNeedsTopLevelOnAndJobs(t *testing.T) {
 			content: "\xef\xbb\xbfon: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
 			want:    true,
 		},
+		"workflow that does not parse is left to the parser to report": {
+			content: "on: push\njobs:\n\tbuild:\n\t\truns-on: ubuntu-latest\n",
+			want:    true,
+		},
 		"workflow with CRLF line endings": {
 			content: "on: push\r\njobs:\r\n  build:\r\n    runs-on: ubuntu-latest\r\n",
 			want:    true,

@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -531,28 +532,6 @@ func TestParseSkipsUnparseableDocumentAndKeepsOthers(t *testing.T) {
 	require.GreaterOrEqual(t, len(docs), 1)
 }
 
-// writeTemplateChain writes the reproduction of a scan that ran out of memory:
-// templates t0..t<depth>, each including the previous one fanout times. The
-// returned path is the outermost template, through which fanout^depth paths
-// lead to t0.
-func writeTemplateChain(t *testing.T, fanout, depth int) string {
-	t.Helper()
-	dir := t.TempDir()
-	write := func(name, content string) {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
-	}
-	write("t0.yml", "jobs:\n  - job: leaf\n    condition: succeeded()\n")
-	for k := 1; k <= depth; k++ {
-		var b strings.Builder
-		fmt.Fprintf(&b, "jobs:\n  - job: level%d\n    condition: succeeded()\n", k)
-		for range fanout {
-			fmt.Fprintf(&b, "  - template: t%d.yml\n", k-1)
-		}
-		write(fmt.Sprintf("t%d.yml", k), b.String())
-	}
-	return filepath.Join(dir, fmt.Sprintf("t%d.yml", depth))
-}
-
 // countPaths returns the number of paths from v to a job named "leaf",
 // counting each shared map once, and adds every map it meets to seen.
 func countPaths(v interface{}, memo map[uintptr]int, seen map[uintptr]bool) int {
@@ -588,7 +567,8 @@ func countPaths(v interface{}, memo map[uintptr]int, seen map[uintptr]bool) int 
 // number of paths (and the scan ran out of memory at a depth of about 5).
 func TestParse_TemplateIncludedManyTimesIsSharedAndComplete(t *testing.T) {
 	const fanout, depth = 10, 4
-	root := writeTemplateChain(t, fanout, depth)
+	root, err := test.WriteTemplateChain(t.TempDir(), fanout, depth, "")
+	require.NoError(t, err)
 	content, err := os.ReadFile(root)
 	require.NoError(t, err)
 

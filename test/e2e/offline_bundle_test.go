@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
+	testhelpers "github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/stretchr/testify/require"
 )
 
@@ -103,19 +104,10 @@ func Test_E2ETemplateReferences(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
-			write := func(name, content string) {
-				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(tt.header+content), 0o600))
-			}
-			write("t0.yml", "jobs:\n  - job: leaf\n    condition: succeeded()\n")
-			for k := 1; k <= depth; k++ {
-				var b strings.Builder
-				fmt.Fprintf(&b, "jobs:\n  - job: level%d\n    condition: succeeded()\n", k)
-				for range fanout {
-					fmt.Fprintf(&b, "  - template: t%d.yml\n", k-1)
-				}
-				write(fmt.Sprintf("t%d.yml", k), b.String())
-			}
-			write("pipeline.yml", fmt.Sprintf("jobs:\n  - template: t%d.yml\n", depth))
+			outermost, err := testhelpers.WriteTemplateChain(dir, fanout, depth, tt.header)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "pipeline.yml"),
+				[]byte(fmt.Sprintf("%sjobs:\n  - template: %s\n", tt.header, filepath.Base(outermost))), 0o600))
 
 			metadata := scanWithOfflineBundle(t, dir, "CICD", "cicd", &datadog.Rule{
 				ID:               "cicd-job-condition",
