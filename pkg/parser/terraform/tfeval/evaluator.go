@@ -537,7 +537,7 @@ func (e *Evaluator) evaluate(
 	// reference the Nth hop of an N-hop chain can resolve. For chains shorter
 	// than resourceRefPasses hops all resources were already injected inside the
 	// loop, so injectResourceRefs returns false and the locals refresh is skipped.
-	if injectResourceRefs(evalCtx, rootResources) {
+	if injectResourceRefs(evalCtx, rootResources, scope.static.resourceAttrs) {
 		evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, true, false)
 	}
 	if data.readsOwnResources() {
@@ -672,7 +672,7 @@ func (e *Evaluator) preinjectResourceRefs(
 		return
 	}
 	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
-	injected := injectResourceRefs(evalCtx, resources)
+	injected := injectResourceRefs(evalCtx, resources, scope.static.resourceAttrs)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, injected, false)
 	if data.readsOwnResources() {
 		data.refresh(ctx, evalCtx)
@@ -928,7 +928,7 @@ func (e *Evaluator) rootResourcesWithRefPasses(
 	for pass := 0; pass < resourceRefPasses; pass++ {
 		rootResources = e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
 		// Always inject so resolved attrs reach evalCtx on every pass including the last.
-		changed := injectResourceRefs(evalCtx, rootResources)
+		changed := injectResourceRefs(evalCtx, rootResources, scope.static.resourceAttrs)
 		if !changed || !readsOwn {
 			// Nothing the resource blocks or locals read has changed, so
 			// evaluating them again would reproduce these instances.
@@ -1268,7 +1268,7 @@ func instanceForEach(fe cty.Value, key string, value cty.Value) cty.Value {
 // injectResourceRefs sets evalCtx.Variables[type][name] from resources; returns true if changed.
 // Count-expanded resources are exposed as ordered tuples so that x[0].attr resolves correctly;
 // for_each-expanded resources as keyed objects so that x["k"].attr resolves correctly.
-func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) bool {
+func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource, referenced map[string][]string) bool {
 	type instBucket struct {
 		keys     []string
 		attrs    []map[string]cty.Value
@@ -1290,7 +1290,8 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource) 
 			b.expanded = true
 		}
 		b.keys = append(b.keys, key)
-		b.attrs = append(b.attrs, referenceAttributes(r.Attributes))
+		attrs := withReferencedResourceAttrs(referenceAttributes(r.Attributes), referenced[r.Type+"."+base])
+		b.attrs = append(b.attrs, attrs)
 	}
 	if len(byType) == 0 {
 		return false

@@ -252,7 +252,7 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	}
 	d.instances = instances
 	byType := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	injectResourceRefs(byType, exposed)
+	injectResourceRefs(byType, exposed, nil)
 	for _, b := range d.blocks {
 		if d.cyclic[b] {
 			exposeUnknown(byType, b.Labels[0], b.Labels[1])
