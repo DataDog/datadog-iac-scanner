@@ -8,6 +8,7 @@ package tfeval
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -3168,4 +3170,80 @@ func TestModuleCallResources(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNativePolicyValueReads(t *testing.T) {
+	value := cty.ObjectVal(map[string]cty.Value{
+		"null": cty.NullVal(cty.String), "flag": cty.False, "number": cty.MustParseNumberVal("123456789012345678901234567890"),
+		"object":         cty.ObjectVal(map[string]cty.Value{"0": cty.StringVal("key")}),
+		"list":           cty.TupleVal([]cty.Value{cty.StringVal("index"), cty.DynamicVal}),
+		"unknown":        cty.UnknownVal(cty.Object(map[string]cty.Type{"field": cty.String})),
+		"nonnull_object": cty.UnknownVal(cty.Object(map[string]cty.Type{"field": cty.String})).RefineNotNull(),
+		"map":            cty.UnknownVal(cty.Map(cty.String)), "set": cty.SetVal([]cty.Value{cty.StringVal("a")}),
+	})
+	for _, test := range []struct {
+		name               string
+		path               policy.Path
+		state              policy.State
+		want               any
+		maybe, unsupported bool
+	}{
+		{"present null", policy.Path{policy.Key("null")}, policy.Null, nil, false, false},
+		{"present false", policy.Path{policy.Key("flag")}, policy.Known, false, false, false},
+		{"number precision", policy.Path{policy.Key("number")}, policy.Known, json.Number("123456789012345678901234567890"), false, false},
+		{"absent", policy.Path{policy.Key("missing")}, policy.Absent, nil, false, false},
+		{"null descendants", policy.Path{policy.Key("null"), policy.Key("x")}, policy.Absent, nil, false, false},
+		{"numeric key", policy.Path{policy.Key("object"), policy.Key("0")}, policy.Known, "key", false, false},
+		{"numeric index", policy.Path{policy.Key("list"), policy.Index(0)}, policy.Known, "index", false, false},
+		{"unknown element", policy.Path{policy.Key("list"), policy.Index(1)}, policy.Unknown, nil, false, false},
+		{"unknown ancestor nullable", policy.Path{policy.Key("unknown"), policy.Key("field")}, policy.Unknown, nil, true, false},
+		{"unknown ancestor nonnull", policy.Path{policy.Key("nonnull_object"), policy.Key("field")}, policy.Unknown, nil, false, false},
+		{"unknown ancestor absent attribute", policy.Path{policy.Key("unknown"), policy.Key("missing")}, policy.Absent, nil, false, false},
+		{"unknown map presence", policy.Path{policy.Key("map"), policy.Key("field")}, policy.Unknown, nil, true, false},
+		{"whole object", policy.Path{policy.Key("object")}, policy.Invalid, nil, false, true},
+		{"set index", policy.Path{policy.Key("set"), policy.Index(0)}, policy.Invalid, nil, false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ReadValue(value, test.path)
+			if test.unsupported {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.state, got.State)
+			require.Equal(t, test.want, got.Value)
+			require.Equal(t, test.maybe, got.MaybeAbsent)
+		})
+	}
+	_, err := ReadValue(cty.NilVal, nil)
+	require.Error(t, err)
+
+	t.Run("evaluation unit inventory", func(t *testing.T) {
+		failure := errors.New("native evaluation failed")
+		subjects := map[string]ValueSubject{
+			"b": {Kind: "resource", Type: "bucket", Value: cty.True},
+			"a": {Kind: "resource", Type: "bucket", Err: failure},
+		}
+		reader := NewValueReader(subjects, true)
+		delete(subjects, "b")
+		ids, err := reader.Entities("resource", "bucket")
+		require.NoError(t, err)
+		require.Equal(t, []string{"a", "b"}, ids)
+		require.NoError(t, reader.CheckSubject("b"))
+		got, err := reader.Read("b", nil)
+		require.NoError(t, err)
+		require.Equal(t, true, got.Value)
+		_, err = reader.Read("a", nil)
+		require.ErrorIs(t, err, failure)
+		_, err = reader.Read("unregistered", nil)
+		require.Error(t, err)
+		require.Error(t, reader.CheckSubject("unregistered"))
+		_, err = NewValueReader(nil, false).Entities("resource", "bucket")
+		var unsupported *policy.Unsupported
+		require.ErrorAs(t, err, &unsupported)
+		otherRoot := NewValueReader(map[string]ValueSubject{"b": {Kind: "resource", Type: "bucket", Value: cty.False}}, true)
+		got, err = otherRoot.Read("b", nil)
+		require.NoError(t, err)
+		require.Equal(t, false, got.Value)
+	})
 }
