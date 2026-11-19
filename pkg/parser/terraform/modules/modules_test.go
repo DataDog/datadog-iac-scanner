@@ -313,6 +313,47 @@ func TestParseTerraformModules_CanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestParseTerraformModules_ParseFailureLogLevel(t *testing.T) {
+	repo := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
+	tests := []struct {
+		path, wantLevel string
+	}{
+		{"stack/main.tf", "warn"},
+		{"nested/testdata/main.tf", "debug"},
+		{"fixtures/main.tf", "debug"},
+		{"__fixtures__/main.tf", "debug"},
+		{"testdata-example/main.tf", "warn"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			var logs bytes.Buffer
+			ctx := zerolog.New(&logs).Level(zerolog.DebugLevel).WithContext(t.Context())
+			path := filepath.Join(repo, filepath.FromSlash(tt.path))
+			files := model.FileMetadatas{
+				{FilePath: path, OriginalData: `module "broken" {`},
+				{
+					FilePath:     filepath.Join(filepath.Dir(path), "valid.tf"),
+					OriginalData: `module "valid" { source = "terraform-aws-modules/vpc/aws" }`,
+				},
+			}
+
+			modules, err := ParseTerraformModules(ctx, nil, files, 1)
+			require.NoError(t, err)
+			require.Len(t, modules, 1)
+			for _, module := range modules {
+				require.Equal(t, "valid", module.Name)
+			}
+
+			var event map[string]interface{}
+			require.NoError(t, json.Unmarshal(logs.Bytes(), &event))
+			require.Equal(t, tt.wantLevel, event["level"])
+			require.Contains(t, event["message"], "Skipping file "+path+" due to parse errors:")
+			require.Contains(t, event["message"], "Unclosed configuration block")
+		})
+	}
+}
+
 // TestParseDirModules_CanceledContext guards per-directory extraction: once the
 // scan is canceled, parseDirModules must stop before parsing the rest of the
 // files in that directory rather than finishing the whole directory first.
