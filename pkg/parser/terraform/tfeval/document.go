@@ -41,7 +41,7 @@ func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 // AttributesToDocumentWithContext is AttributesToDocument with cancellation for
 // any data-source expansion needed to render unresolved document references.
 func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) map[string]interface{} {
-	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, newRenderer(ctx, r))
+	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, r.documentScope, newRenderer(ctx, r))
 }
 
 // newRenderer renders r's attributes in the context they were evaluated in.
@@ -241,6 +241,8 @@ func renderDataJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.
 // back to their reference text. Exactly one field is set, or none when the value
 // cannot be traced back to a specific expression or block.
 type attrSource struct {
+	scope      *documentScope
+	bindings   map[string]cty.Value
 	expr       hclsyntax.Expression // attribute value expression
 	body       *hclsyntax.Body      // body of a single nested block
 	blocks     []*hclsyntax.Block   // nested blocks sharing one type
@@ -335,11 +337,11 @@ func (s *attrSource) blocksFromCounts(n int) (blocks []*hclsyntax.Block, ok bool
 }
 
 func attributesToDocument(
-	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, rd *partial.Renderer,
+	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, scope *documentScope, rd *partial.Renderer,
 ) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
 	for key, val := range attrs {
-		src := sourceFor(body, key, dynamic, nil)
+		src := sourceFor(body, key, dynamic, nil, scope)
 		out[key] = ctyValueToDocument(val, &src, rd)
 	}
 	return out
@@ -347,12 +349,12 @@ func attributesToDocument(
 
 // sourceFor finds the attribute expression or nested blocks that produced key,
 // under the iterators of the dynamic blocks enclosing body.
-func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterators []string) attrSource {
+func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterators []string, scope *documentScope) attrSource {
 	if body == nil {
 		return attrSource{}
 	}
 	if attr, ok := body.Attributes[key]; ok && attr != nil {
-		return attrSource{expr: attr.Expr, iterators: iterators}
+		return attrSource{expr: attr.Expr, iterators: iterators, scope: scope}
 	}
 	var blocks []*hclsyntax.Block
 	var counts []int
@@ -364,6 +366,15 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterator
 				counts = append(counts, count)
 			}
 		case dynamicblock.Is(b) && dynamicblock.GeneratedType(b) == key:
+			if scope != nil {
+				if generated, ok := scope.generated[b]; ok {
+					for _, marker := range generated {
+						blocks = append(blocks, marker)
+						counts = append(counts, 1)
+					}
+					continue
+				}
+			}
 			// Every dynamic block of this type stands in as one marker; counts
 			// say how many blocks it generated, none when kept as written.
 			if marker, ok := generatedMarker(b); ok {
@@ -376,7 +387,7 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterator
 	if dynamic == nil {
 		counts = nil
 	}
-	return attrSource{blocks: blocks, counts: counts, dynamic: dynamic, iterators: iterators}
+	return attrSource{blocks: blocks, counts: counts, dynamic: dynamic, iterators: iterators, scope: scope}
 }
 
 // anyLabel stands for a label of a generated block that is only known once
@@ -443,6 +454,9 @@ func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
 // rd renders unresolved values; it is nil once v is known to be wholly known,
 // so a resolved subtree is walked once.
 func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) interface{} {
+	if rd != nil && src.bindings != nil {
+		rd = &partial.Renderer{Ctx: partial.Scope(rd.Ctx, src.bindings), Source: rd.Source, Reference: rd.Reference}
+	}
 	if rd != nil {
 		if v.IsWhollyKnown() {
 			rd = nil
@@ -517,11 +531,11 @@ func seqElementSources(src *attrSource, n int) []attrSource {
 		out := make([]attrSource, n)
 		for i, b := range blocks {
 			if src.labelDepth >= len(b.Labels) {
-				out[i] = attrSource{body: b.Body, iterators: src.iterators, dynamic: src.dynamic}
+				out[i] = blockSource(src, b)
 			} else {
 				out[i] = attrSource{
 					blocks: []*hclsyntax.Block{b}, labelDepth: src.labelDepth, counts: singleCount(src),
-					iterators: src.iterators, dynamic: src.dynamic,
+					iterators: src.iterators, dynamic: src.dynamic, scope: src.scope,
 				}
 			}
 		}
@@ -537,12 +551,29 @@ func seqElementSources(src *attrSource, n int) []attrSource {
 	return nil
 }
 
+// blockSource enters one concrete generated block's presentation scope.
+func blockSource(src *attrSource, block *hclsyntax.Block) attrSource {
+	out := attrSource{body: block.Body, iterators: src.iterators, dynamic: src.dynamic, scope: src.scope}
+	if src.scope != nil {
+		if child := src.scope.children[block]; child != nil {
+			out.scope = child
+			out.bindings = child.variables
+		}
+	}
+	return out
+}
+
 // ctyMapToDocument converts an object/map to a Go map; non-string or unknown
 // keys are skipped (keys are always strings in well-formed Terraform).
 func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[string]interface{} {
 	body := src.body
 	if blocks := src.blocksFor(1); body == nil && len(blocks) == 1 && src.labelDepth >= len(blocks[0].Labels) {
 		body = blocks[0].Body
+		block := blockSource(src, blocks[0])
+		if rd != nil && block.bindings != nil {
+			rd = &partial.Renderer{Ctx: partial.Scope(rd.Ctx, block.bindings), Source: rd.Source, Reference: rd.Reference}
+		}
+		src = &block
 	}
 	items := objectConsSources(src.expr)
 
@@ -556,7 +587,7 @@ func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[st
 		var es attrSource
 		switch {
 		case body != nil:
-			es = sourceFor(body, name, src.dynamic, src.iterators)
+			es = sourceFor(body, name, src.dynamic, src.iterators, src.scope)
 		case items[name] != nil:
 			es = attrSource{expr: items[name], iterators: src.iterators}
 		case len(src.blocks) > 0:
@@ -578,7 +609,7 @@ func labeledBlockSource(src *attrSource, label string) attrSource {
 			blocks = append(blocks, block)
 			if len(src.counts) == len(src.blocks) {
 				count := src.counts[i]
-				if block.Type == generatedBlockType {
+				if block.Type == generatedBlockType && (src.scope == nil || src.scope.children[block] == nil) {
 					// Only some of the blocks it generated carry this label.
 					count = unknownDynamicCount
 				}
@@ -586,7 +617,10 @@ func labeledBlockSource(src *attrSource, label string) attrSource {
 			}
 		}
 	}
-	return attrSource{blocks: blocks, labelDepth: src.labelDepth + 1, counts: counts, iterators: src.iterators, dynamic: src.dynamic}
+	return attrSource{
+		blocks: blocks, labelDepth: src.labelDepth + 1, counts: counts,
+		iterators: src.iterators, dynamic: src.dynamic, scope: src.scope,
+	}
 }
 
 // singleCount is the counts of a source reduced to one block of its own.

@@ -81,6 +81,7 @@ type ResolvedResource struct {
 	// DynamicCounts is how many blocks each dynamic block of Body generated for
 	// this instance, so generated blocks can be mapped back to their sources.
 	DynamicCounts DynamicCounts
+	documentScope *documentScope
 
 	// Data marks an instance of a data block rather than a resource.
 	Data bool
@@ -1084,6 +1085,7 @@ func (e *Evaluator) expandBlock(
 			Name:          name,
 			Attributes:    attrs,
 			DynamicCounts: state.dynamic.counts,
+			documentScope: state.document,
 			Body:          rb.Body,
 			Iteration:     iteration,
 			DefinedIn:     rb.TypeRange.Filename,
@@ -1450,8 +1452,9 @@ func (e *Evaluator) evalBody(
 // blocks: the memo of expressions that ignore the iteration, and how many
 // blocks each dynamic block generated.
 type bodyState struct {
-	memo    *invariantMemo
-	dynamic *dynamicRecorder
+	document *documentScope
+	memo     *invariantMemo
+	dynamic  *dynamicRecorder
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
@@ -1468,17 +1471,17 @@ func (st *bodyState) withoutMemo() *bodyState {
 	if st == nil {
 		return nil
 	}
-	return &bodyState{dynamic: st.dynamic}
+	return &bodyState{dynamic: st.dynamic, document: st.document}
 }
 
 // inDynamic is the state for the content of a dynamic block binding iterator.
-func (st *bodyState) inDynamic(iterator string) *bodyState {
+func (st *bodyState) inDynamic(iterator string, document *documentScope) *bodyState {
 	if st == nil {
 		return nil
 	}
 	names := make([]string, len(st.iterators), len(st.iterators)+1)
 	copy(names, st.iterators)
-	return &bodyState{memo: st.memo, dynamic: st.dynamic, iterators: append(names, iterator)}
+	return &bodyState{memo: st.memo, dynamic: st.dynamic, document: document, iterators: append(names, iterator)}
 }
 
 func (e *Evaluator) evalBodyWith(

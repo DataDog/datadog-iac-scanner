@@ -510,6 +510,44 @@ variable "names" {
 }
 
 variable "suffix" {}
+variable "unknown_arn" {}
+data "aws_iam_policy_document" "indexed" {
+  for_each = toset(var.names)
+  statement {
+    sid = each.key
+    actions = ["${each.key}:*"]
+    resources = [var.unknown_arn]
+  }
+}
+resource "aws_iam_role" "consumer" {
+  inline_policy {
+    name = "static"
+    policy = data.aws_iam_policy_document.indexed["a"].json
+  }
+  dynamic "inline_policy" {
+    for_each = var.names
+    content {
+      name = inline_policy.value
+      policy = data.aws_iam_policy_document.indexed[inline_policy.value].json
+    }
+  }
+}
+resource "aws_security_group" "nested" {
+  dynamic "ingress" {
+    for_each = var.names
+    content {
+      name = ingress.value
+      dynamic "rule" {
+        iterator = ingress
+        for_each = ingress.value == "a" ? ["a"] : ["a", "b"]
+        content {
+          policy = data.aws_iam_policy_document.indexed[ingress.value].json
+        }
+      }
+    }
+  }
+}
+
 
 data "aws_iam_policy_document" "d" {
   dynamic "statement" {
@@ -541,6 +579,33 @@ module "c" {
 		`{"Actions":["s3:GetObject","a:*"],"Effect":"Allow","Resources":["arn:aws:s3:::a/x"],"Sid":"a"},`+
 		`{"Actions":["s3:GetObject","b:*"],"Effect":"Allow","Resources":["arn:aws:s3:::b/x"],"Sid":"b"}],`+
 		`"Version":"2012-10-17"}`+"\n", doc["policy"])
+	role := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_role", "consumer")))
+	policies := role["inline_policy"].([]interface{})
+	require.Len(t, policies, 3)
+	for _, entry := range policies {
+		policy := entry.(map[string]interface{})
+		name := policy["name"].(string)
+		if name == "static" {
+			name = "a"
+		}
+		require.Contains(t, policy["policy"], `"Sid":"`+name+`"`)
+		require.Contains(t, policy["policy"], name+`:*`)
+	}
+	nested := AttributesToDocument(ptr(findResource(t, resources, "aws_security_group", "nested")))
+	parents := nested["ingress"].([]interface{})
+	require.Len(t, parents, 2)
+	for i, parent := range parents {
+		block := parent.(map[string]interface{})
+		if i == 0 {
+			require.Contains(t, block["rule"].(map[string]interface{})["policy"], `"Sid":"a"`)
+		} else {
+			rules := block["rule"].([]interface{})
+			require.Len(t, rules, 2)
+			require.Contains(t, rules[0].(map[string]interface{})["policy"], `"Sid":"a"`)
+			require.Contains(t, rules[1].(map[string]interface{})["policy"], `"Sid":"b"`)
+		}
+	}
+
 }
 
 // TestDataJSONEncodeCycleStaysBounded pins a data block reading its own JSON

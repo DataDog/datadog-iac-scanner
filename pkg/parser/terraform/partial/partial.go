@@ -405,7 +405,15 @@ func withChildren(expr hclsyntax.Expression, children []hclsyntax.Expression) hc
 
 // placesOnly reports whether expr only ever places the references it reads.
 func (r *Renderer) placesOnly(expr hclsyntax.Expression) bool {
-	switch expr.(type) {
+	switch e := expr.(type) {
+	case *hclsyntax.RelativeTraversalExpr, *hclsyntax.IndexExpr:
+		if r.Reference != nil && referenceShape(expr) {
+			return true
+		}
+	case *hclsyntax.ForExpr:
+		if r.Reference != nil && r.forPlacesOnly(e) {
+			return true
+		}
 	case *hclsyntax.LiteralValueExpr, *hclsyntax.ScopeTraversalExpr, *hclsyntax.AnonSymbolExpr:
 		return true
 	}
@@ -421,11 +429,35 @@ func (r *Renderer) placesOnly(expr hclsyntax.Expression) bool {
 	return true
 }
 
+// referenceShape recognizes a reference before an enclosing loop has bound its
+// index variables. Actual selectors still evaluate only in the child context.
+func referenceShape(expr hcl.Expression) bool {
+	for {
+		switch e := expr.(type) {
+		case *hclsyntax.RelativeTraversalExpr:
+			expr = e.Source
+		case *hclsyntax.IndexExpr:
+			expr = e.Collection
+		case *hclsyntax.ParenthesesExpr:
+			expr = e.Expression
+		default:
+			_, diags := hcl.AbsTraversalForExpr(expr)
+			return !diags.HasErrors()
+		}
+	}
+}
+
 // forLiteral evaluates a for expression over a resolved collection with every
 // unresolved reference its body reads standing as text. Its body runs per
 // element, so it is not substituted through: it must only place what it reads.
 func (r *Renderer) forLiteral(e *hclsyntax.ForExpr) hclsyntax.Expression {
 	if r.forPlacesOnly(e) {
+		if r.Reference != nil {
+			if v, ok := r.renderFor(e); ok {
+				return literal(v, e.Range())
+			}
+			return r.leaf(e)
+		}
 		if v, ok := r.evalReferencesAsText(e); ok {
 			return literal(v, e.Range())
 		}
@@ -433,7 +465,137 @@ func (r *Renderer) forLiteral(e *hclsyntax.ForExpr) hclsyntax.Expression {
 	return r.leaf(e)
 }
 
+// renderFor renders only values. Collection membership, filters, and object
+// keys must resolve in the authoritative per-element context before any
+// presentation reference can contribute text.
+func (r *Renderer) renderFor(e *hclsyntax.ForExpr) (cty.Value, bool) {
+	collection, known := r.forCollection(e)
+	if !known {
+		return cty.NilVal, false
+	}
+	base, _ := ReferenceTraversal(e.CollExpr, r.ctx())
+	if collection.Type().IsSetType() {
+		base = nil
+	}
+	values := []cty.Value{}
+	groups := map[string][]cty.Value{}
+	for it := collection.ElementIterator(); it.Next(); {
+		key, value := it.Element()
+		child := r.forRenderer(e, key, value, base)
+		include, known := child.forIncludes(e)
+		if !known {
+			return cty.NilVal, false
+		}
+		if !include {
+			continue
+		}
+		name, known := child.forKey(e)
+		if !known || (!e.Group && e.KeyExpr != nil && len(groups[name]) != 0) {
+			return cty.NilVal, false
+		}
+		rendered, ok := child.Render(e.ValExpr)
+		if !ok || !rendered.IsWhollyKnown() {
+			return cty.NilVal, false
+		}
+		if e.KeyExpr == nil {
+			values = append(values, rendered)
+		} else {
+			groups[name] = append(groups[name], rendered)
+		}
+	}
+	if e.KeyExpr == nil {
+		return cty.TupleVal(values), true
+	}
+	return forObject(groups, e.Group), true
+}
+
+func forObject(groups map[string][]cty.Value, grouped bool) cty.Value {
+	object := make(map[string]cty.Value, len(groups))
+	for key, values := range groups {
+		if grouped {
+			object[key] = cty.TupleVal(values)
+		} else {
+			object[key] = values[0]
+		}
+	}
+	return cty.ObjectVal(object)
+}
+
+func (r *Renderer) forCollection(e *hclsyntax.ForExpr) (cty.Value, bool) {
+	collection, diags := e.CollExpr.Value(r.ctx())
+	if diags.HasErrors() || !collection.IsKnown() || collection.IsNull() || !collection.CanIterateElements() {
+		return cty.NilVal, false
+	}
+	collection, _ = collection.Unmark()
+	if !collection.Length().IsKnown() {
+		return cty.NilVal, false
+	}
+	return collection, true
+}
+
+// forRenderer preserves provenance when a loop value aliases an element of a
+// referenced collection. It remaps references, never the authoritative value.
+func (r *Renderer) forRenderer(e *hclsyntax.ForExpr, key, value cty.Value, base hcl.Traversal) *Renderer {
+	vars := make(map[string]cty.Value, 2)
+	if e.KeyVar != "" {
+		vars[e.KeyVar] = key
+	}
+	vars[e.ValVar] = value
+	child := &Renderer{Ctx: scope(r.ctx(), vars), Source: r.Source, Reference: r.Reference}
+	child.Reference = func(t hcl.Traversal, ctx *hcl.EvalContext) (cty.Value, bool) {
+		if t.RootName() != e.ValVar {
+			if t.RootName() == e.KeyVar {
+				return cty.NilVal, false
+			}
+			return r.Reference(t, ctx)
+		}
+		if len(base) == 0 {
+			return cty.NilVal, false
+		}
+		composed := append(hcl.Traversal{}, base...)
+		composed = append(composed, hcl.TraverseIndex{Key: key})
+		composed = append(composed, t[1:]...)
+		return r.Reference(composed, r.ctx())
+	}
+	return child
+}
+
+func (r *Renderer) forIncludes(e *hclsyntax.ForExpr) (include, known bool) {
+	if e.CondExpr == nil {
+		return true, true
+	}
+	value, diags := e.CondExpr.Value(r.ctx())
+	if diags.HasErrors() {
+		return false, false
+	}
+	value, err := ctyconvert.Convert(value, cty.Bool)
+	if err != nil || !value.IsKnown() || value.IsNull() {
+		return false, false
+	}
+	value, _ = value.Unmark()
+	return value.True(), true
+}
+
+func (r *Renderer) forKey(e *hclsyntax.ForExpr) (string, bool) {
+	if e.KeyExpr == nil {
+		return "", true
+	}
+	value, diags := e.KeyExpr.Value(r.ctx())
+	if diags.HasErrors() {
+		return "", false
+	}
+	value, err := ctyconvert.Convert(value, cty.String)
+	if err != nil || !value.IsKnown() || value.IsNull() {
+		return "", false
+	}
+	value, _ = value.Unmark()
+	return value.AsString(), true
+}
+
 func (r *Renderer) forPlacesOnly(e *hclsyntax.ForExpr) bool {
+	if r.Reference != nil {
+		return r.placesOnly(e.ValExpr)
+	}
 	if e.KeyExpr != nil && !r.placesOnly(e.KeyExpr) {
 		return false
 	}
