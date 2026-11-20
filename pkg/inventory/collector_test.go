@@ -107,6 +107,8 @@ func TestBuildStatus(t *testing.T) {
 	c.RecordFile("main.tf", "terraform", FileScanned, "")
 	require.Equal(t, StatusComplete, c.Build(testMetadata()).Status)
 
+	c = NewCollector(t.TempDir())
+	c.RecordFile("main.tf", "terraform", FileScanned, "")
 	c.AddUnresolvedSource(UnresolvedSource{Platform: "terraform", Source: "git::https://example.invalid/m.git", Reason: "git_repo_not_found"})
 	inv := c.Build(testMetadata())
 	require.Equal(t, StatusPartial, inv.Status)
@@ -117,6 +119,31 @@ func TestBuildStatus(t *testing.T) {
 	inv = c.Build(testMetadata())
 	require.Equal(t, StatusPartial, inv.Status)
 	require.Equal(t, 1, inv.Stats.FilesFailed)
+}
+
+func TestBuildIsFinal(t *testing.T) {
+	c := NewCollector(t.TempDir())
+	for _, row := range []struct {
+		line     int
+		document string
+	}{{1, "first"}, {8, "second"}} {
+		c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//cm", Platform: PlatformKubernetes, ResourceType: "ConfigMap",
+			ResourceName: "cm", File: "k8s/dup.yaml", LineStart: row.line, Completeness: CompletenessComplete,
+			DocumentID: row.document, ownsDocument: true})
+	}
+	// Kept with the second document, raised at the first one's line.
+	c.AddFinding(&Finding{Fingerprint: "kept-once", DocumentID: "second", Line: 1})
+
+	first := c.Build(testMetadata())
+	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"}}, first.FindingLinks)
+
+	c.AddResource(&Resource{ResourcePath: "v1/Secret//late", Platform: PlatformKubernetes, File: "k8s/late.yaml",
+		LineStart: 1, Completeness: CompletenessComplete})
+	again := c.Build(testMetadata())
+	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"}}, again.FindingLinks,
+		"building again does not move the link")
+	require.Same(t, first, again, "a collector builds once")
+	require.Len(t, again.Resources, 2, "a row added after Build is not in the inventory")
 }
 
 func TestBuildIsSortedAndDeduplicated(t *testing.T) {

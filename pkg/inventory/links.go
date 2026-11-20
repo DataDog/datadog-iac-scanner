@@ -33,6 +33,9 @@ type Finding struct {
 func (c *Collector) AddFinding(f *Finding) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.built != nil {
+		return
+	}
 	c.findings = append(c.findings, *f)
 }
 

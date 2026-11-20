@@ -39,6 +39,9 @@ type Collector struct {
 	findings         []Finding
 	findingsUnlinked int
 	failure          string
+	// built is the inventory Build finalized, after which the collector
+	// takes nothing more.
+	built *Inventory
 
 	rootOnce     sync.Once
 	resolvedRoot string
@@ -131,6 +134,9 @@ func relativeTo(root, path string) (string, bool) {
 func (c *Collector) RecordFile(path, platform, status, reason string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.built != nil {
+		return
+	}
 	f, ok := c.files[path]
 	if !ok {
 		c.files[path] = &File{Path: path, Platform: platform, Status: status, Reason: reason}
@@ -156,6 +162,9 @@ func (c *Collector) RecordFile(path, platform, status, reason string) {
 func (c *Collector) AddResource(r *Resource) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.built != nil {
+		return
+	}
 	c.resources = append(c.resources, *r)
 }
 
@@ -163,6 +172,9 @@ func (c *Collector) AddResource(r *Resource) {
 func (c *Collector) AddUnresolvedSource(u UnresolvedSource) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.built != nil {
+		return
+	}
 	c.unresolved = append(c.unresolved, u)
 }
 
@@ -187,13 +199,22 @@ func (c *Collector) Failure() string {
 func (c *Collector) AddFindingsUnlinked(n int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.built != nil {
+		return
+	}
 	c.findingsUnlinked += n
 }
 
-// Build returns the inventory, with every list sorted and deduplicated.
+// Build finalizes the collector and returns the inventory, with every list
+// sorted and deduplicated. It finishes the rows in place, so it builds once:
+// a later call returns the same inventory, whatever its metadata, and what is
+// added after it is ignored.
 func (c *Collector) Build(meta *Metadata) *Inventory {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.built != nil {
+		return c.built
+	}
 
 	files := make([]File, 0, len(c.files))
 	failed := 0
@@ -241,7 +262,7 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 		status = StatusPartial
 	}
 
-	return &Inventory{
+	c.built = &Inventory{
 		SchemaVersion:    SchemaVersion,
 		ScanID:           meta.ScanID,
 		ScannerVersion:   meta.ScannerVersion,
@@ -259,6 +280,9 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 		Resources:         nonNil(resources),
 		FindingLinks:      nonNil(links),
 	}
+	// The findings are linked now; the rows belong to the inventory.
+	c.findings, c.resources = nil, nil
+	return c.built
 }
 
 // compareResources orders rows by where they are defined, then by identity.
