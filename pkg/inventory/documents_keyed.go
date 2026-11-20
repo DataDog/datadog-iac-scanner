@@ -142,16 +142,11 @@ func searchKeySegment(key string) string {
 	return key
 }
 
-// isScannerKey reports a key the scanner adds to a document, such as line
-// information or the parsed expressions of a workflow. A job ID can start
-// with an underscore too.
+// isScannerKey reports a key the scanner adds to a document: its line
+// information or the parsed expressions of a workflow. Any other key is an
+// entry, whatever it starts with: a job ID can be _lint or _dd_build.
 func isScannerKey(key string) bool {
-	for _, prefix := range []string{"_dd_", "_kics_", "_parsed_expressions_"} {
-		if strings.HasPrefix(key, prefix) {
-			return true
-		}
-	}
-	return false
+	return key == "_dd_lines" || strings.HasPrefix(key, "_parsed_expressions_")
 }
 
 func cloudFormationRow(key string, value interface{}) (Resource, bool) {

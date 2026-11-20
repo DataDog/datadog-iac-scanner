@@ -166,7 +166,8 @@ func TestInventoryKeyedRows(t *testing.T) {
 			"    Properties:\n      BucketName: acme-logs\n\n  Queue:\n    Type: AWS::SQS::Queue\n",
 		"docker-compose.yml": "services:\n  web:\n    image: nginx:1.27\n  db:\n    image: postgres:16\n",
 		".github/workflows/ci.yml": "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n" +
-			"  _lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ github.sha }}\n",
+			"  _lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ github.sha }}\n" +
+			"  _dd_build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n",
 		"site.yml":                 inventoryPlaybook,
 		"roles/web/tasks/main.yml": "- name: Copy config\n  ansible.builtin.copy:\n    src: a\n    dest: b\n",
 		// A list the scanner reads as Ansible tasks, outside any tasks
@@ -192,8 +193,9 @@ func TestInventoryKeyedRows(t *testing.T) {
 		{"docker-compose.yml|services.db", "docker_compose_service", "db", 4, 5},
 		{".github/workflows/ci.yml|jobs.build", "github_actions_job", "build", 3, 6},
 		{".github/workflows/ci.yml|jobs.test", "github_actions_job", "test", 7, 10},
-		// A job ID can start with an underscore.
+		// A job ID can start with an underscore, even like a scanner key.
 		{".github/workflows/ci.yml|jobs._lint", "github_actions_job", "_lint", 11, 14},
+		{".github/workflows/ci.yml|jobs._dd_build", "github_actions_job", "_dd_build", 15, 18},
 		{"site.yml|plays[0].tasks[0]", "ansible.builtin.apt", "Install nginx", 3, 5},
 		{"site.yml|plays[0].tasks[1].block[0]", "ansible.builtin.service", "Start nginx", 7, 9},
 		{"site.yml|plays[0].handlers[0]", "ansible.builtin.service", "restart nginx", 11, 14},
@@ -202,7 +204,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 	} {
 		require.Equal(t, w, got[w.ref], w.ref)
 	}
-	require.Len(t, inv.Resources, 12)
+	require.Len(t, inv.Resources, 13)
 	require.Contains(t, inv.Files, inventory.File{Path: "data/cities.yml", Platform: "ansible", Status: inventory.FileScanned},
 		"the list is scanned as Ansible, yet gives no row")
 	for _, r := range inv.Resources {
