@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"hash/maphash"
+	"maps"
 	"reflect"
 	"sort"
 	"strconv"
@@ -32,26 +33,25 @@ type evalCacheKey struct {
 	inputs      inputsDigest
 }
 
-// evalCacheEntry holds the result of a completed module evaluation.
+// evalCacheEntry holds a module evaluation and its native effects. Entries with
+// stoppedDirs are partial and belong only to the current root's contextual cache;
+// the evaluator-wide cache contains completed entries only.
 // visitedDirs is the complete set of directories evaluated below this module,
 // independent of previously visited siblings. The caller tracks the module itself.
 //
-// baseAddr and baseChainLen record the position the entry was first evaluated at,
+// baseAddr and baseChain record the position the entry was first evaluated at,
 // so a caller reaching the same module by another path can rewrite the recorded
 // address and chain onto the result. Outputs need no rewrite because rootDir is
 // part of the cache key.
 type evalCacheEntry struct {
 	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.
-	instances    []ModuleInstance
-	outputs      map[string]cty.Value
-	visitedDirs  []string
-	baseAddr     string
-	baseChainLen int
-	// evalDepth is the nesting depth this entry was evaluated at. A module cached
-	// from a deeper call may have truncated descendants; shallower callers need a
-	// fresh evaluation with more depth remaining.
-	evalDepth int
+	instances   []ModuleInstance
+	outputs     map[string]cty.Value
+	visitedDirs []string
+	baseAddr    string
+	baseChain   []CallSite
+	stoppedDirs []string
 }
 
 // rebase returns the cached resources as they would have been recorded had the
@@ -62,14 +62,14 @@ type evalCacheEntry struct {
 // of a resolved resource and they are identical for identical inputs, so sharing
 // them is what makes reuse cheap; both are treated as read-only after evaluation.
 func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedResource {
-	if entry.baseAddr == addr && entry.baseChainLen == len(chain) {
+	if entry.baseAddr == addr && sameCallChain(entry.baseChain, chain) {
 		return entry.resources
 	}
 	out := make([]ResolvedResource, len(entry.resources))
 	for i := range entry.resources {
 		r := entry.resources[i]
 		r.ModuleAddress = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
-		r.CallChain = rebaseChain(r.CallChain, entry.baseChainLen, chain)
+		r.CallChain = rebaseChain(r.CallChain, len(entry.baseChain), chain)
 		out[i] = r
 	}
 	return out
@@ -78,17 +78,138 @@ func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedRes
 // rebaseInstances returns the cached module calls as they would have been
 // recorded at addr/chain, sharing them when that is where they were recorded.
 func (entry *evalCacheEntry) rebaseInstances(addr string, chain []CallSite) []ModuleInstance {
-	if len(entry.instances) == 0 || (entry.baseAddr == addr && entry.baseChainLen == len(chain)) {
+	if len(entry.instances) == 0 || (entry.baseAddr == addr && sameCallChain(entry.baseChain, chain)) {
 		return entry.instances
 	}
 	out := make([]ModuleInstance, len(entry.instances))
 	for i := range entry.instances {
 		instance := entry.instances[i]
 		instance.ModuleAddress = rebaseAddr(instance.ModuleAddress, entry.baseAddr, addr)
-		instance.CallChain = rebaseChain(instance.CallChain, entry.baseChainLen, chain)
+		instance.CallChain = rebaseChain(instance.CallChain, len(entry.baseChain), chain)
 		out[i] = instance
 	}
 	return out
+}
+
+// sameCallChain includes the caller scopes: equal addresses and depths can
+// belong to different parent evaluations after their sibling inputs refine.
+func sameCallChain(first, second []CallSite) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	for i := range first {
+		a, b := &first[i], &second[i]
+		if a.ModuleName != b.ModuleName || a.Source != b.Source || a.Version != b.Version ||
+			a.CalledFrom != b.CalledFrom || a.CalledLine != b.CalledLine || a.CalledEndLine != b.CalledEndLine ||
+			a.CalledColumn != b.CalledColumn || a.CalledEndColumn != b.CalledEndColumn ||
+			a.Body != b.Body || a.Caller != b.Caller || !a.InstanceKey.RawEquals(b.InstanceKey) {
+			return false
+		}
+	}
+	return true
+}
+
+// evaluationRun owns partial results for one recursive root evaluation. Its
+// ancestry tokens intern exact physical paths, never a permissive ancestor subset.
+// Native values may be reused between caller scopes; their call chains are rebound.
+type evaluationRun struct {
+	ancestry uint64
+	paths    map[ancestryEdge]uint64
+	partial  map[partialEvalCacheKey][]partialEvalCacheEntry
+	effects  *evaluationEffects
+}
+
+type ancestryEdge struct {
+	parent uint64
+	dir    string
+}
+
+type partialEvalCacheKey struct {
+	evaluation evalCacheKey
+	ancestry   uint64
+}
+
+type partialEvalCacheEntry struct {
+	inputs map[string]cty.Value
+	result *evalCacheEntry
+}
+
+func (r *evaluationRun) childAncestry(dir string) uint64 {
+	key := ancestryEdge{parent: r.ancestry, dir: dir}
+	if token, ok := r.paths[key]; ok {
+		return token
+	}
+	if r.paths == nil {
+		r.paths = make(map[ancestryEdge]uint64)
+	}
+	token := uint64(len(r.paths)) + 1
+	r.paths[key] = token
+	return token
+}
+
+func (r *evaluationRun) partialResult(key *evalCacheKey, inputs map[string]cty.Value) *evalCacheEntry {
+	bucket := partialEvalCacheKey{evaluation: *key, ancestry: r.ancestry}
+	for _, entry := range r.partial[bucket] {
+		if maps.EqualFunc(entry.inputs, inputs, cty.Value.RawEquals) {
+			return entry.result
+		}
+	}
+	return nil
+}
+
+func (r *evaluationRun) rememberPartial(key *evalCacheKey, ancestry uint64, inputs map[string]cty.Value, entry *evalCacheEntry) {
+	if r.partial == nil {
+		r.partial = make(map[partialEvalCacheKey][]partialEvalCacheEntry)
+	}
+	bucket := partialEvalCacheKey{evaluation: *key, ancestry: ancestry}
+	r.partial[bucket] = append(r.partial[bucket], partialEvalCacheEntry{inputs: maps.Clone(inputs), result: entry})
+}
+
+// Each effects frame records a directory's initial global state on its first
+// stop, even if a sibling or earlier root already marked that directory. This
+// keeps repeated stops compact and lets speculative pre-passes roll back alone.
+type evaluationEffects struct {
+	parent *evaluationEffects
+	stops  map[string]bool
+}
+
+func (r *evaluationRun) beginEffects() *evaluationEffects {
+	frame := &evaluationEffects{parent: r.effects}
+	r.effects = frame
+	return frame
+}
+
+func (r *evaluationRun) recordStop(dir string, notEvaluated map[string]bool) {
+	if r.effects.stops == nil {
+		r.effects.stops = make(map[string]bool)
+	}
+	if _, seen := r.effects.stops[dir]; !seen {
+		r.effects.stops[dir] = notEvaluated[dir]
+	}
+	notEvaluated[dir] = true
+}
+
+func (r *evaluationRun) finishEffects(frame *evaluationEffects, notEvaluated map[string]bool, commit bool) {
+	r.effects = frame.parent
+	if !commit {
+		for dir, existed := range frame.stops {
+			if !existed {
+				delete(notEvaluated, dir)
+			}
+		}
+		return
+	}
+	if frame.parent == nil || len(frame.stops) == 0 {
+		return
+	}
+	if frame.parent.stops == nil {
+		frame.parent.stops = make(map[string]bool)
+	}
+	for dir, existed := range frame.stops {
+		if _, recorded := frame.parent.stops[dir]; !recorded {
+			frame.parent.stops[dir] = existed
+		}
+	}
 }
 
 // rebaseAddr swaps the prefix a cached address was recorded under for the current

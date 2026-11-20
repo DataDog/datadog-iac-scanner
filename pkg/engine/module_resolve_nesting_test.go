@@ -101,7 +101,7 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 
 // Every directory whose body is suppressed from the scan must be replaced by at
 // least one synthetic document. A module that was skipped rather than resolved
-// (budget, depth cap, cycle) resolves to nothing, and treating that as a
+// (an active-path cycle) resolves to nothing, and treating that as a
 // successful evaluation would drop it from the scan entirely.
 func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testing.T) {
 	root, files := writeBudgetFanOut(t, 6, 4)
@@ -129,16 +129,22 @@ func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testi
 }
 
 // writePartiallyResolvedShare lays down a module directory reached twice: once
-// directly from the root, and once at the bottom of a chain long enough that the
-// evaluator's depth cap stops before it. The direct call resolves, the deep one
-// never does, so the directory ends the scan only partially resolved.
+// directly from the root, and once below a deep acyclic chain. The latter
+// instance attempts an active-path cycle, so the shared directory remains
+// partially resolved even though the acyclic chain is fully evaluated.
 func writePartiallyResolvedShare(t *testing.T, levels int) (string, model.FileMetadatas) {
 	t.Helper()
 	root := t.TempDir()
 
 	shared := filepath.Join(root, "shared")
-	writeFile(t, shared, "main.tf",
-		"variable \"name\" { type = string }\nresource \"aws_s3_bucket\" \"b\" { bucket = var.name }\n")
+	writeFile(t, shared, "main.tf", `variable "name" { type = string }
+resource "aws_s3_bucket" "b" { bucket = var.name }
+module "recursive" {
+ source = "./."
+ count = var.name == "deep" ? 1 : 0
+ name = var.name
+}
+`)
 	files := model.FileMetadatas{fileMeta("shared", filepath.Join(shared, "main.tf"))}
 
 	for i := 0; i < levels; i++ {
@@ -168,15 +174,16 @@ module "deep" {
 	return root, files
 }
 
-// A directory is suppressed for the whole scan at once, but depth, cycle and
-// budget stops apply to a single call site. So a directory can finish the scan
+// A directory is suppressed for the whole scan at once, but cycle stops
+// apply to a single call site. So a directory can finish the scan
 // with one instance resolved and another skipped, and suppressing it then leaves
 // the skipped instance represented by nothing: not by a synthetic document, since
 // it was never evaluated, and not by its own body, since that was removed. The
 // body has to stay.
 func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T) {
-	// Comfortably past the evaluator's depth cap, so the chain is cut short.
-	root, files := writePartiallyResolvedShare(t, 25)
+	// Traverse a deep acyclic chain before the actual active-path cycle.
+	const levels = 25
+	root, files := writePartiallyResolvedShare(t, levels)
 
 	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
 
@@ -185,6 +192,28 @@ func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T
 	}
 	if res.resourceCount == 0 {
 		t.Fatal("expected the shallow call to instantiate the shared module")
+	}
+
+	for i := range levels {
+		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i))
+		if res.unresolvedModuleDirs[dir] {
+			t.Errorf("acyclic chain stopped before its deepest resource at %s", dir)
+		}
+	}
+
+	deepBucket := false
+	for _, doc := range res.docs {
+		resource, _ := asStringMap(doc["resource"])
+		buckets, _ := asStringMap(resource["aws_s3_bucket"])
+		for _, raw := range buckets {
+			bucket, _ := asStringMap(raw)
+			if bucket["bucket"] == "deep" {
+				deepBucket = true
+			}
+		}
+	}
+	if !deepBucket {
+		t.Error("the deepest acyclic call must instantiate its bucket")
 	}
 
 	sharedFile := filepath.Join(root, "shared", "main.tf")
