@@ -1251,9 +1251,12 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
-		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
-	}
+	result, err := ins.instantiateLocalModules(ctx, files, nil)
+	require.NoError(t, err)
+	require.Empty(t, result.docs)
+	require.Empty(t, result.syntheticFiles)
+	require.Empty(t, result.extras)
+	require.Empty(t, result.moduleFiles)
 	if _, has := rootFM.Document["module"]; !has {
 		t.Fatalf("expected module block preserved on root when evaluation failed")
 	}

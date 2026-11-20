@@ -567,13 +567,14 @@ func (c *Inspector) Inspect(
 
 	queries := c.getQueriesByPlat(platforms)
 
-	var moduleDocs []model.Document
-	var moduleExtras map[string][]extraCallerInfo
-	var moduleFiles map[string]*moduleFileCalls
-	var syntheticFiles []*model.FileMetadata
+	var instantiated moduleInstantiation
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		var err error
+		instantiated, err = c.instantiateLocalModules(ctx, files, targets)
+		if err != nil {
+			return nil, err
+		}
 		// A canceled scan must not scan the modules that were evaluated only in
 		// part; instantiateLocalModules mutates nothing in that case.
 		if err := ctx.Err(); err != nil {
@@ -612,13 +613,13 @@ func (c *Inspector) Inspect(
 	// attributed back to a call site. Adding them any earlier would have every
 	// pass over the scan input, module parsing above in particular, redo that
 	// file's work once per instantiation.
-	files = append(files, syntheticFiles...)
+	files = append(files, instantiated.syntheticFiles...)
 
 	// Compute the file map once and share it (read-only) across all workers and
 	// payload partitioning.
 	filesMap := files.ToMap()
 
-	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
+	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, instantiated.docs, queries)
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +669,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
+	routing := newFindingRouting(instantiated.extras, instantiated.moduleFiles, files, c.repoPath, c.isExternalModulePath)
 
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
 		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)

@@ -8,16 +8,23 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -246,7 +253,8 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
-	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...))
+	_, err := ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...))
+	require.NoError(t, err)
 
 	out := logs.String()
 	if !strings.Contains(out, "tfeval: module instantiation summary") {
@@ -265,7 +273,6 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 		t.Fatalf("expected no warn for an untruncated instantiation, got %q", out)
 	}
 }
-
 
 // Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.
 func TestInspect_TwoCallersGetDistinctCallChains(t *testing.T) {
@@ -1011,4 +1018,125 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.NotEmpty(t, vulns, "rule should fire on resolved module resource")
+}
+
+// A fatal producer outcome cannot become a successful scan of fallback source.
+// Root projection is committed only once every sequential/concurrent producer
+// completes; neither the error nor the log may expose an opaque panic payload.
+func TestInspectorModuleProducerOutcomes(t *testing.T) {
+	previousProcs := runtime.GOMAXPROCS(2)
+	defer runtime.GOMAXPROCS(previousProcs)
+	for _, workers := range []int{1, 4} {
+		t.Run(fmt.Sprintf("root workers %d", workers), func(t *testing.T) {
+			previous := rootEvalWorkers
+			rootEvalWorkers = workers
+			defer func() { rootEvalWorkers = previous }()
+			for _, test := range []struct {
+				name     string
+				failure  any
+				canceled bool
+				longPeer bool
+			}{
+				{"healthy", nil, false, false},
+				{"canceled", nil, true, false},
+				{"opaque string failure", "private-source-content-must-not-be-exposed", false, false},
+				{"opaque error failure", errors.New("private-source-content-must-not-be-exposed"), false, false},
+				{"fatal cancels uncapped peer", "private-source-content-must-not-be-exposed", false, true},
+			} {
+				if test.longPeer && workers == 1 {
+					continue
+				}
+				t.Run(test.name, func(t *testing.T) {
+					root := t.TempDir()
+					var files model.FileMetadatas
+					for _, name := range []string{"a", "b"} {
+						path := filepath.Join(root, name, "main.tf")
+						require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+						source := fmt.Sprintf(`resource "aws_s3_bucket" "%s" {acl="public-read"}`, name)
+						if test.longPeer && name == "a" {
+							source = `resource "aws_s3_bucket" "a" {
+count=1000000000000000
+acl="public-read"
+}`
+						}
+						require.NoError(t, os.WriteFile(path, []byte(source), 0600))
+						files = append(files, parseTerraform(t, path)...)
+					}
+					queries := []model.QueryMetadata{{Query: "acl-rule", Content: aclRule, InputData: "{}", Platform: "terraform", Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1}}
+					inspector := newTestInspector(t, inspectorOpts{queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder})
+					if test.failure != nil {
+						fsys := &moduleProducerFailureFS{FS: vfs.DiskFS{}, dir: filepath.Join(root, "b"), failure: test.failure}
+						if test.longPeer {
+							fsys.peerRead = make(chan struct{})
+							fsys.peerDir = filepath.Join(root, "a")
+						}
+						inspector.fsys = fsys
+					}
+					var before []byte
+					before, err := json.Marshal([]model.Document{files[0].Document, files[1].Document})
+					require.NoError(t, err)
+					var logs bytes.Buffer
+					ctx := zerolog.New(&logs).WithContext(context.Background())
+					if test.longPeer {
+						var cancel context.CancelFunc
+						ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
+						defer cancel()
+					}
+					if test.canceled {
+						var cancel context.CancelFunc
+						ctx, cancel = context.WithCancel(ctx)
+						cancel()
+					}
+					findings, err := inspector.Inspect(ctx, "producer-outcomes", files, []string{"terraform"})
+					switch {
+					case test.failure != nil:
+						require.ErrorIs(t, err, errModuleEvaluationFailed)
+						if test.longPeer {
+							require.NoError(t, ctx.Err(), "the failing peer must stop the producer before scan cancellation")
+						}
+						require.Empty(t, findings)
+						require.NotContains(t, err.Error(), "private-source-content")
+						require.NotContains(t, logs.String(), "private-source-content")
+					case test.canceled:
+						require.ErrorIs(t, err, context.Canceled)
+						require.Empty(t, findings)
+					default:
+						require.NoError(t, err)
+						require.Len(t, findings, 2)
+					}
+					if test.failure != nil || test.canceled {
+						after, marshalErr := json.Marshal([]model.Document{files[0].Document, files[1].Document})
+						require.NoError(t, marshalErr)
+						require.JSONEq(t, string(before), string(after))
+					}
+				})
+			}
+		})
+	}
+}
+
+type moduleProducerFailureFS struct {
+	vfs.FS
+	dir      string
+	failure  any
+	peerRead chan struct{}
+	peerDir  string
+	notified sync.Once
+}
+
+func (f *moduleProducerFailureFS) ReadDir(dir string) ([]fs.DirEntry, error) {
+	if filepath.Clean(dir) == filepath.Clean(f.dir) {
+		if f.peerRead != nil {
+			<-f.peerRead
+		}
+		panic(f.failure)
+	}
+	return f.FS.ReadDir(dir)
+}
+
+func (f *moduleProducerFailureFS) ReadFile(path string) ([]byte, error) {
+	if f.peerRead != nil && filepath.Dir(path) == f.peerDir {
+		f.notified.Do(func() { close(f.peerRead) })
+	}
+	return f.FS.ReadFile(path)
 }

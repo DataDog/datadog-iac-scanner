@@ -54,6 +54,19 @@ type moduleResolutionResult struct {
 	ok            bool
 }
 
+// errModuleEvaluationFailed deliberately carries no recovered panic payload.
+// The source configuration and evaluator errors may contain sensitive data.
+var errModuleEvaluationFailed = errors.New("terraform module evaluation failed")
+
+// moduleInstantiation retains only the projection consumed by policy execution;
+// resolver suppression indexes and root bookkeeping can be released on return.
+type moduleInstantiation struct {
+	docs           []model.Document
+	syntheticFiles []*model.FileMetadata
+	extras         map[string][]extraCallerInfo
+	moduleFiles    map[string]*moduleFileCalls
+}
+
 // instantiateLocalModules evaluates local modules and injects resolved resource
 // documents. In a called module body only the resource blocks are dropped (they
 // are re-emitted instantiated, with caller-resolved values); variable, output,
@@ -66,25 +79,26 @@ type moduleResolutionResult struct {
 // only after evaluation succeeds (see resolveModulesSafely); a panic during
 // evaluation leaves the scan input untouched rather than removing coverage
 // without a synthetic replacement.
-// Returns synthetic docs and matching FileMetadata (call chain for fingerprints).
-// Caller must append the files before Combine/ToMap. extras lists duplicate callers for post-OPA finding expansion,
-// and moduleFiles the calls reaching each external module file.
+// The compact result contains synthetic docs, their source metadata and caller
+// routing. The caller appends synthetic files before building its file map.
+// A producer failure returns before any input document is mutated.
 func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
 	targets *ruleTargets,
-) (
-	docs []model.Document,
-	syntheticFiles []*model.FileMetadata,
-	extras map[string][]extraCallerInfo,
-	moduleFiles map[string]*moduleFileCalls,
-) {
+) (moduleInstantiation, error) {
 	resolver := c.buildRemoteResolver()
-	res := c.resolveModulesSafely(ctx, files, resolver, targets)
+	res, err := c.resolveModulesSafely(ctx, files, resolver, targets)
+	if err != nil {
+		return moduleInstantiation{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return moduleInstantiation{}, err
+	}
 	contextLogger := logger.FromContext(ctx)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
-		return nil, nil, nil, nil
+		return moduleInstantiation{}, nil
 	}
 	rootDirs := newRootIndex(res.rootDirs)
 	for _, f := range files {
@@ -112,7 +126,9 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
-	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
+	return moduleInstantiation{
+		docs: res.docs, syntheticFiles: res.syntheticFiles, extras: res.extras, moduleFiles: res.moduleFiles,
+	}, nil
 }
 
 // logModuleInstantiationSummary emits the per-scan record of module
@@ -341,23 +357,20 @@ func remoteModuleRoot(fileName, repoPath string) string {
 	return filepath.Clean(filepath.Dir(absPath(fileName, repoPath)))
 }
 
-// resolveModulesSafely runs the panic-prone module evaluation under a recover so
-// a malformed module aborts only the synthetic-doc injection, not the scan. It
-// performs no in-place mutation of files, so returning ok=false on panic leaves
-// the scan input untouched and the caller skips all document mutations.
+// resolveModulesSafely preserves the producer's no-input-mutation boundary.
+// A recovered evaluator failure is explicit, never a successful fallback scan.
 func (c *Inspector) resolveModulesSafely(
 	ctx context.Context,
 	files model.FileMetadatas,
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
-) (res moduleResolutionResult) {
+) (res moduleResolutionResult, err error) {
 	defer func() {
-		if r := recover(); r != nil {
+		if recover() != nil {
 			contextLogger := logger.FromContext(ctx)
-			contextLogger.Error().Interface("panic", r).Msg(
-				"instantiateLocalModules: recovered from panic; skipping synthetic module docs",
-			)
+			contextLogger.Error().Msg("Terraform module evaluation failed")
 			res = moduleResolutionResult{}
+			err = errModuleEvaluationFailed
 		}
 	}()
 	var externalModuleFile func(string) bool
@@ -367,7 +380,7 @@ func (c *Inspector) resolveModulesSafely(
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys,
 		externalModuleFile,
-	)
+	), nil
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -497,7 +510,7 @@ type rootResult struct {
 	childDirs    map[string]bool
 	err          error
 	notEvaluated []string
-	panicked     any
+	panicked     bool
 }
 
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
@@ -506,6 +519,9 @@ type rootResult struct {
 // the same order, so ownership is identical. It returns the index of the first
 // root it did not merge, from which the caller evaluates serially.
 func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, workers int) int {
+	// Fatal failure is independent of ordered successful merging. Peers see a
+	// derived cancellation, while the scan context keeps its original authority.
+	workerCtx, cancelWorkers := context.WithCancelCause(ctx)
 	results := make([]chan rootResult, len(roots))
 	for i := range results {
 		results[i] = make(chan rootResult, 1)
@@ -540,11 +556,16 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 					return
 				default:
 				}
-				results[i] <- evaluateRoot(m.ctx, worker, roots[i])
+				result := evaluateRoot(workerCtx, worker, roots[i])
+				if result.panicked {
+					cancelWorkers(errModuleEvaluationFailed)
+				}
+				results[i] <- result
 			}
 		})
 	}
 	defer func() {
+		cancelWorkers(nil)
 		close(stop)
 		wg.Wait()
 	}()
@@ -553,13 +574,16 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 		var r rootResult
 		select {
 		case r = <-results[i]:
-		case <-ctx.Done():
-			// The workers stop with the context; the caller abandons the rest.
+		case <-workerCtx.Done():
+			if errors.Is(context.Cause(workerCtx), errModuleEvaluationFailed) {
+				panic(errModuleEvaluationFailed)
+			}
+			// Ordinary scan cancellation retains its existing caller-visible outcome.
 			return i
 		}
 		<-window
-		if r.panicked != nil {
-			panic(r.panicked)
+		if r.panicked {
+			panic(errModuleEvaluationFailed)
 		}
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
 		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
@@ -569,8 +593,8 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 
 func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
 	defer func() {
-		if p := recover(); p != nil {
-			r = rootResult{panicked: p}
+		if recover() != nil {
+			r = rootResult{panicked: true}
 		}
 		r.notEvaluated = worker.TakeNotEvaluatedDirs()
 		worker.ReleaseEvalCache()
