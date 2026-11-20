@@ -142,6 +142,8 @@ func rewriteLocation(where string) string {
 		return "the `iac.global-config` section"
 	case "config.iacRuleConfigYaml":
 		return "the `iac.rule-configs.<rule-id>` section"
+	case "config.iacPlanScanningYaml":
+		return "the `iac.plan-scanning` section"
 	case "config.knownRootsCfgFile", "config.cfgFileYaml":
 		return "the top-level configuration"
 	}

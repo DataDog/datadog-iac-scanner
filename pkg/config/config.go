@@ -26,6 +26,8 @@ type iacConfig struct {
 	UseRules     []string                     `yaml:"use-rules,omitempty"`
 	GlobalConfig iacGlobalConfig              `yaml:"global-config,omitempty"`
 	RuleConfigs  map[string]iacRuleConfigYaml `yaml:"rule-configs,omitempty"`
+	// PlanScanning is read by the Datadog backend, not by the scanner; it is only validated here.
+	PlanScanning *iacPlanScanningYaml `yaml:"plan-scanning,omitempty"`
 }
 
 type iacGlobalConfig struct {
@@ -37,6 +39,12 @@ type iacGlobalConfig struct {
 	OnlyCategories   []iacCategory `yaml:"only-categories,omitempty"`
 	IgnorePlatforms  []iacPlatform `yaml:"ignore-platforms,omitempty"`
 	OnlyPlatforms    []iacPlatform `yaml:"only-platforms,omitempty"`
+}
+
+// iacPlanScanningYaml is the YAML representation of the Terraform plan scanning settings.
+type iacPlanScanningYaml struct {
+	Enabled         *bool `yaml:"enabled,omitempty"`
+	WaitForAllPlans *bool `yaml:"wait-for-all-plans,omitempty"`
 }
 
 // iacRuleConfigYaml is the YAML representation of a per-rule override block.
