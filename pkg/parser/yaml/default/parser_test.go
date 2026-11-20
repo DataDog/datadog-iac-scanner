@@ -9,9 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -476,6 +479,40 @@ martin2:
 			got, err := tt.fields.parser.StringifyContent(tt.args.content)
 			require.Equal(t, tt.wantErr, (err != nil))
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestParser_CertificateFilesystem(t *testing.T) {
+	pem, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"))
+	require.NoError(t, err)
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "certificate.pem")
+	path := filepath.Join(dir, "main.yaml")
+	source := []byte("- task:\n    certificate: certificate.pem\n")
+	for _, test := range []struct {
+		name      string
+		hostBytes []byte
+		fsys      vfs.FS
+	}{
+		{"owned", []byte("conflicting invalid host certificate"), vfs.NewMemFS(map[string][]byte{path: source, cert: pem})},
+		{"nil uses disk at parser boundary", pem, nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.NoError(t, os.WriteFile(cert, test.hostBytes, 0600))
+			p := &Parser{FS: test.fsys}
+			for range 2 {
+				_, docs, _, _, err := p.Parse(t.Context(), source, path, false, 0)
+				require.NoError(t, err)
+				require.Len(t, docs, 1)
+				playbooks := docs[0]["playbooks"].([]interface{})
+				require.Len(t, playbooks, 1)
+				body := playbooks[0].(map[string]interface{})["task"].(map[string]interface{})["certificate"]
+				require.IsType(t, map[string]interface{}{}, body)
+				info := body.(map[string]interface{})
+				require.Equal(t, cert, info["file"])
+				require.Contains(t, info, "expiration_date")
+			}
 		})
 	}
 }

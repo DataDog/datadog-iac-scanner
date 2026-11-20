@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -471,7 +472,7 @@ func TestYaml_processElements(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			processElements(ctx, tt.args.elements, tt.args.filePath)
+			(&certificateEnricher{ctx: ctx, fsys: vfs.DiskFS{}, filePath: tt.args.filePath}).processElements(tt.args.elements)
 			require.Equal(t, tt.wantCert, tt.args.elements["certificate"])
 			require.Equal(t, tt.wantSwag, tt.args.elements["swagger_file"])
 		})
