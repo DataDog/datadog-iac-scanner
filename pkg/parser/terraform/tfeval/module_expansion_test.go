@@ -278,7 +278,7 @@ func TestModuleInstances_CanceledContextDoesNotAllocateTheCount(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	plan := moduleInstances(ctx, &hclsyntax.Block{Body: file.Body.(*hclsyntax.Body)}, &hcl.EvalContext{})
-	require.Equal(t, expansionCount, plan.mode)
+	require.Equal(t, expansionUnknown, plan.mode)
 	require.Zero(t, plan.Len())
 }
 
@@ -347,7 +347,7 @@ resource "aws_s3_bucket" "c" {
 	}
 }
 
-// Pin the evaluator's permissive count conversion, unknown fallback, and
+// Pin count conversion, invalid/unknown separation, and
 // iteration bindings in child contexts.
 func TestModuleInstances_ResolutionSemantics(t *testing.T) {
 	for _, tt := range []struct {
@@ -358,12 +358,12 @@ func TestModuleInstances_ResolutionSemantics(t *testing.T) {
 		want         cty.Value
 	}{
 		{"decimal string count", `count = "2"`, expansionCount, 2, "count.index", cty.NumberIntVal(0)},
-		{"negative count", `count = -2`, expansionCount, 0, "", cty.NilVal},
-		{"fractional count", `count = 1.5`, expansionUnknown, 0, "count.index", cty.UnknownVal(cty.Number)},
-		{"unknown count", `count = missing`, expansionUnknown, 0, "count.index", cty.UnknownVal(cty.Number)},
-		{"count wins", "count = 1\nfor_each = missing", expansionCount, 1, "count.index", cty.NumberIntVal(0)},
-		{"unknown each", `for_each = missing`, expansionUnknown, 0, "each.key", cty.UnknownVal(cty.String)},
-		{"invalid set", `for_each = numbers`, expansionUnknown, 0, "each.value", cty.DynamicVal},
+		{"negative count", `count = -2`, expansionInvalid, 0, "", cty.NilVal},
+		{"fractional count", `count = 1.5`, expansionInvalid, 0, "", cty.NilVal},
+		{"unknown count", `count = uncertain`, expansionUnknown, 0, "count.index", cty.UnknownVal(cty.Number)},
+		{"conflicting expansion", "count = 1\nfor_each = missing", expansionInvalid, 0, "", cty.NilVal},
+		{"unknown each", `for_each = unknownmap`, expansionUnknown, 0, "each.key", cty.UnknownVal(cty.String)},
+		{"invalid set", `for_each = numbers`, expansionInvalid, 0, "", cty.NilVal},
 		{"partially known map", `for_each = values`, expansionForEach, 1, "each.value", cty.UnknownVal(cty.Number)},
 		{"marked element", `for_each = marked`, expansionForEach, 1, "each.value", cty.StringVal("secret").Mark("sensitive")},
 		{"empty each", `for_each = {}`, expansionForEach, 0, "", cty.NilVal},
@@ -373,32 +373,39 @@ func TestModuleInstances_ResolutionSemantics(t *testing.T) {
 			file, diags := hclsyntax.ParseConfig([]byte(tt.source), "call.tf", hcl.InitialPos)
 			require.False(t, diags.HasErrors(), diags.Error())
 			parent := &hcl.EvalContext{Variables: map[string]cty.Value{
-				"inherited": cty.StringVal("parent"),
-				"numbers":   cty.SetVal([]cty.Value{cty.NumberIntVal(1)}),
-				"values":    cty.MapVal(map[string]cty.Value{"a": cty.UnknownVal(cty.Number)}),
-				"marked":    cty.MapVal(map[string]cty.Value{"a": cty.StringVal("secret").Mark("sensitive")}),
+				"inherited":  cty.StringVal("parent"),
+				"uncertain":  cty.UnknownVal(cty.Number),
+				"unknownmap": cty.UnknownVal(cty.Map(cty.String)),
+				"numbers":    cty.SetVal([]cty.Value{cty.NumberIntVal(1)}),
+				"values":     cty.MapVal(map[string]cty.Value{"a": cty.UnknownVal(cty.Number)}),
+				"marked":     cty.MapVal(map[string]cty.Value{"a": cty.StringVal("secret").Mark("sensitive")}),
 			}}
 			plan := moduleInstances(context.Background(), &hclsyntax.Block{Body: file.Body.(*hclsyntax.Body)}, parent)
+			var first moduleInstance
+			for instance := range plan.Instances() {
+				first = instance
+				break
+			}
 			require.Equal(t, tt.mode, plan.mode)
 			if tt.mode == expansionUnknown {
 				require.Equal(t, 1, plan.Len())
-				require.Equal(t, cty.NilVal, plan.At(0).key)
+				require.Equal(t, cty.NilVal, first.key)
 			} else {
 				require.Equal(t, tt.requested, plan.Len())
 			}
 			if tt.binding != "" {
 				expr, diags := hclsyntax.ParseExpression([]byte(tt.binding), "binding.tf", hcl.InitialPos)
 				require.False(t, diags.HasErrors(), diags.Error())
-				got, diags := expr.Value(plan.At(0).ctx)
+				got, diags := expr.Value(first.ctx)
 				require.False(t, diags.HasErrors(), diags.Error())
 				require.True(t, tt.want.RawEquals(got), "%#v", got)
-				require.Same(t, parent, plan.At(0).ctx.Parent())
+				require.Same(t, parent, first.ctx.Parent())
 				require.Equal(t, cty.StringVal("parent"), parent.Variables["inherited"])
 				require.NotContains(t, parent.Variables, "count")
 				require.NotContains(t, parent.Variables, "each")
 			}
 			if tt.mode == expansionNone {
-				require.Same(t, parent, plan.At(0).ctx)
+				require.Same(t, parent, first.ctx)
 			}
 		})
 	}
@@ -432,6 +439,118 @@ resource "aws_s3_bucket" "b" {
 			require.NoError(t, err)
 			require.Len(t, resources, 1)
 			require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(32<<20))
+		})
+	}
+}
+
+// Expansion validity and presence are independent of the values in an instance.
+// Exercise the same semantics for resources, data and module occurrences,
+// including cached results with no surviving instance to carry a diagnostic.
+func TestEvaluateModule_ExpansionOutcomes(t *testing.T) {
+	for _, kind := range []string{"resource", "data", "module"} {
+		t.Run(kind, func(t *testing.T) {
+			for _, test := range []struct {
+				name, meta         string
+				instances          int
+				invalid, uncertain bool
+			}{
+				{"count zero", `count=0`, 0, false, false},
+				{"count positive", `count=2`, 2, false, false},
+				{"count converted string", `count="2"`, 2, false, false},
+				{"negative count", `count=-1`, 0, true, false},
+				{"fractional count", `count=1.5`, 0, true, false},
+				{"null count", `count=null`, 0, true, false},
+				{"failed count", `count=tonumber("invalid")`, 0, true, false},
+				{"unknown count", `count=var.number`, 1, false, true},
+				{"empty each", `for_each={}`, 0, false, false},
+				{"known keys unknown values", `for_each={a=var.input}`, 1, false, false},
+				{"unknown keys", `for_each=var.keys`, 1, false, true},
+				{"unknown set member", `for_each=toset([var.input])`, 1, false, true},
+				{"invalid each sequence", `for_each=["a"]`, 0, true, false},
+				{"null each", `for_each=null`, 0, true, false},
+				{"invalid each set", `for_each=toset([1])`, 0, true, false},
+				{"conflicting expansion", "count=0\nfor_each={}", 0, true, false},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					base := t.TempDir()
+					writeModule(t, base, "child", map[string]string{"main.tf": `resource "test_resource" "target" {value="known"}`})
+					declaration := fmt.Sprintf(`%s "test_resource" "target" {
+%s
+value="known"
+}`, kind, test.meta)
+					if kind == "module" {
+						declaration = fmt.Sprintf(`module "target" {
+source="../child"
+%s
+}`, test.meta)
+					}
+					source := `variable "number" {type=number}
+variable "input" {type=string}
+variable "keys" {type=map(string)}
+resource "test_resource" "independent" {value="known"}
+` + declaration
+					dir := writeModule(t, base, "root", map[string]string{"main.tf": source})
+					evaluator := New()
+					for range 2 {
+						evaluation, err := evaluator.EvaluateModule(context.Background(), dir, nil)
+						require.NoError(t, err)
+						require.Len(t, evaluation.Resources, 1+test.instances)
+						require.Equal(t, test.invalid, len(evaluation.Diagnostics()) > 0)
+						require.Equal(t, test.invalid, evaluation.PolicyUnit(nil).Failure() != nil)
+						for _, resource := range evaluation.Resources {
+							requireString(t, resource.Attributes, "value", "known")
+							if resource.Name == "independent" {
+								continue
+							}
+							uncertain := resource.InstanceKey != cty.NilVal && !resource.InstanceKey.IsKnown()
+							for _, hop := range resource.CallChain {
+								uncertain = uncertain || (hop.InstanceKey != cty.NilVal && !hop.InstanceKey.IsKnown())
+							}
+							require.Equal(t, test.uncertain, uncertain)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestEvaluateModule_ExpansionInputTransitions(t *testing.T) {
+	for _, kind := range []string{"resource", "data", "module"} {
+		t.Run(kind, func(t *testing.T) {
+			base := t.TempDir()
+			writeModule(t, base, "child", map[string]string{"main.tf": `resource "test_resource" "child" {value="known"}`})
+			declaration := fmt.Sprintf(`%s "test_resource" "target" {
+count=var.n
+value="known"
+}`, kind)
+			if kind == "module" {
+				declaration = `module "target" {
+source="../child"
+count=var.n
+}`
+			}
+			dir := writeModule(t, base, "root", map[string]string{"main.tf": `variable "n" {type=number}
+resource "test_resource" "independent" {value="known"}
+` + declaration})
+			evaluator := New()
+			for _, test := range []struct {
+				input     cty.Value
+				instances int
+				failed    bool
+			}{
+				{cty.NullVal(cty.Number), 0, true},
+				{cty.NumberIntVal(0), 0, false},
+				{cty.NumberIntVal(2), 2, false},
+				{cty.UnknownVal(cty.Number), 1, false},
+				{cty.NullVal(cty.Number), 0, true},
+			} {
+				evaluation, err := evaluator.EvaluateModule(context.Background(), dir, map[string]cty.Value{"n": test.input})
+				require.NoError(t, err)
+				require.Len(t, evaluation.Resources, 1+test.instances)
+				require.Equal(t, test.failed, evaluation.PolicyUnit(nil).Failure() != nil)
+				require.Equal(t, test.failed, len(evaluation.Diagnostics()) > 0)
+			}
 		})
 	}
 }

@@ -10,11 +10,15 @@ package instances
 
 import (
 	"context"
+	"fmt"
+	"iter"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/convert"
+	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 const (
@@ -28,18 +32,33 @@ type Item struct {
 	Key, Value cty.Value
 }
 
+// State separates established instance keys, unresolved keys and failed expansion.
+type State uint8
+
+const (
+	Known State = iota
+	Unknown
+	// Invalid retains either an invalid configuration or an explicitly unsupported operation.
+	Invalid
+)
+
+// Diagnostic is a frozen expansion error, without an expression or evaluation context.
+type Diagnostic struct {
+	Summary, Detail string
+	Subject         hcl.Range
+}
+
 // Plan describes an expansion independently of the caller's evaluation context.
 type Plan struct {
 	// Kind is empty for a block without count or for_each.
-	Kind string
-	// Unresolved means the expression failed or its instance keys are unknown
-	// or invalid. No concrete instances are returned in this case.
-	Unresolved bool
-	// count is the size of a resolved count. Its instances are produced by At,
+	Kind        string
+	State       State
+	Diagnostics []Diagnostic
+	// count is the size of a resolved count. Its instances are produced lazily,
 	// so a large count is not allocated before the caller can stop.
 	count int
-	// Items holds a resolved for_each. A count leaves it empty.
-	Items []Item
+	// collection shares the immutable for_each value; iteration does not copy it.
+	collection cty.Value
 }
 
 // Attributes picks the count and for_each expressions of an HCL body.
@@ -53,13 +72,31 @@ func Attributes(body *hclsyntax.Body) (count, forEach hcl.Expression) {
 	return count, forEach
 }
 
-// Resolve expands the supplied expressions (nil when absent). Count takes
-// precedence if both are present, matching the module evaluator's fallback for
-// invalid configurations. Values retain their cty marks, including marks on
-// each.value. A canceled scanCtx stops for_each before the instance slice is
-// allocated and during enumeration; the plan is then unresolved so callers do
-// not treat the interruption as a known-empty expansion.
-func Resolve(scanCtx context.Context, count, forEach hcl.Expression, evalCtx *hcl.EvalContext) Plan {
+// Resolve expands the supplied expressions (nil when absent). Conflicting
+// meta-arguments and invalid values retain a producer diagnostic. Iteration
+// preserves marks on each.value and shares the immutable collection. A canceled
+// scanCtx yields Unknown rather than a known-empty expansion.
+func Resolve(scanCtx context.Context, count, forEach hcl.Expression, evalCtx *hcl.EvalContext) (plan Plan) {
+	// An expression or validation pass may finish after cancellation. Never
+	// publish that interrupted work as a completed empty or invalid inventory.
+	defer func() {
+		if scanCtx.Err() != nil {
+			plan = Plan{Kind: plan.Kind, State: Unknown}
+		}
+	}()
+
+	if count != nil && forEach != nil {
+		return invalidPlan(KindCount, count, "count and for_each cannot be used together.")
+	}
+	if scanCtx.Err() != nil {
+		kind := ""
+		if count != nil {
+			kind = KindCount
+		} else if forEach != nil {
+			kind = KindForEach
+		}
+		return Plan{Kind: kind, State: Unknown}
+	}
 	if count != nil {
 		return resolveCount(count, evalCtx)
 	}
@@ -69,84 +106,151 @@ func Resolve(scanCtx context.Context, count, forEach hcl.Expression, evalCtx *hc
 	return Plan{}
 }
 
-func countValue(expr hcl.Expression, ctx *hcl.EvalContext) (int, bool) {
-	v, diags := expr.Value(ctx)
-	if diags.HasErrors() {
-		return 0, false
+func invalidPlan(kind string, expr hcl.Expression, detail string) Plan {
+	return Plan{Kind: kind, State: Invalid, Diagnostics: []Diagnostic{{
+		Summary: "Invalid " + kind + " argument", Detail: detail, Subject: expr.Range(),
+	}}}
+}
+
+func expressionPlan(kind string, expr hcl.Expression, ctx *hcl.EvalContext) (cty.Value, Plan) {
+	value, diagnostics := partial.Evaluate(expr, ctx)
+	plan := Plan{Kind: kind}
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity != hcl.DiagError {
+			continue
+		}
+		subject := expr.Range()
+		if diagnostic.Subject != nil {
+			subject = *diagnostic.Subject
+		}
+		plan.Diagnostics = append(plan.Diagnostics, Diagnostic{Summary: diagnostic.Summary, Detail: diagnostic.Detail, Subject: subject})
 	}
-	return ctyutil.LiteralInt(v)
+	if len(plan.Diagnostics) > 0 {
+		plan.State = Invalid
+	}
+	return value, plan
 }
 
 func resolveCount(expr hcl.Expression, ctx *hcl.EvalContext) Plan {
-	n, ok := countValue(expr, ctx)
-	if !ok {
-		return Plan{Kind: KindCount, Unresolved: true}
+	value, plan := expressionPlan(KindCount, expr, ctx)
+	if plan.State == Invalid {
+		return plan
 	}
-	if n <= 0 {
-		return Plan{Kind: KindCount}
+	value, _ = value.Unmark()
+	number, err := convert.Convert(value, cty.Number)
+	if err != nil {
+		return invalidPlan(KindCount, expr, "A non-negative whole number is required.")
 	}
-	return Plan{Kind: KindCount, count: n}
+	if number.IsNull() {
+		return invalidPlan(KindCount, expr, "count cannot be null; a non-negative whole number is required.")
+	}
+	if !number.IsKnown() {
+		plan.State = Unknown
+		return plan
+	}
+	var n int
+	if err := gocty.FromCtyValue(number, &n); err != nil {
+		return invalidPlan(KindCount, expr, fmt.Sprintf("count must fit a non-negative whole number: %s.", err))
+	}
+	if n < 0 {
+		return invalidPlan(KindCount, expr, "count must be greater than or equal to zero.")
+	}
+	plan.count = n
+	return plan
 }
 
-// Len is the number of concrete instances. A count reports its size without
-// allocating them.
-func (p Plan) Len() int {
-	if p.Kind == KindCount && !p.Unresolved {
+// Len reports the number of established instances without allocating them.
+func (p *Plan) Len() int {
+	if p.State != Known {
+		return 0
+	}
+	if p.Kind == KindCount {
 		return p.count
 	}
-	return len(p.Items)
+	if p.collection != cty.NilVal {
+		return p.collection.LengthInt()
+	}
+	return 0
 }
 
-// At returns instance i. i is valid in [0, Len).
-func (p Plan) At(i int) Item {
-	if p.Kind == KindCount && !p.Unresolved {
-		index := cty.NumberIntVal(int64(i))
-		return Item{Key: index, Value: index}
+// Instances visits established keys in deterministic order without retaining a
+// second instance inventory. Breaking the range stops even an uncapped count.
+func (p *Plan) Instances() iter.Seq[Item] {
+	return func(yield func(Item) bool) {
+		if p.State != Known {
+			return
+		}
+		if p.Kind == KindCount {
+			for i := range p.count {
+				key := cty.NumberIntVal(int64(i))
+				if !yield(Item{Key: key, Value: key}) {
+					return
+				}
+			}
+			return
+		}
+		if p.collection == cty.NilVal {
+			return
+		}
+		for iterator := p.collection.ElementIterator(); iterator.Next(); {
+			key, value := iterator.Element()
+			if !yield(Item{Key: key, Value: value}) {
+				return
+			}
+		}
 	}
-	return p.Items[i]
 }
 
 func resolveForEach(scanCtx context.Context, expr hcl.Expression, evalCtx *hcl.EvalContext) Plan {
-	unknown := Plan{Kind: KindForEach, Unresolved: true}
-	if scanCtx.Err() != nil {
-		return unknown
+	value, plan := expressionPlan(KindForEach, expr, evalCtx)
+	if plan.State == Invalid {
+		return plan
 	}
-	v, diags := expr.Value(evalCtx)
-	if diags.HasErrors() || !ForEachCollection(v) {
-		return unknown
+	if value.IsMarked() {
+		return Plan{Kind: KindForEach, State: Invalid, Diagnostics: []Diagnostic{{
+			Summary: "Unsupported for_each expansion",
+			Detail:  "The scanner cannot establish the meaning of marked instance keys.", Subject: expr.Range(),
+		}}}
 	}
-	if v.LengthInt() == 0 {
-		return Plan{Kind: KindForEach}
+	if value.IsNull() {
+		return invalidPlan(KindForEach, expr, "for_each cannot be null; a map or set of strings is required.")
 	}
-	if scanCtx.Err() != nil {
-		return unknown
+	typ := value.Type()
+	if typ != cty.DynamicPseudoType && !typ.IsObjectType() && !typ.IsMapType() && !typ.IsSetType() {
+		return invalidPlan(KindForEach, expr, "for_each requires a map or set of strings.")
 	}
-	// Grown with append, not sized from the collection: the caller stops
-	// enumerating as soon as the scan context is done.
-	var items []Item
-	for it := v.ElementIterator(); it.Next(); {
-		if scanCtx.Err() != nil {
-			return unknown
-		}
-		key, value := it.Element()
-		if _, ok := ctyutil.ConcreteString(key); !ok {
-			// A collection with any key that is not a concrete string is not a
-			// for_each Terraform itself would accept; resolve it as unknown.
-			return unknown
-		}
-		items = append(items, Item{Key: key, Value: value})
+	if !value.IsKnown() || !value.Length().IsKnown() {
+		plan.State = Unknown
+		return plan
 	}
-	return Plan{Kind: KindForEach, Items: items}
+	if value.LengthInt() == 0 {
+		return plan
+	}
+	if typ.IsSetType() {
+		return resolveForEachSet(scanCtx, expr, value)
+	}
+	plan.collection = value
+	return plan
 }
 
-// ForEachCollection reports whether v is a known, non-null map, object or set
-// with known length. Keys are validated during expansion; values may be unknown.
-func ForEachCollection(v cty.Value) bool {
-	if !ctyutil.Materialized(v) || !v.CanIterateElements() || !v.Length().IsKnown() {
-		return false
+// Set members are also instance keys, unlike unknown values in a known map.
+func resolveForEachSet(ctx context.Context, expr hcl.Expression, value cty.Value) Plan {
+	if !value.IsWhollyKnown() {
+		return Plan{Kind: KindForEach, State: Unknown}
 	}
-	t := v.Type()
-	return t.IsObjectType() || t.IsMapType() || t.IsSetType()
+	if value.Type().ElementType() != cty.String {
+		return invalidPlan(KindForEach, expr, "for_each set elements must be strings.")
+	}
+	for iterator := value.ElementIterator(); iterator.Next(); {
+		if ctx.Err() != nil {
+			return Plan{Kind: KindForEach, State: Unknown}
+		}
+		key, _ := iterator.Element()
+		if key.IsNull() {
+			return invalidPlan(KindForEach, expr, "for_each keys cannot be null.")
+		}
+	}
+	return Plan{Kind: KindForEach, collection: value}
 }
 
 // Variable returns the count.index or each.key/each.value binding for item.
@@ -155,14 +259,14 @@ func ForEachCollection(v cty.Value) bool {
 func (p *Plan) Variable(item Item) (name string, value cty.Value) {
 	if p.Kind == KindCount {
 		index := item.Key
-		if p.Unresolved {
+		if p.State != Known {
 			index = cty.UnknownVal(cty.Number)
 		}
 		return KindCount, cty.ObjectVal(map[string]cty.Value{"index": index})
 	}
 	if p.Kind == KindForEach {
 		key, value := item.Key, item.Value
-		if p.Unresolved {
+		if p.State != Known {
 			key, value = cty.UnknownVal(cty.String), cty.DynamicVal
 		}
 		return "each", cty.ObjectVal(map[string]cty.Value{"key": key, "value": value})

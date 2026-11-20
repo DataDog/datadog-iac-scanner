@@ -8,6 +8,7 @@ package tfeval
 
 import (
 	"context"
+	"iter"
 	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
@@ -73,6 +74,7 @@ const (
 	// expansionUnknown is a count or for_each that could not be resolved; the
 	// call is evaluated once with an unknown count.index or each.
 	expansionUnknown
+	expansionInvalid
 )
 
 // moduleInstance is one instance of a module call: the key Terraform addresses
@@ -108,16 +110,28 @@ func (p moduleExpansionPlan) Len() int {
 	return p.n
 }
 
-// At is the i-th instance of the call.
-func (p moduleExpansionPlan) At(i int) moduleInstance {
-	switch p.mode {
-	case expansionNone:
-		return moduleInstance{ctx: p.base}
-	case expansionUnknown:
-		return moduleInstance{unknownKey: true, ctx: instanceContext(p.base, p.plan, tfinstances.Item{})}
+// Instances lazily binds each established key, or the unresolved template.
+func (p moduleExpansionPlan) Instances() iter.Seq[moduleInstance] {
+	return func(yield func(moduleInstance) bool) {
+		if p.n == 0 {
+			return
+		}
+		switch p.mode {
+		case expansionNone:
+			yield(moduleInstance{ctx: p.base})
+			return
+		case expansionInvalid:
+			return
+		case expansionUnknown:
+			yield(moduleInstance{unknownKey: true, ctx: instanceContext(p.base, p.plan, tfinstances.Item{})})
+			return
+		}
+		for item := range p.plan.Instances() {
+			if !yield(moduleInstance{key: item.Key, ctx: instanceContext(p.base, p.plan, item)}) {
+				return
+			}
+		}
 	}
-	item := p.plan.At(i)
-	return moduleInstance{key: item.Key, ctx: instanceContext(p.base, p.plan, item)}
 }
 
 // moduleInstances expands a module call's count or for_each under evalCtx.
@@ -125,27 +139,23 @@ func (p moduleExpansionPlan) At(i int) moduleInstance {
 func moduleInstances(ctx context.Context, mb *hclsyntax.Block, evalCtx *hcl.EvalContext) moduleExpansionPlan {
 	count, forEach := tfinstances.Attributes(mb.Body)
 	plan := tfinstances.Resolve(ctx, count, forEach, evalCtx)
-	return modulePlan(ctx, &plan, evalCtx)
-}
-
-// modulePlan adds caller contexts and the module-specific unresolved fallback.
-// Expansion decisions and iteration bindings come from the shared resolver.
-func modulePlan(ctx context.Context, plan *tfinstances.Plan, evalCtx *hcl.EvalContext) moduleExpansionPlan {
 	if plan.Kind == "" {
 		return moduleExpansionPlan{mode: expansionNone, base: evalCtx, n: 1}
 	}
-	if plan.Unresolved {
-		return moduleExpansionPlan{mode: expansionUnknown, base: evalCtx, plan: plan, n: 1}
+	if ctx.Err() != nil {
+		return moduleExpansionPlan{mode: expansionUnknown, base: evalCtx, plan: &plan}
+	}
+	if plan.State == tfinstances.Invalid {
+		return moduleExpansionPlan{mode: expansionInvalid, base: evalCtx, plan: &plan}
+	}
+	if plan.State == tfinstances.Unknown {
+		return moduleExpansionPlan{mode: expansionUnknown, base: evalCtx, plan: &plan, n: 1}
 	}
 	mode := expansionForEach
 	if plan.Kind == tfinstances.KindCount {
 		mode = expansionCount
 	}
-	n := 0
-	if ctx.Err() == nil {
-		n = plan.Len()
-	}
-	return moduleExpansionPlan{mode: mode, base: evalCtx, plan: plan, n: n}
+	return moduleExpansionPlan{mode: mode, base: evalCtx, plan: &plan, n: plan.Len()}
 }
 
 func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstances.Item) *hcl.EvalContext {
@@ -154,8 +164,6 @@ func instanceContext(ctx *hcl.EvalContext, plan *tfinstances.Plan, item tfinstan
 	child.Variables = map[string]cty.Value{name: value}
 	return child
 }
-
-func isForEachCollection(v cty.Value) bool { return tfinstances.ForEachCollection(v) }
 
 // maxOutputShape bounds the collection an expansion that did not run to
 // completion is materialized as: beyond it, the whole value is unknown instead
@@ -177,11 +185,7 @@ func moduleOutputsValue(plan moduleExpansionPlan, outs []cty.Value) (cty.Value, 
 		if len(outs) < plan.Len() && plan.Len() > maxOutputShape {
 			return cty.DynamicVal, true
 		}
-		n := plan.Len()
-		if len(outs) == plan.Len() {
-			n = len(outs)
-		}
-		elems := make([]cty.Value, n)
+		elems := make([]cty.Value, plan.Len())
 		for i := range elems {
 			if i < len(outs) {
 				elems[i] = orUnknown(outs[i])
@@ -195,13 +199,15 @@ func moduleOutputsValue(plan moduleExpansionPlan, outs []cty.Value) (cty.Value, 
 			return cty.DynamicVal, true
 		}
 		byKey := make(map[string]cty.Value, plan.Len())
-		for i := range plan.Len() {
-			key, _ := ctyutil.ConcreteString(plan.plan.At(i).Key)
+		i := 0
+		for item := range plan.plan.Instances() {
+			key, _ := ctyutil.ConcreteString(item.Key)
 			if i < len(outs) {
 				byKey[key] = orUnknown(outs[i])
 			} else {
 				byKey[key] = cty.DynamicVal
 			}
+			i++
 		}
 		return objectOrEmpty(byKey), true
 	}

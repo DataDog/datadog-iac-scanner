@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 	"github.com/hashicorp/hcl/v2"
@@ -184,4 +185,30 @@ func (e *Evaluator) recordModuleFailure(err error, address string, anchor hcl.Ra
 	e.diagnostics = append(e.diagnostics, EvaluationDiagnostic{
 		Summary: "Module evaluation failed", Detail: err.Error(), Subject: anchor, ModuleAddress: address,
 	})
+}
+
+// recordExpansionDiagnostics replaces a block's authoritative planning failure,
+// including zero-instance plans which cannot attach errors to a resource.
+func recordExpansionDiagnostics(body *hclsyntax.Body, plan *tfinstances.Plan, recorder *expressionDiagnostics) {
+	if recorder == nil {
+		return
+	}
+	attr := body.Attributes[tfinstances.KindCount]
+	if attr == nil {
+		attr = body.Attributes[tfinstances.KindForEach]
+	}
+	if attr == nil {
+		return
+	}
+	result := expressionValue{}
+	if len(plan.Diagnostics) > 0 {
+		failure := &expressionFailure{diagnostics: make([]EvaluationDiagnostic, 0, len(plan.Diagnostics))}
+		for _, diagnostic := range plan.Diagnostics {
+			failure.diagnostics = append(failure.diagnostics, EvaluationDiagnostic{
+				Summary: diagnostic.Summary, Detail: diagnostic.Detail, Subject: diagnostic.Subject,
+			})
+		}
+		result.failure = failure
+	}
+	recorder.update(attr.Expr, result)
 }

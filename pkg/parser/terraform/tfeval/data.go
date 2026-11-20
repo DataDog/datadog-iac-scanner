@@ -287,7 +287,7 @@ func (d *moduleData) evalBlock(
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, d.diagnostics)
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
