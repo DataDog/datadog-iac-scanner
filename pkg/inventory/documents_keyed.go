@@ -63,6 +63,7 @@ func (e *documentEnumerator) keyedRows(
 		}
 		row.File = f.FilePath
 		row.Completeness = CompletenessComplete
+		row.searchKeyPrefix = collection + "." + searchKeySegment(key)
 		if span, ok := spans[key]; ok {
 			row.LineStart, row.LineEnd = span.start, span.end
 		} else {
@@ -130,6 +131,15 @@ func trimEnd(start, end int, lines []string) int {
 		end--
 	}
 	return max(end, start)
+}
+
+// searchKeySegment writes a key as search keys do: within {{ }} when it holds
+// a character that separates or qualifies path segments.
+func searchKeySegment(key string) string {
+	if strings.ContainsAny(key, ".=/") {
+		return "{{" + key + "}}"
+	}
+	return key
 }
 
 // isScannerKey reports a key the scanner adds to a document, such as line

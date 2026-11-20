@@ -89,3 +89,25 @@ func TestDocumentResourcesInterleavedFiles(t *testing.T) {
 		"b0": {1, 4}, "b1": {7, 10},
 	}, lines, "each document gets its own lines")
 }
+
+func TestKeyedRowsSearchKeyPrefix(t *testing.T) {
+	compose := "services:\n  web:\n    image: nginx\n  web.api:\n    image: api\n"
+	stack := "Resources:\n  Queue:\n    Type: AWS::SQS::Queue\n"
+	files := model.FileMetadatas{
+		{ID: "compose", FilePath: "compose.yaml", OriginalData: compose, Platform: PlatformDockerCompose,
+			Document: model.Document{"services": map[string]interface{}{
+				"web": map[string]interface{}{"image": "nginx"}, "web.api": map[string]interface{}{"image": "api"}}}},
+		{ID: "stack", FilePath: "stack.yaml", OriginalData: stack, Platform: PlatformCloudFormation,
+			Document: model.Document{"Resources": map[string]interface{}{
+				"Queue": map[string]interface{}{"Type": "AWS::SQS::Queue"}}}},
+	}
+	prefixes := make(map[string]string)
+	for _, r := range DocumentResources(context.Background(), files) {
+		prefixes[r.ResourcePath] = r.searchKeyPrefix
+	}
+	require.Equal(t, map[string]string{
+		"services.web":     "services.web",
+		"services.web.api": "services.{{web.api}}",
+		"Queue":            "Resources.Queue",
+	}, prefixes, "a key with a dot is written within {{ }}, as search keys write it")
+}

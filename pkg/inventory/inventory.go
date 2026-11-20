@@ -140,6 +140,10 @@ type Resource struct {
 	// documentIndex is the document's position in its file. It orders rows
 	// that are otherwise equal, such as those a Helm loop renders.
 	documentIndex int
+	// searchKeyPrefix is how the search key of a finding on an entry of a
+	// keyed collection starts, such as Resources.<logical ID> or
+	// services.<name>.
+	searchKeyPrefix string
 
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`

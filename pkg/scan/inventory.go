@@ -284,6 +284,7 @@ func recordFindings(collector *inventory.Collector, files model.FileMetadatas, s
 				DocumentID:      vf.FileID,
 				File:            paths[fileID],
 				Line:            vf.Line,
+				SearchKey:       vf.SearchKey,
 				BlockStart:      vf.BlockLocation.Start.Line,
 				ModuleCallChain: vf.ModuleCallChain,
 			})

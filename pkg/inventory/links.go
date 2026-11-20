@@ -6,7 +6,10 @@
 
 package inventory
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 // Finding is what links a finding to the rows it belongs to.
 type Finding struct {
@@ -17,6 +20,9 @@ type Finding struct {
 	// File is the path of that document's file, and Line the finding's line.
 	File string
 	Line int
+	// SearchKey is the finding's search key, which names the entry of a keyed
+	// collection the finding is on.
+	SearchKey string
 	// BlockStart is the first line of the Terraform block the finding is on,
 	// and ModuleCallChain the module calls that block was reached through.
 	BlockStart      int
@@ -35,8 +41,12 @@ type terraformScope struct{ file, chain string }
 // linkFindings links each recorded finding to its rows, which must be
 // finished, and counts those that belong to none.
 //
-//   - A finding on a document that holds one row belongs to it; on a document
-//     that holds several, to the narrowest row whose lines hold the finding.
+//   - A finding on a document that holds one row belongs to it, unless the
+//     row is an entry of a keyed collection.
+//   - A finding on an entry of a keyed collection (CloudFormation Resources,
+//     Compose services) belongs to the entry its search key names, else to
+//     the narrowest row whose lines hold the finding. So does a finding on
+//     any other document with several rows.
 //   - Rows that shared a reference, such as two documents of a file with the
 //     same name, can raise one finding that the scan keeps once, with either
 //     document. The finding belongs to the narrowest of them whose lines hold
@@ -59,7 +69,7 @@ func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links 
 	}
 	for i := range c.findings {
 		f := &c.findings[i]
-		matched := matchDocument(rows, byDocument[f.DocumentID], f.Line)
+		matched := matchDocument(rows, byDocument[f.DocumentID], f)
 		if len(matched) == 1 && repeats[matched[0]] != nil {
 			matched = []int{repeatHolding(rows, repeats[matched[0]], f.Line)}
 		}
@@ -77,14 +87,29 @@ func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links 
 	return links, unlinked
 }
 
-func matchDocument(rows []Resource, candidates []int, line int) []int {
-	if len(candidates) == 1 {
+func matchDocument(rows []Resource, candidates []int, f *Finding) []int {
+	if len(candidates) == 1 && rows[candidates[0]].searchKeyPrefix == "" {
 		return candidates
 	}
-	if j, ok := narrowestHolding(rows, candidates, line); ok {
+	if j, ok := namedBySearchKey(rows, candidates, f.SearchKey); ok {
+		return []int{j}
+	}
+	if j, ok := narrowestHolding(rows, candidates, f.Line); ok {
 		return []int{j}
 	}
 	return nil
+}
+
+// namedBySearchKey returns the candidate entry of a keyed collection that
+// the search key starts with, whole segments only.
+func namedBySearchKey(rows []Resource, candidates []int, searchKey string) (int, bool) {
+	for _, j := range candidates {
+		prefix := rows[j].searchKeyPrefix
+		if prefix != "" && (searchKey == prefix || strings.HasPrefix(searchKey, prefix+".")) {
+			return j, true
+		}
+	}
+	return -1, false
 }
 
 func matchTerraform(rows []Resource, candidates []int, f *Finding) []int {
