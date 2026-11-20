@@ -197,9 +197,10 @@ func validateEntityModule(module *ast.Module) error {
 	return failure
 }
 
-// Evaluate selects every primary target and streams confirmed findings in
-// bounded batches. A batch restricts execution, never global reads or absence
-// proofs. Prepared code is reused; no scan state is retained by the program.
+// Evaluate selects every certain primary target and streams confirmed findings
+// in bounded batches. Open primary membership makes coverage indeterminate even
+// without known targets. A batch restricts execution, never global reads or
+// absence proofs. Prepared code is reused; no scan state is retained by the program.
 func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRequest) (result EntityEvaluation, err error) {
 	if request.Unit != nil {
 		if failure := request.Unit.Failure(); failure != nil {
@@ -218,6 +219,7 @@ func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRe
 		return result, err
 	}
 	selection, err := p.selectTargets(ctx, request.Unit.Reader())
+	result.Indeterminate = selection.indeterminate
 	if err != nil {
 		return result, err
 	}
@@ -265,17 +267,20 @@ type entityTargetInventory struct {
 	next     int
 }
 type entityTargetSelection struct {
-	ids         []string
-	inventories []entityTargetInventory
+	indeterminate bool
+	ids           []string
+	inventories   []entityTargetInventory
 }
 
 func (p *EntityProgram) selectTargets(ctx context.Context, reader policy.Reader) (entityTargetSelection, error) {
 	selected := entityTargetSelection{}
 	for _, selector := range p.selectors {
-		ids, err := reader.Entities(selector.kind, selector.typ)
+		inventory, err := reader.Inventory(selector.kind, selector.typ)
 		if err != nil {
 			return selected, err
 		}
+		selected.indeterminate = selected.indeterminate || !inventory.Complete
+		ids := inventory.CertainSubjects
 		if !slices.IsSorted(ids) {
 			slices.Sort(ids)
 		}
