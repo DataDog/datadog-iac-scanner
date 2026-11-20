@@ -33,6 +33,7 @@ type CITracker struct {
 	BagOfFilesFound      map[string]int
 	FailedFiles          map[string]string
 	EmptyFiles           map[string]bool
+	FailedRenders        map[string]bool
 	syncFileMutex        sync.Mutex
 	FoundResources       int
 	LineInfoLoadFailures int
@@ -127,6 +128,19 @@ func (c *CITracker) TrackFileEmpty(path string) {
 		c.EmptyFiles = make(map[string]bool)
 	}
 	c.EmptyFiles[path] = true
+}
+
+// TrackRenderFailed records in FailedRenders a chart that failed to render.
+// Its files may still parse, rendered on their own as a dependency of
+// another chart, so this outcome is kept apart from theirs. No counter
+// changes.
+func (c *CITracker) TrackRenderFailed(chart string) {
+	c.syncFileMutex.Lock()
+	defer c.syncFileMutex.Unlock()
+	if c.FailedRenders == nil {
+		c.FailedRenders = make(map[string]bool)
+	}
+	c.FailedRenders[chart] = true
 }
 
 // FailedDetectLine - queries that fail to detect line are counted as failed to execute queries

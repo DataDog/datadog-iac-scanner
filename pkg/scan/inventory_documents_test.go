@@ -137,6 +137,35 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	require.Len(t, inv.Resources, 8)
 }
 
+func TestInventoryKeepsAFailedChartRender(t *testing.T) {
+	// The parent's values make its dependency fail; the dependency's own
+	// defaults do not, so the dependency renders on its own.
+	root := writeRepo(t, map[string]string{
+		"charts/parent/Chart.yaml":             "apiVersion: v2\nname: parent\nversion: 0.1.0\n",
+		"charts/parent/values.yaml":            "dep:\n  shared:\n    fail: true\n",
+		"charts/parent/charts/dep/Chart.yaml":  "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
+		"charts/parent/charts/dep/values.yaml": "shared:\n  fail: false\n",
+		"charts/parent/charts/dep/templates/cm.yaml": "{{- if .Values.shared.fail }}{{ fail \"not in this configuration\" }}{{- end }}\n" +
+			"apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: dep-config\ndata:\n  a: b\n",
+	})
+	params := documentParams(root)
+	params.Platform = []string{"Kubernetes"}
+	inv := scanInventory(t, params)
+
+	names := make([]string, 0, len(inv.Resources))
+	for _, r := range inv.Resources {
+		names = append(names, r.ResourceName)
+	}
+	require.Contains(t, names, "dep-config", "the dependency rendered on its own")
+	require.Equal(t, inventory.StatusPartial, inv.Status, "the parent's render failed")
+	require.Contains(t, inv.UnresolvedSources, inventory.UnresolvedSource{
+		Platform: inventory.PlatformKubernetes, Source: "charts/parent", Reason: inventory.ReasonHelmRenderFailed,
+	})
+	for _, u := range inv.UnresolvedSources {
+		require.NotEqual(t, "charts/parent/charts/dep", u.Source, "the dependency rendered on its own")
+	}
+}
+
 func TestInventoryDoesNotChangeDocumentFindings(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"k8s/web.yaml":            inventoryK8sYAML,

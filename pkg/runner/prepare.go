@@ -188,6 +188,11 @@ func reportRenderFailure(ctx context.Context, services []*Service, kind model.Fi
 		for _, s := range services {
 			s.recordFailedHelmChart(chartPath)
 		}
+		// The render failed even if the chart's files parse elsewhere, such
+		// as a dependency rendered on its own.
+		if len(services) > 0 && services[0].Tracker != nil {
+			services[0].Tracker.TrackRenderFailed(chartPath)
+		}
 	}
 	logResolveError(ctx, kind, chartPath, err)
 }

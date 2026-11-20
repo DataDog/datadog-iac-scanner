@@ -561,6 +561,7 @@ func (noopTracker) TrackFileIgnoreCountLines(_ int)    {}
 func (noopTracker) TrackFileFoundCountResources(_ int) {}
 func (noopTracker) TrackFileFailed(_, _ string)        {}
 func (noopTracker) TrackFileEmpty(_ string)            {}
+func (noopTracker) TrackRenderFailed(_ string)         {}
 
 // sinkReader reads a file and sinks it the way the shared walk does.
 func sinkReader(s *Service, ctx context.Context, filename, scanID string,

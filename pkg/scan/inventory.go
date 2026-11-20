@@ -372,6 +372,24 @@ func (c *Client) recordManifest(run *inventoryRun, files model.FileMetadatas) {
 	for path, platform := range run.tooLarge {
 		record(path, platform, inventory.FileFailed, inventory.ReasonTooLarge)
 	}
+	// A chart whose render failed is a source the scan could not resolve,
+	// even when its files parsed in another render, such as a dependency's.
+	if t := c.Tracker; t != nil {
+		for chart := range t.FailedRenders {
+			if run.isExternal(chart) {
+				continue
+			}
+			rel, ok := run.collector.RelPath(chart)
+			if !ok {
+				continue
+			}
+			run.collector.AddUnresolvedSource(inventory.UnresolvedSource{
+				Platform: inventory.PlatformKubernetes,
+				Source:   rel,
+				Reason:   inventory.ReasonHelmRenderFailed,
+			})
+		}
+	}
 }
 
 // recordFindings gives the collector every finding the SARIF report holds,
