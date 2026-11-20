@@ -69,6 +69,8 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 		"services/api/Dockerfile":              inventoryDockerfile,
 		// A template rendered by another tool: its name stays as written.
 		"dev/manifest.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .ServiceName }}\nspec:\n  replicas: 1\n",
+		// A resource created with a generated name.
+		"k8s/migrate.yaml": "apiVersion: batch/v1\nkind: Job\nmetadata:\n  generateName: migrate-\n  namespace: shop\nspec:\n  template:\n    spec:\n      restartPolicy: Never\n",
 	})
 	inv := scanInventory(t, documentParams(root))
 	rows := rowsByPath(inv)
@@ -121,7 +123,11 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	templated := rows["apps/v1/Deployment//{{ .ServiceName }}"]
 	require.Equal(t, "{{ .ServiceName }}", templated.ResourceName)
 	require.Equal(t, "dev/manifest.yaml", templated.File)
-	require.Len(t, inv.Resources, 5)
+	generated, ok := rows["batch/v1/Job/shop/migrate-"]
+	require.True(t, ok, "a generated name gives its prefix: %v", rows)
+	require.Equal(t, "migrate-", generated.ResourceName)
+	require.Equal(t, 1, generated.LineStart)
+	require.Len(t, inv.Resources, 6)
 }
 
 func TestInventoryDoesNotChangeDocumentFindings(t *testing.T) {

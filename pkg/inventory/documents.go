@@ -102,6 +102,10 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 	kind, _ := f.Document["kind"].(string)
 	metadata, _ := f.Document["metadata"].(map[string]interface{})
 	name := e.metadataField(f, index, metadata, "name")
+	if name == "" {
+		// A resource created with a generated name has only its prefix.
+		name = e.metadataField(f, index, metadata, "generateName")
+	}
 	if apiVersion == "" || kind == "" || name == "" {
 		return Resource{}, false
 	}
