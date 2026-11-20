@@ -47,7 +47,7 @@ audit_config {
 	}}
 	source, ok := Lookup(googleIAMPolicyType)
 	require.True(t, ok)
-	got := source(context.Background(), file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+	got := renderSource(context.Background(), source, file.Body, func(expr hcl.Expression) (cty.Value, bool) {
 		v, d := expr.Value(ctx)
 		return v, !d.HasErrors()
 	})
@@ -75,7 +75,7 @@ binding {
 	require.False(t, diags.HasErrors(), diags.Error())
 	source, ok := Lookup(googleIAMPolicyType)
 	require.True(t, ok)
-	got := source(context.Background(), file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+	got := renderSource(context.Background(), source, file.Body, func(expr hcl.Expression) (cty.Value, bool) {
 		v, d := expr.Value(&hcl.EvalContext{})
 		return v, !d.HasErrors()
 	})
@@ -130,7 +130,7 @@ binding {
 	} {
 		file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 		require.False(t, diags.HasErrors(), diags.Error())
-		require.Nil(t, source(context.Background(), file.Body, eval))
+		require.Nil(t, renderSource(context.Background(), source, file.Body, eval))
 	}
 }
 
@@ -151,7 +151,7 @@ binding {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	rd := &partial.Renderer{Ctx: &hcl.EvalContext{}, Source: partial.BytesSource([]byte(src))}
-	got := googleIAMPolicyAttributes(context.Background(), file.Body, rd.Render)
+	got := renderSource(context.Background(), sources[googleIAMPolicyType], file.Body, rd.Render)
 	require.Contains(t, got["policy_data"], `"title":"first"`)
 	require.Contains(t, got["policy_data"], `"expression":"false"`)
 	require.NotContains(t, got["policy_data"], `"title":"second"`)
@@ -192,8 +192,45 @@ dynamic "statement" {
 				v, d := expr.Value(&hcl.EvalContext{})
 				return v, !d.HasErrors()
 			}
-			require.NotEmpty(t, source(context.Background(), file.Body, eval))
-			require.Nil(t, source(ctx, file.Body, eval))
+			require.NotEmpty(t, renderSource(context.Background(), source, file.Body, eval))
+			require.Nil(t, renderSource(ctx, source, file.Body, eval))
 		})
 	}
+}
+
+func TestLocalDataDocumentKeepsKnownMembersAlongsideUnknown(t *testing.T) {
+	src := `binding {
+role="roles/viewer"
+members=["allUsers",var.member]
+}`
+	file, diagnostics := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diagnostics.HasErrors())
+	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"var": cty.ObjectVal(map[string]cty.Value{"member": cty.UnknownVal(cty.String)})}}
+	source, ok := Lookup(googleIAMPolicyType)
+	require.True(t, ok)
+	result := source.Evaluate(context.Background(), RenderConfiguration{Body: file.Body, Eval: func(expr hcl.Expression) (cty.Value, bool) {
+		value, diags := expr.Value(ctx)
+		return value, !diags.HasErrors()
+	}})
+	require.Empty(t, result.Diagnostics)
+	require.False(t, result.Attributes["policy_data"].IsKnown())
+	require.JSONEq(t, `{"bindings":[{"role":"roles/viewer","members":["allUsers",""]}]}`, result.DocumentAttributes["policy_data"])
+}
+
+func TestLocalDataDocumentRetainsPermissiveScalarCollection(t *testing.T) {
+	src := `binding {
+role="roles/viewer"
+members="allUsers"
+}`
+	file, diagnostics := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
+	require.False(t, diagnostics.HasErrors())
+	source, ok := Lookup(googleIAMPolicyType)
+	require.True(t, ok)
+	result := source.Evaluate(context.Background(), RenderConfiguration{Body: file.Body, Eval: func(expr hcl.Expression) (cty.Value, bool) {
+		value, diags := expr.Value(&hcl.EvalContext{})
+		return value, !diags.HasErrors()
+	}})
+	require.NotEmpty(t, result.Diagnostics)
+	require.False(t, result.Attributes["policy_data"].IsKnown())
+	require.JSONEq(t, `{"bindings":[{"role":"roles/viewer","members":["allUsers"]}]}`, result.DocumentAttributes["policy_data"])
 }

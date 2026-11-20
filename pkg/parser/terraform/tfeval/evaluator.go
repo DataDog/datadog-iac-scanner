@@ -80,7 +80,8 @@ type ResolvedResource struct {
 	diagnostics   *expressionFailure
 
 	// Data marks an instance of a data block rather than a resource.
-	Data bool
+	Data                bool
+	structureIncomplete bool
 }
 
 // CallSite records one hop in a module call chain.
@@ -1031,22 +1032,23 @@ func (e *Evaluator) expandBlock(
 		state := &bodyState{memo: memo, observations: &bodyObservations{}, expandDynamic: true}
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
 		return ResolvedResource{
-			Type:          typeName,
-			Name:          name,
-			Attributes:    attrs,
-			diagnostics:   state.observations.failure,
-			DynamicCounts: state.observations.counts,
-			documentScope: state.document,
-			Body:          rb.Body,
-			Iteration:     iteration,
-			DefinedIn:     rb.TypeRange.Filename,
-			DefLine:       rb.TypeRange.Start.Line,
-			DefEndLine:    rb.Range().End.Line,
-			DefColumn:     rb.TypeRange.Start.Column,
-			DefEndColumn:  rb.Range().End.Column,
-			ModuleAddress: addr,
-			CallChain:     cloneChain(chain),
-			Data:          data,
+			Type:                typeName,
+			Name:                name,
+			Attributes:          attrs,
+			diagnostics:         state.observations.failure,
+			DynamicCounts:       state.observations.counts,
+			documentScope:       state.document,
+			Body:                rb.Body,
+			Iteration:           iteration,
+			DefinedIn:           rb.TypeRange.Filename,
+			DefLine:             rb.TypeRange.Start.Line,
+			DefEndLine:          rb.Range().End.Line,
+			DefColumn:           rb.TypeRange.Start.Column,
+			DefEndColumn:        rb.Range().End.Column,
+			ModuleAddress:       addr,
+			CallChain:           cloneChain(chain),
+			Data:                data,
+			structureIncomplete: state.observations.dynamicIncomplete,
 		}
 	}
 
@@ -1325,8 +1327,9 @@ type bodyState struct {
 // bodyObservations accumulates native sidecar facts shared by nested bodies.
 // Failures allocate only when an expression actually fails.
 type bodyObservations struct {
-	counts  DynamicCounts
-	failure *expressionFailure
+	counts            DynamicCounts
+	dynamicIncomplete bool
+	failure           *expressionFailure
 }
 
 // withoutMemo shares the dynamic counts but not the memo, for the as-written

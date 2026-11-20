@@ -50,7 +50,7 @@ var localDataMarkers = func() [][]byte {
 // localDataBlock is a data block of a type localdata renders.
 type localDataBlock struct {
 	typ, name string
-	source    localdata.Source
+	source    *localdata.Source
 	body      hcl.Body
 	src       []byte
 	json      bool
@@ -393,7 +393,8 @@ func renderLocalData(
 		if b.json {
 			eval = jsonEval(evalCtx, b.src)
 		}
-		attrs := b.source(ctx, b.body, eval)
+		result := b.source.Evaluate(ctx, localdata.RenderConfiguration{Body: b.body, Eval: eval})
+		attrs := result.DocumentAttributes
 		if attrs == nil {
 			continue
 		}

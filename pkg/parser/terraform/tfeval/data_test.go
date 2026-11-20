@@ -854,3 +854,146 @@ data "aws_iam_policy_document" "from_local" {
 		"looked": true, "dyn": true, "from_local": true,
 	}, names)
 }
+
+func TestDataComputedValueOutcomes(t *testing.T) {
+	for _, location := range []string{"root", "module"} {
+		for _, test := range []struct {
+			name, typ, body string
+			known, failed   bool
+		}{
+			{"known source", "aws_iam_policy_document", `source_json = "{}"`, true, false},
+			{"null source", "aws_iam_policy_document", `source_json = null`, true, false},
+			{"unknown source", "aws_iam_policy_document", `source_json = var.input`, false, false},
+			{"unknown interpolation", "aws_iam_policy_document", `source_json = "prefix${var.input}"`, false, false},
+			{"malformed source", "aws_iam_policy_document", `source_json = "private-invalid-policy"`, false, true},
+			{"malformed override", "aws_iam_policy_document", `override_json = "private-invalid-policy"`, false, true},
+			{"singular source wrong collection", "aws_iam_policy_document", `source_json = []`, false, true},
+			{"singular override wrong collection", "aws_iam_policy_document", `override_json = ["{}"]`, false, true},
+			{"plural source wrong string", "aws_iam_policy_document", `source_policy_documents = "{}"`, false, true},
+			{"plural override wrong string", "aws_iam_policy_document", `override_policy_documents = "{}"`, false, true},
+			{"plural source known", "aws_iam_policy_document", `source_policy_documents = ["{}"]`, true, false},
+			{"multiple conditions", "google_iam_policy", `binding {
+role="roles/viewer"
+condition { title="first" }
+condition { title={} }
+}`, false, true},
+			{"source wrong type", "aws_iam_policy_document", `source_policy_documents = true`, false, true},
+			{"source known invalid sibling", "aws_iam_policy_document", `source_policy_documents = ["private-invalid-policy",var.input]`, false, true},
+			{"statement wrong scalar", "aws_iam_policy_document", `statement = true`, false, true},
+			{"statement wrong element", "aws_iam_policy_document", `statement = [true]`, false, true},
+			{"statement unknown collection", "aws_iam_policy_document", `statement = var.input`, false, false},
+			{"statement empty collection", "aws_iam_policy_document", `statement = []`, true, false},
+			{"nested block wrong scalar", "aws_iam_policy_document", `statement { principals = true }`, false, true},
+			{"nested string wrong type", "aws_iam_policy_document", `statement { effect = {} }`, false, true},
+			{"binding known", "google_iam_policy", `binding { role = "roles/viewer" }`, true, false},
+			{"binding wrong scalar", "google_iam_policy", `binding = true`, false, true},
+			{"binding role wrong type", "google_iam_policy", `binding { role = {} }`, false, true},
+			{"binding list wrong scalar", "google_iam_policy", `binding { members = true }`, false, true},
+			{"binding list invalid known sibling", "google_iam_policy", `binding { members = [{},var.input] }`, false, true},
+			{"binding unknown member", "google_iam_policy", `binding { members = [var.input] }`, false, false},
+			{"unknown dynamic structure", "google_iam_policy", `dynamic "binding" {
+for_each = var.input
+content {
+role = "roles/viewer"
+}
+}`, false, false},
+			{"known zero dynamic structure", "google_iam_policy", `dynamic "binding" {
+for_each = []
+content {
+role = "roles/viewer"
+}
+}`, true, false},
+			{"known heterogeneous nested structure", "google_iam_policy", `dynamic "binding" {
+for_each = [[1],[]]
+content {
+role = "roles/viewer"
+dynamic "condition" {
+for_each = binding.value
+content { title = "known" }
+}
+}
+}`, true, false},
+		} {
+			t.Run(location+"/"+test.name, func(t *testing.T) {
+				root := t.TempDir()
+				attribute := "json"
+				if test.typ == "google_iam_policy" {
+					attribute = "policy_data"
+				}
+				source := fmt.Sprintf("variable \"input\" {}\ndata %q \"p\" {\n%s\n}\noutput \"policy\" { value = data.%s.p.%s }\n", test.typ, test.body, test.typ, attribute)
+				dir := writeModule(t, root, "target", map[string]string{"main.tf": source})
+				if location == "module" {
+					dir = writeModule(t, root, "caller", map[string]string{"main.tf": `module "child" { source = "../target" }
+output "policy" { value = module.child.policy }`})
+				}
+				e := New()
+				for repeat := 0; repeat < 2; repeat++ {
+					result, err := e.EvaluateModule(context.Background(), dir, nil)
+					require.NoError(t, err)
+					value := result.Outputs["policy"]
+					require.Equal(t, cty.String, value.Type())
+					require.Equal(t, test.known, value.IsKnown())
+					require.Equal(t, test.failed, len(result.Diagnostics()) > 0)
+					require.Empty(t, result.inventoryGaps)
+					for _, diagnostic := range result.Diagnostics() {
+						require.NotContains(t, diagnostic.Detail, "private-invalid-policy")
+						require.Contains(t, diagnostic.Subject.Filename, "main.tf")
+						if location == "module" {
+							require.Equal(t, "module.child", diagnostic.ModuleAddress)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestDataComputedValueInputTransitions(t *testing.T) {
+	for _, location := range []string{"root", "module", "json"} {
+		t.Run(location, func(t *testing.T) {
+			root := t.TempDir()
+			filename := "main.tf"
+			source := `variable "input" {}
+data "google_iam_policy" "p" {
+ binding {
+ role=var.input
+ members=["allUsers"]
+ }
+}
+output "policy" {value=data.google_iam_policy.p.policy_data}`
+			if location == "json" {
+				filename = "main.tf.json"
+				source = `{"variable":{"input":{}},"data":{"google_iam_policy":{"p":{"binding":[{"role":"${var.input}","members":["allUsers"]}]}}},"output":{"policy":{"value":"${data.google_iam_policy.p.policy_data}"}}}`
+			}
+			dir := writeModule(t, root, "target", map[string]string{filename: source})
+			if location == "module" {
+				dir = writeModule(t, root, "caller", map[string]string{"main.tf": `variable "input" {}
+module "child" {
+source="../target"
+input=var.input
+}
+output "policy" {value=module.child.policy}`})
+			}
+			e := New()
+			for _, test := range []struct {
+				name          string
+				value         cty.Value
+				known, failed bool
+			}{
+				{"invalid", cty.EmptyObjectVal, false, true},
+				{"known", cty.StringVal("roles/viewer"), true, false},
+				{"unknown", cty.UnknownVal(cty.String), false, false},
+				{"nullable", cty.NullVal(cty.String), true, false},
+				{"cached invalid", cty.EmptyObjectVal, false, true},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					result, err := e.EvaluateModule(context.Background(), dir, map[string]cty.Value{"input": test.value})
+					require.NoError(t, err)
+					require.Equal(t, test.known, result.Outputs["policy"].IsKnown())
+					require.Equal(t, test.failed, len(result.Diagnostics()) > 0)
+					require.Empty(t, result.inventoryGaps)
+				})
+			}
+		})
+	}
+}

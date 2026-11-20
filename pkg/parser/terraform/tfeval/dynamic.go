@@ -32,6 +32,7 @@ func (e *Evaluator) addDynamicBlocks(
 		scopes, paths, resolved = generatedBlocks(ctx, b, exp.Iterators, name, evalCtx)
 	}
 	if !resolved {
+		st.observations.dynamicIncomplete = true
 		st.recordDynamic(b, keptAsWritten)
 		out.add(append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(ctx, b.Body, evalCtx, nil, st.withoutMemo())))
 		return

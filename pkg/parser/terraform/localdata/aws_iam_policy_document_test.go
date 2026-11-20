@@ -25,11 +25,12 @@ func decodeJSON(t *testing.T, src string, vars map[string]cty.Value) string {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	ctx := &hcl.EvalContext{Variables: vars}
-	policy, ok := decodePolicyDocument(context.Background(), file.Body, func(expr hcl.Expression) (cty.Value, bool) {
+	d := decoder{ctx: context.Background(), state: &decodeState{}}
+	policy := decodePolicyDocument(d, RenderConfiguration{Body: file.Body, Eval: func(expr hcl.Expression) (cty.Value, bool) {
 		v, d := expr.Value(ctx)
 		return v, !d.HasErrors()
-	})
-	require.True(t, ok)
+	}})
+	require.Empty(t, d.state.diagnostics)
 	out, err := policy.render()
 	require.NoError(t, err)
 	return out
@@ -227,7 +228,7 @@ func renderedAttributes(t *testing.T, src string) map[string]string {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	rd := &partial.Renderer{Ctx: &hcl.EvalContext{Variables: map[string]cty.Value{}}, Source: partial.BytesSource([]byte(src))}
-	return policyDocumentAttributes(context.Background(), file.Body, rd.Render)
+	return renderSource(context.Background(), sources[awsIAMPolicyDocumentType], file.Body, rd.Render)
 }
 
 func TestDynamicContentRendersUnresolvedPartsApartFromIterator(t *testing.T) {
@@ -452,7 +453,7 @@ func productionAttributes(t *testing.T, src string) map[string]string {
 		},
 		Source: partial.BytesSource([]byte(src)),
 	}
-	return policyDocumentAttributes(context.Background(), file.Body, rd.Render)
+	return renderSource(context.Background(), sources[awsIAMPolicyDocumentType], file.Body, rd.Render)
 }
 
 func TestSourceDocumentWithUnresolvedFieldStaysUnresolved(t *testing.T) {
@@ -574,7 +575,7 @@ dynamic "binding" {
 	file, diags := hclsyntax.ParseConfig([]byte(src), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags.Error())
 	rd := &partial.Renderer{Ctx: &hcl.EvalContext{Variables: map[string]cty.Value{}}, Source: partial.BytesSource([]byte(src))}
-	require.NotNil(t, googleIAMPolicyAttributes(context.Background(), file.Body, rd.Render))
+	require.NotNil(t, renderSource(context.Background(), sources[googleIAMPolicyType], file.Body, rd.Render))
 }
 
 // An unresolved condition value renders like in own statements: dropping it
@@ -714,4 +715,10 @@ source_policy_documents   = ["{\"Statement\":[{\"Sid\":\"S\",\"Effect\":\"Deny\"
 `)
 	require.Contains(t, got["json"], `"Effect":"Deny"`)
 	require.Contains(t, got["json"], `"Actions":["s3:*"]`)
+}
+
+// renderSource projects only concrete strings for the legacy document assertions.
+func renderSource(ctx context.Context, source *Source, body hcl.Body, eval EvalFunc) map[string]string {
+	result := source.Evaluate(ctx, RenderConfiguration{Body: body, Eval: eval})
+	return result.DocumentAttributes
 }

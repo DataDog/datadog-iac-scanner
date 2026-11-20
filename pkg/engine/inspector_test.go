@@ -2753,6 +2753,15 @@ resource "aws_s3_bucket" "independent" {acl="public"}`
 		child         bool
 		confirmed     int
 	}{
+		{"invalid local computation without target inventory", `data "aws_iam_policy_document" "invalid" {source_json="private-invalid-policy"}`, "", "", false, 0},
+		{"invalid local computation preserves independent witness", `data "google_iam_policy" "invalid" {
+ binding {
+ role={}
+ members=["allUsers"]
+ }
+}
+resource "aws_s3_bucket" "dependent" {flag=length(keys(jsondecode(data.google_iam_policy.invalid.policy_data).bindings[0]))==1}
+resource "aws_s3_bucket" "independent" {acl="public"}`, "", "", false, 1},
 		{"failed output without resource inventory", `output "invalid" {value=tonumber("invalid")}`, "", "", false, 0},
 		{"failed child without resource inventory", `module "child" {source="./child"}`, "", "", true, 0},
 		{"failed child preserves independent witness", `module "child" {source="./child"}
@@ -2800,10 +2809,10 @@ count=-1
 				Unit: evaluation.PolicyUnit(tfeval.NewValueReader(subjects, true)),
 				Emit: func(EntityFinding) error { emitted++; return nil },
 			})
-			var diagnostic *tfeval.EvaluationDiagnostic
-			require.ErrorAs(t, err, &diagnostic)
 			require.Equal(t, test.confirmed, result.Confirmed)
 			require.Equal(t, test.confirmed, emitted)
+			var diagnostic *tfeval.EvaluationDiagnostic
+			require.ErrorAs(t, err, &diagnostic)
 			if test.file != "" {
 				require.Equal(t, filepath.Join(dir, test.file), diagnostic.Subject.Filename)
 			}
