@@ -178,7 +178,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 			"  _lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ github.sha }}\n" +
 			"  _dd_build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n" +
 			"  _parsed_expressions_release:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make release\n",
-		"site.yml":                 inventoryPlaybook,
+		"site.yml": inventoryPlaybook,
 		"roles/web/tasks/main.yml": "- name: Copy config\n  ansible.builtin.copy:\n    src: a\n    dest: b\n" +
 			"- name: Copy by action\n  action: ansible.builtin.copy src=a dest=b\n" +
 			"- name: Echo locally\n  local_action: ansible.builtin.command echo hello\n" +
