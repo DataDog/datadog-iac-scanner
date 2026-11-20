@@ -65,6 +65,9 @@ func RemoveStale(path string) error {
 // maxLinkHops bounds the symlinks ResolvePath follows, as the system does.
 const maxLinkHops = 255
 
+// parentName is the path component that names a directory's parent.
+const parentName = ".."
+
 // errLinkLoop reports a path whose symlinks do not resolve within
 // maxLinkHops.
 var errLinkLoop = errors.New("too many levels of symbolic links")
@@ -93,7 +96,7 @@ func ResolvePath(path string, followLast bool) (string, error) {
 		switch component {
 		case ".":
 			continue
-		case "..":
+		case parentName:
 			resolved = filepath.Dir(resolved)
 			continue
 		}
@@ -109,7 +112,8 @@ func ResolvePath(path string, followLast bool) (string, error) {
 			resolved = next
 			continue
 		}
-		if hops++; hops > maxLinkHops {
+		hops++
+		if hops > maxLinkHops {
 			return "", errLinkLoop
 		}
 		target, err := os.Readlink(next)

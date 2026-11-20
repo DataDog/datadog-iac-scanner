@@ -332,7 +332,8 @@ func flowValue(lines []string, row, col int) string {
 			case r == '{':
 				depth++
 			case r == '}':
-				if depth--; depth == 0 {
+				depth--
+				if depth == 0 {
 					return b.String()
 				}
 			}
