@@ -194,4 +194,25 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
 	require.NotNil(t, metadata.Inventory)
 	require.Equal(t, scan.InventoryFailed, metadata.Inventory.Status)
+
+	// Nor can the inventory take the place of a directory the metadata needs.
+	nested := filepath.Join(t.TempDir(), "out")
+	nestedMetadata := filepath.Join(nested, "result.json", "metadata.json")
+	err = scanAction.Run(t.Context(), []string{
+		"scan",
+		"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+		"--type", "terraform",
+		"--output-path", nested,
+		"--offline-bundle-path", bundleDir,
+		"--metadata-path", nestedMetadata,
+		"--inventory-path", filepath.Join(nested, "result.json"),
+	})
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+	metadataBytes, err = os.ReadFile(filepath.Clean(nestedMetadata))
+	require.NoError(t, err, "the metadata is written")
+	metadata = scan.ScanMetadata{}
+	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
+	require.NotNil(t, metadata.Inventory)
+	require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
 }
