@@ -232,7 +232,7 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 		c.finish(&resources[i])
 	}
 	sort.Slice(resources, func(i, j int) bool { return compareResources(&resources[i], &resources[j]) < 0 })
-	repeats := uniqueRefs(resources)
+	uniqueRefs(resources)
 
 	unresolved := slices.Clone(c.unresolved)
 	slices.SortFunc(unresolved, func(a, b UnresolvedSource) int {
@@ -244,7 +244,7 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 	})
 	unresolved = slices.Compact(unresolved)
 
-	links, unlinked := c.linkFindings(resources, repeats)
+	links, unlinked := c.linkFindings(resources)
 	slices.SortFunc(links, func(a, b FindingLink) int {
 		return cmp.Or(
 			strings.Compare(a.FindingFingerprint, b.FindingFingerprint),
@@ -317,20 +317,20 @@ func compareResources(a, b *Resource) int {
 		strings.Compare(a.OriginChartVersion, b.OriginChartVersion),
 		strings.Compare(a.OriginTemplate, b.OriginTemplate),
 		cmp.Compare(a.documentIndex, b.documentIndex),
+		// The objects of one list document, by their place in it.
+		strings.Compare(a.searchKeyPrefix, b.searchKeyPrefix),
 	)
 }
 
 // uniqueRefs gives every sorted row its own reference: a row with the
-// reference of an earlier row gets the first free "#n" suffix, from #2. It
-// maps each row that shared its reference to the rows that shared it, in
-// list order.
-func uniqueRefs(rows []Resource) map[int][]int {
+// reference of an earlier row gets the first free "#n" suffix, from #2.
+func uniqueRefs(rows []Resource) {
 	count := make(map[string]int, len(rows))
 	for i := range rows {
 		count[rows[i].ResourceRef]++
 	}
 	if len(count) == len(rows) {
-		return nil
+		return
 	}
 	shared := make(map[string][]int)
 	for i := range rows {
@@ -340,7 +340,6 @@ func uniqueRefs(rows []Resource) map[int][]int {
 	}
 	// A suffix starts after the last "#", so two references never get the
 	// same one and the groups can be renamed in any order.
-	repeats := make(map[int][]int)
 	for ref, group := range shared {
 		n := 1
 		for _, i := range group[1:] {
@@ -353,11 +352,7 @@ func uniqueRefs(rows []Resource) map[int][]int {
 			count[candidate] = 1
 			rows[i].ResourceRef = candidate
 		}
-		for _, i := range group {
-			repeats[i] = group
-		}
 	}
-	return repeats
 }
 
 // nonNil keeps empty lists as [] rather than null in the JSON document.

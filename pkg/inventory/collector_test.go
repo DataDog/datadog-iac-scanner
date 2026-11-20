@@ -133,16 +133,16 @@ func TestBuildIsFinal(t *testing.T) {
 			ResourceName: "cm", File: "k8s/dup.yaml", LineStart: row.line, Completeness: CompletenessComplete,
 			DocumentID: row.document, ownsDocument: true})
 	}
-	// Kept with the second document, raised at the first one's line.
+	// Kept with the second document, located at the first one's line.
 	c.AddFinding(&Finding{Fingerprint: "kept-once", DocumentID: "second", Line: 1})
 
 	first := c.Build(testMetadata())
-	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"}}, first.FindingLinks)
+	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#2"}}, first.FindingLinks)
 
 	c.AddResource(&Resource{ResourcePath: "v1/Secret//late", Platform: platforms.Kubernetes, File: "k8s/late.yaml",
 		LineStart: 1, Completeness: CompletenessComplete})
 	again := c.Build(testMetadata())
-	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"}}, again.FindingLinks,
+	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#2"}}, again.FindingLinks,
 		"building again does not move the link")
 	require.Same(t, first, again, "a collector builds once")
 	require.Len(t, again.Resources, 2, "a row added after Build is not in the inventory")
@@ -293,10 +293,9 @@ func TestBuildMakesReferencesUnique(t *testing.T) {
 	for document, line := range map[string]int{"first": 1, "second": 8, "third": 15, "taken": 20, "loop-0": 1, "loop-1": 1} {
 		c.AddFinding(&Finding{Fingerprint: document, DocumentID: document, Line: line})
 	}
-	// The scan raised one finding on every document and kept it with the
-	// third: it belongs to the row holding its line.
+	// A finding belongs to its document's row, whatever line its location
+	// detection gave: the rows' coordinates do not tell repeated rows apart.
 	c.AddFinding(&Finding{Fingerprint: "kept-once", DocumentID: "third", Line: 1})
-	// No row holds it: the first.
 	c.AddFinding(&Finding{Fingerprint: "no-line", DocumentID: "second"})
 
 	inv := c.Build(testMetadata())
@@ -315,15 +314,15 @@ func TestBuildMakesReferencesUnique(t *testing.T) {
 	}, refs)
 	require.Equal(t, []FindingLink{
 		{FindingFingerprint: "first", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"},
-		{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"},
-		// Rows with the same lines cannot be told apart: the first.
+		{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#4"},
+		// Rows with the same lines are told apart by their document.
 		{FindingFingerprint: "loop-0", ResourceRef: "chart/templates/cm.yaml|v1/ConfigMap//same"},
-		{FindingFingerprint: "loop-1", ResourceRef: "chart/templates/cm.yaml|v1/ConfigMap//same"},
-		{FindingFingerprint: "no-line", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"},
+		{FindingFingerprint: "loop-1", ResourceRef: "chart/templates/cm.yaml|v1/ConfigMap//same#2"},
+		{FindingFingerprint: "no-line", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#3"},
 		{FindingFingerprint: "second", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#3"},
 		{FindingFingerprint: "taken", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#2"},
 		{FindingFingerprint: "third", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#4"},
-	}, inv.FindingLinks, "a finding links to the repeated row holding its line, whichever document the scan kept")
+	}, inv.FindingLinks, "a finding links to its own document's row among repeated ones")
 	requireValid(t, inv)
 	require.Equal(t, refs[2:], func() []string {
 		var again []string

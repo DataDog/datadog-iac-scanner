@@ -59,16 +59,17 @@ type terraformStart struct {
 //     the narrowest row whose lines hold the finding. So does a finding on
 //     any other row, such as an Ansible task, however many rows its document
 //     holds: a play-level finding belongs to no task.
-//   - Rows that shared a reference, such as two documents of a file with the
-//     same name, can raise one finding that the scan keeps once, with either
-//     document. The finding belongs to the narrowest of them whose lines hold
-//     it, else to the first, whichever document it kept.
+//   - Rows that share a reference but for its suffix, such as two documents
+//     of a file with the same name, are told apart by their document or key
+//     like any other. A finding the scan raised on several of them and kept
+//     once carries every place it was raised (Finding per place), so each
+//     links its own row, whichever the scan kept.
 //   - A Terraform finding belongs to every instance of its block, reached
 //     through the same module calls: the instances of a count or for_each
 //     block share their findings. Its block is the one starting where the
 //     finding's block does; when several start there, as in compact JSON
 //     configuration, the one its search key names (aws_s3_bucket[logs]).
-func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links []FindingLink, unlinked int) {
+func (c *Collector) linkFindings(rows []Resource) (links []FindingLink, unlinked int) {
 	byDocument := make(map[string][]int)
 	byScope := make(map[terraformScope][]int)
 	byStart := make(map[terraformStart][]int)
@@ -93,9 +94,6 @@ func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links 
 			linked[f.Fingerprint] = false
 		}
 		matched := matchDocument(rows, byDocument[f.DocumentID], f)
-		if len(matched) == 1 && repeats[matched[0]] != nil {
-			matched = []int{repeatHolding(rows, repeats[matched[0]], f.Line)}
-		}
 		if len(matched) == 0 && f.File != "" {
 			scope := terraformScope{c.resourcePath(f.File), f.ModuleCallChain}
 			matched = matchTerraform(rows, byScope[scope], byStart[terraformStart{scope, f.BlockStart}], f)
@@ -250,15 +248,6 @@ func searchKeyBlock(searchKey string) string {
 		return ""
 	}
 	return kind + typ + "." + name
-}
-
-// repeatHolding returns the narrowest of rows that shared a reference whose
-// lines hold line, else the first of them.
-func repeatHolding(rows []Resource, repeated []int, line int) int {
-	if j, ok := narrowestHolding(rows, repeated, line); ok {
-		return j
-	}
-	return repeated[0]
 }
 
 // narrowestHolding returns the candidate row with the fewest lines that holds

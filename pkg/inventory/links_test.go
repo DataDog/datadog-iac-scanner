@@ -104,6 +104,25 @@ func TestLinkRenderedListItemsByTheirKey(t *testing.T) {
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 }
 
+func TestLinkRepeatedListObjectsByTheirKey(t *testing.T) {
+	c := NewCollector(t.TempDir())
+	// Two identical objects of a list rendered from a Helm template: only
+	// their place in the list tells them apart. Added in reverse, the second
+	// still takes the #2 reference.
+	for _, i := range []int{1, 0} {
+		c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//same", Platform: platforms.Kubernetes, ResourceType: "ConfigMap",
+			ResourceName: "same", File: "chart/templates/list.yaml", LineStart: 3, Completeness: CompletenessComplete,
+			DocumentID: "list", searchKeyPrefix: "items." + strconv.Itoa(i), sharedLines: true})
+	}
+	c.AddFinding(&Finding{Fingerprint: "on-second", DocumentID: "list", SearchKey: "items.1.data.foo", Line: 3})
+
+	inv := c.Build(testMetadata())
+
+	require.Equal(t, []FindingLink{
+		{FindingFingerprint: "on-second", ResourceRef: "chart/templates/list.yaml|v1/ConfigMap//same#2"},
+	}, inv.FindingLinks, "the object the key names, not the first that shares its coordinates")
+}
+
 func TestSearchKeyBlock(t *testing.T) {
 	for key, want := range map[string]string{
 		"aws_s3_bucket[logs].acl":                                      "aws_s3_bucket.logs",

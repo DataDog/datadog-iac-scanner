@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
@@ -200,14 +201,16 @@ func TestInventoryDuplicateDocumentsGetTheirOwnRows(t *testing.T) {
 	require.Equal(t, "v1/ConfigMap//cm", inv.Resources[1].ResourcePath, "the path stays as the document names it")
 
 	refs := linkedRefs(inv)
-	var linked []string
+	var linked [][]string
 	for _, fp := range fingerprints {
-		require.Len(t, refs[fp], 1)
-		linked = append(linked, refs[fp][0])
+		sort.Strings(refs[fp])
+		linked = append(linked, refs[fp])
 	}
-	require.ElementsMatch(t, []string{"k8s/dup.yaml|v1/ConfigMap//cm", "k8s/dup.yaml|v1/ConfigMap//cm#2",
-		"k8s/dup.yaml|v1/ConfigMap//cm"}, linked,
-		"each document's finding links to its own row, and the finding kept once to the row holding its line")
+	require.ElementsMatch(t, [][]string{
+		{"k8s/dup.yaml|v1/ConfigMap//cm"},
+		{"k8s/dup.yaml|v1/ConfigMap//cm#2"},
+		{"k8s/dup.yaml|v1/ConfigMap//cm", "k8s/dup.yaml|v1/ConfigMap//cm#2"},
+	}, linked, "each document's finding links to its own row, and the finding the scan raised on both and kept once to both")
 }
 
 func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
