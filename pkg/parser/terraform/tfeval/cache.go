@@ -200,12 +200,13 @@ func (w *keyWriter) WriteString(s string) {
 
 func (w *keyWriter) digest() inputsDigest { return inputsDigest{a: w.a.Sum64(), b: w.b.Sum64()} }
 
-// writeValue encodes v for a cache key. The null check must precede the known
+// writeValue encodes v for a cache key. An unmaterialized NilVal is uncacheable.
+// The null check must precede the known
 // check because null values are also considered known. All DynamicPseudoType
 // values are unknown (IsKnown()==false), so they are handled by the unknown
 // branch and the DynamicPseudoType case never needs a special guard.
 func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digestCollection bool) bool {
-	if ctx.Err() != nil || v.IsMarked() {
+	if ctx.Err() != nil || v == cty.NilVal || v.IsMarked() {
 		return false
 	}
 	if v.IsNull() {

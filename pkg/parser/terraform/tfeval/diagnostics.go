@@ -71,26 +71,26 @@ func evaluationDiagnostics(diagnostics hcl.Diagnostics, fallback hcl.Range) []Ev
 	return failures
 }
 
-// evaluationObservations keeps authoritative expression failures and sparse
+// evaluationObservations keeps authoritative producer failures and sparse
 // inventory gaps in the same scope. Re-evaluation replaces the observation;
 // speculative scopes must never publish these facts into a final result.
 type evaluationObservations struct {
-	failures map[hclsyntax.Expression]*expressionFailure
+	failures map[hclsyntax.Node]*expressionFailure
 	gaps     map[*hclsyntax.Block]*InventoryGap
 }
 
-func (d *evaluationObservations) update(expr hclsyntax.Expression, result expressionValue) {
+func (d *evaluationObservations) update(node hclsyntax.Node, result expressionValue) {
 	if d == nil {
 		return
 	}
 	if result.failure == nil {
-		delete(d.failures, expr)
+		delete(d.failures, node)
 		return
 	}
 	if d.failures == nil {
-		d.failures = map[hclsyntax.Expression]*expressionFailure{}
+		d.failures = map[hclsyntax.Node]*expressionFailure{}
 	}
-	d.failures[expr] = result.failure
+	d.failures[node] = result.failure
 }
 
 // Diagnostics returns a caller-owned inspection snapshot. Discarding or
