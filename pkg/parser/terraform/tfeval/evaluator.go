@@ -505,7 +505,7 @@ func (e *Evaluator) evaluate(
 		inputs:      inputsKey,
 	}
 	if inputsKeyOK {
-		if resources, outputs, hit := e.reuseCachedEvaluation(cacheKey, addr, chain, depth, allVisited); hit {
+		if resources, outputs, hit := e.reuseCachedEvaluation(cacheKey, addr, chain, depth, visiting, allVisited); hit {
 			return resources, outputs, nil
 		}
 	}
@@ -517,11 +517,14 @@ func (e *Evaluator) evaluate(
 	diagnosticsBefore := len(e.diagnostics)
 	inventoryGapsBefore := len(e.inventoryGaps)
 
-	// Snapshot allVisited so we can determine which dirs this subtree adds.
-	prevAllVisited := make(map[string]bool, len(allVisited))
-	for k := range allVisited {
-		prevAllVisited[k] = true
-	}
+	// The cache needs this subtree's complete footprint, including directories
+	// another sibling already visited. Keep the caller's coverage independent.
+	subtreeVisited := make(map[string]bool)
+	defer func() {
+		for visited := range subtreeVisited {
+			allVisited[visited] = true
+		}
+	}()
 
 	parsed := e.parseDir(ctx, dir, packageRoot)
 	if parsed.err != nil {
@@ -568,7 +571,7 @@ func (e *Evaluator) evaluate(
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting, allVisited,
+		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting, subtreeVisited,
 	)
 
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
@@ -611,18 +614,11 @@ func (e *Evaluator) evaluate(
 	scope.observations = evaluationObservations{}
 	scope.inputDiagnostics = nil
 
-	// Collect dirs added to allVisited during this evaluation for the cache entry.
-	var visitedDirs []string
-	for d := range allVisited {
-		if !prevAllVisited[d] {
-			visitedDirs = append(visitedDirs, d)
-		}
-	}
 	if inputsKeyOK {
 		e.cacheCompletedEvaluation(
 			cacheKey, skippedBefore, resources, e.instances[instancesBefore:],
 			e.diagnostics[diagnosticsBefore:], e.inventoryGaps[inventoryGapsBefore:],
-			outputs, visitedDirs, addr, len(chain), depth,
+			outputs, subtreeVisited, addr, len(chain), depth,
 		)
 	}
 
@@ -690,7 +686,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 	addr string,
 	chain []CallSite,
 	depth int,
-	allVisited map[string]bool,
+	visiting, allVisited map[string]bool,
 ) (resources []ResolvedResource, outputs map[string]cty.Value, hit bool) {
 	entry, ok := e.cache[key]
 	if !ok {
@@ -698,6 +694,13 @@ func (e *Evaluator) reuseCachedEvaluation(
 	}
 	if entry.evalDepth > depth {
 		return nil, nil, false
+	}
+	// A complete result from another ancestry must not bypass the same cycle
+	// check a fresh traversal would apply to one of its descendants.
+	for _, visited := range entry.visitedDirs {
+		if visiting[visited] {
+			return nil, nil, false
+		}
 	}
 	for _, visited := range entry.visitedDirs {
 		allVisited[visited] = true
@@ -743,13 +746,17 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	diagnostics []EvaluationDiagnostic,
 	inventoryGaps []InventoryGap,
 	outputs map[string]cty.Value,
-	visitedDirs []string,
+	subtreeVisited map[string]bool,
 	addr string,
 	chainLen int,
 	depth int,
 ) {
 	if e.skipped != skippedBefore {
 		return
+	}
+	visitedDirs := make([]string, 0, len(subtreeVisited))
+	for visited := range subtreeVisited {
+		visitedDirs = append(visitedDirs, visited)
 	}
 	e.cache[key] = &evalCacheEntry{
 		resources:     resources,

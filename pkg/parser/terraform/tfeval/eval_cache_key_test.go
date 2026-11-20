@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -359,5 +360,91 @@ module "mid" {
 	}
 	if len(shallow) != 2 {
 		t.Fatalf("shallow evaluate returned %d resources, want mid and leaf", len(shallow))
+	}
+}
+
+func TestEvalCache_RespectsActiveModulePath(t *testing.T) {
+	root := t.TempDir()
+	a := writeModule(t, root, "a", map[string]string{"main.tf": `variable "loop" {default=false}
+module "m" {
+ source="../m"
+ count=var.loop ? 1 : 0
+}
+output "v" {value="a-base"}`})
+	m := writeModule(t, root, "m", map[string]string{"main.tf": `module "a" {
+ source="../a"
+ loop=false
+}
+resource "terraform_data" "m" {input=module.a.v}
+output "v" {value=module.a.v}`})
+	for _, callDepth := range []int{1, 2} {
+		for _, contextName := range []string{"empty", "unrelated", "active descendant", "previously visited active descendant"} {
+			t.Run(fmt.Sprintf("depth%d/%s", callDepth, contextName), func(t *testing.T) {
+				cached := New()
+				primingVisited := map[string]bool{}
+				if contextName == "previously visited active descendant" {
+					primingVisited[a] = true
+				}
+				primed, _, err := cached.evaluate(t.Context(), m, root, "", nil, "module.m", []CallSite{{ModuleName: "m"}}, 1, map[string]bool{}, primingVisited)
+				require.NoError(t, err)
+				key := evalCacheKey{dir: m, rootDir: root, inputs: canonicalInputsKey(nil)}
+				entry := cached.cache[key]
+				require.NotNil(t, entry)
+				require.Contains(t, entry.visitedDirs, a, "cache footprints include descendants visited before this module")
+				visiting := map[string]bool{}
+				switch contextName {
+				case "unrelated":
+					visiting[filepath.Join(root, "unrelated")] = true
+				case "active descendant", "previously visited active descendant":
+					visiting[a] = true
+				}
+				fresh := New()
+				freshVisited, cachedVisited := map[string]bool{}, map[string]bool{}
+				chain := []CallSite{{ModuleName: "m"}}
+				addr := "module.m"
+				if callDepth == 2 {
+					chain = append([]CallSite{{ModuleName: "current"}}, chain...)
+					addr = "module.current.module.m"
+				}
+				freshResources, freshOutputs, err := fresh.evaluate(t.Context(), m, root, "", nil, addr, chain, callDepth, visiting, freshVisited)
+				require.NoError(t, err)
+				cachedResources, cachedOutputs, err := cached.evaluate(t.Context(), m, root, "", nil, addr, chain, callDepth, visiting, cachedVisited)
+				require.NoError(t, err)
+				require.True(t, freshOutputs["v"].RawEquals(cachedOutputs["v"]), "cached output %#v differs from fresh %#v", cachedOutputs["v"], freshOutputs["v"])
+				require.Len(t, cachedResources, len(freshResources))
+				require.True(t, freshResources[0].Attributes["input"].RawEquals(cachedResources[0].Attributes["input"]))
+				require.Equal(t, freshVisited, cachedVisited)
+				require.Equal(t, fresh.inventoryGaps, cached.inventoryGaps)
+				if contextName == "empty" || contextName == "unrelated" {
+					require.Same(t, entry, cached.cache[key])
+					require.Same(t, primed[0].Scope, cachedResources[0].Scope, "safe contexts must reuse the cached native value scope")
+				} else {
+					require.NotSame(t, primed[0].Scope, cachedResources[0].Scope, "active ancestors require fresh traversal")
+				}
+			})
+		}
+	}
+}
+
+func TestEvalCache_TracksPreviouslyVisitedDescendants(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "a", map[string]string{"main.tf": `resource "terraform_data" "a" {input="known"}
+output "v" {value="known"}`})
+	writeModule(t, root, "m", map[string]string{"main.tf": `module "a" {source="../a"}
+output "v" {value=module.a.v}`})
+	writeModule(t, root, "root", map[string]string{"main.tf": `variable "seed" {type=bool}
+module "a_seed" {
+source="../a"
+count=var.seed ? 1 : 0
+}
+module "z_consumer" {source="../m"}
+output "v" {value=module.z_consumer.v}`})
+	evaluator := New()
+	for _, seed := range []bool{true, false, true} {
+		result, err := evaluator.EvaluateModule(t.Context(), filepath.Join(root, "root"), map[string]cty.Value{"seed": cty.BoolVal(seed)})
+		require.NoError(t, err)
+		require.Equal(t, cty.StringVal("known"), result.Outputs["v"])
+		require.True(t, result.VisitedChildDirs[filepath.Join(root, "a")], "the complete footprint survives sibling order and later cache hits")
+		require.True(t, result.VisitedChildDirs[filepath.Join(root, "m")])
 	}
 }
