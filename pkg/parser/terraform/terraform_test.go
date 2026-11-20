@@ -8,6 +8,7 @@ package terraform
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -308,7 +309,7 @@ func TestTerraform_ProcessContent(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			processContent(ctx, tt.args.elements, tt.args.content, tt.args.path)
+			processContent(ctx, nil, tt.args.elements, tt.args.content, tt.args.path)
 			require.Equal(t, tt.want, tt.args.elements["certificate_body"])
 		})
 	}
@@ -551,4 +552,48 @@ func TestParseUnavailableJSONLinkPlaceholder(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, docs)
 	require.Contains(t, logs.String(), `"level":"debug"`)
+}
+
+func TestParser_CertificateFilesystem(t *testing.T) {
+	pem, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"))
+	require.NoError(t, err)
+	for _, format := range []string{"hcl", "json"} {
+		for _, mode := range []string{"owned", "missing", "inline"} {
+			t.Run(format+"/"+mode, func(t *testing.T) {
+				dir := t.TempDir()
+				cert := filepath.Join(dir, "certificate.pem")
+				host := pem
+				if mode == "owned" {
+					host = []byte("conflicting invalid host certificate")
+				}
+				require.NoError(t, os.WriteFile(cert, host, 0600))
+				ref := "certificate.pem"
+				if mode == "inline" {
+					ref = string(pem)
+				}
+				name := "main.tf"
+				source := []byte(fmt.Sprintf(`resource "aws_acm_certificate" "cert" {certificate_body=%q}`, ref))
+				if format == "json" {
+					name += ".json"
+					source, err = json.Marshal(map[string]any{"resource": map[string]any{"aws_acm_certificate": map[string]any{"cert": map[string]any{"certificate_body": ref}}}})
+					require.NoError(t, err)
+				}
+				assets := map[string][]byte{filepath.Join(dir, name): source}
+				if mode == "owned" {
+					assets[cert] = pem
+				}
+				p := NewDefaultWithParams(vfs.NewMemFS(assets), "", model.SCIInfo{})
+				for range 2 {
+					_, docs, _, _, err := p.Parse(t.Context(), source, filepath.Join(dir, name), false, 0)
+					require.NoError(t, err)
+					encoded, err := json.Marshal(docs)
+					require.NoError(t, err)
+					require.Equal(t, mode == "owned", strings.Contains(string(encoded), "expiration_date"))
+					if mode == "inline" {
+						require.Contains(t, string(encoded), "BEGIN CERTIFICATE")
+					}
+				}
+			})
+		}
+	}
 }

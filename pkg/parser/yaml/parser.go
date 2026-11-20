@@ -215,35 +215,35 @@ func SupportedExtensions() []string {
 	return []string{".yaml", ".yml"}
 }
 
-func processCertContent(ctx context.Context, elements map[string]interface{}, content, filePath string) {
+func processCertContent(ctx context.Context, fsys vfs.FS, elements map[string]interface{}, content, filePath string) {
 	var certInfo map[string]interface{}
 	if content != "" {
-		certInfo = utils.AddCertificateInfo(ctx, filePath, content)
+		certInfo = utils.AddCertificateInfo(ctx, fsys, filePath, content)
 		if certInfo != nil {
 			elements["certificate"] = certInfo
 		}
 	}
 }
 
-func processElements(ctx context.Context, elements map[string]interface{}, filePath string) {
+func processElements(ctx context.Context, fsys vfs.FS, elements map[string]interface{}, filePath string) {
 	// A map shared by several resolved references is seen once per reference,
 	// and certificate is a map once processed.
 	if certificate, ok := elements["certificate"].(string); ok {
-		processCertContent(ctx, elements, utils.CheckCertificate(certificate), filePath)
+		processCertContent(ctx, fsys, elements, utils.CheckCertificate(certificate), filePath)
 	}
 }
 
-func AddExtraInfo(ctx context.Context, documents []model.Document, filePath string) []model.Document {
+func AddExtraInfo(ctx context.Context, fsys vfs.FS, documents []model.Document, filePath string) []model.Document {
 	for _, documentPlaybooks := range documents { // iterate over documents
 		if playbooks, ok := documentPlaybooks["playbooks"]; ok {
-			processPlaybooks(ctx, playbooks, filePath)
+			processPlaybooks(ctx, fsys, playbooks, filePath)
 		}
 	}
 
 	return documents
 }
 
-func processPlaybooks(ctx context.Context, playbooks interface{}, filePath string) {
+func processPlaybooks(ctx context.Context, fsys vfs.FS, playbooks interface{}, filePath string) {
 	contextLogger := logger.FromContext(ctx)
 	sliceResources, ok := playbooks.([]interface{})
 	if !ok { // prevent panic if playbooks is not a slice
@@ -251,11 +251,11 @@ func processPlaybooks(ctx context.Context, playbooks interface{}, filePath strin
 		return
 	}
 	for _, resources := range sliceResources { // iterate over playbooks
-		processPlaybooksElements(ctx, resources, filePath)
+		processPlaybooksElements(ctx, fsys, resources, filePath)
 	}
 }
 
-func processPlaybooksElements(ctx context.Context, resources interface{}, filePath string) {
+func processPlaybooksElements(ctx context.Context, fsys vfs.FS, resources interface{}, filePath string) {
 	contextLogger := logger.FromContext(ctx)
 	mapResources, ok := resources.(map[string]interface{})
 	if !ok {
@@ -267,6 +267,6 @@ func processPlaybooksElements(ctx context.Context, resources interface{}, filePa
 		if !ok {
 			continue
 		}
-		processElements(ctx, mapValue, filePath)
+		processElements(ctx, fsys, mapValue, filePath)
 	}
 }

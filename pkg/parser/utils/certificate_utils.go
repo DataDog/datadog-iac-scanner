@@ -11,11 +11,11 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"os"
 	"path/filepath"
 	"regexp"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 type certInfo struct {
@@ -32,8 +32,8 @@ func CheckCertificate(content string) string {
 	return match
 }
 
-func getCertificateInfo(filePath string) (certInfo, error) {
-	certPEM, err := os.ReadFile(filepath.Clean(filePath))
+func getCertificateInfo(fsys vfs.FS, filePath string) (certInfo, error) {
+	certPEM, err := fsys.ReadFile(filepath.Clean(filePath))
 
 	if err != nil {
 		return certInfo{}, err
@@ -67,11 +67,14 @@ func getCertificateInfo(filePath string) (certInfo, error) {
 }
 
 // AddCertificateInfo gets and adds certificate information of a certificate file
-func AddCertificateInfo(ctx context.Context, path, content string) map[string]interface{} {
+func AddCertificateInfo(ctx context.Context, fsys vfs.FS, path, content string) map[string]interface{} {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
 	loggerFromContext := logger.FromContext(ctx)
 	var filePath string
 
-	_, err := os.Stat(content)
+	_, err := fsys.Stat(content)
 
 	if err != nil { // content is not a full valid path or is an incomplete path
 		loggerFromContext.Trace().Msgf("path to the certificate content is not a valid: %s", content)
@@ -80,7 +83,7 @@ func AddCertificateInfo(ctx context.Context, path, content string) map[string]in
 		filePath = content
 	}
 
-	date, err := getCertificateInfo(filePath)
+	date, err := getCertificateInfo(fsys, filePath)
 
 	if err == nil {
 		attributes := make(map[string]interface{})

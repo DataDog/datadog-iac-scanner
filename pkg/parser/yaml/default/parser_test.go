@@ -9,9 +9,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -476,6 +480,42 @@ martin2:
 			got, err := tt.fields.parser.StringifyContent(tt.args.content)
 			require.Equal(t, tt.wantErr, (err != nil))
 			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestParser_CertificateFilesystem(t *testing.T) {
+	pem, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"))
+	require.NoError(t, err)
+	for _, mode := range []string{"owned", "missing", "inline"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			cert := filepath.Join(dir, "certificate.pem")
+			host := pem
+			if mode == "owned" {
+				host = []byte("conflicting invalid host certificate")
+			}
+			require.NoError(t, os.WriteFile(cert, host, 0600))
+			ref := "certificate.pem"
+			if mode == "inline" {
+				ref = string(pem)
+			}
+			source := []byte(fmt.Sprintf("- task:\n    certificate: %q\n", ref))
+			assets := map[string][]byte{filepath.Join(dir, "main.yaml"): source}
+			if mode == "owned" {
+				assets[cert] = pem
+			}
+			p := &Parser{FS: vfs.NewMemFS(assets)}
+			for range 2 {
+				_, docs, _, _, err := p.Parse(t.Context(), source, filepath.Join(dir, "main.yaml"), false, 0)
+				require.NoError(t, err)
+				encoded, err := json.Marshal(docs)
+				require.NoError(t, err)
+				require.Equal(t, mode == "owned", strings.Contains(string(encoded), "expiration_date"))
+				if mode == "inline" {
+					require.Contains(t, string(encoded), "BEGIN CERTIFICATE")
+				}
+			}
 		})
 	}
 }

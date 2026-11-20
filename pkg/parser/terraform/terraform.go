@@ -152,17 +152,17 @@ func cloneVariableMap(src converter.VariableMap) converter.VariableMap {
 	return dst
 }
 
-func processContent(ctx context.Context, elements model.Document, content, path string) {
+func processContent(ctx context.Context, fsys vfs.FS, elements model.Document, content, path string) {
 	var certInfo map[string]interface{}
 	if content != "" {
-		certInfo = utils.AddCertificateInfo(ctx, path, content)
+		certInfo = utils.AddCertificateInfo(ctx, fsys, path, content)
 		if certInfo != nil {
 			elements["certificate_body"] = certInfo
 		}
 	}
 }
 
-func processElements(ctx context.Context, elements model.Document, path string) {
+func processElements(ctx context.Context, fsys vfs.FS, elements model.Document, path string) {
 	for k, v3 := range elements { // resource elements
 		if k != "certificate_body" {
 			continue
@@ -170,33 +170,33 @@ func processElements(ctx context.Context, elements model.Document, path string) 
 		switch value := v3.(type) {
 		case string:
 			content := utils.CheckCertificate(value)
-			processContent(ctx, elements, content, path)
+			processContent(ctx, fsys, elements, content, path)
 		case ctyjson.SimpleJSONValue:
 			s, ok := ctyutil.ConcreteString(value.Value)
 			if !ok {
 				continue
 			}
 			content := utils.CheckCertificate(s)
-			processContent(ctx, elements, content, path)
+			processContent(ctx, fsys, elements, content, path)
 		}
 	}
 }
 
-func processResourcesElements(ctx context.Context, resourcesElements model.Document, path string) error {
+func processResourcesElements(ctx context.Context, fsys vfs.FS, resourcesElements model.Document, path string) error {
 	for _, v2 := range resourcesElements {
 		switch t := v2.(type) {
 		case []interface{}:
 			return errors.New("failed to process resources")
 		case interface{}:
 			if elements, ok := t.(model.Document); ok {
-				processElements(ctx, elements, path)
+				processElements(ctx, fsys, elements, path)
 			}
 		}
 	}
 	return nil
 }
 
-func processResources(ctx context.Context, doc model.Document, path string) error {
+func processResources(ctx context.Context, fsys vfs.FS, doc model.Document, path string) error {
 	var resourcesElements model.Document
 
 	defer func() {
@@ -211,7 +211,7 @@ func processResources(ctx context.Context, doc model.Document, path string) erro
 		case []interface{}: // support the case of nameless resources - where we get a list of resources
 			for _, value := range t {
 				resourcesElements = value.(model.Document)
-				err := processResourcesElements(ctx, resourcesElements, path)
+				err := processResourcesElements(ctx, fsys, resourcesElements, path)
 				if err != nil {
 					return err
 				}
@@ -219,7 +219,7 @@ func processResources(ctx context.Context, doc model.Document, path string) erro
 
 		case interface{}:
 			resourcesElements = t.(model.Document)
-			err := processResourcesElements(ctx, resourcesElements, path)
+			err := processResourcesElements(ctx, fsys, resourcesElements, path)
 			if err != nil {
 				return err
 			}
@@ -228,7 +228,7 @@ func processResources(ctx context.Context, doc model.Document, path string) erro
 	return nil
 }
 
-func addExtraInfo(ctx context.Context, json []model.Document, path string) ([]model.Document, error) {
+func addExtraInfo(ctx context.Context, fsys vfs.FS, json []model.Document, path string) ([]model.Document, error) {
 	// handle panic during resource processing
 	defer func() {
 		if r := recover(); r != nil {
@@ -238,7 +238,7 @@ func addExtraInfo(ctx context.Context, json []model.Document, path string) ([]mo
 	}()
 	for _, documents := range json { // iterate over documents
 		if resources, ok := documents["resource"].(model.Document); ok {
-			err := processResources(ctx, resources, path)
+			err := processResources(ctx, fsys, resources, path)
 			if err != nil {
 				return []model.Document{}, err
 			}
@@ -267,7 +267,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 	if tfpath.IsJSONConfig(path) {
 		fc, parseErr := parseJSONConfig(resolved, path, inputVariables)
-		json, extraErr := addExtraInfo(ctx, []model.Document{fc}, path)
+		json, extraErr := addExtraInfo(ctx, p.fsys, []model.Document{fc}, path)
 		if extraErr != nil {
 			return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(extraErr, "failed terraform parse")
 		}
@@ -298,7 +298,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		BaseDir: filepath.Dir(path),
 		FS:      p.fsys,
 	})
-	json, err := addExtraInfo(ctx, []model.Document{fc}, path)
+	json, err := addExtraInfo(ctx, p.fsys, []model.Document{fc}, path)
 	if err != nil {
 		return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed terraform parse")
 	}
