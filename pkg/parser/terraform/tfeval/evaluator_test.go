@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -626,29 +627,78 @@ resource "aws_s3_bucket" "b_bucket" {
 	}
 }
 
-func TestEvaluateModule_DepthGuardTerminates(t *testing.T) {
-	root := t.TempDir()
+// cancellationCheckContext bounds failing cycle tests without limiting the
+// evaluator: the real DiskFS still reads every path through the usual code.
+type cancellationCheckContext struct {
+	context.Context
+	cancel    context.CancelFunc
+	checks    atomic.Int64
+	maxChecks int64
+}
 
-	// self-referential module: a calls a (same dir). The cycle guard catches
-	// this, but it also exercises that recursion is bounded.
-	writeModule(t, root, "a", map[string]string{
-		"main.tf": `
+func (c *cancellationCheckContext) Err() error {
+	limit := c.maxChecks
+	if limit == 0 {
+		limit = 128
+	}
+	if c.checks.Add(1) > limit {
+		c.cancel()
+	}
+	return c.Context.Err()
+}
+
+func TestEvaluateModule_ModuleDirectoryCycles(t *testing.T) {
+	for _, source := range []string{"./", "./self"} {
+		t.Run(source, func(t *testing.T) {
+			root := t.TempDir()
+			dir := writeModule(t, root, "a", map[string]string{
+				"main.tf": fmt.Sprintf(`module "self" {
+  source = %q
+  count = 2
+}
+resource "aws_s3_bucket" "a_bucket" {bucket = "a"}
+`, source),
+			})
+			if source == "./self" {
+				if err := os.Symlink(".", filepath.Join(dir, "self")); err != nil {
+					t.Skipf("directory symlinks unavailable: %v", err)
+				}
+			}
+			base, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			ctx := &cancellationCheckContext{Context: base, cancel: cancel}
+			evaluator := New()
+			resources, _, visited, err := evaluator.EvaluateModule(ctx, dir, nil)
+			require.NoError(t, err, "a physical cycle must stop before test cancellation")
+			require.Len(t, resources, 1, "recursive instances must not duplicate the module resource")
+			findResource(t, resources, "aws_s3_bucket", "a_bucket")
+			require.Empty(t, visited, "the recursive child was not evaluated")
+			require.Contains(t, evaluator.NotEvaluatedDirs(), filepath.Join(dir, source))
+			require.Zero(t, evaluator.EvalCacheSize(), "a cycle-stopped subtree is not a complete cache entry")
+		})
+	}
+	t.Run("injected filesystem owns directory identity", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.Symlink(".", filepath.Join(root, "self")); err != nil {
+			t.Skipf("directory symlinks unavailable: %v", err)
+		}
+		fsys := vfs.NewMemFS(map[string][]byte{
+			filepath.Join(root, "main.tf"): []byte(`resource "terraform_data" "root" {input=path.module}
 module "self" {
-  source = "./"
-}
-
-resource "aws_s3_bucket" "a_bucket" {
-  bucket = "a"
-}
-`,
+ source="./self"
+ count=2
+}`),
+			filepath.Join(root, "self", "main.tf"): []byte(`resource "terraform_data" "child" {input=path.module}`),
+		})
+		evaluator := NewWithFS(fsys)
+		resources, _, visited, err := evaluator.EvaluateModule(t.Context(), root, nil)
+		require.NoError(t, err)
+		require.Len(t, resources, 3, "the two virtual directories are independent despite a host symlink")
+		requireString(t, findResource(t, resources, "terraform_data", "child").Attributes, "input", filepath.ToSlash(filepath.Join(root, "self")))
+		require.True(t, visited[filepath.Join(root, "self")])
+		require.Empty(t, evaluator.NotEvaluatedDirs())
 	})
 
-	aDir := filepath.Join(root, "a")
-	resources, _, _, err := New().EvaluateModule(context.Background(), aDir, nil)
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-	findResource(t, resources, "aws_s3_bucket", "a_bucket")
 }
 
 func TestEvaluateModule_UnresolvedReferenceIsUnknown(t *testing.T) {
@@ -1128,7 +1178,7 @@ func TestEvaluateLocalModuleBlocksIgnoresNullOutputs(t *testing.T) {
 	}()
 
 	_, outputs := New().evaluateLocalModuleBlocks(
-		context.Background(), nil, nil, evalCtx, nil, nil, "", "", "", "", nil, 0, nil, nil,
+		context.Background(), nil, nil, evalCtx, nil, nil, "", "", "", "", nil, nil, nil,
 	)
 	if len(outputs) != 0 {
 		t.Fatalf("outputs = %#v, want empty", outputs)
