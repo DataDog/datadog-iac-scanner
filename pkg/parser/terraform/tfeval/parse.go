@@ -8,6 +8,7 @@ package tfeval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -123,26 +124,29 @@ func parseConfigBody(src []byte, path string) (*hclsyntax.Body, hcl.Diagnostics)
 
 // variableDecl is what a variable block declares about the values it accepts.
 type variableDecl struct {
-	def hclsyntax.Expression
-	// ty is cty.DynamicPseudoType when the variable has no type constraint.
-	ty          cty.Type
-	defaults    *typeexpr.Defaults
-	nonNullable bool
+	body *hclsyntax.Body
+	def  hclsyntax.Expression
+	// Constraints may contain optional attributes; runtime values may not.
+	constraintType cty.Type
+	valueType      cty.Type
+	defaults       *typeexpr.Defaults
+	nonNullable    bool
 }
 
 func newVariableDecl(body *hclsyntax.Body) variableDecl {
-	decl := variableDecl{ty: cty.DynamicPseudoType}
+	decl := variableDecl{constraintType: cty.DynamicPseudoType, body: body}
 	if def, ok := body.Attributes["default"]; ok {
 		decl.def = def.Expr
 	}
 	if attr, ok := body.Attributes["type"]; ok {
-		decl.ty, decl.defaults = variableType(attr)
+		decl.constraintType, decl.defaults = variableType(attr)
 	}
 	if attr, ok := body.Attributes["nullable"]; ok {
 		if v, diags := attr.Expr.Value(nil); !diags.HasErrors() && v.Type() == cty.Bool && ctyutil.Materialized(v) {
 			decl.nonNullable = v.False()
 		}
 	}
+	decl.valueType = decl.constraintType.WithoutOptionalAttributesDeep()
 	return decl
 }
 
@@ -163,17 +167,36 @@ func variableType(attr *hclsyntax.Attribute) (cty.Type, *typeexpr.Defaults) {
 	return ty, defaults
 }
 
-// conform applies the variable's optional attribute defaults and converts v to
-// its type, leaving v as given when it does not convert.
-func (d variableDecl) conform(v cty.Value) cty.Value {
-	if d.defaults != nil {
-		v = d.defaults.Apply(v)
+// conform binds a selected variable value to its runtime type. The outcome
+// carries failures with a typed unknown rather than retaining an invalid value.
+// Source attribution anchors to the declaration when input-origin data is absent.
+func (d *variableDecl) conform(name string, v cty.Value, fromDefault bool) expressionValue {
+	var converted cty.Value
+	var err error
+	if v == cty.NilVal {
+		err = errors.New("no evaluated value was provided")
+	} else {
+		// Optional attribute defaults must never replace a top-level null.
+		if d.defaults != nil && !v.IsNull() {
+			v = d.defaults.Apply(v)
+		}
+		converted, err = convert.Convert(v, d.constraintType)
+		if err == nil && d.nonNullable && converted.IsNull() {
+			err = errors.New("a non-null value is required")
+		}
 	}
-	converted, err := convert.Convert(v, d.ty)
-	if err != nil {
-		return v
+	if err == nil {
+		return expressionValue{value: converted}
 	}
-	return converted
+	origin := "input value"
+	if fromDefault {
+		origin = "default value"
+	}
+	detail := fmt.Sprintf("The %s for variable %q does not satisfy its %s constraint: %s.",
+		origin, name, d.constraintType.FriendlyName(), err)
+	return expressionValue{value: cty.UnknownVal(d.valueType), failure: &expressionFailure{diagnostics: []EvaluationDiagnostic{{
+		Summary: "Invalid variable value", Detail: detail, Subject: d.body.SrcRange,
+	}}}}
 }
 
 // collectBlocks partitions blocks across all bodies into variables, locals,

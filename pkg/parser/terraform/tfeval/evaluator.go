@@ -1250,25 +1250,28 @@ func (e *Evaluator) resolveVariables(
 ) map[string]cty.Value {
 	out := make(map[string]cty.Value, len(varDecls))
 	for name, decl := range varDecls {
-		v, ok := inputs[name]
-		if ok && decl.nonNullable && v.IsNull() {
-			ok = false
+		v, provided := inputs[name]
+		useDefault := !provided
+		if provided && v != cty.NilVal && decl.nonNullable && v.IsNull() && decl.def != nil {
+			useDefault = true
 		}
-		if !ok {
+		if useDefault {
 			if decl.def == nil {
-				out[name] = cty.UnknownVal(cty.DynamicPseudoType)
+				out[name] = cty.UnknownVal(decl.valueType)
 				continue
 			}
 			value, diags := decl.def.Value(&hcl.EvalContext{Functions: e.funcs})
 			result := expressionOutcome(value, diags, decl.def.Range())
 			diagnostics.update(decl.def, result)
 			if result.failure != nil {
-				out[name] = cty.UnknownVal(cty.DynamicPseudoType)
+				out[name] = cty.UnknownVal(decl.valueType)
 				continue
 			}
 			v = result.value
 		}
-		out[name] = decl.conform(v)
+		result := decl.conform(name, v, useDefault)
+		diagnostics.update(decl.body, result)
+		out[name] = result.value
 	}
 	return out
 }

@@ -2685,6 +2685,55 @@ DatadogPolicy contains iac.finding(e,["flag"],{}) if {some e in iac.targets("res
 `
 	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
 	require.NoError(t, err)
+	for _, test := range []struct {
+		name, declaration     string
+		inputs                map[string]cty.Value
+		resources             bool
+		confirmed             int
+		indeterminate, failed bool
+	}{
+		{"valid conformed bool", `type=bool`, map[string]cty.Value{"input": cty.True}, true, 2, false, false},
+		{"invalid concrete input is not a witness", `type=number`, map[string]cty.Value{"input": cty.True}, true, 1, true, true},
+		{"valid number is not a bool", `type=number`, map[string]cty.Value{"input": cty.NumberIntVal(2)}, true, 1, false, false},
+		{"missing runtime input stays unknown", `type=bool`, nil, true, 1, true, false},
+		{"unknown runtime input stays unknown", `type=bool`, map[string]cty.Value{"input": cty.UnknownVal(cty.Bool)}, true, 1, true, false},
+		{"nullable null stays null", `type=bool`, map[string]cty.Value{"input": cty.NullVal(cty.Bool)}, true, 1, false, false},
+		{"valid null default fallback", "type=bool\nnullable=false\ndefault=false", map[string]cty.Value{"input": cty.NullVal(cty.Bool)}, true, 1, false, false},
+		{"invalid explicit null", "type=bool\nnullable=false", map[string]cty.Value{"input": cty.NullVal(cty.Bool)}, true, 1, true, true},
+		{"failed variable with no target inventory", `type=number`, map[string]cty.Value{"input": cty.True}, false, 0, false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			source := "variable \"input\" {\n" + test.declaration + "\n}\n"
+			if test.resources {
+				source += `resource "aws_s3_bucket" "dependent" {flag=var.input}
+resource "aws_s3_bucket" "independent" {acl="public"}`
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(source), 0600))
+			evaluation, err := tfeval.New().EvaluateModule(context.Background(), dir, test.inputs)
+			require.NoError(t, err)
+			subjects := map[string]tfeval.ValueSubject{}
+			for _, resource := range evaluation.Resources {
+				subjects[resource.Name] = tfeval.ValueSubject{Kind: "resource", Type: resource.Type, Value: cty.ObjectVal(resource.Attributes)}
+			}
+			emitted := 0
+			result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
+				Unit: evaluation.PolicyUnit(tfeval.NewValueReader(subjects, true)),
+				Emit: func(EntityFinding) error { emitted++; return nil },
+			})
+			require.Equal(t, test.confirmed, emitted)
+			require.Equal(t, test.confirmed, result.Confirmed)
+			require.Equal(t, test.indeterminate, result.Indeterminate)
+			if test.failed {
+				var diagnostic *tfeval.EvaluationDiagnostic
+				require.ErrorAs(t, err, &diagnostic)
+				require.Equal(t, "Invalid variable value", diagnostic.Summary)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
 	t.Run("aborted producer cannot become a clean empty policy result", func(t *testing.T) {
 		producerCtx, cancel := context.WithCancel(context.Background())
 		cancel()
