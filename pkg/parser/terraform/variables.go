@@ -573,10 +573,10 @@ func hclConfigFiles(ctx context.Context, fsys vfs.FS, dir string, allow map[stri
 		contextLogger.Error().Msg("Error listing Terraform configuration files")
 		return nil
 	}
-	names := tfmodules.SelectConfigNames(entries, dir, allow, keep)
-	out := make([]string, len(names))
-	for i, name := range names {
-		out[i] = filepath.Join(dir, name)
+	selected := tfmodules.SelectConfigEntries(entries, dir, allow, keep)
+	out := make([]string, len(selected))
+	for i, entry := range selected {
+		out[i] = filepath.Join(dir, entry.Name())
 	}
 	return out
 }

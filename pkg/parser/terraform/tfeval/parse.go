@@ -57,26 +57,15 @@ func parseDir(
 		return nil, nil, err
 	}
 
-	byName := make(map[string]fs.DirEntry, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			byName[entry.Name()] = entry
-		}
-	}
-	names := tfmodules.SelectConfigNames(entries, dir, allow, "")
-	sort.Strings(names)
+	selected := tfmodules.SelectConfigEntries(entries, dir, allow, "")
+	sort.Slice(selected, func(i, j int) bool { return selected[i].Name() < selected[j].Name() })
 	// Override files apply last regardless of their name, so locals, variable
 	// defaults and module attributes they set win over the directory's other
 	// files, matching the order module discovery assembles the same directory in.
-	names = tfpath.OrderOverrideLast(names, func(name string) string { return name })
-
-	bodies := make([]*hclsyntax.Body, 0, len(names))
-	sources := make(map[string][]byte, len(names))
-	for _, name := range names {
-		entry, ok := byName[name]
-		if !ok {
-			continue
-		}
+	selected = tfpath.OrderOverrideLast(selected, func(entry fs.DirEntry) string { return entry.Name() })
+	bodies := make([]*hclsyntax.Body, 0, len(selected))
+	sources := make(map[string][]byte, len(selected))
+	for _, entry := range selected {
 		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
 		if !ok {
 			continue
