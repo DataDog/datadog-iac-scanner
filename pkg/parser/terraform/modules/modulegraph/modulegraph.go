@@ -475,41 +475,12 @@ func (w *walker) parseModulesInDir(
 		// Acquired packages are materialized by the disk resolver.
 		fsys = vfs.DiskFS{}
 	}
-	files, err := tfmodules.LoadTFFilesFromDir(
-		ctx, fsys, dir, packageRoot, tfmodules.MaxConfigFileBytesFromContext(ctx),
-	)
+	files, err := tfmodules.LoadTFFilesFromDir(ctx, fsys, dir, tfmodules.LoadOptions{
+		PackageRoot: packageRoot, ModuleCallFiles: allowedFiles, MaxBytes: tfmodules.MaxConfigFileBytesFromContext(ctx),
+	})
 	if err != nil {
 		return nil
 	}
-	parseAllowed := allowedFiles
-	var preferTofu func(string) bool
-	if allowedFiles != nil {
-		allowed := make(map[string]bool, len(allowedFiles))
-		for p, ok := range allowedFiles {
-			if ok {
-				allowed[filepath.Clean(p)] = true
-			}
-		}
-		hasAllowed := false
-		for _, f := range files {
-			if allowed[filepath.Clean(f.FilePath)] {
-				hasAllowed = true
-				break
-			}
-		}
-		if hasAllowed {
-			preferTofu = func(path string) bool {
-				return allowed[filepath.Clean(path)]
-			}
-		} else {
-			parseAllowed = nil
-		}
-	}
-	files, _ = tfpath.PartitionWithTofuPrecedence(
-		files,
-		func(f *model.FileMetadata) string { return f.FilePath },
-		preferTofu,
-	)
 	if len(files) == 0 {
 		empty := map[string]tfmodules.ParsedModule{}
 		w.parseCache.set(key, empty)
@@ -519,7 +490,7 @@ func (w *walker) parseModulesInDir(
 	var parsed map[string]tfmodules.ParsedModule
 	parseErr := w.withParseSlot(ctx, func() error {
 		var slotErr error
-		parsed, slotErr = tfmodules.ParseTerraformModulesFromFiles(ctx, fsys, files, parseAllowed)
+		parsed, slotErr = tfmodules.ParseTerraformModulesFromFiles(ctx, fsys, files, allowedFiles)
 		return slotErr
 	})
 	if parseErr != nil || ctx.Err() != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1685,6 +1686,61 @@ func TestResolveRepositoryFilesystemAuthority(t *testing.T) {
 				require.Equal(t, "git::https://example.invalid/owned.git", result.Modules[0].Source)
 				require.ElementsMatch(t, []string{filepath.Join(acquired, "main.tf"), filepath.Join(acquired, "child", "main.tf")}, result.ScanPaths)
 			}
+		})
+	}
+}
+
+func TestResolveSelectionBeforeByteAdmission(t *testing.T) {
+	acquired := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(acquired, "main.tf"), []byte(`resource "terraform_data" "leaf" {}`), 0o600))
+	for _, tc := range []struct {
+		name, large, wantSource string
+		preferTF, missing       bool
+		limit                   int64
+	}{
+		{name: "default healthy", wantSource: "tofu"},
+		{name: "explicit TF healthy", preferTF: true, wantSource: "tf"},
+		{name: "default oversized winner", large: "main.tofu", limit: 512},
+		{name: "explicit TF oversized winner", large: "main.tf", preferTF: true, limit: 512},
+		{name: "default oversized inactive", large: "main.tf", limit: 512, wantSource: "tofu"},
+		{name: "explicit TF missing winner", preferTF: true, missing: true},
+		{name: "explicit TF oversized inactive", large: "main.tofu", preferTF: true, limit: 512, wantSource: "tf"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"main.tf", "main.tofu"} {
+				if tc.missing && name == "main.tf" {
+					continue
+				}
+				attr := "tf_source"
+				if name == "main.tofu" {
+					attr = "tofu_source"
+				}
+				src := fmt.Sprintf(`module "n" {source=var.%s}`, attr)
+				if name == tc.large {
+					src += "\n#" + strings.Repeat("x", 1024)
+				}
+				require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(src), 0o600))
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(root, "variables.tf"), []byte(`variable "tf_source" {default="git::https://example.invalid/tf.git"}
+variable "tofu_source" {default="git::https://example.invalid/tofu.git"}`), 0o600))
+			if tc.preferTF {
+				require.NoError(t, os.WriteFile(filepath.Join(root, "other.tf"), []byte(`module "unselected" {source="git::https://example.invalid/unselected.git"}`), 0o600))
+			}
+			var discovery []string
+			if tc.preferTF {
+				discovery = []string{filepath.Join(root, "main.tf")}
+			}
+			result := Resolve(t.Context(), &Request{RootPaths: []string{root}, DiscoveryPaths: discovery, Resolver: stubResolver{resolution: resolver.Resolution{LocalPath: acquired, PackageRoot: acquired, Origin: "prefetched"}}, MaxDepth: 4, MaxConfigFileBytes: tc.limit})
+			defer result.Cleanup()
+			require.Empty(t, result.Failures)
+			if tc.wantSource == "" {
+				require.Empty(t, result.Modules)
+				require.Empty(t, result.ScanPaths)
+				return
+			}
+			require.Len(t, result.Modules, 1)
+			require.Equal(t, "git::https://example.invalid/"+tc.wantSource+".git", result.Modules[0].Source, "sibling variable configuration remains visible outside the module-call allow profile")
 		})
 	}
 }

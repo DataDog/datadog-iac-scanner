@@ -399,7 +399,7 @@ const FailureLocalSourceInvalid = "local_source_invalid"
 type moduleParseOptions struct {
 	// allowedFiles, when non-nil, restricts which files contribute module blocks;
 	// every file still contributes locals/vars so resolution stays correct.
-	allowedFiles map[string]bool
+	allowedFiles map[string]struct{}
 	// invalidLocal, when non-nil, collects the local sources that are not a
 	// module directory. Only the pass that sees every scanned file reports them.
 	invalidLocal *invalidLocalSources
@@ -508,8 +508,10 @@ func parseDirModules(
 		if extract == nil || len(extract.modules) == 0 {
 			continue
 		}
-		if opts.allowedFiles != nil && !opts.allowedFiles[file.FilePath] {
-			continue
+		if opts.allowedFiles != nil {
+			if _, allowed := opts.allowedFiles[filepath.ToSlash(filepath.Clean(file.FilePath))]; !allowed {
+				continue
+			}
 		}
 		contributing = append(contributing, dirModuleFile{path: file.FilePath, blocks: extract.modules})
 	}
@@ -1187,7 +1189,8 @@ func generateEquivalentMap(
 		return nil, err
 	}
 
-	for _, name := range SelectHCLConfigNames(entries, modulePath, allow, "") {
+	for _, entry := range SelectHCLConfigEntries(entries, modulePath, allow, "") {
+		name := entry.Name()
 		path := filepath.Join(modulePath, name)
 		if err := processEquivalentMapFile(ctx, fsys, path, equivalentMap, resourceTypesMap); err != nil {
 			if errors.Is(err, ErrSkippedLinkPlaceholder) {
@@ -1303,11 +1306,13 @@ func parseVariableReference(s string) string {
 // ParseTerraformModulesFromFiles is a variant of ParseTerraformModules that accepts an
 // optional allowedFiles set to restrict which files contribute module blocks (all files
 // still contribute locals/vars for correct resolution). fsys is used for local-source
-// path validation; a nil fsys falls back to vfs.DiskFS{}.
+// path validation; a nil fsys falls back to vfs.DiskFS{}. A non-nil profile
+// with no true matching file contributes no module calls; path keys are cleaned
+// and normalized in the same way as LoadOptions.ModuleCallFiles.
 func ParseTerraformModulesFromFiles(
 	ctx context.Context, fsys vfs.FS, files model.FileMetadatas, allowedFiles map[string]bool,
 ) (map[string]ParsedModule, error) {
-	return parseModulesByDir(ctx, fsys, files, moduleParseOptions{allowedFiles: allowedFiles}, 0)
+	return parseModulesByDir(ctx, fsys, files, moduleParseOptions{allowedFiles: moduleCallFileSet(allowedFiles)}, 0)
 }
 
 // DefaultMaxConfigFileBytes is the largest Terraform configuration file the
@@ -1327,18 +1332,48 @@ func MaxConfigFileBytesForScan(maxFileSizeMB int) int64 {
 	return max(int64(maxFileSizeMB)*bytesPerMB, 1)
 }
 
+// moduleCallFileSet gives both loading and parsing the same canonical keys.
+// An empty non-nil profile remains empty rather than becoming unrestricted.
+func moduleCallFileSet(files map[string]bool) map[string]struct{} {
+	if files == nil {
+		return nil
+	}
+	allowed := make(map[string]struct{}, len(files))
+	for path, include := range files {
+		if include {
+			allowed[filepath.ToSlash(filepath.Clean(path))] = struct{}{}
+		}
+	}
+	return allowed
+}
+
+// LoadOptions controls the package boundary, module-call profile and existing
+// byte admission of LoadTFFilesFromDir.
+type LoadOptions struct {
+	PackageRoot string
+	// ModuleCallFiles controls dialect preference while loading configuration.
+	// Sibling inputs remain available for variable and local evaluation. A nil
+	// profile permits every module call; a non-nil profile permits only true
+	// entries when passed to ParseTerraformModulesFromFiles. If no entry matches
+	// this directory, loading retains the default dialect. Passing that same
+	// profile to ParseTerraformModulesFromFiles contributes no module calls.
+	ModuleCallFiles map[string]bool
+	// MaxBytes skips configuration sources and placeholder targets above this
+	// positive byte count. Non-positive values keep the existing unlimited mode.
+	MaxBytes int64
+}
+
 // LoadTFFilesFromDir reads top-level Terraform/OpenTofu configuration
 // (.tf, .tofu, .tf.json, .tofu.json) from the supplied filesystem, without
-// recursion. Files larger than a positive maxBytes are skipped. A nil filesystem
-// uses disk. Symlinked config files must remain within packageRoot (or dir when
-// packageRoot is empty).
-func LoadTFFilesFromDir(
-	ctx context.Context, fsys vfs.FS, dir, packageRoot string, maxBytes int64,
-) (model.FileMetadatas, error) {
+// recursion. A nil filesystem uses disk. Symlinks must remain within
+// options.PackageRoot (or dir when empty). Configuration selection precedes
+// all admission checks, so dropping a winner never activates its inactive twin.
+func LoadTFFilesFromDir(ctx context.Context, fsys vfs.FS, dir string, options LoadOptions) (model.FileMetadatas, error) {
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
-	ctx = WithMaxConfigFileBytes(ctx, maxBytes)
+	// Placeholder targets obey the same size limit as the selected source file.
+	ctx = WithMaxConfigFileBytes(ctx, options.MaxBytes)
 	absDir, err := fsys.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving module dir %q: %w", dir, err)
@@ -1347,18 +1382,19 @@ func LoadTFFilesFromDir(
 	if err != nil {
 		return nil, fmt.Errorf("reading module dir %q: %w", absDir, err)
 	}
+	allow := moduleCallFileSet(options.ModuleCallFiles)
 	var files model.FileMetadatas
-	for _, entry := range ConfigEntries(entries, tfpath.IsConfig) {
-		path, ok := ConfinedFilePath(ctx, entry, absDir, packageRoot)
+	for _, entry := range SelectConfigEntries(entries, absDir, allow, "") {
+		path, ok := ConfinedFilePath(ctx, entry, absDir, options.PackageRoot)
 		if !ok {
 			continue
 		}
-		if ConfigFileTooLarge(fsys, path, maxBytes) {
+		if ConfigFileTooLarge(fsys, path, options.MaxBytes) {
 			contextLogger := logger.FromContext(ctx)
-			contextLogger.Debug().Msgf("Skipping module calls in %q: larger than %d bytes", path, maxBytes)
+			contextLogger.Debug().Msgf("Skipping module calls in %q: larger than %d bytes", path, options.MaxBytes)
 			continue
 		}
-		data, readErr := ReadConfigFile(ctx, fsys, path, packageRoot)
+		data, readErr := ReadConfigFile(ctx, fsys, path, options.PackageRoot)
 		if readErr != nil {
 			if errors.Is(readErr, ErrSkippedLinkPlaceholder) {
 				continue

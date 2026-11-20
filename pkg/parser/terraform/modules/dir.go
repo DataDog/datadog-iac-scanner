@@ -49,25 +49,28 @@ func mergeAllowed(allow map[string]struct{}, dir, name string) bool {
 	return ok
 }
 
-// SelectHCLConfigNames returns HCL config basenames from entries, optionally
-// limited to allow and then OpenTofu-shadowed within that set. keep, when set,
-// is never dropped from a scan-set merge.
-func SelectHCLConfigNames(entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string) []string {
-	return selectConfigNames(entries, dir, allow, keep, tfpath.IsHCLConfig)
+// SelectHCLConfigEntries selects HCL configuration entries with OpenTofu
+// precedence. allow influences which dialect wins without hiding sibling inputs;
+// a non-nil profile with no directory match uses the default dialect. keep, when
+// set, is never dropped from a scan-set merge.
+func SelectHCLConfigEntries(entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string) []fs.DirEntry {
+	return selectConfigEntries(entries, dir, allow, keep, tfpath.IsHCLConfig)
 }
 
-// SelectConfigNames is SelectHCLConfigNames plus JSON config files.
-func SelectConfigNames(entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string) []string {
-	return selectConfigNames(entries, dir, allow, keep, tfpath.IsConfig)
+// SelectConfigEntries is SelectHCLConfigEntries plus JSON configuration files.
+func SelectConfigEntries(entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string) []fs.DirEntry {
+	return selectConfigEntries(entries, dir, allow, keep, tfpath.IsConfig)
 }
 
-func selectConfigNames(
+func selectConfigEntries(
 	entries []fs.DirEntry, dir string, allow map[string]struct{}, keep string, pred func(string) bool,
-) []string {
+) []fs.DirEntry {
 	all := make([]string, 0, len(entries))
+	byName := make(map[string]fs.DirEntry, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			all = append(all, entry.Name())
+			byName[entry.Name()] = entry
 		}
 	}
 	var preferTofu func(string) bool
@@ -85,12 +88,19 @@ func selectConfigNames(
 			}
 		}
 	}
+	var selected []string
 	if keep != "" {
-		return tfpath.SelectKeepingWithTofuPrecedence(
-			all, pred, filepath.Base(keep), preferTofu,
-		)
+		selected = tfpath.SelectKeepingWithTofuPrecedence(all, pred, filepath.Base(keep), preferTofu)
+	} else {
+		selected = tfpath.SelectWithTofuPrecedence(all, pred, preferTofu)
 	}
-	return tfpath.SelectWithTofuPrecedence(all, pred, preferTofu)
+	out := make([]fs.DirEntry, 0, len(selected))
+	for _, name := range selected {
+		if entry, ok := byName[name]; ok {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
 
 // ConfinedFilePath reports whether a directory entry is a regular file the
