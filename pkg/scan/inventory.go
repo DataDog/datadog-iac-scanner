@@ -196,10 +196,10 @@ func (c *Client) inventoryPathConflict(path string) string {
 	return ""
 }
 
-// isUnder reports whether path lies inside dir.
+// isUnder reports whether path lies inside dir, through symlinks.
 func isUnder(path, dir string) bool {
-	absPath, errPath := filepath.Abs(path)
-	absDir, errDir := filepath.Abs(dir)
+	absPath, errPath := resolvedPath(path)
+	absDir, errDir := resolvedPath(dir)
 	if errPath != nil || errDir != nil {
 		return false
 	}
@@ -207,16 +207,36 @@ func isUnder(path, dir string) bool {
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// samePath reports whether two paths name the same file, through symlinks
-// when both exist.
+// resolvedPath returns path made absolute, with the symlinks of the part of
+// it that exists resolved and the rest, not created yet, kept as written.
+func resolvedPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	existing, rest := abs, ""
+	for {
+		if resolved, err := filepath.EvalSymlinks(existing); err == nil {
+			return filepath.Join(resolved, rest), nil
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return abs, nil
+		}
+		rest = filepath.Join(filepath.Base(existing), rest)
+		existing = parent
+	}
+}
+
+// samePath reports whether two paths name the same file, through symlinks.
 func samePath(a, b string) bool {
 	if ai, err := os.Stat(a); err == nil {
 		if bi, err := os.Stat(b); err == nil {
 			return os.SameFile(ai, bi)
 		}
 	}
-	absA, errA := filepath.Abs(a)
-	absB, errB := filepath.Abs(b)
+	absA, errA := resolvedPath(a)
+	absB, errB := resolvedPath(b)
 	return errA == nil && errB == nil && absA == absB
 }
 

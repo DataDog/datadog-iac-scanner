@@ -318,6 +318,27 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 		require.Equal(t, string(original), string(data))
 	})
 
+	t.Run("under the metadata path through a symlink", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks need privileges on Windows")
+		}
+		out := t.TempDir()
+		alias := filepath.Join(t.TempDir(), "alias")
+		require.NoError(t, os.Symlink(out, alias))
+		metadataPath := filepath.Join(out, "meta.json")
+		for _, inventoryPath := range []string{
+			filepath.Join(alias, "meta.json", "inventory.json"),
+			filepath.Join(alias, "meta.json"),
+		} {
+			c := &Client{ScanParams: &Parameters{InventoryPath: inventoryPath, MetadataPath: metadataPath}}
+			c.startInventory(context.Background())
+			require.NotNil(t, c.inventory.failure, inventoryPath)
+			require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason, inventoryPath)
+			require.Equal(t, InventoryFailed, c.finishInventory(context.Background(), nil, nil).Status)
+			require.NoDirExists(t, metadataPath)
+		}
+	})
+
 	t.Run("the metadata path before it is written", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "out", "..", "metadata.json")
 		c := &Client{ScanParams: &Parameters{InventoryPath: filepath.Clean(path), MetadataPath: path}}
