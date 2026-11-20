@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -17,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,6 +29,7 @@ type ResolvedFile struct {
 
 // Resolver - replace or modifies in-memory content before parsing
 type Resolver struct {
+	fsys          vfs.FS
 	unmarshler    func(fileContent []byte, v any) error
 	marshler      func(v any) ([]byte, error)
 	ResolvedFiles map[string]model.ResolvedFile
@@ -38,10 +38,15 @@ type Resolver struct {
 
 // NewResolver returns a new Resolver
 func NewResolver(
+	fsys vfs.FS,
 	unmarshler func(fileContent []byte, v any) error,
 	marshler func(v any) ([]byte, error),
 	ext []string) *Resolver {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
 	return &Resolver{
+		fsys:          fsys,
 		unmarshler:    unmarshler,
 		marshler:      marshler,
 		ResolvedFiles: make(map[string]model.ResolvedFile),
@@ -377,7 +382,7 @@ func (r *Resolver) resolveYamlPath(
 	} else { // external file resolve
 		value = checkServerlessFileReference(value)
 
-		exists, path, onlyFilePath, filename := findFilePath(filepath.Dir(filePath), value, ansibleVars, r.Extension)
+		exists, path, onlyFilePath, filename := r.findFilePath(filepath.Dir(filePath), value, ansibleVars, r.Extension)
 		if !exists {
 			return *v, false
 		}
@@ -446,21 +451,10 @@ func (r *Resolver) resolveFile(
 	resolveCount, maxResolverDepth int,
 	resolvedFilesCache map[string]ResolvedFile,
 	yamlResolve, resolveReferences bool) (any, bool) {
-	contextLogger := logger.FromContext(ctx)
-	// open the file with the content to replace
-	file, err := os.Open(filepath.Clean(filePath))
+	fileContent, err := r.fsys.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return value, true
 	}
-
-	defer func(file *os.File) {
-		err = file.Close()
-		if err != nil {
-			contextLogger.Err(err).Msgf("failed to close resolved file: %s", filePath)
-		}
-	}(file)
-	// read the content
-	fileContent, _ := io.ReadAll(file)
 
 	if yamlResolve {
 		// The nodes are resolved in place and cached as they are, never
@@ -542,7 +536,7 @@ func (r *Resolver) resolvePath(
 
 		// index 0 contains the path of the file while the other indexes contain the sections (e.g. path = "./definitions.json#User/schema")
 		onlyFilePath := splitPath[0]
-		_, err := os.Stat(onlyFilePath)
+		_, err := r.fsys.Stat(onlyFilePath)
 
 		if err != nil || !contains(filepath.Ext(onlyFilePath), r.Extension) {
 			return value, false
@@ -712,13 +706,13 @@ func checkServerlessFileReference(value string) string {
 	return value
 }
 
-func findFilePath(
+func (r *Resolver) findFilePath(
 	folderPath, filename string,
 	ansibleVars bool,
 	extensions []string) (exists bool, path, onlyFilePath, cleanFilePath string) {
 	path = filepath.Join(folderPath, filename)
 	if ansibleVars {
-		exists, ansibleVarsPath := findAnsibleVarsPath(folderPath, filename)
+		exists, ansibleVarsPath := r.findAnsibleVarsPath(folderPath, filename)
 		if !exists {
 			return false, "", "", ""
 		}
@@ -734,7 +728,7 @@ func findFilePath(
 		if !contains(filepath.Ext(path), extensions) {
 			return false, "", "", ""
 		}
-		if _, err := os.Stat(path); err != nil {
+		if _, err := r.fsys.Stat(path); err != nil {
 			return false, "", "", ""
 		}
 	}
@@ -743,14 +737,14 @@ func findFilePath(
 	return true, path, onlyFilePath, filepath.Clean(onlyFilePath)
 }
 
-func findAnsibleVarsPath(folderPath, filename string) (exists bool, ansibleVarsPath string) {
+func (r *Resolver) findAnsibleVarsPath(folderPath, filename string) (exists bool, ansibleVarsPath string) {
 	possiblePaths := []string{
 		filepath.Join(folderPath, "vars", filename),
 		filepath.Join(folderPath, filename),
 	}
 
 	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
+		if _, err := r.fsys.Stat(path); err == nil {
 			return true, path
 		}
 	}

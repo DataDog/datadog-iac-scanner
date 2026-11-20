@@ -12,6 +12,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	fixtureutils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
@@ -22,10 +23,10 @@ import (
 // resolve replaces the file references of the documents with the content
 // they reference (see file.Resolver.ResolveYAML). It returns no documents
 // when nothing was resolved.
-func resolve(ctx context.Context, fileContent []byte, filename string,
+func resolve(ctx context.Context, fsys vfs.FS, fileContent []byte, filename string,
 	resolveReferences bool, maxResolverDepth int) (resolved []*yaml.Node, resolvedFiles map[string]model.ResolvedFile) {
 	// Resolve files passed as arguments with file resolver (e.g. file://)
-	res := file.NewResolver(yaml.Unmarshal, yaml.Marshal, SupportedExtensions())
+	res := file.NewResolver(fsys, yaml.Unmarshal, yaml.Marshal, SupportedExtensions())
 	resolved = res.ResolveYAML(ctx, fileContent, filename, maxResolverDepth, resolveReferences)
 
 	if len(res.ResolvedFiles) == 0 {
@@ -36,14 +37,14 @@ func resolve(ctx context.Context, fileContent []byte, filename string,
 }
 
 // Parse parses yaml/yml file and returns it as a Document
-func Parse(ctx context.Context, fileContent []byte, filePath string,
+func Parse(ctx context.Context, fsys vfs.FS, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
 	resolved []byte,
 	documents []model.Document,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	return ParseWithNodeTransform(ctx, fileContent, filePath, resolveReferences, maxResolverDepth, nil)
+	return ParseWithNodeTransform(ctx, fsys, fileContent, filePath, resolveReferences, maxResolverDepth, nil)
 }
 
 // ParseWithNodeTransform parses like Parse, but applies fn to each
@@ -55,14 +56,14 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 // The returned content is fileContent: resolved references are inlined in the
 // documents only, where the content of a file referenced several times is
 // shared between its references instead of being copied.
-func ParseWithNodeTransform(ctx context.Context, fileContent []byte, filePath string,
+func ParseWithNodeTransform(ctx context.Context, fsys vfs.FS, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int, fn func(node *yaml.Node)) (
 	resolved []byte,
 	documents []model.Document,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolvedDocs, resolvedFiles := resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	resolvedDocs, resolvedFiles := resolve(ctx, fsys, fileContent, filePath, resolveReferences, maxResolverDepth)
 	if resolvedDocs == nil {
 		documents, ignoreLines, err = parseNodes(ctx, fileContent, filePath, fn)
 		return fileContent, documents, ignoreLines, resolvedFiles, err

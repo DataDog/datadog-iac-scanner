@@ -38,7 +38,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 		{
 			name: "test",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi/responses/_index.yaml"),
@@ -49,7 +49,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 		{
 			name: "json test",
 			fields: fields{
-				Resolver: NewResolver(json.Unmarshal, json.Marshal, []string{".json"}),
+				Resolver: NewResolver(nil, json.Unmarshal, json.Marshal, []string{".json"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi_json/openapi.json"),
@@ -61,7 +61,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 		{
 			name: "test_serverless",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_serverless/serverless.yml"),
@@ -75,6 +75,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &Resolver{
+				fsys:          tt.fields.fsys,
 				unmarshler:    tt.fields.unmarshler,
 				marshler:      tt.fields.marshler,
 				ResolvedFiles: tt.fields.ResolvedFiles,
@@ -113,7 +114,7 @@ func TestResolver_Resolve_Without_ResolveReferences(t *testing.T) {
 		{
 			name: "yaml should resolve because is not openapi file",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi/responses/_index.yaml"),
@@ -124,7 +125,7 @@ func TestResolver_Resolve_Without_ResolveReferences(t *testing.T) {
 		{
 			name: "json should not resolve because is a openapi file",
 			fields: fields{
-				Resolver: NewResolver(json.Unmarshal, json.Marshal, []string{".json"}),
+				Resolver: NewResolver(nil, json.Unmarshal, json.Marshal, []string{".json"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi_json/openapi.json"),
@@ -139,6 +140,7 @@ func TestResolver_Resolve_Without_ResolveReferences(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &Resolver{
+				fsys:          tt.fields.fsys,
 				unmarshler:    tt.fields.unmarshler,
 				marshler:      tt.fields.marshler,
 				ResolvedFiles: tt.fields.ResolvedFiles,
@@ -178,7 +180,7 @@ func TestResolver_Resolve_Ansible_Vars(t *testing.T) {
 		{
 			name: "resolve ansible vars when vars folder is present",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/resolve_ansible_vars_with_vars_folder/main.yml"),
@@ -190,7 +192,7 @@ func TestResolver_Resolve_Ansible_Vars(t *testing.T) {
 		{
 			name: "resolve ansible vars when vars folder is not present",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/resolve_ansible_vars_without_vars_folder/main.yml"),
@@ -205,6 +207,7 @@ func TestResolver_Resolve_Ansible_Vars(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &Resolver{
+				fsys:          tt.fields.fsys,
 				unmarshler:    tt.fields.unmarshler,
 				marshler:      tt.fields.marshler,
 				ResolvedFiles: tt.fields.ResolvedFiles,
@@ -310,7 +313,7 @@ func TestResolver_ResolveYAML_SharesReferencedFile(t *testing.T) {
 	path := filepath.Join(dir, "main.yaml")
 	content := []byte("a:\n  $ref: ./schema.yaml\nb:\n  $ref: ./schema.yaml\n  description: second\n")
 
-	r := NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"})
+	r := NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"})
 	docs := r.ResolveYAML(context.Background(), content, path, 15, true)
 
 	require.Len(t, docs, 1)
