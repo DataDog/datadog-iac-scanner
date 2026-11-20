@@ -76,6 +76,14 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 		// A list holds separate objects, each its own resource.
 		"k8s/list.yaml": "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: v1\n    kind: ConfigMap\n    metadata:\n      name: settings\n" +
 			"    data:\n      a: \"1\"\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: api\n      namespace: shop\n",
+		// A typed list gives its members the kind and version they omit.
+		"k8s/pods.yaml": "apiVersion: v1\nkind: PodList\nitems:\n  - metadata:\n      name: web\n    spec:\n      containers: []\n",
+		// A list in a list holds objects too.
+		"k8s/nested.yaml": "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: v1\n    kind: List\n    items:\n" +
+			"      - apiVersion: v1\n        kind: ConfigMap\n        metadata:\n          name: inner\n",
+		// A member's templated name is taken as written, as an object's is.
+		"k8s/templated-list.yaml": "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: v1\n    kind: ConfigMap\n" +
+			"    metadata:\n      name: {{ .SettingsName }} # rendered later\n",
 	})
 	inv := scanInventory(t, documentParams(root))
 	rows := rowsByPath(inv)
@@ -139,7 +147,16 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	require.Equal(t, "k8s/list.yaml", settings.File)
 	require.Equal(t, [2]int{4, 9}, [2]int{settings.LineStart, settings.LineEnd})
 	require.Equal(t, [2]int{10, 14}, [2]int{api.LineStart, api.LineEnd})
-	require.Len(t, inv.Resources, 9)
+	pod, ok := rows["v1/Pod//web"]
+	require.True(t, ok, "a typed list member: %v", rows)
+	require.Equal(t, [2]int{4, 7}, [2]int{pod.LineStart, pod.LineEnd})
+	inner, ok := rows["v1/ConfigMap//inner"]
+	require.True(t, ok, "a member of a nested list: %v", rows)
+	require.Equal(t, [2]int{7, 10}, [2]int{inner.LineStart, inner.LineEnd})
+	templatedMember, ok := rows["v1/ConfigMap//{{ .SettingsName }}"]
+	require.True(t, ok, "a list member with a templated name: %v", rows)
+	require.Equal(t, "k8s/templated-list.yaml", templatedMember.File)
+	require.Len(t, inv.Resources, 12)
 }
 
 func TestInventoryDoesNotChangeDocumentFindings(t *testing.T) {

@@ -7,6 +7,7 @@
 package inventory
 
 import (
+	"cmp"
 	"context"
 	"math"
 	"os"
@@ -91,13 +92,7 @@ func (e *documentEnumerator) documentRows(f *model.FileMetadata, index int) []Re
 		row.ownsDocument = true
 		return []Resource{row}
 	case f.Platform == PlatformKubernetes:
-		if items, ok := kubernetesListItems(f.Document); ok {
-			return e.kubernetesListRows(f, index, items)
-		}
-		if row, ok := e.kubernetesResource(f, index); ok {
-			row.ownsDocument = true
-			return []Resource{row}
-		}
+		return e.kubernetesRows(f, index)
 	case f.Platform == PlatformCloudFormation:
 		return e.keyedRows(f, index, "Resources", cloudFormationRow)
 	case f.Platform == PlatformDockerCompose:
@@ -110,19 +105,97 @@ func (e *documentEnumerator) documentRows(f *model.FileMetadata, index int) []Re
 	return nil
 }
 
-func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int) (Resource, bool) {
-	apiVersion, _ := f.Document["apiVersion"].(string)
-	kind, _ := f.Document["kind"].(string)
-	metadata, _ := f.Document["metadata"].(map[string]interface{})
-	name := e.metadataField(f, index, metadata, "name")
+// kubernetesObject is an object of a Kubernetes document: the document
+// itself, or a member of a list it is.
+type kubernetesObject struct {
+	fields map[string]interface{}
+	// node is the object in the decoded file, nil when unknown; span is its
+	// lines, known only when aligned with the decoded document.
+	node    *yaml.Node
+	span    lineRange
+	aligned bool
+	// path is how a search key names a list member (items.0), "" for the
+	// document.
+	path string
+	// apiVersion and kind are what a typed list gives a member that omits
+	// them.
+	apiVersion, kind string
+}
+
+// kubernetesRows returns the rows of a Kubernetes document: one for an
+// object, one per object of a list.
+func (e *documentEnumerator) kubernetesRows(f *model.FileMetadata, index int) []Resource {
+	object := kubernetesObject{fields: f.Document}
+	if node, span, found := e.documentNode(f, index); found {
+		object.node, object.span = node, span
+		// The decoded document must be this one; else its lines are not known.
+		kind, _ := f.Document["kind"].(string)
+		object.aligned = scalarValue(node, "kind") == kind
+	}
+	var rows []Resource
+	e.kubernetesObjects(f, &object, &rows)
+	return rows
+}
+
+// kubernetesObjects adds the rows of object: its own, or those of its
+// members when it is a list. Only lists hold separate objects: an object
+// nested in an object, such as a pod template, stays part of it.
+func (e *documentEnumerator) kubernetesObjects(f *model.FileMetadata, object *kubernetesObject, rows *[]Resource) {
+	apiVersion := cmp.Or(stringField(object.fields, "apiVersion"), object.apiVersion)
+	kind := cmp.Or(stringField(object.fields, "kind"), object.kind)
+	items, isList := kubernetesListItems(object.fields, kind)
+	if !isList {
+		if row, ok := e.kubernetesObjectRow(f, object, apiVersion, kind); ok {
+			*rows = append(*rows, row)
+		}
+		return
+	}
+	var itemNodes []*yaml.Node
+	var spans []lineRange
+	if object.node != nil && object.aligned && f.Kind != model.KindHELM {
+		lines := e.yamlFile(f).lines
+		bound := sectionEnd(childSpans(object.node, object.span.end, lines), "items", object.span.end)
+		if _, itemsNode := mappingEntry(object.node, "items"); itemsNode != nil && itemsNode.Kind == yaml.SequenceNode {
+			itemNodes, spans = itemsNode.Content, itemSpans(itemsNode, bound, lines)
+		}
+	}
+	// A typed list, such as a PodList, gives its members their kind.
+	memberKind := strings.TrimSuffix(kind, "List")
+	if kind == "List" {
+		memberKind = ""
+	}
+	for i, item := range items {
+		fields, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		member := kubernetesObject{
+			fields:     fields,
+			path:       strings.TrimPrefix(object.path+".items."+strconv.Itoa(i), "."),
+			apiVersion: apiVersion,
+			kind:       memberKind,
+		}
+		if i < len(itemNodes) && i < len(spans) {
+			member.node, member.span, member.aligned = itemNodes[i], spans[i], true
+		}
+		e.kubernetesObjects(f, &member, rows)
+	}
+}
+
+// kubernetesObjectRow returns the row of one object, if it has a name.
+func (e *documentEnumerator) kubernetesObjectRow(
+	f *model.FileMetadata, object *kubernetesObject, apiVersion, kind string,
+) (Resource, bool) {
+	metadata, _ := object.fields["metadata"].(map[string]interface{})
+	name := e.metadataField(f, object, metadata, "name")
 	if name == "" {
 		// A resource created with a generated name has only its prefix.
-		name = e.metadataField(f, index, metadata, "generateName")
+		name = e.metadataField(f, object, metadata, "generateName")
 	}
 	if apiVersion == "" || kind == "" || name == "" {
 		return Resource{}, false
 	}
-	namespace := e.metadataField(f, index, metadata, "namespace")
+	namespace := e.metadataField(f, object, metadata, "namespace")
 	row := Resource{
 		ResourcePath: apiVersion + "/" + kind + "/" + namespace + "/" + name,
 		Platform:     PlatformKubernetes,
@@ -130,83 +203,41 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 		ResourceName: name,
 		File:         f.FilePath,
 		Completeness: CompletenessComplete,
+		// A list member answers to how a search key names it; the document
+		// is its only object.
+		searchKeyPrefix: object.path,
+		ownsDocument:    object.path == "",
 	}
-	if f.Kind == model.KindHELM {
+	switch {
+	case f.Kind == model.KindHELM:
 		row.LineStart = helmDocumentStart(f)
+		// Every object of a rendered list is at the template's line.
+		row.sharedLines = object.path != ""
 		e.addHelmOrigin(&row, f)
-		return row, true
-	}
-	// The decoded document must be this one; else its lines are not known.
-	if node, r, ok := e.documentNode(f, index); ok && scalarValue(node, "kind") == kind {
-		row.LineStart, row.LineEnd = r.start, r.end
-	} else {
+	case object.node != nil && object.aligned:
+		row.LineStart, row.LineEnd = object.span.start, object.span.end
+	default:
 		row.LineStart = e.firstKeyLine(f)
 	}
 	return row, true
 }
 
-// kubernetesListItems returns the objects of a list document, such as a
-// kind: List, which holds separate objects rather than being one. A named
-// document is one object, whatever its kind ends with, such as an AllowList.
-func kubernetesListItems(document model.Document) ([]interface{}, bool) {
-	metadata, _ := document["metadata"].(map[string]interface{})
+func stringField(fields map[string]interface{}, key string) string {
+	s, _ := fields[key].(string)
+	return s
+}
+
+// kubernetesListItems returns the objects of a list, such as a kind: List
+// or a typed PodList, which holds separate objects rather than being one. A
+// named object is one object, whatever its kind ends with, such as an
+// AllowList.
+func kubernetesListItems(fields map[string]interface{}, kind string) ([]interface{}, bool) {
+	metadata, _ := fields["metadata"].(map[string]interface{})
 	if metadata["name"] != nil || metadata["generateName"] != nil {
 		return nil, false
 	}
-	kind, _ := document["kind"].(string)
-	items, ok := document["items"].([]interface{})
+	items, ok := fields["items"].([]interface{})
 	return items, ok && strings.HasSuffix(kind, "List")
-}
-
-// kubernetesListRows returns one row per object of a list document, each at
-// the lines of its item. An object nested in an object, such as a pod
-// template, stays part of it.
-func (e *documentEnumerator) kubernetesListRows(f *model.FileMetadata, index int, items []interface{}) []Resource {
-	var spans []lineRange
-	if node, doc, found := e.documentNode(f, index); found && f.Kind != model.KindHELM {
-		lines := e.yamlFile(f).lines
-		bound := sectionEnd(childSpans(node, doc.end, lines), "items", doc.end)
-		_, itemsNode := mappingEntry(node, "items")
-		spans = itemSpans(itemsNode, bound, lines)
-	}
-	var rows []Resource
-	for i, item := range items {
-		object, _ := item.(map[string]interface{})
-		apiVersion, _ := object["apiVersion"].(string)
-		kind, _ := object["kind"].(string)
-		metadata, _ := object["metadata"].(map[string]interface{})
-		name, _ := metadata["name"].(string)
-		if name == "" {
-			name, _ = metadata["generateName"].(string)
-		}
-		if apiVersion == "" || kind == "" || name == "" {
-			continue
-		}
-		namespace, _ := metadata["namespace"].(string)
-		row := Resource{
-			ResourcePath: apiVersion + "/" + kind + "/" + namespace + "/" + name,
-			Platform:     PlatformKubernetes,
-			ResourceType: kind,
-			ResourceName: name,
-			File:         f.FilePath,
-			Completeness: CompletenessComplete,
-			// As a search key names the object.
-			searchKeyPrefix: "items." + strconv.Itoa(i),
-		}
-		switch {
-		case f.Kind == model.KindHELM:
-			// Every object of a rendered list is at the template's line.
-			row.LineStart = helmDocumentStart(f)
-			row.sharedLines = true
-			e.addHelmOrigin(&row, f)
-		case i < len(spans):
-			row.LineStart, row.LineEnd = spans[i].start, spans[i].end
-		default:
-			row.LineStart = e.firstKeyLine(f)
-		}
-		rows = append(rows, row)
-	}
-	return rows
 }
 
 // scalarValue returns the value of key in a mapping node, "" when it is not a
@@ -218,10 +249,12 @@ func scalarValue(node *yaml.Node, key string) string {
 	return ""
 }
 
-// metadataField returns a metadata field of a Kubernetes document. A value
+// metadataField returns a metadata field of a Kubernetes object. A value
 // that is not a string, such as an unrendered template the YAML reads as a
 // mapping ({{ .Name }}), is taken as written in the file.
-func (e *documentEnumerator) metadataField(f *model.FileMetadata, index int, metadata map[string]interface{}, key string) string {
+func (e *documentEnumerator) metadataField(
+	f *model.FileMetadata, object *kubernetesObject, metadata map[string]interface{}, key string,
+) string {
 	value, ok := metadata[key]
 	if !ok {
 		return ""
@@ -229,14 +262,10 @@ func (e *documentEnumerator) metadataField(f *model.FileMetadata, index int, met
 	if s, ok := value.(string); ok {
 		return s
 	}
-	if f.Kind == model.KindHELM {
+	if f.Kind == model.KindHELM || object.node == nil {
 		return ""
 	}
-	node, _, found := e.documentNode(f, index)
-	if !found {
-		return ""
-	}
-	_, metadataNode := mappingEntry(node, "metadata")
+	_, metadataNode := mappingEntry(object.node, "metadata")
 	_, valueNode := mappingEntry(metadataNode, key)
 	return writtenValue(e.yamlFile(f).lines, valueNode)
 }

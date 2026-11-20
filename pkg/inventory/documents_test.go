@@ -123,6 +123,14 @@ func TestKubernetesListDocuments(t *testing.T) {
 			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "settings")}}},
 		{ID: "rendered", FilePath: "chart/templates/list.yaml", OriginalData: list, Platform: PlatformKubernetes, Kind: model.KindHELM,
 			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "a"), object("Service", "b")}}},
+		// A typed list's members take its kind and version; a list in a list
+		// holds objects too.
+		{ID: "pods", FilePath: "k8s/pods.yaml", OriginalData: list, Platform: PlatformKubernetes,
+			Document: model.Document{"apiVersion": "v1", "kind": "PodList", "items": []interface{}{
+				map[string]interface{}{"metadata": map[string]interface{}{"name": "web"}}}}},
+		{ID: "nested", FilePath: "k8s/nested.yaml", OriginalData: list, Platform: PlatformKubernetes,
+			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{
+				map[string]interface{}{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "inner")}}}}},
 		// A named object whose kind ends in List is one object.
 		{ID: "allow", FilePath: "k8s/allow.yaml", OriginalData: allow, Platform: PlatformKubernetes,
 			Document: model.Document{"apiVersion": "acme.io/v1", "kind": "AllowList",
@@ -141,6 +149,8 @@ func TestKubernetesListDocuments(t *testing.T) {
 		"chart/templates/list.yaml|v1/ConfigMap//a":    {prefix: "items.0", share: true},
 		"chart/templates/list.yaml|v1/Service//b":      {prefix: "items.1", share: true},
 		"k8s/allow.yaml|acme.io/v1/AllowList//trusted": {owns: true},
+		"k8s/pods.yaml|v1/Pod//web":                    {prefix: "items.0"},
+		"k8s/nested.yaml|v1/ConfigMap//inner":          {prefix: "items.0.items.0"},
 	}, got)
 }
 
