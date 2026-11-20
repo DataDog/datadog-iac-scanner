@@ -283,9 +283,11 @@ func commentStart(written []rune) int {
 	return len(written)
 }
 
-// writtenValue returns a value as its line writes it: from where the value
-// starts to the end of the line, less a trailing comment, and less the quotes
-// around it.
+// writtenValue returns a value as the file writes it. An unrendered
+// {{ template }}, which YAML reads as a flow mapping, runs from its opening
+// brace to the one that closes it, across lines if it spans several. Any
+// other value runs from where it starts to the end of its line, less a
+// trailing comment and the quotes around it.
 func writtenValue(lines []string, value *yaml.Node) string {
 	if value == nil || value.Line < 1 || value.Line > len(lines) || value.Column < 1 {
 		return ""
@@ -293,6 +295,9 @@ func writtenValue(lines []string, value *yaml.Node) string {
 	line := []rune(lines[value.Line-1])
 	if value.Column > len(line) {
 		return ""
+	}
+	if value.Kind == yaml.MappingNode && line[value.Column-1] == '{' {
+		return flowValue(lines, value.Line-1, value.Column-1)
 	}
 	written := line[value.Column-1:]
 	text := strings.TrimSpace(string(written[:commentStart(written)]))
@@ -302,6 +307,38 @@ func writtenValue(lines []string, value *yaml.Node) string {
 		}
 	}
 	return text
+}
+
+// flowValue returns the braced value that starts at lines[row][col], as
+// written: up to the brace that closes it, quotes respected, the line breaks
+// and whitespace inside kept. An unclosed value gives "".
+func flowValue(lines []string, row, col int) string {
+	var b strings.Builder
+	depth := 0
+	var quote rune
+	for ; row < len(lines); row, col = row+1, 0 {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		for _, r := range []rune(lines[row])[col:] {
+			b.WriteRune(r)
+			switch {
+			case quote != 0:
+				if r == quote {
+					quote = 0
+				}
+			case r == '"' || r == '\'':
+				quote = r
+			case r == '{':
+				depth++
+			case r == '}':
+				if depth--; depth == 0 {
+					return b.String()
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // documentNode returns the root node of the index-th document of f's file,

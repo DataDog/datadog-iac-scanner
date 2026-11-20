@@ -73,6 +73,9 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 		"dev/manifest.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .ServiceName }}\nspec:\n  replicas: 1\n",
 		// A comment after it is not part of the name.
 		"dev/worker.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .WorkerName }} # deployment-time name\nspec:\n  replicas: 1\n",
+		// A templated name written in a flow mapping, and one over two lines.
+		"dev/flow.yaml":      "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: {{ .FlowName }}, namespace: prod}\nspec:\n  replicas: 1\n",
+		"dev/multiline.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{\n    .LongName }}\nspec:\n  replicas: 1\n",
 		// A resource created with a generated name.
 		"k8s/migrate.yaml": "apiVersion: batch/v1\nkind: Job\nmetadata:\n  generateName: migrate-\n  namespace: shop\nspec:\n  template:\n    spec:\n      restartPolicy: Never\n",
 		// A list holds separate objects, each its own resource.
@@ -141,6 +144,12 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	commented, ok := rows["apps/v1/Deployment//{{ .WorkerName }}"]
 	require.True(t, ok, "a trailing comment stays out of the name: %v", rows)
 	require.Equal(t, "{{ .WorkerName }}", commented.ResourceName)
+	flow, ok := rows["apps/v1/Deployment/prod/{{ .FlowName }}"]
+	require.True(t, ok, "a flow-style templated name stops at its closing brace: %v", rows)
+	require.Equal(t, "{{ .FlowName }}", flow.ResourceName)
+	multiline, ok := rows["apps/v1/Deployment//{{\n    .LongName }}"]
+	require.True(t, ok, "a multiline templated name is kept whole, as written: %v", rows)
+	require.Equal(t, "dev/multiline.yaml", multiline.File)
 	generated, ok := rows["batch/v1/Job/shop/migrate-"]
 	require.True(t, ok, "a generated name gives its prefix: %v", rows)
 	require.Equal(t, "migrate-", generated.ResourceName)
@@ -158,7 +167,7 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	templatedMember, ok := rows["v1/ConfigMap//{{ .SettingsName }}"]
 	require.True(t, ok, "a list member with a templated name: %v", rows)
 	require.Equal(t, "k8s/templated-list.yaml", templatedMember.File)
-	require.Len(t, inv.Resources, 12)
+	require.Len(t, inv.Resources, 14)
 }
 
 func TestInventoryKeepsAFailedChartRender(t *testing.T) {
