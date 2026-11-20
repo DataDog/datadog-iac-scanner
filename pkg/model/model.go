@@ -9,6 +9,7 @@ import (
 	"context"
 	"index/suffixarray"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -761,6 +762,42 @@ type Vulnerability struct {
 	// (FileName) is never rewritten, so reports that read the file from disk
 	// keep working.
 	OrderPath string `json:"-"`
+	// AlsoRaisedOn holds where else the scan raised this finding before it
+	// kept one finding per identity, when the scan keeps them (see
+	// RecordDuplicate): an inventory links the kept finding to every
+	// resource it stands for.
+	AlsoRaisedOn []RaisedOn `json:"-"`
+}
+
+// RaisedOn is where a finding was raised: its document, line and search
+// key, and the first line of its Terraform block.
+type RaisedOn struct {
+	FileID     string
+	Line       int
+	SearchKey  string
+	BlockStart int
+}
+
+// raisedOn is where v was raised.
+func (v *Vulnerability) raisedOn() RaisedOn {
+	return RaisedOn{FileID: v.FileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
+}
+
+// RecordDuplicate adds where dropped was raised, and where it stood for, to
+// the places kept stands for, once each: kept is the finding of their
+// identity the scan reports, dropped one it does not.
+func RecordDuplicate(kept, dropped *Vulnerability) {
+	here := kept.raisedOn()
+	add := func(place RaisedOn) {
+		if place == here || slices.Contains(kept.AlsoRaisedOn, place) {
+			return
+		}
+		kept.AlsoRaisedOn = append(kept.AlsoRaisedOn, place)
+	}
+	add(dropped.raisedOn())
+	for _, place := range dropped.AlsoRaisedOn {
+		add(place)
+	}
 }
 
 // Identity returns the file and line text that tell v apart from other

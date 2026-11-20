@@ -473,3 +473,21 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		})
 	}
 }
+
+func TestFindingSet_RecordsWhereDroppedDuplicatesWereRaised(t *testing.T) {
+	raised := instanceFindings(3, 10)
+	raised[2].FileID = "other"
+
+	require.Nil(t, decodeAll(newFindingSet(true, nil), raised)[0].AlsoRaisedOn, "nothing is recorded by default")
+
+	set := newFindingSet(true, nil)
+	set.recordDuplicates = true
+	// The last arriving finding comes first in order, and replaces the kept one.
+	got := decodeAll(set, []model.Vulnerability{raised[1], raised[2], raised[0]})
+	require.Len(t, got, 1)
+	require.Equal(t, 10, got[0].Line)
+	require.ElementsMatch(t, []model.RaisedOn{
+		{Line: 11, SearchKey: "aws_s3_bucket[replica].acl"},
+		{FileID: "other", Line: 12, SearchKey: "aws_s3_bucket[replica].acl"},
+	}, got[0].AlsoRaisedOn)
+}

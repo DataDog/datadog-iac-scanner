@@ -150,6 +150,11 @@ func (c *Client) startInventory(ctx context.Context) {
 		run.failure = inventoryFailure(reason, err)
 		contextLogger.Error().Err(err).Msgf("failed to remove the previous inventory %s", path)
 	}
+	// The storage keeps where the findings it drops as duplicates were
+	// raised, so that the kept finding links to each of their resources.
+	if run.failure == nil && c.Storage != nil {
+		c.Storage.RecordDuplicates()
+	}
 	c.inventory = run
 }
 
@@ -329,17 +334,22 @@ func recordFindings(collector *inventory.Collector, files model.FileMetadatas, s
 			if vf.ResourceLocation.Start.Line < 1 || vf.ResourceLocation.End.Line < 1 {
 				continue
 			}
-			// A module instance's document is named after its file's.
-			fileID, _, _ := strings.Cut(vf.FileID, "\x00")
-			collector.AddFinding(&inventory.Finding{
-				Fingerprint:     vf.Fingerprint,
-				DocumentID:      vf.FileID,
-				File:            paths[fileID],
-				Line:            vf.Line,
-				SearchKey:       vf.SearchKey,
-				BlockStart:      vf.BlockLocation.Start.Line,
-				ModuleCallChain: vf.ModuleCallChain,
-			})
+			// The finding stands for every place its identity was raised.
+			places := append([]model.RaisedOn{{FileID: vf.FileID, Line: vf.Line, SearchKey: vf.SearchKey,
+				BlockStart: vf.BlockLocation.Start.Line}}, vf.AlsoRaisedOn...)
+			for _, place := range places {
+				// A module instance's document is named after its file's.
+				fileID, _, _ := strings.Cut(place.FileID, "\x00")
+				collector.AddFinding(&inventory.Finding{
+					Fingerprint:     vf.Fingerprint,
+					DocumentID:      place.FileID,
+					File:            paths[fileID],
+					Line:            place.Line,
+					SearchKey:       place.SearchKey,
+					BlockStart:      place.BlockStart,
+					ModuleCallChain: vf.ModuleCallChain,
+				})
+			}
 		}
 	}
 }

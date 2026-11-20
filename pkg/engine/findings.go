@@ -42,6 +42,9 @@ type findingSet struct {
 	// when the set is not reducing by identity, so every finding is appended.
 	kept   map[[sha256.Size]byte]int
 	keyBuf []byte
+	// recordDuplicates keeps, on each finding kept, where the findings of
+	// its identity it drops were raised (see model.RecordDuplicate).
+	recordDuplicates bool
 }
 
 // newFindingSet starts a set that reduces findings to one per identity when
@@ -89,7 +92,13 @@ func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulne
 func (s *findingSet) keep(digest [sha256.Size]byte, v *model.Vulnerability) {
 	if i, ok := s.kept[digest]; ok {
 		if model.CompareFindings(v, &s.out[i]) < 0 {
+			dropped := s.out[i]
 			s.out[i] = *v
+			if s.recordDuplicates {
+				model.RecordDuplicate(&s.out[i], &dropped)
+			}
+		} else if s.recordDuplicates {
+			model.RecordDuplicate(&s.out[i], v)
 		}
 		return
 	}

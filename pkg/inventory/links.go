@@ -79,8 +79,14 @@ func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links 
 			byStart[start] = append(byStart[start], i)
 		}
 	}
+	// A finding can be recorded at several places, the duplicates the scan
+	// dropped for it: it is unlinked only when none of them belongs to a row.
+	linked := make(map[string]bool, len(c.findings))
 	for i := range c.findings {
 		f := &c.findings[i]
+		if _, seen := linked[f.Fingerprint]; !seen {
+			linked[f.Fingerprint] = false
+		}
 		matched := matchDocument(rows, byDocument[f.DocumentID], f)
 		if len(matched) == 1 && repeats[matched[0]] != nil {
 			matched = []int{repeatHolding(rows, repeats[matched[0]], f.Line)}
@@ -89,12 +95,16 @@ func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links 
 			scope := terraformScope{c.resourcePath(f.File), f.ModuleCallChain}
 			matched = matchTerraform(rows, byScope[scope], byStart[terraformStart{scope, f.BlockStart}], f)
 		}
-		if len(matched) == 0 {
-			unlinked++
-			continue
-		}
 		for _, j := range matched {
 			links = append(links, FindingLink{FindingFingerprint: f.Fingerprint, ResourceRef: rows[j].ResourceRef})
+		}
+		if len(matched) > 0 {
+			linked[f.Fingerprint] = true
+		}
+	}
+	for _, ok := range linked {
+		if !ok {
+			unlinked++
 		}
 	}
 	return links, unlinked

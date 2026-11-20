@@ -88,3 +88,25 @@ func TestSearchKeyBlock(t *testing.T) {
 		require.Equal(t, want, searchKeyBlock(key), key)
 	}
 }
+
+func TestLinkEveryPlaceOfAFinding(t *testing.T) {
+	c := NewCollector(t.TempDir())
+	c.AddResource(&Resource{ResourcePath: "Logs", Platform: "keyed", ResourceType: "AWS::S3::Bucket", ResourceName: "shared",
+		File: "stack.yaml", LineStart: 2, LineEnd: 5, Completeness: CompletenessComplete, DocumentID: "stack", searchKeyPrefix: "Resources.Logs"})
+	c.AddResource(&Resource{ResourcePath: "Backup", Platform: "keyed", ResourceType: "AWS::S3::Bucket", ResourceName: "shared",
+		File: "stack.yaml", LineStart: 6, LineEnd: 9, Completeness: CompletenessComplete, DocumentID: "stack", searchKeyPrefix: "Resources.Backup"})
+	// One finding the scan kept for two buckets, and one whose places are on
+	// no resource.
+	c.AddFinding(&Finding{Fingerprint: "shared", DocumentID: "stack", SearchKey: "Resources.Logs.Properties", Line: 4})
+	c.AddFinding(&Finding{Fingerprint: "shared", DocumentID: "stack", SearchKey: "Resources.Backup.Properties", Line: 8})
+	c.AddFinding(&Finding{Fingerprint: "parameters", DocumentID: "stack", SearchKey: "Parameters.A", Line: 20})
+	c.AddFinding(&Finding{Fingerprint: "parameters", DocumentID: "stack", SearchKey: "Parameters.B", Line: 21})
+
+	inv := c.Build(testMetadata())
+
+	require.Equal(t, []FindingLink{
+		{FindingFingerprint: "shared", ResourceRef: "stack.yaml|Backup"},
+		{FindingFingerprint: "shared", ResourceRef: "stack.yaml|Logs"},
+	}, inv.FindingLinks)
+	require.Equal(t, 1, inv.Stats.FindingsUnlinked, "a finding is unlinked once, when none of its places is on a resource")
+}

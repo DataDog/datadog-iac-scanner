@@ -293,3 +293,56 @@ func TestInventoryPlayFindingsBelongToNoTask(t *testing.T) {
 		require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 	}
 }
+
+func TestInventoryDeduplicatedFindingsKeepEveryResource(t *testing.T) {
+	// The rule names a bucket by its BucketName, which both share: the scan
+	// reports one finding for the two.
+	versioning := syntheticQuery("test-cfn-versioning", "cloudFormation", "CloudFormation", `	resource := input.document[i].Resources[logical]
+	resource.Type == "AWS::S3::Bucket"
+	typ := resource.Type
+	name := resource.Properties.BucketName
+	key := sprintf("Resources.%s.Properties", [logical])`)
+	stack := "Resources:\n  Logs:\n    Type: AWS::S3::Bucket\n    Properties:\n      BucketName: shared\n" +
+		"  Backup:\n    Type: AWS::S3::Bucket\n    Properties:\n      BucketName: shared\n" +
+		"  Queue:\n    Type: AWS::SQS::Queue\n"
+	root := writeRepo(t, map[string]string{"cfn/stack.yaml": stack})
+	params := documentParams(root)
+	params.Platform = []string{"CloudFormation"}
+
+	inv, fingerprints := scanLinks(t, params, versioning)
+	require.Len(t, fingerprints, 1, "the scan reports one finding for both buckets")
+	require.ElementsMatch(t, []string{"cfn/stack.yaml|Logs", "cfn/stack.yaml|Backup"}, linkedRefs(inv)[fingerprints[0]],
+		"the finding links to every bucket it stands for, and not to the queue")
+	require.Zero(t, inv.Stats.FindingsUnlinked)
+
+	// Without an inventory the scan is the same.
+	params.InventoryPath = ""
+	withoutInventory, withInventory := sarifResults(t, params, versioning), sarifResults(t, documentParamsWithInventory(t, root), versioning)
+	require.Equal(t, withoutInventory, withInventory)
+}
+
+// sarifResults scans and returns the SARIF results, less the execution time.
+func sarifResults(t *testing.T, params *Parameters, queries ...model.QueryMetadata) string {
+	t.Helper()
+	params.OutputPath = t.TempDir()
+	params.OutputName = "result"
+	params.ReportFormats = []string{"sarif"}
+	ctx := context.Background()
+	c, err := NewClient(ctx, params, &consolePrinter.Printer{})
+	require.NoError(t, err)
+	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
+		return &stubQuerySource{queries: queries}, nil
+	}
+	_, err = c.PerformScan(ctx)
+	require.NoError(t, err)
+	data, err := os.ReadFile(filepath.Join(params.OutputPath, "result.sarif"))
+	require.NoError(t, err)
+	return string(executionTime.ReplaceAll(data, []byte("DATADOG_EXECUTION_TIME_SECS:")))
+}
+
+func documentParamsWithInventory(t *testing.T, root string) *Parameters {
+	params := documentParams(root)
+	params.Platform = []string{"CloudFormation"}
+	params.InventoryPath = filepath.Join(t.TempDir(), "inventory.json")
+	return params
+}

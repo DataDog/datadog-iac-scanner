@@ -544,6 +544,8 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
 		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
 	}
+	// An inventory links a kept finding to every resource it stands for.
+	queryContext.findings.recordDuplicates = c.inventory != nil
 
 	evalStart := time.Now()
 	vuls, moduleRaised, moduleSeverity, err := c.doRun(ctx, queryContext)

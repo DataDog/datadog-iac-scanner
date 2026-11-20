@@ -54,6 +54,9 @@ type VulnerableFile struct {
 	ModuleAttribution *ModuleAttribution `json:"-"`
 	// FileID is the document the finding was raised on (Vulnerability.FileID).
 	FileID string `json:"-"`
+	// AlsoRaisedOn is where else the finding was raised before the scan kept
+	// one finding per identity (Vulnerability.AlsoRaisedOn).
+	AlsoRaisedOn []RaisedOn `json:"-"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -408,6 +411,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
 			FileID:                   item.FileID,
+			AlsoRaisedOn:             item.AlsoRaisedOn,
 		})
 
 		filePaths[resolvedPath] = item.FileName

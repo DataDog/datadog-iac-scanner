@@ -21,6 +21,18 @@ var (
 type MemoryStorage struct {
 	vulnerabilities []model.Vulnerability
 	allFiles        model.FileMetadatas
+	// recordDuplicates keeps, on each finding reported, where the findings
+	// of its identity it stands for were raised (see RecordDuplicates).
+	recordDuplicates bool
+}
+
+// RecordDuplicates makes the storage keep, on each finding it reports, where
+// the findings of its identity that it drops were raised, for an inventory to
+// link the finding to all of them. Reports are unchanged.
+func (m *MemoryStorage) RecordDuplicates() {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
+	m.recordDuplicates = true
 }
 
 // SaveFile adds a new file metadata to files collection
@@ -58,7 +70,11 @@ func (m *MemoryStorage) GetVulnerabilities(_ context.Context, _ string) ([]model
 	// Of the findings sharing an identity, the scan reports the first one in
 	// model.CompareFindings order, and returns them in that order, so a scan's
 	// findings do not depend on the order rules raised and saved them.
-	m.vulnerabilities = model.FirstFindingPerIdentity(m.vulnerabilities)
+	if m.recordDuplicates {
+		m.vulnerabilities = model.FirstFindingPerIdentityRecording(m.vulnerabilities)
+	} else {
+		m.vulnerabilities = model.FirstFindingPerIdentity(m.vulnerabilities)
+	}
 	return m.vulnerabilities, nil
 }
 
