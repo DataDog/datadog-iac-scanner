@@ -49,6 +49,12 @@ type DetectKindLine struct {
 	// once per finding, and re-expanding a large for_each per visit would
 	// multiply the expansion work by the number of lookups.
 	dynamicExpansions sync.Map
+	// Structured-source indexes borrow immutable syntax owned by hclCache.
+	// They are never populated by legacy search-key detection.
+	sourceBodies     sync.Map
+	sourceObjects    sync.Map
+	sourceText       sync.Map
+	sourceInsertions sync.Map
 }
 
 // namedBlocks indexes the top-level blocks of a body by blockKey, in order.
@@ -505,9 +511,17 @@ func extractBlockSource(lines []string, start, end int) string {
 	return strings.Join(lines[start-1:end], "\n") + "\n"
 }
 
-// nolint:gocyclo
 func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string, heredocs []int) (insertionLine, col int) {
-	name, nestedStart, nestedEnd, isAttr := findContainingStructure(block, line)
+	return calculateInsertionPointWith(block, line, lines, heredocs, findContainingStructure)
+}
+
+type containingStructure func(*hclsyntax.Block, int) (string, hcl.Pos, hcl.Pos, bool)
+
+// nolint:gocyclo
+func calculateInsertionPointWith(
+	block *hclsyntax.Block, line int, lines []string, heredocs []int, find containingStructure,
+) (insertionLine, col int) {
+	name, nestedStart, nestedEnd, isAttr := find(block, line)
 
 	var caseType string
 
@@ -542,7 +556,7 @@ func calculateInsertionPoint(block *hclsyntax.Block, line int, lines []string, h
 	} else if line == block.TypeRange.Start.Line {
 		insertionLine = block.Body.SrcRange.End.Line - 1
 		for i := insertionLine; i >= block.TypeRange.Start.Line; i-- {
-			_, s, e, attr := findContainingStructure(block, i)
+			_, s, e, attr := find(block, i)
 			if attr && e.Line >= insertionLine {
 				insertionLine = s.Line - 1
 			} else {

@@ -75,7 +75,7 @@ func TestLoadTFFilesFromDir_IncludesTFJSON(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "main.tf.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"module":{"bucket":{"source":"x"}}}`), 0o600))
-	files, err := LoadTFFilesFromDir(t.Context(), root, "")
+	files, err := LoadTFFilesFromDir(t.Context(), nil, root, LoadOptions{})
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, filepath.Clean(path), files[0].FilePath)
@@ -92,7 +92,7 @@ func TestParseTerraformModulesFromFiles_TFJSONOnDisk(t *testing.T) {
     }
   }
 }`), 0o600))
-	files, err := LoadTFFilesFromDir(t.Context(), root, "")
+	files, err := LoadTFFilesFromDir(t.Context(), nil, root, LoadOptions{})
 	require.NoError(t, err)
 	allowed := map[string]bool{files[0].FilePath: true}
 	modules, err := ParseTerraformModulesFromFiles(context.Background(), nil, files, allowed)

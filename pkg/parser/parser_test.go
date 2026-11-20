@@ -7,12 +7,17 @@ package parser
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -198,4 +203,60 @@ func TestBuild_PlatformIsIntersectedWithRequestedTypes(t *testing.T) {
 	require.Len(t, allParsers, 1)
 	require.Greater(t, len(allParsers[0].Platform), 1,
 		"wildcard Build should include all supported types")
+}
+
+func TestReferenceFilesystemAuthority(t *testing.T) {
+	for _, ext := range []string{"json", "yaml"} {
+		t.Run(ext, func(t *testing.T) {
+			dir := t.TempDir()
+			mainPath := filepath.Join(dir, "main."+ext)
+			assetPath := filepath.Join(dir, "asset."+ext)
+			main := `{"openapi":"3.0.0","info":{"title":"test","version":"1"},"paths":{},"definition":{"marker":"internal"},"internal":{"$ref":"#/definition"},"value":{"$ref":"./asset.json"}}`
+			nestedPath := filepath.Join(dir, "nested."+ext)
+			nested := `{"$ref":"./nested.json"}`
+			owned, host := `{"marker":"owned"}`, `{"marker":"host"}`
+			if ext == "yaml" {
+				main = "openapi: 3.0.0\ninfo: {title: test, version: '1'}\npaths: {}\ndefinition: {marker: internal}\ninternal: {$ref: '#/definition'}\nvalue: {$ref: './asset.yaml'}\n"
+				owned, host = "marker: owned\n", "marker: host\n"
+				nested = "$ref: ./nested.yaml\n"
+			}
+			require.NoError(t, os.WriteFile(assetPath, []byte(host), 0600))
+			for _, tc := range []struct {
+				name     string
+				fsys     vfs.FS
+				want     string
+				resolved int
+			}{
+				{"owned", vfs.NewMemFS(map[string][]byte{assetPath: []byte(owned)}), "owned", 1},
+				{"missing", vfs.NewMemFS(nil), "", 0},
+				{"nested", vfs.NewMemFS(map[string][]byte{assetPath: []byte(nested), nestedPath: []byte(owned)}), "owned", 2},
+				{"malformed", vfs.NewMemFS(map[string][]byte{assetPath: []byte("[")}), "", 0},
+				{"disk-default", nil, "host", 1},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					var specific kindParser = &jsonParser.Parser{FS: tc.fsys}
+					if ext == "yaml" {
+						specific = &yamlParser.Parser{FS: tc.fsys}
+					}
+					ps, err := NewBuilder(t.Context()).WithFS(tc.fsys).Add(specific).Build([]string{""}, []string{""})
+					require.NoError(t, err)
+					for range 2 {
+						parsed, err := ps[0].Parse(t.Context(), mainPath, []byte(main), true, false, 15)
+						require.NoError(t, err)
+						require.Len(t, parsed.ResolvedFiles, tc.resolved+1) // Includes the internal reference to mainPath.
+						encoded, err := json.Marshal(parsed.Docs)
+						require.NoError(t, err)
+						require.Contains(t, string(encoded), `"internal":{`)
+						require.GreaterOrEqual(t, strings.Count(string(encoded), `"marker":"internal"`), 2)
+						if tc.want == "" {
+							require.Contains(t, string(encoded), "$ref")
+							require.NotContains(t, string(encoded), "host")
+						} else {
+							require.Contains(t, string(encoded), `"marker":"`+tc.want+`"`)
+						}
+					}
+				})
+			}
+		})
+	}
 }

@@ -7,6 +7,7 @@
 package tfeval
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
@@ -73,7 +74,11 @@ func (e *Evaluator) memoizedValue(
 	// receives only the HCL eval context, which carries no scan context, so
 	// there is none to poll here; the evaluation paths that can carry the scan
 	// context handle their own cancellation.
-	key := localMemoKey{expr: expr, inputs: e.keyMemo.inputsKeyUninterruptible(inputs)}
+	digest, keyable := e.keyMemo.inputsKey(context.Background(), inputs)
+	if !keyable {
+		return evaluate(expr, ctx)
+	}
+	key := localMemoKey{expr: expr, inputs: digest}
 	if v, hit := e.localMemo[key]; hit {
 		return v
 	}

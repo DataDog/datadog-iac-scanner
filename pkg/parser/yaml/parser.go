@@ -13,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	fixtureutils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
@@ -23,10 +24,10 @@ import (
 // resolve replaces the file references of the documents with the content
 // they reference (see file.Resolver.ResolveYAML). It returns no documents
 // when nothing was resolved.
-func resolve(ctx context.Context, fileContent []byte, filename string,
+func resolve(ctx context.Context, fsys vfs.FS, fileContent []byte, filename string,
 	resolveReferences bool, maxResolverDepth int) (resolved []*yaml.Node, resolvedFiles map[string]model.ResolvedFile) {
 	// Resolve files passed as arguments with file resolver (e.g. file://)
-	res := file.NewResolver(yaml.Unmarshal, yaml.Marshal, SupportedExtensions())
+	res := file.NewResolver(fsys, yaml.Unmarshal, yaml.Marshal, SupportedExtensions())
 	resolved = res.ResolveYAML(ctx, fileContent, filename, maxResolverDepth, resolveReferences)
 
 	if len(res.ResolvedFiles) == 0 {
@@ -37,14 +38,14 @@ func resolve(ctx context.Context, fileContent []byte, filename string,
 }
 
 // Parse parses yaml/yml file and returns it as a Document
-func Parse(ctx context.Context, fileContent []byte, filePath string,
+func Parse(ctx context.Context, fsys vfs.FS, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
 	resolved []byte,
 	documents []model.Document,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	return ParseWithNodeTransform(ctx, fileContent, filePath, resolveReferences, maxResolverDepth, nil)
+	return ParseWithNodeTransform(ctx, fsys, fileContent, filePath, resolveReferences, maxResolverDepth, nil)
 }
 
 // ParseWithNodeTransform parses like Parse, but applies fn to each
@@ -56,14 +57,14 @@ func Parse(ctx context.Context, fileContent []byte, filePath string,
 // The returned content is fileContent: resolved references are inlined in the
 // documents only, where the content of a file referenced several times is
 // shared between its references instead of being copied.
-func ParseWithNodeTransform(ctx context.Context, fileContent []byte, filePath string,
+func ParseWithNodeTransform(ctx context.Context, fsys vfs.FS, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int, fn func(node *yaml.Node)) (
 	resolved []byte,
 	documents []model.Document,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolvedDocs, resolvedFiles := resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	resolvedDocs, resolvedFiles := resolve(ctx, fsys, fileContent, filePath, resolveReferences, maxResolverDepth)
 	if resolvedDocs == nil {
 		documents, ignoreLines, err = parseNodes(ctx, fileContent, filePath, fn)
 		return fileContent, documents, ignoreLines, resolvedFiles, err
@@ -227,51 +228,60 @@ func SupportedExtensions() []string {
 	return []string{".yaml", ".yml"}
 }
 
-func processCertContent(ctx context.Context, elements map[string]interface{}, content, filePath string) {
-	var certInfo map[string]interface{}
-	if content != "" {
-		certInfo = utils.AddCertificateInfo(ctx, filePath, content)
-		if certInfo != nil {
-			elements["certificate"] = certInfo
-		}
-	}
+// certificateEnricher owns the filesystem and source context for one document
+// traversal; recursive helpers need only the values they process.
+type certificateEnricher struct {
+	ctx      context.Context
+	fsys     vfs.FS
+	filePath string
 }
 
-func processElements(ctx context.Context, elements map[string]interface{}, filePath string) {
+func (e *certificateEnricher) processElements(elements map[string]interface{}) {
 	// A map shared by several resolved references is seen once per reference,
 	// and certificate is a map once processed.
-	if certificate, ok := elements["certificate"].(string); ok {
-		processCertContent(ctx, elements, utils.CheckCertificate(certificate), filePath)
+	certificate, ok := elements["certificate"].(string)
+	if !ok {
+		return
+	}
+	content := utils.CheckCertificate(certificate)
+	if content == "" {
+		return
+	}
+	if info := utils.AddCertificateInfo(e.ctx, e.fsys, e.filePath, content); info != nil {
+		elements["certificate"] = info
 	}
 }
 
-func AddExtraInfo(ctx context.Context, documents []model.Document, filePath string) []model.Document {
+// AddExtraInfo enriches certificates through a non-nil parser-owned filesystem.
+// Callers resolve their filesystem defaults before enrichment.
+func AddExtraInfo(ctx context.Context, fsys vfs.FS, documents []model.Document, filePath string) []model.Document {
+	enricher := certificateEnricher{ctx: ctx, fsys: fsys, filePath: filePath}
 	for _, documentPlaybooks := range documents { // iterate over documents
 		if playbooks, ok := documentPlaybooks["playbooks"]; ok {
-			processPlaybooks(ctx, playbooks, filePath)
+			enricher.processPlaybooks(playbooks)
 		}
 	}
 
 	return documents
 }
 
-func processPlaybooks(ctx context.Context, playbooks interface{}, filePath string) {
-	contextLogger := logger.FromContext(ctx)
+func (e *certificateEnricher) processPlaybooks(playbooks interface{}) {
+	contextLogger := logger.FromContext(e.ctx)
 	sliceResources, ok := playbooks.([]interface{})
 	if !ok { // prevent panic if playbooks is not a slice
-		contextLogger.Warn().Msgf("Failed to parse playbooks: %s", filePath)
+		contextLogger.Warn().Msgf("Failed to parse playbooks: %s", e.filePath)
 		return
 	}
 	for _, resources := range sliceResources { // iterate over playbooks
-		processPlaybooksElements(ctx, resources, filePath)
+		e.processPlaybooksElements(resources)
 	}
 }
 
-func processPlaybooksElements(ctx context.Context, resources interface{}, filePath string) {
-	contextLogger := logger.FromContext(ctx)
+func (e *certificateEnricher) processPlaybooksElements(resources interface{}) {
+	contextLogger := logger.FromContext(e.ctx)
 	mapResources, ok := resources.(map[string]interface{})
 	if !ok {
-		contextLogger.Warn().Msgf("Failed to parse playbooks elements: %s", filePath)
+		contextLogger.Warn().Msgf("Failed to parse playbooks elements: %s", e.filePath)
 		return
 	}
 	for _, value := range mapResources {
@@ -279,6 +289,6 @@ func processPlaybooksElements(ctx context.Context, resources interface{}, filePa
 		if !ok {
 			continue
 		}
-		processElements(ctx, mapValue, filePath)
+		e.processElements(mapValue)
 	}
 }

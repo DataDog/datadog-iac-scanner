@@ -291,6 +291,10 @@ func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
 
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
+	// SourceDocumentIndex selects the written document within a source snapshot.
+	// It is location metadata only and never participates in finding identity.
+	SourceDocumentIndex int `json:"-"`
+
 	ID               string `db:"id"`
 	ScanID           string `db:"scan_id"`
 	Document         Document

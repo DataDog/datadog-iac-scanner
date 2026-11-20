@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1648,4 +1650,97 @@ func TestResolveValidatesSourceAfterMergingOverrides(t *testing.T) {
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, "v5.5.1", result.Modules[0].Version)
 	require.Equal(t, mainFile, result.Modules[0].CallerFile)
+}
+
+func TestResolveRepositoryFilesystemAuthority(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(path, []byte(`module "host" {source="git::https://example.invalid/host.git"}`), 0o600))
+	acquired := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(acquired, "main.tf"), []byte(`module "child" {source="./child"}`), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(acquired, "child"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(acquired, "child", "main.tf"), []byte(`resource "terraform_data" "downloaded" {input="disk-owned"}`), 0o600))
+	ownedModule := []byte(`module "owned" {source="git::https://example.invalid/owned.git"}`)
+	for _, tc := range []struct {
+		name  string
+		root  string
+		files map[string][]byte
+		want  int
+	}{
+		{name: "conflicting host", root: root, files: map[string][]byte{path: []byte(`resource "terraform_data" "owned" {input="known"}`)}},
+		{name: "memory only and acquired disk", root: filepath.Join(root, "absent"), files: map[string][]byte{filepath.Join(root, "absent", "main.tf"): ownedModule}, want: 1},
+		{name: "memory local child and acquired disk", root: "local-pushed", files: map[string][]byte{"local-pushed/main.tf": []byte(`module "child" {source="./child"}`), "local-pushed/child/main.tf": ownedModule}, want: 1},
+		{name: "relative memory and acquired disk", root: "pushed", files: map[string][]byte{"pushed/main.tf": ownedModule}, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			discoveryPaths := make([]string, 0, len(tc.files))
+			for path := range tc.files {
+				discoveryPaths = append(discoveryPaths, path)
+			}
+			result := Resolve(t.Context(), &Request{RootPaths: []string{tc.root}, DiscoveryPaths: discoveryPaths, FS: vfs.NewMemFS(tc.files), Resolver: mapResolver{bySource: map[string]resolver.Resolution{"git::https://example.invalid/owned.git": {LocalPath: acquired, PackageRoot: acquired, Origin: "prefetched"}}}, MaxDepth: 4})
+			defer result.Cleanup()
+			require.Len(t, result.Modules, tc.want)
+			require.Empty(t, result.Failures)
+			require.Len(t, result.ScanPaths, 2*tc.want)
+			if tc.want > 0 {
+				require.Equal(t, "git::https://example.invalid/owned.git", result.Modules[0].Source)
+				require.ElementsMatch(t, []string{filepath.Join(acquired, "main.tf"), filepath.Join(acquired, "child", "main.tf")}, result.ScanPaths)
+			}
+		})
+	}
+}
+
+func TestResolveSelectionBeforeByteAdmission(t *testing.T) {
+	acquired := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(acquired, "main.tf"), []byte(`resource "terraform_data" "leaf" {}`), 0o600))
+	for _, tc := range []struct {
+		name, large, wantSource string
+		preferTF, missing       bool
+		limit                   int64
+	}{
+		{name: "default healthy", wantSource: "tofu"},
+		{name: "explicit TF healthy", preferTF: true, wantSource: "tf"},
+		{name: "default oversized winner", large: "main.tofu", limit: 512},
+		{name: "explicit TF oversized winner", large: "main.tf", preferTF: true, limit: 512},
+		{name: "default oversized inactive", large: "main.tf", limit: 512, wantSource: "tofu"},
+		{name: "explicit TF missing winner", preferTF: true, missing: true},
+		{name: "explicit TF oversized inactive", large: "main.tofu", preferTF: true, limit: 512, wantSource: "tf"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for _, name := range []string{"main.tf", "main.tofu"} {
+				if tc.missing && name == "main.tf" {
+					continue
+				}
+				attr := "tf_source"
+				if name == "main.tofu" {
+					attr = "tofu_source"
+				}
+				src := fmt.Sprintf(`module "n" {source=var.%s}`, attr)
+				if name == tc.large {
+					src += "\n#" + strings.Repeat("x", 1024)
+				}
+				require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(src), 0o600))
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(root, "variables.tf"), []byte(`variable "tf_source" {default="git::https://example.invalid/tf.git"}
+variable "tofu_source" {default="git::https://example.invalid/tofu.git"}`), 0o600))
+			if tc.preferTF {
+				require.NoError(t, os.WriteFile(filepath.Join(root, "other.tf"), []byte(`module "unselected" {source="git::https://example.invalid/unselected.git"}`), 0o600))
+			}
+			var discovery []string
+			if tc.preferTF {
+				discovery = []string{filepath.Join(root, "main.tf")}
+			}
+			result := Resolve(t.Context(), &Request{RootPaths: []string{root}, DiscoveryPaths: discovery, Resolver: stubResolver{resolution: resolver.Resolution{LocalPath: acquired, PackageRoot: acquired, Origin: "prefetched"}}, MaxDepth: 4, MaxConfigFileBytes: tc.limit})
+			defer result.Cleanup()
+			require.Empty(t, result.Failures)
+			if tc.wantSource == "" {
+				require.Empty(t, result.Modules)
+				require.Empty(t, result.ScanPaths)
+				return
+			}
+			require.Len(t, result.Modules, 1)
+			require.Equal(t, "git::https://example.invalid/"+tc.wantSource+".git", result.Modules[0].Source, "sibling variable configuration remains visible outside the module-call allow profile")
+		})
+	}
 }

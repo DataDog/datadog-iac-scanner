@@ -6,8 +6,10 @@
 package tfmodules
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -22,7 +24,7 @@ func TestLoadTFFilesFromDirSkipsSymlinks(t *testing.T) {
 	require.NoError(t, os.WriteFile(outside, []byte(`resource "x" "outside" {}`), 0o644))
 	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linked.tf")))
 
-	files, err := LoadTFFilesFromDir(t.Context(), dir, "")
+	files, err := LoadTFFilesFromDir(t.Context(), nil, dir, LoadOptions{})
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, mainPath, files[0].FilePath)
@@ -38,13 +40,13 @@ func TestLoadTFFilesFromDirIncludesConfinedPackageSymlinks(t *testing.T) {
 	require.NoError(t, os.WriteFile(sharedMain, []byte(`resource "x" "shared" {}`), 0o644))
 	require.NoError(t, os.Symlink(sharedMain, filepath.Join(selected, "linked.tf")))
 
-	files, err := LoadTFFilesFromDir(t.Context(), selected, packageRoot)
+	files, err := LoadTFFilesFromDir(t.Context(), nil, selected, LoadOptions{PackageRoot: packageRoot})
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, filepath.Join(selected, "linked.tf"), files[0].FilePath)
 }
 
-func TestLoadTFFilesFromDir_KeepsTofuAndTf(t *testing.T) {
+func TestLoadTFFilesFromDirSelectsActiveDialect(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "shadowed" {}`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu"), []byte(`resource "x" "live" {}`), 0o644))
@@ -52,39 +54,46 @@ func TestLoadTFFilesFromDir_KeepsTofuAndTf(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf.json"), []byte(`{"resource":{}}`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu.json"), []byte(`{"resource":{}}`), 0o644))
 
-	files, err := LoadTFFilesFromDir(t.Context(), dir, "")
+	files, err := LoadTFFilesFromDir(t.Context(), nil, dir, LoadOptions{})
 	require.NoError(t, err)
 	got := make([]string, 0, len(files))
 	for _, f := range files {
 		got = append(got, filepath.Base(f.FilePath))
 	}
-	require.ElementsMatch(t, []string{"main.tf", "main.tofu", "other.tf", "main.tf.json", "main.tofu.json"}, got)
+	require.ElementsMatch(t, []string{"main.tofu", "other.tf", "main.tofu.json"}, got)
 }
 
-func TestSelectHCLConfigNamesRespectsMergeAllow(t *testing.T) {
+func TestSelectHCLConfigEntriesRespectsMergeAllow(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "tf" {}`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu"), []byte(`resource "x" "tofu" {}`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "variables.tf"), []byte(`variable "name" {}`), 0o644))
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
+	names := func(entries []fs.DirEntry) []string {
+		out := make([]string, len(entries))
+		for i, entry := range entries {
+			out[i] = entry.Name()
+		}
+		return out
+	}
 
 	allow := map[string]struct{}{
 		filepath.ToSlash(filepath.Join(dir, "main.tf")): {},
 	}
-	require.Equal(t, []string{"main.tf", "variables.tf"}, SelectHCLConfigNames(entries, dir, allow, ""))
-	require.Equal(t, []string{"main.tofu", "variables.tf"}, SelectHCLConfigNames(entries, dir, nil, ""))
+	require.Equal(t, []string{"main.tf", "variables.tf"}, names(SelectHCLConfigEntries(entries, dir, allow, "")))
+	require.Equal(t, []string{"main.tofu", "variables.tf"}, names(SelectHCLConfigEntries(entries, dir, nil, "")))
 
 	both := map[string]struct{}{
 		filepath.ToSlash(filepath.Join(dir, "main.tf")):   {},
 		filepath.ToSlash(filepath.Join(dir, "main.tofu")): {},
 	}
-	require.Equal(t, []string{"variables.tf", "main.tf"}, SelectHCLConfigNames(entries, dir, both, "main.tf"))
-	require.Equal(t, []string{"main.tofu", "variables.tf"}, SelectHCLConfigNames(entries, dir, both, "main.tofu"))
-	require.Equal(t, []string{"main.tofu", "variables.tf"}, SelectHCLConfigNames(entries, dir, both, ""))
+	require.Equal(t, []string{"variables.tf", "main.tf"}, names(SelectHCLConfigEntries(entries, dir, both, "main.tf")))
+	require.Equal(t, []string{"main.tofu", "variables.tf"}, names(SelectHCLConfigEntries(entries, dir, both, "main.tofu")))
+	require.Equal(t, []string{"main.tofu", "variables.tf"}, names(SelectHCLConfigEntries(entries, dir, both, "")))
 }
 
-func TestSelectConfigNamesIncludesJSON(t *testing.T) {
+func TestSelectConfigEntriesIncludesJSON(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`resource "x" "tf" {}`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu"), []byte(`resource "x" "tofu" {}`), 0o644))
@@ -93,8 +102,12 @@ func TestSelectConfigNamesIncludesJSON(t *testing.T) {
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
-	got := SelectConfigNames(entries, dir, nil, "")
-	require.ElementsMatch(t, []string{"main.tofu", "extra.tofu.json"}, got)
+	got := SelectConfigEntries(entries, dir, nil, "")
+	names := make([]string, len(got))
+	for i, entry := range got {
+		names[i] = entry.Name()
+	}
+	require.ElementsMatch(t, []string{"main.tofu", "extra.tofu.json"}, names)
 }
 
 func TestPlaceholderTarget(t *testing.T) {
@@ -184,4 +197,142 @@ func TestConfigPlaceholdersRespectBoundaryAndSize(t *testing.T) {
 	data, err := ReadConfigFile(t.Context(), vfs.NewMemFS(map[string][]byte{path: []byte("../target.tf")}), path, repo)
 	require.NoError(t, err)
 	require.Equal(t, "../target.tf", string(data), "pushed content must never follow host files")
+}
+
+func TestLoadTFFilesFromDirFilesystemAuthority(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.tf")
+	host := `resource "x" "host" {}`
+	owned := `resource "x" "owned" {}`
+	require.NoError(t, os.WriteFile(path, []byte(host), 0o600))
+	for _, tc := range []struct {
+		name    string
+		fs      vfs.FS
+		dir     string
+		limit   int64
+		want    string
+		count   int
+		wantErr bool
+	}{
+		{name: "owned conflict", fs: vfs.NewMemFS(map[string][]byte{path: []byte(owned)}), dir: dir, want: owned, count: 1},
+		{name: "owned size admits", fs: vfs.NewMemFS(map[string][]byte{path: []byte("{}")}), dir: dir, limit: 2, want: "{}", count: 1},
+		{name: "owned size", fs: vfs.NewMemFS(map[string][]byte{path: []byte(owned)}), dir: dir, limit: 1, count: 0},
+		{name: "missing never host", fs: vfs.NewMemFS(nil), dir: dir, wantErr: true},
+		{name: "relative owned", fs: vfs.NewMemFS(map[string][]byte{"pushed/main.tf": []byte(owned)}), dir: "pushed", want: owned, count: 1},
+		{name: "default disk", dir: dir, want: host, count: 1},
+		{name: "explicit disk", fs: vfs.DiskFS{}, dir: dir, want: host, count: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := LoadTFFilesFromDir(t.Context(), tc.fs, tc.dir, LoadOptions{MaxBytes: tc.limit})
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Empty(t, files)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, files, tc.count)
+			if tc.count > 0 {
+				require.Equal(t, tc.want, files[0].OriginalData)
+				require.Equal(t, filepath.Join(tc.dir, "main.tf"), files[0].FilePath)
+			}
+		})
+	}
+}
+
+func TestLoadTFFilesFromDirSelectionBeforeAdmission(t *testing.T) {
+	const maxBytes int64 = 64
+	const oversizedPadding = 2 * int(maxBytes)
+	for _, tc := range []struct {
+		name       string
+		large      string
+		skipped    string
+		profile    string
+		jsonSyntax bool
+		limit      int64
+		want       []string
+	}{
+		{name: "default healthy", want: []string{"main.tofu", "variables.tf"}},
+		{name: "explicit TF normalized profile", profile: "normalized Terraform", want: []string{"main.tf", "variables.tf"}},
+		{name: "explicit TF healthy", profile: "Terraform", want: []string{"main.tf", "variables.tf"}},
+		{name: "empty module-call profile", profile: "empty", want: []string{"main.tofu", "variables.tf"}},
+		{name: "unmatched module-call profile", profile: "unmatched", want: []string{"main.tofu", "variables.tf"}},
+		{name: "default oversized winner", large: "main.tofu", limit: maxBytes, want: []string{"variables.tf"}},
+		{name: "explicit TF oversized winner", large: "main.tf", profile: "Terraform", limit: maxBytes, want: []string{"variables.tf"}},
+		{name: "default oversized inactive", large: "main.tf", limit: maxBytes, want: []string{"main.tofu", "variables.tf"}},
+		{name: "explicit TF oversized inactive", large: "main.tofu", profile: "Terraform", limit: maxBytes, want: []string{"main.tf", "variables.tf"}},
+		{name: "default oversized JSON winner", jsonSyntax: true, large: "main.tofu.json", limit: maxBytes, want: []string{"variables.tf"}},
+		{name: "explicit TF oversized JSON winner", jsonSyntax: true, large: "main.tf.json", profile: "Terraform", limit: maxBytes, want: []string{"variables.tf"}},
+		{name: "default outside symlink winner", skipped: "symlink", want: []string{"variables.tf"}},
+		{name: "explicit TF outside symlink winner", profile: "Terraform", skipped: "symlink", want: []string{"variables.tf"}},
+		{name: "default unavailable placeholder winner", skipped: "placeholder", want: []string{"variables.tf"}},
+		{name: "explicit TF unavailable placeholder winner", profile: "Terraform", skipped: "placeholder", want: []string{"variables.tf"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			preferTF := tc.profile == "Terraform" || tc.profile == "normalized Terraform"
+			tfName, tofuName := "main.tf", "main.tofu"
+			if tc.jsonSyntax {
+				tfName += ".json"
+				tofuName += ".json"
+			}
+			winner := tofuName
+			if preferTF {
+				winner = tfName
+			}
+			for _, name := range []string{tfName, tofuName, "variables.tf"} {
+				path := filepath.Join(dir, name)
+				src := `module "n" {source="acme/network/aws"}`
+				if tc.jsonSyntax && name != "variables.tf" {
+					src = `{"module":{"n":{"source":"acme/network/aws"}}}`
+				}
+				if name == "variables.tf" {
+					src = `variable "sibling" {default="visible"}`
+				}
+				if name == tc.large {
+					src += "\n" + strings.Repeat(" ", oversizedPadding)
+				}
+				if name == winner {
+					switch tc.skipped {
+					case "symlink":
+						outside := filepath.Join(t.TempDir(), name)
+						require.NoError(t, os.WriteFile(outside, []byte(src), 0o600))
+						require.NoError(t, os.Symlink(outside, path))
+						continue
+					case "placeholder":
+						src = "./unavailable.tf"
+					}
+				}
+				require.NoError(t, os.WriteFile(path, []byte(src), 0o600))
+			}
+			var profile map[string]bool
+			switch {
+			case preferTF:
+				path := filepath.Join(dir, tfName)
+				if tc.profile == "normalized Terraform" {
+					path = dir + string(filepath.Separator) + "." + string(filepath.Separator) + tfName
+				}
+				profile = map[string]bool{path: true, filepath.Join(dir, tofuName): false}
+			case tc.profile == "empty":
+				profile = map[string]bool{}
+			case tc.profile == "unmatched":
+				profile = map[string]bool{filepath.Join(dir, "unselected.tf"): true}
+			}
+			files, err := LoadTFFilesFromDir(t.Context(), nil, dir, LoadOptions{PackageRoot: dir, ModuleCallFiles: profile, MaxBytes: tc.limit})
+			require.NoError(t, err)
+			names := make([]string, 0, len(files))
+			for _, file := range files {
+				names = append(names, filepath.Base(file.FilePath))
+			}
+			require.ElementsMatch(t, tc.want, names)
+			if tc.profile == "empty" || tc.profile == "unmatched" || tc.profile == "normalized Terraform" {
+				calls, err := ParseTerraformModulesFromFiles(t.Context(), nil, files, profile)
+				require.NoError(t, err)
+				if tc.profile == "normalized Terraform" {
+					require.Len(t, calls, 1, "loader and parser must normalize the same module-call profile")
+				} else {
+					require.Empty(t, calls, "an empty or unmatched module-call profile must never broaden to all calls")
+				}
+			}
+		})
+	}
 }

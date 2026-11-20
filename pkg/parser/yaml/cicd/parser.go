@@ -14,10 +14,14 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 // Parser defines a parser type
-type Parser struct{}
+type Parser struct {
+	// FS supplies referenced files. Nil uses the real filesystem.
+	FS vfs.FS
+}
 
 // ParsedCommand represents a parsed shell command
 type ParsedCommand struct {
@@ -99,7 +103,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(
+		ctx, p.FS, fileContent, filePath, resolveReferences, maxResolverDepth)
 
 	if err != nil {
 		return nil, nil, nil, nil, err

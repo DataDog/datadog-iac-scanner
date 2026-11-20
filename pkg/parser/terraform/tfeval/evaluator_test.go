@@ -8,6 +8,7 @@ package tfeval
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
@@ -3303,4 +3305,56 @@ func TestNativePolicyValueReads(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, false, got.Value)
 	})
+}
+
+func TestEvaluateModule_FunctionFilesystem(t *testing.T) {
+	for _, backend := range []string{"memory", "disk"} {
+		t.Run(backend, func(t *testing.T) {
+			dir := t.TempDir()
+			source := `output "content" {value=file("${path.module}/payload.txt")}
+output "template" {value=templatefile("${path.module}/message.tftpl",{value="value"})}
+output "hash" {value=filesha256("${path.module}/payload.txt")}
+output "files" {value=join(",",sort(tolist(fileset(path.module,"*.txt"))))}
+output "host_only" {value=try(file("${path.module}/host-only.txt"),"caught")}
+output "exists" {value=fileexists("${path.module}/host-only.txt")}
+output "missing" {value=try(file("${path.module}/missing.txt"),"caught")}`
+			disk := map[string]string{"main.tf": source, "payload.txt": "host", "host-only.txt": "host-only", "message.tftpl": "host ${value}"}
+			for name, content := range disk {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0600))
+			}
+			var fsys vfs.FS = vfs.DiskFS{}
+			content, template, files, hostOnly, exists := "host", "host value", "host-only.txt,payload.txt", "host-only", cty.True
+			if backend == "memory" {
+				fsys = vfs.NewMemFS(map[string][]byte{
+					filepath.Join(dir, "main.tf"):       []byte(source),
+					filepath.Join(dir, "payload.txt"):   []byte("owned"),
+					filepath.Join(dir, "message.tftpl"): []byte("owned ${value}"),
+				})
+				content, template, files, hostOnly, exists = "owned", "owned value", "payload.txt", "caught", cty.False
+			}
+			evaluator := NewWithFS(fsys)
+			for _, phase := range []string{"initial", "fork", "reset", "reset fork"} {
+				t.Run(phase, func(t *testing.T) {
+					current := evaluator
+					switch phase {
+					case "fork", "reset fork":
+						current = evaluator.Fork()
+					case "reset":
+						evaluator.ReleaseCaches()
+					}
+					_, outputs, _, err := current.EvaluateModule(context.Background(), dir, nil)
+					require.NoError(t, err)
+					expected := map[string]cty.Value{
+						"content": cty.StringVal(content), "template": cty.StringVal(template),
+						"hash":  cty.StringVal(fmt.Sprintf("%x", sha256.Sum256([]byte(content)))),
+						"files": cty.StringVal(files), "host_only": cty.StringVal(hostOnly),
+						"exists": exists, "missing": cty.StringVal("caught"),
+					}
+					for name, want := range expected {
+						require.True(t, want.RawEquals(outputs[name]), "%s: got %#v want %#v", name, outputs[name], want)
+					}
+				})
+			}
+		})
+	}
 }

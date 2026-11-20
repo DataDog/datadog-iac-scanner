@@ -11,11 +11,11 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"os"
 	"path/filepath"
 	"regexp"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 type certInfo struct {
@@ -32,8 +32,8 @@ func CheckCertificate(content string) string {
 	return match
 }
 
-func getCertificateInfo(filePath string) (certInfo, error) {
-	certPEM, err := os.ReadFile(filepath.Clean(filePath))
+func getCertificateInfo(fsys vfs.FS, filePath string) (certInfo, error) {
+	certPEM, err := fsys.ReadFile(filepath.Clean(filePath))
 
 	if err != nil {
 		return certInfo{}, err
@@ -66,21 +66,19 @@ func getCertificateInfo(filePath string) (certInfo, error) {
 	return certInfo{date: certDate, rsaKeyBytes: rsaBytes}, nil
 }
 
-// AddCertificateInfo gets and adds certificate information of a certificate file
-func AddCertificateInfo(ctx context.Context, path, content string) map[string]interface{} {
+// AddCertificateInfo gets and adds certificate information using the supplied
+// non-nil filesystem. Parser entry points own filesystem defaulting.
+func AddCertificateInfo(ctx context.Context, fsys vfs.FS, path, content string) map[string]interface{} {
 	loggerFromContext := logger.FromContext(ctx)
-	var filePath string
-
-	_, err := os.Stat(content)
-
-	if err != nil { // content is not a full valid path or is an incomplete path
-		loggerFromContext.Trace().Msgf("path to the certificate content is not a valid: %s", content)
-		filePath = filepath.Join(filepath.Dir(path), content)
-	} else { // content is a full valid path
-		filePath = content
+	filePath := content
+	if !filepath.IsAbs(content) {
+		if _, err := fsys.Stat(content); err != nil {
+			loggerFromContext.Trace().Msgf("certificate reference is relative to its input file: %s", content)
+			filePath = filepath.Join(filepath.Dir(path), content)
+		}
 	}
 
-	date, err := getCertificateInfo(filePath)
+	date, err := getCertificateInfo(fsys, filePath)
 
 	if err == nil {
 		attributes := make(map[string]interface{})

@@ -9,7 +9,9 @@ package tfeval
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/big"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -352,3 +354,129 @@ func encodeCtyForKey(v cty.Value) string {
 type stringWriter struct{ b *strings.Builder }
 
 func (w stringWriter) WriteString(s string) { _, _ = w.b.WriteString(s) }
+
+func TestInputsKeyNumericContext(t *testing.T) {
+	values := []cty.Value{
+		cty.NumberVal(new(big.Float).SetPrec(64).SetFloat64(1.5)),
+		cty.NumberVal(new(big.Float).SetPrec(512).SetFloat64(1.5)),
+		cty.NumberVal(new(big.Float).SetPrec(64).SetMode(big.ToZero).SetFloat64(1.5)),
+		cty.NumberVal(new(big.Float).SetFloat64(0)),
+		cty.NumberVal(new(big.Float).SetFloat64(math.Copysign(0, -1))),
+		cty.NumberIntVal(1), cty.NumberIntVal(-1), cty.StringVal("1"),
+		cty.UnknownVal(cty.Number), cty.NullVal(cty.Number),
+		cty.NumberVal(new(big.Float).SetInf(false)), cty.NumberVal(new(big.Float).SetInf(true)),
+	}
+	for i, value := range values {
+		before := value.GoString()
+		key := canonicalInputsKey(map[string]cty.Value{"v": value})
+		for j, other := range values {
+			if i != j {
+				require.NotEqual(t, key, canonicalInputsKey(map[string]cty.Value{"v": other}))
+			}
+		}
+		if value.Type() == cty.Number && value.IsKnown() && !value.IsNull() {
+			copy := cty.NumberVal(value.AsBigFloat())
+			require.Equal(t, key, canonicalInputsKey(map[string]cty.Value{"v": copy}))
+			require.Equal(t, value.AsBigFloat().Prec(), copy.AsBigFloat().Prec())
+		}
+		require.Equal(t, before, value.GoString())
+	}
+	// Equal values produced by the same numeric context remain shareable.
+	require.Equal(t, canonicalInputsKey(map[string]cty.Value{"v": cty.NumberIntVal(3).Divide(cty.NumberIntVal(2))}), canonicalInputsKey(map[string]cty.Value{"v": cty.NumberVal(new(big.Float).SetPrec(64).SetFloat64(1.5))}))
+}
+
+func TestInputsKeyNumericExponentEncoding(t *testing.T) {
+	for _, exponent := range []int{-1 << 28, -32768, -1, 0, 1, 32768, 1 << 28} {
+		value := cty.NumberVal(new(big.Float).SetMantExp(new(big.Float).SetInt64(3), exponent))
+		encoded := encodeCtyForKey(value)
+		require.Less(t, len(encoded), 64)
+		require.NotEqual(t, encoded, encodeCtyForKey(value.Negate()))
+		var memo keyMemo
+		key, ok := memo.inputsKey(context.Background(), map[string]cty.Value{"v": value})
+		require.True(t, ok)
+		again, ok := memo.inputsKey(context.Background(), map[string]cty.Value{"v": value})
+		require.True(t, ok)
+		require.Equal(t, key, again)
+	}
+}
+
+func TestInputsKeyUncacheableValues(t *testing.T) {
+	opaque := "opaque"
+	capsule := cty.CapsuleVal(cty.Capsule("test capsule", reflect.TypeOf(opaque)), &opaque)
+	for _, value := range []cty.Value{capsule, cty.NullVal(capsule.Type()), cty.UnknownVal(capsule.Type()), cty.UnknownVal(cty.List(capsule.Type())), cty.ListValEmpty(capsule.Type()), cty.NumberIntVal(2).Mark("sensitive"), cty.TupleVal([]cty.Value{cty.NumberIntVal(2).Mark("sensitive")}), cty.ObjectVal(map[string]cty.Value{"n": cty.NumberIntVal(2)}).Mark("sensitive")} {
+		var memo keyMemo
+		_, ok := memo.inputsKey(context.Background(), map[string]cty.Value{"v": value})
+		require.False(t, ok)
+		require.Empty(t, memo.entries)
+	}
+	module := writeModule(t, t.TempDir(), "module", map[string]string{"main.tf": `variable "value" {}
+locals { result = var.value + 1 }
+resource "test_resource" "example" { value = local.result }
+`})
+	e := New()
+	for _, mark := range []string{"sensitive", "other"} {
+		resources, _, _, err := e.EvaluateModule(context.Background(), module, map[string]cty.Value{"value": cty.NumberIntVal(2).Mark(mark)})
+		require.NoError(t, err)
+		require.Len(t, resources, 1)
+		value, marks := resources[0].Attributes["value"].Unmark()
+		require.True(t, value.RawEquals(cty.NumberIntVal(3)))
+		require.Contains(t, marks, mark)
+		require.Zero(t, e.EvalCacheSize())
+	}
+	resources, _, _, err := e.EvaluateModule(context.Background(), module, map[string]cty.Value{"value": cty.NumberIntVal(2)})
+	require.NoError(t, err)
+	require.False(t, resources[0].Attributes["value"].IsMarked())
+	require.Equal(t, 1, e.EvalCacheSize())
+
+}
+
+func TestEvalCacheNumericContext(t *testing.T) {
+	module := writeModule(t, t.TempDir(), "module", map[string]string{"main.tf": `variable "config" {}
+locals { quotient = var.config.x / var.config.y }
+output "quotient" { value = local.quotient }
+output "text" { value = tostring(var.config.x) }
+`})
+	shared := New()
+	for _, input := range []struct {
+		name string
+		x, y *big.Float
+	}{
+		{"low precision", new(big.Float).SetPrec(64).SetInt64(1), new(big.Float).SetPrec(64).SetInt64(3)},
+		{"high precision", new(big.Float).SetPrec(1024).SetInt64(1), new(big.Float).SetPrec(1024).SetInt64(3)},
+		{"zero", new(big.Float).SetFloat64(0), new(big.Float).SetInt64(1)},
+		{"negative zero", new(big.Float).SetFloat64(math.Copysign(0, -1)), new(big.Float).SetInt64(1)},
+	} {
+		t.Run(input.name, func(t *testing.T) {
+			inputs := map[string]cty.Value{"config": cty.ObjectVal(map[string]cty.Value{"x": cty.NumberVal(input.x), "y": cty.NumberVal(input.y)})}
+			_, freshOutputs, _, err := New().EvaluateModule(context.Background(), module, inputs)
+			require.NoError(t, err)
+			_, outputs, _, err := shared.EvaluateModule(context.Background(), module, inputs)
+			require.NoError(t, err)
+			require.True(t, freshOutputs["quotient"].RawEquals(outputs["quotient"]))
+			require.Equal(t, freshOutputs["quotient"].AsBigFloat().Prec(), outputs["quotient"].AsBigFloat().Prec())
+			require.Equal(t, freshOutputs["text"].AsString(), outputs["text"].AsString())
+			entries := shared.EvalCacheSize()
+			_, _, _, err = shared.EvaluateModule(context.Background(), module, inputs)
+			require.NoError(t, err)
+			require.Equal(t, entries, shared.EvalCacheSize())
+		})
+	}
+	require.Equal(t, 4, shared.EvalCacheSize())
+}
+
+func BenchmarkInputsKeyNumbers(b *testing.B) {
+	for _, exponent := range []int{-32768, 0, 32768} {
+		b.Run(fmt.Sprint(exponent), func(b *testing.B) {
+			value := cty.NumberVal(new(big.Float).SetMantExp(new(big.Float).SetInt64(3), exponent))
+			inputs := map[string]cty.Value{"v": value}
+			var memo keyMemo
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, ok := memo.inputsKey(context.Background(), inputs); !ok {
+					b.Fatal("key unexpectedly ineligible")
+				}
+			}
+		})
+	}
+}

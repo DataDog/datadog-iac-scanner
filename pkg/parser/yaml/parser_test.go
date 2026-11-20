@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -46,7 +47,7 @@ func TestParse_InvalidScalarLogging(t *testing.T) {
 			log := zerolog.New(&logs).Level(tt.logLevel)
 			ctx := log.WithContext(t.Context())
 			log.Debug().Msg("before YAML parsing")
-			_, docs, _, _, err := Parse(ctx, []byte("count: !!int invalid-number\n"), tt.filePath, false, 0)
+			_, docs, _, _, err := Parse(ctx, nil, []byte("count: !!int invalid-number\n"), tt.filePath, false, 0)
 			log.Debug().Msg("after YAML parsing")
 			require.NoError(t, err)
 			require.Len(t, docs, 1)
@@ -406,7 +407,7 @@ resources:
 	ctx := context.Background()
 	for idx, tt := range have {
 		t.Run(fmt.Sprintf("test_parse_case_%d", idx), func(t *testing.T) {
-			_, doc, linesToIgnore, _, err := Parse(ctx, []byte(tt), "test.yaml", true, 15)
+			_, doc, linesToIgnore, _, err := Parse(ctx, nil, []byte(tt), "test.yaml", true, 15)
 			if want[idx].wantErr {
 				require.Error(t, err)
 			} else {
@@ -435,7 +436,7 @@ func Test_Resolve(t *testing.T) {
 		name: test2
 	`
 
-	resolved, resolvedFiles := resolve(ctx, []byte(have), "test.yaml", true, 15)
+	resolved, resolvedFiles := resolve(ctx, nil, []byte(have), "test.yaml", true, 15)
 	require.Nil(t, resolved, "a file without references is decoded as is")
 	require.Empty(t, resolvedFiles)
 }
@@ -472,7 +473,7 @@ func TestYaml_processElements(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			processElements(ctx, tt.args.elements, tt.args.filePath)
+			(&certificateEnricher{ctx: ctx, fsys: vfs.DiskFS{}, filePath: tt.args.filePath}).processElements(tt.args.elements)
 			require.Equal(t, tt.wantCert, tt.args.elements["certificate"])
 			require.Equal(t, tt.wantSwag, tt.args.elements["swagger_file"])
 		})
@@ -507,7 +508,7 @@ func TestModel_TestYamlParser(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, got, _, _, err := Parse(ctx, []byte(tt.sample), "", true, 15)
+			_, got, _, _, err := Parse(ctx, nil, []byte(tt.sample), "", true, 15)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
@@ -520,7 +521,7 @@ func TestModel_TestYamlParser(t *testing.T) {
 
 func TestParseIgnoresTrailingDocumentSeparator(t *testing.T) {
 	content := []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n---\n")
-	_, docs, _, _, err := Parse(context.Background(), content, "crds.yaml", false, 15)
+	_, docs, _, _, err := Parse(context.Background(), nil, content, "crds.yaml", false, 15)
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
 	require.Equal(t, "ConfigMap", docs[0]["kind"])
@@ -528,7 +529,7 @@ func TestParseIgnoresTrailingDocumentSeparator(t *testing.T) {
 
 func TestParseSkipsUnparseableDocumentAndKeepsOthers(t *testing.T) {
 	content := []byte("kind: ConfigMap\n---\njust a scalar\n---\nkind: Secret\n")
-	_, docs, _, _, err := Parse(context.Background(), content, "mixed.yaml", false, 15)
+	_, docs, _, _, err := Parse(context.Background(), nil, content, "mixed.yaml", false, 15)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(docs), 1)
 }
@@ -573,7 +574,7 @@ func TestParse_TemplateIncludedManyTimesIsSharedAndComplete(t *testing.T) {
 	content, err := os.ReadFile(root)
 	require.NoError(t, err)
 
-	_, docs, _, resolvedFiles, err := Parse(context.Background(), content, root, true, 15)
+	_, docs, _, resolvedFiles, err := Parse(context.Background(), nil, content, root, true, 15)
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
 	require.Len(t, resolvedFiles, depth)
@@ -595,7 +596,7 @@ func TestParse_ResolvedFileKeepsDocumentsAndLines(t *testing.T) {
 	content := []byte("kind: Deployment\n\n# owner\nowner: owner.yaml\nreplicas: 2\n---\nkind: Service\n")
 	require.NoError(t, os.WriteFile(path, content, 0o600))
 
-	_, docs, _, resolvedFiles, err := Parse(context.Background(), content, path, true, 15)
+	_, docs, _, resolvedFiles, err := Parse(context.Background(), nil, content, path, true, 15)
 	require.NoError(t, err)
 	require.Contains(t, resolvedFiles, "owner.yaml")
 	require.Len(t, docs, 2)
@@ -617,10 +618,10 @@ func TestParse_ResolvedFileKeepsDocumentsAndLines(t *testing.T) {
 
 func TestNoDocumentsError(t *testing.T) {
 	ctx := context.Background()
-	_, _, _, _, err := ParseWithNodeTransform(ctx, []byte("# only a comment\n"), "empty.yaml", false, 15, nil)
+	_, _, _, _, err := ParseWithNodeTransform(ctx, nil, []byte("# only a comment\n"), "empty.yaml", false, 15, nil)
 	require.ErrorIs(t, err, ErrNoDocuments, "a file with no document is empty")
 
-	_, _, _, _, err = ParseWithNodeTransform(ctx, []byte("a: [\n"), "broken.yaml", false, 15, nil)
+	_, _, _, _, err = ParseWithNodeTransform(ctx, nil, []byte("a: [\n"), "broken.yaml", false, 15, nil)
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrNoDocuments, "a syntax error before any document is not an empty file")
 
