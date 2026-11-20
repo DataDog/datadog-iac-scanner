@@ -383,11 +383,11 @@ func (c *Client) createService(
 
 	combinedParserBuilder := parser.NewBuilder(ctx).
 		WithFS(c.fsys).
-		Add(&yamlParser.Parser{}).
+		Add(&yamlParser.Parser{FS: c.fsys}).
 		Add(dockerComposeParser.NewDefaultWithFS(c.fsys)).
 		Add(tfParser).
 		Add(&bicepParser.Parser{}).
-		Add(&cicdParser.Parser{}).
+		Add(&cicdParser.Parser{FS: c.fsys}).
 		Add(&dockerParser.Parser{}).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
@@ -395,7 +395,7 @@ func (c *Client) createService(
 		Add(&ansibleHostsParser.Parser{})
 
 	if c.ScanParams.ShouldScanTfPlans {
-		combinedParserBuilder.Add(&jsonParser.Parser{})
+		combinedParserBuilder.Add(&jsonParser.Parser{FS: c.fsys})
 	}
 
 	combinedParser, err := combinedParserBuilder.Build(types, cloudProviders)

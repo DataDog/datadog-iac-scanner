@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"gopkg.in/yaml.v3"
 )
@@ -38,7 +39,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 		{
 			name: "test",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi/responses/_index.yaml"),
@@ -49,7 +50,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 		{
 			name: "json test",
 			fields: fields{
-				Resolver: NewResolver(json.Unmarshal, json.Marshal, []string{".json"}),
+				Resolver: NewResolver(nil, json.Unmarshal, json.Marshal, []string{".json"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi_json/openapi.json"),
@@ -61,7 +62,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 		{
 			name: "test_serverless",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_serverless/serverless.yml"),
@@ -75,6 +76,7 @@ func TestResolver_Resolve_With_ResolveReferences(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &Resolver{
+				fsys:          tt.fields.fsys,
 				unmarshler:    tt.fields.unmarshler,
 				marshler:      tt.fields.marshler,
 				ResolvedFiles: tt.fields.ResolvedFiles,
@@ -113,7 +115,7 @@ func TestResolver_Resolve_Without_ResolveReferences(t *testing.T) {
 		{
 			name: "yaml should resolve because is not openapi file",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi/responses/_index.yaml"),
@@ -124,7 +126,7 @@ func TestResolver_Resolve_Without_ResolveReferences(t *testing.T) {
 		{
 			name: "json should not resolve because is a openapi file",
 			fields: fields{
-				Resolver: NewResolver(json.Unmarshal, json.Marshal, []string{".json"}),
+				Resolver: NewResolver(nil, json.Unmarshal, json.Marshal, []string{".json"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/unresolved_openapi_json/openapi.json"),
@@ -139,6 +141,7 @@ func TestResolver_Resolve_Without_ResolveReferences(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &Resolver{
+				fsys:          tt.fields.fsys,
 				unmarshler:    tt.fields.unmarshler,
 				marshler:      tt.fields.marshler,
 				ResolvedFiles: tt.fields.ResolvedFiles,
@@ -178,7 +181,7 @@ func TestResolver_Resolve_Ansible_Vars(t *testing.T) {
 		{
 			name: "resolve ansible vars when vars folder is present",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/resolve_ansible_vars_with_vars_folder/main.yml"),
@@ -190,7 +193,7 @@ func TestResolver_Resolve_Ansible_Vars(t *testing.T) {
 		{
 			name: "resolve ansible vars when vars folder is not present",
 			fields: fields{
-				Resolver: NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
+				Resolver: NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"}),
 			},
 			args: args{
 				path: filepath.ToSlash("test/fixtures/resolve_ansible_vars_without_vars_folder/main.yml"),
@@ -205,6 +208,7 @@ func TestResolver_Resolve_Ansible_Vars(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := &Resolver{
+				fsys:          tt.fields.fsys,
 				unmarshler:    tt.fields.unmarshler,
 				marshler:      tt.fields.marshler,
 				ResolvedFiles: tt.fields.ResolvedFiles,
@@ -310,7 +314,7 @@ func TestResolver_ResolveYAML_SharesReferencedFile(t *testing.T) {
 	path := filepath.Join(dir, "main.yaml")
 	content := []byte("a:\n  $ref: ./schema.yaml\nb:\n  $ref: ./schema.yaml\n  description: second\n")
 
-	r := NewResolver(yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"})
+	r := NewResolver(nil, yaml.Unmarshal, yaml.Marshal, []string{".yml", ".yaml"})
 	docs := r.ResolveYAML(context.Background(), content, path, 15, true)
 
 	require.Len(t, docs, 1)
@@ -322,4 +326,275 @@ func TestResolver_ResolveYAML_SharesReferencedFile(t *testing.T) {
 	require.Equal(t, "false", mappingValue(t, mappingValue(t, b, "RefMetadata"), "alone").Value)
 	require.Equal(t, 1, root.Content[0].Line)
 	require.Zero(t, mappingValue(t, a, "properties").Line)
+}
+
+func TestResolver_ReferenceFilesystemIdentity(t *testing.T) {
+	for _, format := range []string{"yaml", "json"} {
+		t.Run(format, func(t *testing.T) {
+			extension := "." + format
+			schema := "schema" + extension
+			for _, feature := range []struct {
+				name, source string
+				assets       map[string][]byte
+				reads        int
+				want         string
+				readFailure  bool
+				wantRef      bool
+			}{
+				{"file fragment", `{"v":{"$ref":"` + schema + `#/definition"}}`, map[string][]byte{"dir/" + schema: []byte(`{"definition":{"marker":"owned"}}`)}, 1, "owned", false, false},
+				{"fragment key contains hash", `{"v":{"$ref":"` + schema + `#/de#finition"}}`, map[string][]byte{"dir/" + schema: []byte(`{"de#finition":{"marker":"owned"}}`)}, 1, "owned", false, false},
+				{"fragment does not change file type", `{"v":{"$ref":"` + schema + `#/definition.txt"}}`, map[string][]byte{"dir/" + schema: []byte(`{"definition.txt":{"marker":"owned"}}`)}, 1, "owned", false, false},
+				{"empty fragment selects root", `{"v":{"$ref":"` + schema + `#"}}`, map[string][]byte{"dir/" + schema: []byte(`{"marker":"owned"}`)}, 1, "owned", false, false},
+				{"unsupported named fragment", `{"v":{"$ref":"` + schema + `#definition"}}`, map[string][]byte{"dir/" + schema: []byte(`{"efinition":{"marker":"must-not-resolve"}}`)}, 1, "", false, false},
+
+				{"missing fragment matches last mapping value", `{"v":{"$ref":"` + schema + `#/target"},"independent":"other` + extension + `"}`, map[string][]byte{
+					"dir/" + schema: []byte(`{"key":"target"}`), "dir/other" + extension: []byte(`{"marker":"independent"}`),
+				}, 2, "", false, true},
+				{"missing fragment matches another mapping value", `{"v":{"$ref":"` + schema + `#/target"},"independent":"other` + extension + `"}`, map[string][]byte{
+					"dir/" + schema:         []byte(`{"key":"target","after":{"marker":"wrong"}}`),
+					"dir/other" + extension: []byte(`{"marker":"independent"}`),
+				}, 2, "", false, true},
+				{"fragment cannot traverse scalar", `{"v":{"$ref":"` + schema + `#/target/tail"},"independent":"other` + extension + `"}`, map[string][]byte{
+					"dir/" + schema: []byte(`{"target":"tail"}`), "dir/other" + extension: []byte(`{"marker":"independent"}`),
+				}, 2, "", false, true},
+				{"fragment cannot select sequence value", `{"v":{"$ref":"` + schema + `#/target/tail"},"independent":"other` + extension + `"}`, map[string][]byte{
+					"dir/" + schema: []byte(`{"target":["tail"]}`), "dir/other" + extension: []byte(`{"marker":"independent"}`),
+				}, 2, "", false, true},
+				{"canonical aliases", `{"a":"` + schema + `","b":"./` + schema + `","c":"sub/../` + schema + `"}`, map[string][]byte{"dir/" + schema: []byte(`{"marker":"owned"}`)}, 1, "owned", false, false},
+				{"fragment does not select file type", `{"v":"x/#y` + extension + `"}`, map[string][]byte{
+					"dir/x":                []byte(`{"a":"../x/#y` + extension + `","b":"../x/#y` + extension + `","c":"../x/#y` + extension + `"}`),
+					"dir/x/#y" + extension: []byte(`{"marker":"wrong file"}`),
+				}, 0, "", false, false},
+				{"cycle aliases", `{"v":"` + schema + `"}`, map[string][]byte{"dir/" + schema: []byte(`{"a":"./` + schema + `","b":"sub/../` + schema + `","c":"./` + schema + `"}`)}, 1, "", false, false},
+				{"empty file", `{"a":"` + schema + `","b":"./` + schema + `","c":"sub/../` + schema + `"}`, map[string][]byte{"dir/" + schema: nil}, 1, "", false, false},
+				{"unreadable file", `{"a":"` + schema + `","b":"./` + schema + `","c":"sub/../` + schema + `"}`, map[string][]byte{"dir/" + schema: []byte(`{"marker":"owned"}`)}, 1, "", true, false},
+			} {
+				t.Run(feature.name, func(t *testing.T) {
+					fsys := &referenceReadFS{FS: vfs.NewMemFS(feature.assets), reads: map[string]int{}}
+					if feature.readFailure {
+						fsys.failPath = "dir/" + schema
+					}
+					r := NewResolver(fsys, json.Unmarshal, json.Marshal, []string{extension})
+					source := []byte(feature.source)
+					var encoded []byte
+					if format == "yaml" {
+						r = NewResolver(fsys, yaml.Unmarshal, yaml.Marshal, []string{extension})
+						docs := r.ResolveYAML(t.Context(), source, "dir/main"+extension, 6, true)
+						require.Len(t, docs, 1)
+						var document map[string]any
+						require.NoError(t, docs[0].Decode(&document))
+						var err error
+						encoded, err = json.Marshal(document)
+						require.NoError(t, err)
+					} else {
+						encoded = r.Resolve(t.Context(), source, "dir/main"+extension, 0, 6, map[string]ResolvedFile{}, true)
+					}
+					require.Equal(t, feature.reads, fsys.totalReads(), "each file identity is read at most once, including cycles")
+					require.NotContains(t, string(encoded), "must-not-resolve", "unsupported fragments must not select a similarly named key")
+					if feature.wantRef {
+						var sourceDocument, document map[string]any
+						require.NoError(t, json.Unmarshal(source, &sourceDocument))
+						require.NoError(t, json.Unmarshal(encoded, &document))
+						reference, ok := document["v"].(map[string]any)
+						require.True(t, ok)
+						if metadata, ok := reference["RefMetadata"].(map[string]any); ok {
+							reference = metadata
+						}
+						require.Equal(t, sourceDocument["v"].(map[string]any)["$ref"], reference["$ref"],
+							"an unsupported or missing fragment preserves the reference identity")
+						independent, ok := document["independent"].(map[string]any)
+						require.True(t, ok, "a missing fragment must not discard independent references")
+						require.Equal(t, "independent", independent["marker"])
+					}
+
+					if feature.want != "" {
+						var document map[string]any
+						require.NoError(t, json.Unmarshal(encoded, &document))
+						key := "a"
+						if _, exists := document["v"]; exists {
+							key = "v"
+						}
+						target, ok := document[key].(map[string]any)
+						require.True(t, ok)
+						require.Equal(t, feature.want, target["marker"])
+						require.NotContains(t, target, "definition", "the fragment selects a section, not the complete file")
+					}
+					for path := range fsys.reads {
+						require.Equal(t, filepath.Clean(path), path)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestResolver_ReferenceCancellation(t *testing.T) {
+	for _, format := range []string{"yaml", "json"} {
+		for _, phase := range []string{"before resolution", "after first read"} {
+			t.Run(format+"/"+phase, func(t *testing.T) {
+				extension := "." + format
+				source := []byte(`{"v":"schema` + extension + `"}`)
+				assets := map[string][]byte{
+					"dir/schema" + extension: []byte(`{"v":"leaf` + extension + `"}`),
+					"dir/leaf" + extension:   []byte(`{"marker":"owned"}`),
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				fsys := &referenceReadFS{FS: vfs.NewMemFS(assets), reads: map[string]int{}}
+				wantReads := 0
+				if phase == "before resolution" {
+					cancel()
+				} else {
+					fsys.afterRead = cancel
+					wantReads = 1
+				}
+				r := NewResolver(fsys, json.Unmarshal, json.Marshal, []string{extension})
+				if format == "yaml" {
+					r = NewResolver(fsys, yaml.Unmarshal, yaml.Marshal, []string{extension})
+					require.Empty(t, r.ResolveYAML(ctx, source, "dir/main"+extension, 6, true))
+				} else {
+					require.Equal(t, source, r.Resolve(ctx, source, "dir/main"+extension, 0, 6, map[string]ResolvedFile{}, true))
+				}
+				require.ErrorIs(t, ctx.Err(), context.Canceled)
+				require.Equal(t, wantReads, fsys.totalReads())
+				require.Empty(t, r.ResolvedFiles, "canceled resolution must not publish partial references")
+			})
+		}
+	}
+}
+
+type referenceReadFS struct {
+	vfs.FS
+	reads     map[string]int
+	afterRead func()
+	failPath  string
+}
+
+func (f *referenceReadFS) ReadFile(path string) ([]byte, error) {
+	f.reads[path]++
+	if path == f.failPath {
+		return nil, os.ErrPermission
+	}
+	content, err := f.FS.ReadFile(path)
+	if f.afterRead != nil {
+		f.afterRead()
+	}
+	return content, err
+}
+
+func (f *referenceReadFS) totalReads() int {
+	total := 0
+	for _, reads := range f.reads {
+		total += reads
+	}
+	return total
+}
+
+func TestResolver_ReferenceResolutionContexts(t *testing.T) {
+	for _, format := range []string{"yaml", "json"} {
+		t.Run(format, func(t *testing.T) {
+			extension := "." + format
+			resolve := func(t *testing.T, source string, assets map[string][]byte, depth int) (map[string]any, int, int) {
+				t.Helper()
+				fsys := &referenceReadFS{FS: vfs.NewMemFS(assets), reads: map[string]int{}}
+				decodes := 0
+				unmarshal := json.Unmarshal
+				if format == "yaml" {
+					unmarshal = yaml.Unmarshal
+				}
+				r := NewResolver(fsys, func(content []byte, value any) error { decodes++; return unmarshal(content, value) }, json.Marshal, []string{extension})
+				var document map[string]any
+				if format == "yaml" {
+					docs := r.ResolveYAML(t.Context(), []byte(source), "dir/main"+extension, depth, true)
+					require.Len(t, docs, 1)
+					require.NoError(t, docs[0].Decode(&document))
+				} else {
+					output := r.Resolve(t.Context(), []byte(source), "dir/main"+extension, 0, depth, nil, true)
+					require.NoError(t, json.Unmarshal(output, &document))
+				}
+				return document, fsys.totalReads(), decodes
+			}
+			t.Run("depth diamond", func(t *testing.T) {
+				source := `{"deep":"a` + extension + `","direct":"b` + extension + `"}`
+				assets := map[string][]byte{
+					"dir/a" + extension: []byte(`{"next":"b` + extension + `"}`),
+					"dir/b" + extension: []byte(`{"next":"c` + extension + `"}`),
+					"dir/c" + extension: []byte(`{"marker":"owned"}`),
+				}
+				document, reads, _ := resolve(t, source, assets, 2)
+				require.Equal(t, 3, reads)
+				deep := document["deep"].(map[string]any)["next"].(map[string]any)
+				require.Equal(t, "c"+extension, deep["next"], "a shallow memo must not expand a deeper caller beyond its existing frontier")
+				direct := document["direct"].(map[string]any)["next"].(map[string]any)
+				require.Equal(t, "owned", direct["marker"], "a deep first visit must not truncate a later shallow caller")
+			})
+			t.Run("branching cycle", func(t *testing.T) {
+				assets := map[string][]byte{}
+				for i := range 6 {
+					current := fmt.Sprintf("dir/n%d%s", i, extension)
+					next := fmt.Sprintf("n%d%s", (i+1)%6, extension)
+					assets[current] = []byte(fmt.Sprintf(`{"a":%q,"b":%q,"c":%q}`, next, "./"+next, "sub/../"+next))
+				}
+				_, reads, decodes := resolve(t, `{"v":"n0`+extension+`"}`, assets, 8)
+				require.Equal(t, len(assets), reads)
+				require.LessOrEqual(t, decodes, 2*len(assets)*8+1, "memoize work by file and existing remaining depth, not by every path through the cycle")
+			})
+			t.Run("provided root bytes", func(t *testing.T) {
+				document, reads, _ := resolve(t, `{"marker":"provided","next":"./main`+extension+`"}`, map[string][]byte{"dir/main" + extension: []byte(`{"marker":"wrong host"}`)}, 3)
+				require.Zero(t, reads, "the operation already owns the root bytes")
+				require.Equal(t, "provided", document["marker"])
+				encoded, err := json.Marshal(document)
+				require.NoError(t, err)
+				require.NotContains(t, string(encoded), "wrong host")
+			})
+		})
+	}
+}
+
+func TestResolver_ReferenceMetadataOwnership(t *testing.T) {
+	for _, format := range []string{"yaml", "json"} {
+		for _, fragment := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/fragment=%t", format, fragment), func(t *testing.T) {
+				extension := "." + format
+				schema := "schema" + extension
+				content := []byte(`{"marker":"owned","nested":{"value":"shared"}}`)
+				suffix := ""
+				if fragment {
+					content = []byte(`{"definition":{"marker":"owned","nested":{"value":"shared"}}}`)
+					suffix = "#/definition"
+				}
+				first, second := schema+suffix, "./"+schema+suffix
+				source := []byte(fmt.Sprintf(`{"a":{"$ref":%q},"b":{"$ref":%q,"description":"sibling"}}`, first, second))
+				fsys := &referenceReadFS{FS: vfs.NewMemFS(map[string][]byte{"dir/" + schema: content}), reads: map[string]int{}}
+				r := NewResolver(fsys, json.Unmarshal, json.Marshal, []string{extension})
+				var document map[string]any
+				if format == "yaml" {
+					r = NewResolver(fsys, yaml.Unmarshal, yaml.Marshal, []string{extension})
+					docs := r.ResolveYAML(t.Context(), source, "dir/main"+extension, 6, true)
+					require.Len(t, docs, 1)
+					require.NoError(t, docs[0].Decode(&document))
+				} else {
+					cache := map[string]ResolvedFile{}
+					output := r.Resolve(t.Context(), source, "dir/main"+extension, 0, 6, cache, true)
+					require.NoError(t, json.Unmarshal(output, &document))
+					cached := cache[filepath.Join("dir", schema)].views[6].(map[string]any)
+					if fragment {
+						cached = cached["definition"].(map[string]any)
+					}
+					require.NotContains(t, cached, "RefMetadata", "per-reference metadata must not mutate a cached view")
+				}
+				for name, want := range map[string]struct {
+					reference string
+					alone     bool
+				}{"a": {first, true}, "b": {second, false}} {
+					value := document[name].(map[string]any)
+					require.Equal(t, "owned", value["marker"])
+					metadata := value["RefMetadata"].(map[string]any)
+					require.Equal(t, want.reference, metadata["$ref"])
+					require.Equal(t, fmt.Sprint(want.alone), fmt.Sprint(metadata["alone"]))
+				}
+				require.Equal(t, 1, fsys.totalReads())
+			})
+		}
+	}
 }

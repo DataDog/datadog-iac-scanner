@@ -284,10 +284,8 @@ func ruleLibraryKey(platform string) (string, error) {
 // (the CLI absolutizes all of its input before running the same pipeline).
 //
 // Terraform local-module evaluation, the disk read this check once stood in
-// for, now reads through the request's in-memory FS, so there is no disk read
-// to bound. The YAML/JSON file resolver still opens paths taken from pushed
-// content; it predates this change, is reachable with a relative path too, and
-// is tracked in K9CODESEC-4924.
+// for, now reads through the request's in-memory FS. JSON and YAML reference
+// resolution uses that same FS, including nested references.
 //
 // Known gap: config path filters (ignore-paths/only-paths) are workspace-rooted
 // patterns, so an absolute path matches none of them except a leading-"**" one.
