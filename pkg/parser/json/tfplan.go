@@ -427,10 +427,10 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 
 // parseTFPlanContent parses the JSON content of a plan one top-level section
 // at a time, where parseTFPlan needs it decoded and line-annotated whole.
-// Only planned_values and prior_state, which the resource and data sections
-// are read from, are decoded with line markers: those of resource_changes and
-// configuration were stripped from the scanned document unread, and were
-// most of the plan's memory. The resource and data sections are those of
+// Only the sections line detection reads are decoded with line markers:
+// planned_values and prior_state, which the resource and data sections are
+// read from, and configuration. Those of resource_changes were most of the
+// plan's memory and were never read. The annotated sections are those of
 // parseTFPlan (line markers are keyed by JSON path, see parseTFPlanLineInfo).
 // Without annotate, no section gets line markers and the plan is read from
 // content directly. ok is false when the content is not a plan this way can
@@ -470,13 +470,33 @@ func parseTFPlanContent(content []byte, annotate bool) (doc model.Document, ok b
 	if err != nil {
 		return nil, false
 	}
+	if configuration, ok := annotatedConfiguration(content, sections); ok {
+		doc["configuration"] = configuration
+	}
 	return doc, true
+}
+
+// annotatedConfiguration returns the configuration section of a plan with
+// line markers: findings on declarations that only it holds, such as outputs
+// and variables, are located in it.
+func annotatedConfiguration(content []byte, sections map[string]planSection) (map[string]interface{}, bool) {
+	configuration, ok := sections["configuration"]
+	if !ok || !configuration.IsObject() {
+		return nil, false
+	}
+	return annotatedSection(content, &configuration)
+}
+
+// planSection is a top-level value of a plan, with the offset of its key.
+type planSection struct {
+	gjson.Result
+	keyIndex int
 }
 
 // topLevelSections returns the top-level values of a JSON object by key.
 // ok is false for invalid JSON, another root or a repeated key (decoding
 // keeps its last value, gjson its first).
-func topLevelSections(content []byte) (sections map[string]gjson.Result, ok bool) {
+func topLevelSections(content []byte) (sections map[string]planSection, ok bool) {
 	if len(content) == 0 || !json.Valid(content) {
 		return nil, false
 	}
@@ -484,14 +504,14 @@ func topLevelSections(content []byte) (sections map[string]gjson.Result, ok bool
 	if !root.IsObject() {
 		return nil, false
 	}
-	sections = make(map[string]gjson.Result)
+	sections = make(map[string]planSection)
 	ok = true
 	root.ForEach(func(key, value gjson.Result) bool {
 		if _, seen := sections[key.String()]; seen {
 			ok = false
 			return false
 		}
-		sections[key.String()] = value
+		sections[key.String()] = planSection{Result: value, keyIndex: key.Index}
 		return true
 	})
 	return sections, ok
@@ -505,8 +525,8 @@ func jsonView(content []byte) gjson.Result {
 }
 
 // annotatedSection decodes a top-level section of content with line markers
-// counted from the start of content.
-func annotatedSection(content []byte, section *gjson.Result) (map[string]interface{}, bool) {
+// counted from the start of content, its own being the line of its key.
+func annotatedSection(content []byte, section *planSection) (map[string]interface{}, bool) {
 	if section.Index <= 0 {
 		return nil, false
 	}
@@ -515,8 +535,10 @@ func annotatedSection(content []byte, section *gjson.Result) (map[string]interfa
 	if err := json.Unmarshal(raw, &values); err != nil || values == nil {
 		return nil, false
 	}
-	startLine := 1 + bytes.Count(content[:section.Index], []byte{'\n'})
-	return initializeJSONLineAt(raw, startLine).setLineInfo(values), true
+	lineAt := func(offset int) int { return 1 + bytes.Count(content[:offset], []byte{'\n'}) }
+	jLine := initializeJSONLineAt(raw, lineAt(section.Index))
+	values["_dd_lines"] = jLine.setLine(values, lineAt(section.keyIndex), "", false)
+	return values, true
 }
 
 // readPlanJSON reads a plan from two JSON encodings: states holds its
@@ -594,9 +616,9 @@ func detachedValue(r *gjson.Result) any {
 }
 
 // parseTFPlanLineInfo builds the line-info document of a plan for line
-// detection, which only resolves paths under "resource" (see the detector's
-// terraformPlanPath): the "resource" section of the parseTFPlan document,
-// read from the line-annotated planned_values alone. Line positions are
+// detection, which resolves paths under "resource" and "configuration" (see
+// the detector's terraformPlanPath): those sections of the parseTFPlan
+// document, the first read from the line-annotated planned_values alone. Line positions are
 // keyed by their JSON path, so the lines found in planned_values on its own
 // are those found in the whole plan. ok is false when planned_values cannot
 // be read this way, and the caller then parses the whole plan.
@@ -620,7 +642,11 @@ func parseTFPlanLineInfo(content []byte) (doc model.Document, ok bool) {
 	if !d.readLineInfoModule(root, rootLines, "") {
 		return nil, false
 	}
-	return model.Document{planResourceKey: d.resource}, true
+	doc = model.Document{planResourceKey: d.resource}
+	if configuration, ok := annotatedConfiguration(content, sections); ok {
+		doc["configuration"] = configuration
+	}
+	return doc, true
 }
 
 // resourceHeaderLines holds each resource's "values" attribute line, keyed

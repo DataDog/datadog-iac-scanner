@@ -87,30 +87,31 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 }
 
 // ParseLineInfo returns the line-info documents of a Terraform plan. Line
-// detection only reads a plan's resource lines, so they are rebuilt alone
-// instead of the whole plan for every rule with findings. ok is false for
-// other content, and for a plan referencing files, whose resolved values only
-// a full parse holds; those are parsed whole.
+// detection only reads a plan's resource and configuration lines, so they
+// are rebuilt alone instead of the whole plan for every rule with findings.
+// ok is false for other content, and for a plan referencing files, whose
+// resolved values only a full parse holds; those are parsed whole.
 func (p *Parser) ParseLineInfo(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
-	if !looksLikeTerraformPlan(fileContent) || p.mayResolve(fileContent, filePath) {
-		return nil, false
-	}
-	doc, ok := parseTFPlanLineInfo(fileContent)
-	if !ok {
-		return nil, false
-	}
-	return []model.Document{doc}, true
+	return p.planDocuments(fileContent, filePath, parseTFPlanLineInfo)
 }
 
 // ParseUnannotated returns the documents of a Terraform plan without line
 // markers, for a scan that rebuilds line info with ParseLineInfo: annotating
-// the plan was most of its parse. ok is false for other content and for a
-// plan referencing files, which are then parsed whole.
+// the plan was most of its parse. ok is false as for ParseLineInfo.
 func (p *Parser) ParseUnannotated(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
+	return p.planDocuments(fileContent, filePath, func(content []byte) (model.Document, bool) {
+		return parseTFPlanContent(content, false)
+	})
+}
+
+// planDocuments parses fileContent with parse when it is a Terraform plan
+// that references no file.
+func (p *Parser) planDocuments(fileContent []byte, filePath string,
+	parse func([]byte) (model.Document, bool)) ([]model.Document, bool) {
 	if !looksLikeTerraformPlan(fileContent) || p.mayResolve(fileContent, filePath) {
 		return nil, false
 	}
-	doc, ok := parseTFPlanContent(fileContent, false)
+	doc, ok := parse(fileContent)
 	if !ok {
 		return nil, false
 	}

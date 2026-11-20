@@ -142,10 +142,20 @@ func detectTerraformPlanLine(
 	lines []string,
 ) *model.VulnerabilityLines {
 	path, explicitResourcePath := terraformPlanPath(searchKey)
+	if declaration, ok := terraformPlanDeclarationPath(searchKey, file.LineInfoDocument); ok {
+		path, explicitResourcePath = declaration, true
+	}
 	if len(path) < tfPlanMinAttributePathLen && !explicitResourcePath {
 		return nil
 	}
 	lineNr := GetLineBySearchLine(path, file)
+	if lineNr <= 0 {
+		// A path into a JSON-encoded attribute (a policy document, which rules
+		// read decoded) ends on the line holding the encoded value.
+		if encoded, ok := encodedAttributePath(path, file.LineInfoDocument); ok {
+			lineNr = GetLineBySearchLine(encoded, file)
+		}
+	}
 	// lineNr == 1 means _dd_lines were computed from minified (single-line) JSON;
 	// the plan opening "{" sits on line 1 so that value is never a real attribute
 	// line. Fall through to text matching, which runs on the pretty-printed content.
@@ -161,6 +171,65 @@ func detectTerraformPlanLine(
 			End:   model.ResourceLine{Line: lineNr},
 		},
 	}
+}
+
+// terraformPlanDeclarationPath returns the plan path of a searchKey on a
+// declaration that only the plan's configuration holds: a path rooted at
+// "configuration" as it is, and an HCL-style "output[name]" or
+// "variable[name]" key as the path of the only module declaring it.
+func terraformPlanDeclarationPath(searchKey string, doc map[string]interface{}) ([]string, bool) {
+	comps := expandSearchKeyPath(searchKey)
+	if len(comps) == 0 {
+		return nil, false
+	}
+	if comps[0] == "configuration" {
+		return comps, true
+	}
+	section, ok := map[string]string{"output": "outputs", "variable": "variables"}[comps[0]]
+	if !ok || len(comps) < 2 {
+		return nil, false
+	}
+	var declarations [][]string
+	var walk func(module interface{}, path []string)
+	walk = func(module interface{}, path []string) {
+		if declared, ok := childAt(module, section); ok {
+			if _, ok := childAt(declared, comps[1]); ok {
+				declarations = append(declarations, append(append([]string{}, path...), section, comps[1]))
+			}
+		}
+		calls, _ := childAt(module, "module_calls")
+		callMap, _ := calls.(map[string]interface{})
+		for name, call := range callMap {
+			if child, ok := childAt(call, "module"); ok && name != "_dd_lines" {
+				walk(child, append(append([]string{}, path...), "module_calls", name, "module"))
+			}
+		}
+	}
+	if root, ok := resolvePath(doc, []string{"configuration", "root_module"}); ok {
+		walk(root, []string{"configuration", "root_module"})
+	}
+	if len(declarations) != 1 {
+		return nil, false
+	}
+	return append(declarations[0], comps[2:]...), true
+}
+
+// encodedAttributePath returns the prefix of a plan path ending at a string
+// attribute when the path continues inside it: the attribute holds a JSON
+// document the rule decoded, such as an IAM policy.
+func encodedAttributePath(path []string, doc map[string]interface{}) ([]string, bool) {
+	var node interface{} = doc
+	for i, seg := range path {
+		child, ok := childAt(node, seg)
+		if !ok {
+			return nil, false
+		}
+		if _, isString := child.(string); isString {
+			return path[:i+1], i+1 < len(path)
+		}
+		node = child
+	}
+	return nil, false
 }
 
 // expandSearchKeyPath turns a search key into structural path components:

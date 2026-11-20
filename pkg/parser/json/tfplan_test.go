@@ -2366,8 +2366,11 @@ func TestParseLineInfo_tfplanMatchesParseResourceSection(t *testing.T) {
 	docs, ok := (&Parser{}).ParseLineInfo(content, "plan.json")
 	require.True(t, ok)
 	require.Len(t, docs, 1)
-	require.Equal(t, []string{"resource"}, keysOf(docs[0]))
-	require.JSONEq(t, mustJSON(t, wholePlanParse(t, content)["resource"]), mustJSON(t, docs[0]["resource"]))
+	require.ElementsMatch(t, []string{"resource", "configuration"}, keysOf(docs[0]))
+	whole := wholePlanParse(t, content)
+	for _, section := range []string{"resource", "configuration"} {
+		require.JSONEq(t, mustJSON(t, whole[section]), mustJSON(t, docs[0][section]), section)
+	}
 
 	_, ok = (&Parser{}).ParseLineInfo([]byte(`{"Resources": {}}`), "plan.json")
 	require.False(t, ok, "other JSON is parsed whole")

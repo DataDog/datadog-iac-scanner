@@ -473,6 +473,100 @@ func Test_detectLineTerraformPlan(t *testing.T) {
 	require.Equal(t, 13, got.Line)
 }
 
+// Test_detectLineTerraformPlanEncodedPolicy checks that a searchKey into a
+// JSON-encoded attribute, which rules read decoded, points at the attribute.
+func Test_detectLineTerraformPlanEncodedPolicy(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_role.deploy",
+          "type": "aws_iam_role",
+          "name": "deploy",
+          "values": {
+            "name": "deploy",
+            "assume_role_policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"123456789012\"}}]}"
+          }
+        }
+      ]
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	d := defaultDetectLine{}
+	require.Equal(t, 12, d.DetectLine(context.Background(), file, "aws_iam_role[deploy].assume_role_policy.Statement[0]", 0).Line)
+	require.Equal(t, 12, d.DetectLine(context.Background(), file, "aws_iam_role[deploy].assume_role_policy.Statement[0].Principal.AWS", 0).Line)
+	// A missing attribute is not mistaken for an encoded one.
+	require.NotEqual(t, 12, d.DetectLine(context.Background(), file, "aws_iam_role[deploy].missing.Statement[0]", 0).Line)
+}
+
+// Test_detectLineTerraformPlanDeclarations checks that output and variable
+// findings point at their declarations in the plan's configuration.
+func Test_detectLineTerraformPlanDeclarations(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {}
+  },
+  "configuration": {
+    "root_module": {
+      "outputs": {
+        "bucket": {
+          "expression": {}
+        }
+      },
+      "module_calls": {
+        "a": {
+          "module": {
+            "outputs": {
+              "name": {}
+            },
+            "variables": {
+              "region": {}
+            }
+          }
+        },
+        "b": {
+          "module": {
+            "outputs": {
+              "name": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	d := defaultDetectLine{}
+	detect := func(searchKey string) int {
+		return d.DetectLine(context.Background(), file, searchKey, 0).Line
+	}
+	require.Equal(t, 9, detect("output[bucket]"))
+	require.Equal(t, 10, detect("output[bucket].expression"))
+	require.Equal(t, 20, detect("variable[region]"))
+	require.Equal(t, 17, detect("configuration.root_module.module_calls.a.module.outputs.name"))
+	require.Equal(t, 27, detect("configuration.root_module.module_calls.b.module.outputs.name"))
+	// Declared by two modules: only the full path tells them apart.
+	require.NotContains(t, []int{17, 27}, detect("output[name]"))
+}
+
 func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
 	plan := `{
   "format_version": "1.0",
