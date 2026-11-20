@@ -7,6 +7,7 @@
 package inventory
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,6 +72,28 @@ func TestLinkListItemsByTheirLines(t *testing.T) {
 
 	require.Equal(t, []FindingLink{{FindingFingerprint: "on-api", ResourceRef: "k8s/list.yaml|v1/Service/shop/api"}}, inv.FindingLinks)
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked, "the list itself is no resource")
+}
+
+func TestLinkRenderedListItemsByTheirKey(t *testing.T) {
+	c := NewCollector(t.TempDir())
+	// The objects of a list rendered from a Helm template share its line.
+	for i, path := range []string{"v1/ConfigMap//settings", "v1/Service//api"} {
+		c.AddResource(&Resource{ResourcePath: path, Platform: PlatformKubernetes, ResourceType: "kind",
+			ResourceName: "name", File: "chart/templates/list.yaml", LineStart: 3, Completeness: CompletenessComplete,
+			DocumentID: "list", searchKeyPrefix: "items." + strconv.Itoa(i), sharedLines: true})
+	}
+	c.AddFinding(&Finding{Fingerprint: "on-api", DocumentID: "list", SearchKey: "items.1.spec.ports", Line: 3})
+	c.AddFinding(&Finding{Fingerprint: "on-settings", DocumentID: "list", SearchKey: "items[0].data.a", Line: 3})
+	// At the template's line, but naming no object: the first one is not it.
+	c.AddFinding(&Finding{Fingerprint: "on-list", DocumentID: "list", SearchKey: "kind", Line: 3})
+
+	inv := c.Build(testMetadata())
+
+	require.Equal(t, []FindingLink{
+		{FindingFingerprint: "on-api", ResourceRef: "chart/templates/list.yaml|v1/Service//api"},
+		{FindingFingerprint: "on-settings", ResourceRef: "chart/templates/list.yaml|v1/ConfigMap//settings"},
+	}, inv.FindingLinks)
+	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 }
 
 func TestSearchKeyBlock(t *testing.T) {

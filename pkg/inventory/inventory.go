@@ -148,12 +148,16 @@ type Resource struct {
 	documentIndex int
 	// searchKeyPrefix is how the search key of a finding on an entry of a
 	// keyed collection starts, such as Resources.<logical ID> or
-	// services.<name>.
+	// services.<name>, or on an object of a list, items.<index>.
 	searchKeyPrefix string
 	// ownsDocument marks the row that is its whole document, as a
 	// Kubernetes object or a Dockerfile is: every finding on the document
 	// belongs to it, wherever its line.
 	ownsDocument bool
+	// sharedLines marks a row whose lines are not its own, as for the
+	// objects of a list rendered from a Helm template: a finding belongs to
+	// it only through its search key.
+	sharedLines bool
 
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`

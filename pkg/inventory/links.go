@@ -117,15 +117,28 @@ func matchDocument(rows []Resource, candidates []int, f *Finding) []int {
 	if j, ok := namedBySearchKey(rows, candidates, f.SearchKey); ok {
 		return []int{j}
 	}
-	if j, ok := narrowestHolding(rows, candidates, f.Line); ok {
+	// Rows whose lines are not their own take a finding by its key only.
+	own := make([]int, 0, len(candidates))
+	for _, j := range candidates {
+		if !rows[j].sharedLines {
+			own = append(own, j)
+		}
+	}
+	if j, ok := narrowestHolding(rows, own, f.Line); ok {
 		return []int{j}
 	}
 	return nil
 }
 
-// namedBySearchKey returns the candidate entry of a keyed collection that
-// the search key starts with, whole segments only.
+// namedBySearchKey returns the candidate entry of a keyed collection, or
+// object of a list, that the search key starts with, whole segments only. A
+// list index is read as written either way: items.0 or items[0].
 func namedBySearchKey(rows []Resource, candidates []int, searchKey string) (int, bool) {
+	if rest, ok := strings.CutPrefix(searchKey, "items["); ok {
+		if index, after, found := strings.Cut(rest, "]"); found {
+			searchKey = "items." + index + after
+		}
+	}
 	for _, j := range candidates {
 		prefix := rows[j].searchKeyPrefix
 		if prefix != "" && (searchKey == prefix || strings.HasPrefix(searchKey, prefix+".")) {

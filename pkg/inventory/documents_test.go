@@ -111,3 +111,35 @@ func TestKeyedRowsSearchKeyPrefix(t *testing.T) {
 		"Queue":            "Resources.Queue",
 	}, prefixes, "a key with a dot is written within {{ }}, as search keys write it")
 }
+
+func TestKubernetesListDocuments(t *testing.T) {
+	list := "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: v1\n    kind: ConfigMap\n    metadata:\n      name: settings\n"
+	allow := "apiVersion: acme.io/v1\nkind: AllowList\nmetadata:\n  name: trusted\nitems:\n  - foo\n"
+	object := func(kind, name string) map[string]interface{} {
+		return map[string]interface{}{"apiVersion": "v1", "kind": kind, "metadata": map[string]interface{}{"name": name}}
+	}
+	files := model.FileMetadatas{
+		{ID: "list", FilePath: "k8s/list.yaml", OriginalData: list, Platform: PlatformKubernetes,
+			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "settings")}}},
+		{ID: "rendered", FilePath: "chart/templates/list.yaml", OriginalData: list, Platform: PlatformKubernetes, Kind: model.KindHELM,
+			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "a"), object("Service", "b")}}},
+		// A named object whose kind ends in List is one object.
+		{ID: "allow", FilePath: "k8s/allow.yaml", OriginalData: allow, Platform: PlatformKubernetes,
+			Document: model.Document{"apiVersion": "acme.io/v1", "kind": "AllowList",
+				"metadata": map[string]interface{}{"name": "trusted"}, "items": []interface{}{"foo"}}},
+	}
+	type row struct {
+		prefix      string
+		owns, share bool
+	}
+	got := make(map[string]row)
+	for _, r := range DocumentResources(context.Background(), files) {
+		got[r.File+"|"+r.ResourcePath] = row{r.searchKeyPrefix, r.ownsDocument, r.sharedLines}
+	}
+	require.Equal(t, map[string]row{
+		"k8s/list.yaml|v1/ConfigMap//settings":         {prefix: "items.0"},
+		"chart/templates/list.yaml|v1/ConfigMap//a":    {prefix: "items.0", share: true},
+		"chart/templates/list.yaml|v1/Service//b":      {prefix: "items.1", share: true},
+		"k8s/allow.yaml|acme.io/v1/AllowList//trusted": {owns: true},
+	}, got)
+}

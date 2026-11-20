@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
@@ -145,8 +146,13 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 }
 
 // kubernetesListItems returns the objects of a list document, such as a
-// kind: List, which holds separate objects rather than being one.
+// kind: List, which holds separate objects rather than being one. A named
+// document is one object, whatever its kind ends with, such as an AllowList.
 func kubernetesListItems(document model.Document) ([]interface{}, bool) {
+	metadata, _ := document["metadata"].(map[string]interface{})
+	if metadata["name"] != nil || metadata["generateName"] != nil {
+		return nil, false
+	}
 	kind, _ := document["kind"].(string)
 	items, ok := document["items"].([]interface{})
 	return items, ok && strings.HasSuffix(kind, "List")
@@ -184,10 +190,14 @@ func (e *documentEnumerator) kubernetesListRows(f *model.FileMetadata, index int
 			ResourceName: name,
 			File:         f.FilePath,
 			Completeness: CompletenessComplete,
+			// As a search key names the object.
+			searchKeyPrefix: "items." + strconv.Itoa(i),
 		}
 		switch {
 		case f.Kind == model.KindHELM:
+			// Every object of a rendered list is at the template's line.
 			row.LineStart = helmDocumentStart(f)
+			row.sharedLines = true
 			e.addHelmOrigin(&row, f)
 		case i < len(spans):
 			row.LineStart, row.LineEnd = spans[i].start, spans[i].end
