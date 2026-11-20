@@ -43,13 +43,13 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
-	diagnostics *expressionDiagnostics
-	e           *Evaluator
-	blocks      []*hclsyntax.Block
-	sources     map[string][]byte
-	locals      *localGraph
-	addr        string
-	chain       []CallSite
+	observations *evaluationObservations
+	e            *Evaluator
+	blocks       []*hclsyntax.Block
+	sources      map[string][]byte
+	locals       *localGraph
+	addr         string
+	chain        []CallSite
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -89,7 +89,7 @@ func newModuleData(e *Evaluator, scope *ModuleScope, addr string, chain []CallSi
 		return nil
 	}
 	d := &moduleData{
-		diagnostics: &scope.diagnostics, e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
+		observations: &scope.observations, e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
 		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
 		readsData:          static.dataReadsData,
 		readsLocals:        static.dataReadsLocals,
@@ -229,7 +229,7 @@ func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
 		}
 		members = d.locals.dataOrder
 	}
-	d.e.resolveLocals(d.locals, evalCtx, values, members, d.diagnostics)
+	d.e.resolveLocals(d.locals, evalCtx, values, members, d.observations)
 	evalCtx.Variables["local"] = objectOrEmpty(values)
 }
 
@@ -287,7 +287,7 @@ func (d *moduleData) evalBlock(
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, d.diagnostics)
+	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, d.observations)
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst

@@ -294,7 +294,7 @@ func (g *localGraph) readable(v int, values map[string]cty.Value) cty.Value {
 // the members read, at the value they keep. A local in a cycle is unknown, as
 // Terraform rejects the cycle.
 func (e *Evaluator) resolveLocals(
-	g *localGraph, base *hcl.EvalContext, values map[string]cty.Value, members []int, diagnostics *expressionDiagnostics,
+	g *localGraph, base *hcl.EvalContext, values map[string]cty.Value, members []int, diagnostics *evaluationObservations,
 ) {
 	for _, v := range members {
 		name := g.names[v]

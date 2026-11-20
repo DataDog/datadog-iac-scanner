@@ -28,8 +28,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/hashicorp/hcl/v2"
@@ -135,7 +133,7 @@ type ModuleScope struct {
 	// and reuses the rest verbatim.
 	localGraph       *localGraph
 	localCache       map[string]cty.Value
-	diagnostics      expressionDiagnostics
+	observations     evaluationObservations
 	inputDiagnostics map[EvaluationDiagnostic]struct{}
 	static           *dirStatic
 }
@@ -191,7 +189,8 @@ type Evaluator struct {
 	notEvaluatedDirs map[string]bool
 
 	// diagnostics holds source facts from the latest completed evaluation.
-	diagnostics []EvaluationDiagnostic
+	diagnostics   []EvaluationDiagnostic
+	inventoryGaps []InventoryGap
 	// instances holds the module calls the running EvaluateModule evaluated.
 	// They are only collected when trackInstances is set.
 	instances      []ModuleInstance
@@ -253,10 +252,10 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 }
 
 // skipEvaluation records dir as not evaluated and returns ErrModuleNotEvaluated.
-func (e *Evaluator) skipEvaluation(dir string) error {
+func (e *Evaluator) skipEvaluation(dir string, reason InventoryGapReason) error {
 	e.skipped++
 	e.notEvaluatedDirs[filepath.Clean(dir)] = true
-	return ErrModuleNotEvaluated
+	return &moduleSkip{reason: reason}
 }
 
 // NotEvaluatedDirs returns the module directories that were skipped rather than
@@ -420,12 +419,15 @@ func (e *Evaluator) EvalCacheSize() int { return len(e.cache) }
 // returns inspection snapshots; PolicyUnit binds the producer-owned facts.
 // This is not certification of Terraform coverage.
 type ModuleEvaluation struct {
-	Resources        []ResolvedResource
-	Outputs          map[string]cty.Value
-	VisitedChildDirs map[string]bool
-	ModuleInstances  []ModuleInstance
-	diagnostics      []EvaluationDiagnostic
-	failure          error
+	Resources           []ResolvedResource
+	Outputs             map[string]cty.Value
+	VisitedChildDirs    map[string]bool
+	ModuleInstances     []ModuleInstance
+	diagnostics         []EvaluationDiagnostic
+	failure             error
+	rootDir             string
+	evaluationCompleted bool
+	inventoryGaps       []InventoryGap
 }
 
 // EvaluateModule returns the materialized resources and native observations of
@@ -451,6 +453,7 @@ func (e *Evaluator) EvaluateModule(
 	allVisited := map[string]bool{}
 	e.instances = nil
 	e.diagnostics = nil
+	e.inventoryGaps = nil
 	resources, outputs, err := e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
 	if err == nil {
 		// A canceled or timed-out scan may have stopped mid-expansion. Do not
@@ -460,14 +463,18 @@ func (e *Evaluator) EvaluateModule(
 	if err != nil {
 		e.instances = nil
 		e.diagnostics = nil
+		e.inventoryGaps = nil
 	}
 	sortEvaluationDiagnostics(e.diagnostics)
+	sortInventoryGaps(e.inventoryGaps)
 	result := ModuleEvaluation{
 		Resources: resources, Outputs: outputs, VisitedChildDirs: allVisited,
 		ModuleInstances: e.instances, diagnostics: e.diagnostics, failure: err,
+		rootDir: abs, evaluationCompleted: err == nil, inventoryGaps: e.inventoryGaps,
 	}
 	e.instances = nil
 	e.diagnostics = nil
+	e.inventoryGaps = nil
 	return result, err
 }
 
@@ -508,6 +515,7 @@ func (e *Evaluator) evaluate(
 	skippedBefore := e.skipped
 	instancesBefore := len(e.instances)
 	diagnosticsBefore := len(e.diagnostics)
+	inventoryGapsBefore := len(e.inventoryGaps)
 
 	// Snapshot allVisited so we can determine which dirs this subtree adds.
 	prevAllVisited := make(map[string]bool, len(allVisited))
@@ -519,13 +527,10 @@ func (e *Evaluator) evaluate(
 	if parsed.err != nil {
 		return nil, nil, parsed.err
 	}
-	for _, diagnostic := range parsed.diagnostics {
-		diagnostic.ModuleAddress = addr
-		e.diagnostics = append(e.diagnostics, diagnostic)
-	}
+	e.collectConfigurationObservations(addr, &parsed)
 	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
 
-	var diagnostics expressionDiagnostics
+	var diagnostics evaluationObservations
 	varVals := e.resolveVariables(parsed.varDecls, inputs, &diagnostics)
 	shared := e.moduleContext(dir, rootDir)
 
@@ -541,7 +546,7 @@ func (e *Evaluator) evaluate(
 
 	scope := &ModuleScope{
 		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
-		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{}, diagnostics: diagnostics,
+		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{}, observations: diagnostics,
 	}
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
@@ -583,7 +588,7 @@ func (e *Evaluator) evaluate(
 	for name, expr := range parsed.outputs {
 		result := evaluateAttribute(expr, evalCtx)
 		outputs[name] = result.value
-		scope.diagnostics.update(expr, result)
+		scope.observations.update(expr, result)
 	}
 
 	// A canceled or timed-out scan may have stopped mid-expansion. Do not
@@ -592,10 +597,16 @@ func (e *Evaluator) evaluate(
 	if err := ctx.Err(); err != nil {
 		e.instances = e.instances[:instancesBefore]
 		e.diagnostics = e.diagnostics[:diagnosticsBefore]
+		e.inventoryGaps = e.inventoryGaps[:inventoryGapsBefore]
 		return nil, nil, err
 	}
 
 	e.collectDiagnostics(addr, scope, rootResources, dataInstances)
+	e.collectInventoryGaps(addr, scope)
+	// Frozen result/cache facts now own the observations. Published scopes are
+	// still needed for rendering, but must not retain these transient maps.
+	scope.observations = evaluationObservations{}
+	scope.inputDiagnostics = nil
 
 	// Collect dirs added to allVisited during this evaluation for the cache entry.
 	var visitedDirs []string
@@ -606,7 +617,8 @@ func (e *Evaluator) evaluate(
 	}
 	if inputsKeyOK {
 		e.cacheCompletedEvaluation(
-			cacheKey, skippedBefore, resources, e.instances[instancesBefore:], e.diagnostics[diagnosticsBefore:],
+			cacheKey, skippedBefore, resources, e.instances[instancesBefore:],
+			e.diagnostics[diagnosticsBefore:], e.inventoryGaps[inventoryGapsBefore:],
 			outputs, visitedDirs, addr, len(chain), depth,
 		)
 	}
@@ -661,11 +673,11 @@ func (e *Evaluator) evaluationStop(
 	contextLogger := logger.FromContext(ctx)
 	if depth > e.maxDepth {
 		contextLogger.Warn().Msgf("tfeval: max module depth %d exceeded at %s", e.maxDepth, dir)
-		return e.skipEvaluation(dir)
+		return e.skipEvaluation(dir, InventoryModuleDepth)
 	}
 	if visiting[dir] {
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
-		return e.skipEvaluation(dir)
+		return e.skipEvaluation(dir, InventoryModuleCycle)
 	}
 	return nil
 }
@@ -691,6 +703,11 @@ func (e *Evaluator) reuseCachedEvaluation(
 	for _, diagnostic := range entry.diagnostics {
 		diagnostic.ModuleAddress = rebaseAddr(diagnostic.ModuleAddress, entry.baseAddr, addr)
 		e.diagnostics = append(e.diagnostics, diagnostic)
+	}
+	for i := range entry.inventoryGaps {
+		gap := entry.inventoryGaps[i]
+		gap.ModuleAddress = rebaseAddr(gap.ModuleAddress, entry.baseAddr, addr)
+		e.inventoryGaps = append(e.inventoryGaps, gap)
 	}
 	return entry.rebase(addr, chain), entry.outputs, true
 }
@@ -721,6 +738,7 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	resources []ResolvedResource,
 	instances []ModuleInstance,
 	diagnostics []EvaluationDiagnostic,
+	inventoryGaps []InventoryGap,
 	outputs map[string]cty.Value,
 	visitedDirs []string,
 	addr string,
@@ -731,14 +749,15 @@ func (e *Evaluator) cacheCompletedEvaluation(
 		return
 	}
 	e.cache[key] = &evalCacheEntry{
-		resources:    resources,
-		instances:    slices.Clone(instances),
-		diagnostics:  slices.Clone(diagnostics),
-		outputs:      outputs,
-		visitedDirs:  visitedDirs,
-		baseAddr:     addr,
-		baseChainLen: chainLen,
-		evalDepth:    depth,
+		resources:     resources,
+		instances:     slices.Clone(instances),
+		diagnostics:   slices.Clone(diagnostics),
+		inventoryGaps: slices.Clone(inventoryGaps),
+		outputs:       outputs,
+		visitedDirs:   visitedDirs,
+		baseAddr:      addr,
+		baseChainLen:  chainLen,
+		evalDepth:     depth,
 	}
 }
 
@@ -806,14 +825,16 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		if siblings != nil {
 			callCtx = siblings.contextFor(&reads[blockIndex])
 		}
-		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
-		if !ok {
+		call := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
+		if call.unavailable != inventoryNoGap {
+			scope.observations.inventoryGap(mb, call.unavailable, call.detail)
 			results.finish(blockIndex)
 			continue
 		}
+		scope.observations.inventoryGap(mb, inventoryNoGap, "")
 		plan := moduleInstances(ctx, mb, callCtx)
 		if plan.plan != nil {
-			recordExpansionDiagnostics(mb.Body, plan.plan, &scope.diagnostics)
+			recordExpansion(mb, plan.plan, &scope.observations)
 		}
 		site := call.site(scope)
 		// Do not pre-size to plan.Len(): an uncapped count panics before cancel.
@@ -832,6 +853,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			childChain := append(cloneChain(chain), instanceSite)
 			instancesBefore := len(e.instances)
 			diagnosticsBefore := len(e.diagnostics)
+			inventoryGapsBefore := len(e.inventoryGaps)
 
 			childRes, childOuts, cErr := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
@@ -845,7 +867,9 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				// it must keep being scanned where it is written.
 				e.instances = e.instances[:instancesBefore]
 				e.diagnostics = e.diagnostics[:diagnosticsBefore]
+				e.inventoryGaps = e.inventoryGaps[:inventoryGapsBefore]
 				e.recordModuleFailure(cErr, childAddr, mb.Range())
+				scope.observations.inventoryGap(mb, moduleFailureGap(cErr), cErr.Error())
 				// What stopped this instance — the depth, a cycle or a directory
 				// that does not resolve — is the same for every instance of the
 				// call. The loop stops instead of redoing the same failing work
@@ -935,24 +959,6 @@ func isReportableModuleEvalError(err error) bool {
 		!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 }
 
-func (e *Evaluator) resolveModuleDir(
-	ctx context.Context, callerDir, packageRoot, source, version, callerFile, moduleName string,
-) (dir, childPackageRoot string, ok bool) {
-	if tfmodules.LooksLikeLocalModuleSource(source) {
-		if packageRoot == "" {
-			dir, _, err := tfmodules.LocalModuleDirWithContext(ctx, e.fsys, callerDir, source)
-			return dir, "", err == nil
-		}
-		localDir := resolveLocalDir(callerDir, source)
-		confined, resolveErr := resolver.ResolvePathWithinRoot(ctx, packageRoot, localDir)
-		return confined, packageRoot, resolveErr == nil
-	}
-	if e.remoteResolver != nil {
-		return e.remoteResolver(source, version, callerFile, moduleName)
-	}
-	return "", "", false
-}
-
 // declaredResourceTypes returns the resource types a module declares, the
 // variables injecting its resources can change.
 func declaredResourceTypes(resourceBlocks []*hclsyntax.Block) map[string]struct{} {
@@ -1016,9 +1022,10 @@ func (e *Evaluator) expandBlock(
 	addr string,
 	chain []CallSite,
 	data bool,
-	diagnostics *expressionDiagnostics,
+	diagnostics *evaluationObservations,
 ) []ResolvedResource {
 	if len(rb.Labels) < 2 {
+		diagnostics.inventoryGap(rb, InventoryDeclarationUnavailable, "")
 		return nil
 	}
 	typeName, resName := rb.Labels[0], rb.Labels[1]
@@ -1057,7 +1064,7 @@ func (e *Evaluator) expandBlock(
 
 	count, forEach := tfinstances.Attributes(rb.Body)
 	plan := tfinstances.Resolve(ctx, count, forEach, evalCtx)
-	recordExpansionDiagnostics(rb.Body, &plan, diagnostics)
+	recordExpansion(rb, &plan, diagnostics)
 	if plan.State == tfinstances.Invalid {
 		return nil
 	}
@@ -1251,7 +1258,7 @@ func buildInstanceCtyVal(keys []string, attrsSlice []map[string]cty.Value, isCou
 func (e *Evaluator) resolveVariables(
 	varDecls map[string]variableDecl,
 	inputs map[string]cty.Value,
-	diagnostics *expressionDiagnostics,
+	diagnostics *evaluationObservations,
 ) map[string]cty.Value {
 	out := make(map[string]cty.Value, len(varDecls))
 	for name, decl := range varDecls {
@@ -1307,7 +1314,7 @@ func (e *Evaluator) resolveLocalsIncremental(
 			}
 		}
 	}
-	e.resolveLocals(g, base, scope.localCache, members, &scope.diagnostics)
+	e.resolveLocals(g, base, scope.localCache, members, &scope.observations)
 	return objectOrEmpty(scope.localCache)
 }
 
@@ -1567,9 +1574,11 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	// The calls evaluated here are speculative; cache entries keep their own.
 	instancesBefore := len(e.instances)
 	diagnosticsBefore := len(e.diagnostics)
+	inventoryGapsBefore := len(e.inventoryGaps)
 	defer func() {
 		e.instances = e.instances[:instancesBefore]
 		e.diagnostics = e.diagnostics[:diagnosticsBefore]
+		e.inventoryGaps = e.inventoryGaps[:inventoryGapsBefore]
 	}()
 
 	out := map[string]cty.Value{}
@@ -1601,8 +1610,8 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		if ctx.Err() != nil {
 			return out
 		}
-		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
-		if !ok {
+		call := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
+		if call.unavailable != inventoryNoGap {
 			continue
 		}
 		plan := moduleInstances(ctx, mb, callCtx)
