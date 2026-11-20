@@ -69,6 +69,8 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 		"services/api/Dockerfile":              inventoryDockerfile,
 		// A template rendered by another tool: its name stays as written.
 		"dev/manifest.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .ServiceName }}\nspec:\n  replicas: 1\n",
+		// A comment after it is not part of the name.
+		"dev/worker.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .WorkerName }} # deployment-time name\nspec:\n  replicas: 1\n",
 		// A resource created with a generated name.
 		"k8s/migrate.yaml": "apiVersion: batch/v1\nkind: Job\nmetadata:\n  generateName: migrate-\n  namespace: shop\nspec:\n  template:\n    spec:\n      restartPolicy: Never\n",
 		// A list holds separate objects, each its own resource.
@@ -126,6 +128,9 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	templated := rows["apps/v1/Deployment//{{ .ServiceName }}"]
 	require.Equal(t, "{{ .ServiceName }}", templated.ResourceName)
 	require.Equal(t, "dev/manifest.yaml", templated.File)
+	commented, ok := rows["apps/v1/Deployment//{{ .WorkerName }}"]
+	require.True(t, ok, "a trailing comment stays out of the name: %v", rows)
+	require.Equal(t, "{{ .WorkerName }}", commented.ResourceName)
 	generated, ok := rows["batch/v1/Job/shop/migrate-"]
 	require.True(t, ok, "a generated name gives its prefix: %v", rows)
 	require.Equal(t, "migrate-", generated.ResourceName)
@@ -134,7 +139,7 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	require.Equal(t, "k8s/list.yaml", settings.File)
 	require.Equal(t, [2]int{4, 9}, [2]int{settings.LineStart, settings.LineEnd})
 	require.Equal(t, [2]int{10, 14}, [2]int{api.LineStart, api.LineEnd})
-	require.Len(t, inv.Resources, 8)
+	require.Len(t, inv.Resources, 9)
 }
 
 func TestInventoryDoesNotChangeDocumentFindings(t *testing.T) {

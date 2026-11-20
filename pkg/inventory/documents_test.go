@@ -143,3 +143,16 @@ func TestKubernetesListDocuments(t *testing.T) {
 		"k8s/allow.yaml|acme.io/v1/AllowList//trusted": {owns: true},
 	}, got)
 }
+
+func TestCommentStart(t *testing.T) {
+	for written, want := range map[string]string{
+		"{{ .Name }} # deployment-time name": "{{ .Name }} ",
+		"{{ .Name }}":                        "{{ .Name }}",
+		"web#1 # note":                       "web#1 ",
+		`{{ default "a #b" .X }} # note`:     `{{ default "a #b" .X }} `,
+		`'it''s' # note`:                     `'it''s' `,
+	} {
+		runes := []rune(written)
+		require.Equal(t, want, string(runes[:commentStart(runes)]), written)
+	}
+}

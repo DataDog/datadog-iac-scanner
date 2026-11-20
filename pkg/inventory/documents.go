@@ -237,13 +237,48 @@ func (e *documentEnumerator) metadataField(f *model.FileMetadata, index int, met
 		return ""
 	}
 	_, metadataNode := mappingEntry(node, "metadata")
-	keyNode, _ := mappingEntry(metadataNode, key)
-	lines := e.yamlFile(f).lines
-	if keyNode == nil || keyNode.Line > len(lines) {
+	_, valueNode := mappingEntry(metadataNode, key)
+	return writtenValue(e.yamlFile(f).lines, valueNode)
+}
+
+// commentStart returns where a YAML comment starts in written, a # after a
+// space and outside quotes, or its length when there is none.
+func commentStart(written []rune) int {
+	var quote rune
+	for i, r := range written {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+		case r == '#' && i > 0 && (written[i-1] == ' ' || written[i-1] == '\t'):
+			return i
+		}
+	}
+	return len(written)
+}
+
+// writtenValue returns a value as its line writes it: from where the value
+// starts to the end of the line, less a trailing comment, and less the quotes
+// around it.
+func writtenValue(lines []string, value *yaml.Node) string {
+	if value == nil || value.Line < 1 || value.Line > len(lines) || value.Column < 1 {
 		return ""
 	}
-	_, written, _ := strings.Cut(lines[keyNode.Line-1], key+":")
-	return strings.Trim(strings.TrimSpace(written), `"'`)
+	line := []rune(lines[value.Line-1])
+	if value.Column > len(line) {
+		return ""
+	}
+	written := line[value.Column-1:]
+	text := strings.TrimSpace(string(written[:commentStart(written)]))
+	for _, q := range []string{`"`, "'"} {
+		if len(text) >= 2 && strings.HasPrefix(text, q) && strings.HasSuffix(text, q) {
+			return text[1 : len(text)-1]
+		}
+	}
+	return text
 }
 
 // documentNode returns the root node of the index-th document of f's file,
