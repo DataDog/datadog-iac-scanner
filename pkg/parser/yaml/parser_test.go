@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestParse_InvalidScalarLogging(t *testing.T) {
@@ -612,4 +613,20 @@ func TestParse_ResolvedFileKeepsDocumentsAndLines(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 4, ownerLines["_dd__default"].Line)
 	require.Zero(t, ownerLines["_dd_team"].Line)
+}
+
+func TestNoDocumentsError(t *testing.T) {
+	ctx := context.Background()
+	_, _, _, _, err := ParseWithNodeTransform(ctx, []byte("# only a comment\n"), "empty.yaml", false, 15, nil)
+	require.ErrorIs(t, err, ErrNoDocuments, "a file with no document is empty")
+
+	_, _, _, _, err = ParseWithNodeTransform(ctx, []byte("a: [\n"), "broken.yaml", false, 15, nil)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrNoDocuments, "a syntax error before any document is not an empty file")
+
+	// Resolved documents that all convert to nothing.
+	var scalar yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("just a string\n"), &scalar))
+	_, err = convertResolvedNodes(ctx, []*yaml.Node{&scalar}, "resolved.yaml", nil)
+	require.ErrorIs(t, err, ErrNoDocuments, "resolved documents that give nothing are empty, as unresolved ones are")
 }

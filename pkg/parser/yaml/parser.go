@@ -140,7 +140,7 @@ func convertResolvedNodes(ctx context.Context, nodes []*yaml.Node, filePath stri
 		documents = appendDocument(ctx, documents, node, filePath, fn, nil)
 	}
 	if len(documents) == 0 {
-		return nil, errors.New("no documents found in yaml file")
+		return nil, ErrNoDocuments
 	}
 	return documents, nil
 }
