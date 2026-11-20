@@ -275,6 +275,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
+	metadataPath := c.String("metadata-path")
 	if err := createOutputDirs(outputPath, payloadPath, inventoryPath); err != nil {
 		return err
 	}
@@ -395,6 +396,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxResolverDepth:            c.Int("max-resolver-depth"),
 		PayloadPath:                 payloadPath,
 		InventoryPath:               inventoryPath,
+		MetadataPath:                metadataPath,
 		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
@@ -440,7 +442,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 
 	reportResult(repoDir, params.OutputPath, params.OutputName, &metadata)
 
-	metadataPath := c.String("metadata-path")
 	if err = saveMetadata(metadataPath, &metadata); err != nil {
 		return fmt.Errorf("error saving the metadata JSON: %w", err)
 	}

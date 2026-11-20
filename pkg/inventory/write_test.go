@@ -63,13 +63,21 @@ func TestRemoveStale(t *testing.T) {
 
 	require.NoError(t, RemoveStale(path), "a missing file is not an error")
 
-	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o600))
+	require.NoError(t, WriteFile(path, NewCollector(dir).Build(testMetadata())))
 	require.NoError(t, RemoveStale(path))
 	_, err := os.Stat(path)
-	require.True(t, os.IsNotExist(err))
+	require.True(t, os.IsNotExist(err), "an earlier inventory is removed")
 
-	require.NoError(t, os.MkdirAll(filepath.Join(path, "child"), 0o755))
-	require.Error(t, RemoveStale(path), "a non-empty directory cannot be removed")
+	// Anything else stays, such as a report or a scanned file.
+	require.NoError(t, os.WriteFile(path, []byte(`{"version":"2.1.0","runs":[]}`), 0o600))
+	require.ErrorIs(t, RemoveStale(path), ErrNotInventory)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, `{"version":"2.1.0","runs":[]}`, string(data))
+
+	other := filepath.Join(dir, "dir")
+	require.NoError(t, os.MkdirAll(filepath.Join(other, "child"), 0o755))
+	require.ErrorIs(t, RemoveStale(other), ErrNotInventory)
 }
 
 func TestEncodeIsTheJSONOfTheInventory(t *testing.T) {

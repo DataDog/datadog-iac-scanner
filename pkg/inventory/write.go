@@ -20,13 +20,46 @@ import (
 
 const filePerms = 0o644
 
+// ErrNotInventory reports something at the inventory path that no scan wrote
+// as an inventory, such as a report or a scanned file: it must be neither
+// removed nor replaced.
+var ErrNotInventory = errors.New("the path holds something other than an inventory")
+
+// inventoryPrefix starts every inventory encode writes.
+const inventoryPrefix = `{"schema_version":`
+
 // RemoveStale deletes an inventory left at path by an earlier scan, so that a
-// scan which ends without writing one leaves no file behind.
+// scan which ends without writing one leaves no file behind. Anything else at
+// path is left as it is, and reported as ErrNotInventory.
 func RemoveStale(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || !isInventory(path) {
+		return ErrNotInventory
+	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil
+}
+
+// isInventory reports whether the file at path starts as an inventory does.
+func isInventory(path string) bool {
+	f, err := os.Open(filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, len(inventoryPrefix))
+	if _, err := io.ReadFull(f, head); err != nil {
+		return false
+	}
+	return string(head) == inventoryPrefix
 }
 
 // WriteFile writes inv to path atomically: it is written to a temporary file

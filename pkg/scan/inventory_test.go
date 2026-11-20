@@ -240,22 +240,80 @@ func TestInventoryRedactsRepositoryCredentials(t *testing.T) {
 
 func TestInventoryReplacesTheFileOfAnEarlierScan(t *testing.T) {
 	inventoryPath := filepath.Join(t.TempDir(), "inventory.json")
-	require.NoError(t, os.WriteFile(inventoryPath, []byte(`{"stale":true}`), 0o600))
+	performInventoryScan(t, t.TempDir(), inventoryPath)
+	require.FileExists(t, inventoryPath)
 
 	c := &Client{ScanParams: &Parameters{InventoryPath: inventoryPath}}
 	c.startInventory(context.Background())
 	_, err := os.Stat(inventoryPath)
 	require.True(t, os.IsNotExist(err), "the earlier inventory is removed before the scan")
+	require.Nil(t, c.inventory.failure)
+}
+
+func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
+	t.Run("a report of the scan", func(t *testing.T) {
+		withoutSARIF, _ := performInventoryScan(t, t.TempDir(), "")
+		outDir := t.TempDir()
+		sarifPath := filepath.Join(outDir, "result.sarif")
+
+		withSARIF, metadata := performInventoryScan(t, outDir, sarifPath)
+		require.Equal(t, string(withoutSARIF), string(withSARIF), "the report stays as the scan wrote it")
+		require.Equal(t, InventoryFailed, metadata.Inventory.Status)
+		require.Equal(t, InventoryReasonPathConflict, metadata.Inventory.Reason)
+
+		// An earlier report at the path is not removed either.
+		withSARIF, metadata = performInventoryScan(t, outDir, sarifPath)
+		require.Equal(t, string(withoutSARIF), string(withSARIF))
+		require.Equal(t, InventoryReasonPathConflict, metadata.Inventory.Reason)
+	})
+
+	for _, tt := range []struct {
+		name   string
+		params func(path string) Parameters
+	}{
+		{"the metadata path", func(path string) Parameters { return Parameters{InventoryPath: path, MetadataPath: path} }},
+		{"the payload path", func(path string) Parameters { return Parameters{InventoryPath: path, PayloadPath: path} }},
+		{"a scanned file", func(path string) Parameters { return Parameters{InventoryPath: path, Path: []string{path}} }},
+		{"a file the scanner did not write", func(path string) Parameters { return Parameters{InventoryPath: path} }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "main.tf")
+			require.NoError(t, os.WriteFile(path, []byte("resource \"aws_s3_bucket\" \"b\" {}\n"), 0o600))
+			params := tt.params(path)
+			c := &Client{ScanParams: &params}
+			c.startInventory(context.Background())
+
+			require.NotNil(t, c.inventory.failure)
+			require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason)
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, "resource \"aws_s3_bucket\" \"b\" {}\n", string(data), "the file is not removed")
+			status := c.finishInventory(context.Background(), nil, nil)
+			require.Equal(t, InventoryFailed, status.Status)
+			data, err = os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, "resource \"aws_s3_bucket\" \"b\" {}\n", string(data), "nor replaced")
+		})
+	}
+
+	t.Run("the metadata path before it is written", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "out", "..", "metadata.json")
+		c := &Client{ScanParams: &Parameters{InventoryPath: filepath.Clean(path), MetadataPath: path}}
+		c.startInventory(context.Background())
+		require.NotNil(t, c.inventory.failure)
+		require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason)
+	})
 }
 
 func TestInventoryFailuresDoNotFailTheScan(t *testing.T) {
-	t.Run("the earlier file cannot be removed", func(t *testing.T) {
+	t.Run("a directory is at the path", func(t *testing.T) {
 		inventoryPath := filepath.Join(t.TempDir(), "inventory.json")
 		require.NoError(t, os.MkdirAll(filepath.Join(inventoryPath, "child"), 0o755))
 
 		_, metadata := performInventoryScan(t, t.TempDir(), inventoryPath)
 		require.Equal(t, InventoryFailed, metadata.Inventory.Status)
-		require.Equal(t, InventoryReasonStaleFile, metadata.Inventory.Reason)
+		require.Equal(t, InventoryReasonPathConflict, metadata.Inventory.Reason)
+		require.DirExists(t, filepath.Join(inventoryPath, "child"))
 	})
 
 	t.Run("the file cannot be written", func(t *testing.T) {

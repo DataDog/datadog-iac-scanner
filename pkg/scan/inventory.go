@@ -9,7 +9,9 @@ package scan
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -27,9 +29,10 @@ const (
 	InventoryWritten = "written"
 	InventoryFailed  = "failed"
 
-	InventoryReasonStaleFile  = "stale_file"
-	InventoryReasonWriteError = "write_error"
-	InventoryReasonPanic      = "panic"
+	InventoryReasonStaleFile    = "stale_file"
+	InventoryReasonWriteError   = "write_error"
+	InventoryReasonPanic        = "panic"
+	InventoryReasonPathConflict = "path_conflict"
 )
 
 // inventoryRun is the inventory of one scan, when the scan was asked for one.
@@ -129,14 +132,57 @@ func (c *Client) startInventory(ctx context.Context) {
 	for _, p := range platforms {
 		run.platforms = append(run.platforms, strings.ToLower(p))
 	}
+	contextLogger := logger.FromContext(ctx)
+	// The inventory must never replace another file of the scan.
+	if other := c.inventoryPathConflict(path); other != "" {
+		run.failure = inventoryFailure(InventoryReasonPathConflict, fmt.Errorf("the inventory path is also %s", other))
+		contextLogger.Error().Msgf("the inventory path %s is also %s; not writing an inventory", path, other)
+		c.inventory = run
+		return
+	}
 	// A scan that ends without writing an inventory must not leave the one of
 	// an earlier scan in its place.
 	if err := inventory.RemoveStale(path); err != nil {
-		run.failure = inventoryFailure(InventoryReasonStaleFile, err)
-		contextLogger := logger.FromContext(ctx)
+		reason := InventoryReasonStaleFile
+		if errors.Is(err, inventory.ErrNotInventory) {
+			reason = InventoryReasonPathConflict
+		}
+		run.failure = inventoryFailure(reason, err)
 		contextLogger.Error().Err(err).Msgf("failed to remove the previous inventory %s", path)
 	}
 	c.inventory = run
+}
+
+// inventoryPathConflict names the other output or input of the scan at the
+// inventory path, "" when there is none. A report is checked when the
+// inventory is written, since only the report writers know their names.
+func (c *Client) inventoryPathConflict(path string) string {
+	others := []struct{ name, path string }{
+		{"the metadata path", c.ScanParams.MetadataPath},
+		{"the payload path", c.ScanParams.PayloadPath},
+	}
+	for _, input := range c.ScanParams.Path {
+		others = append(others, struct{ name, path string }{"a scanned path", input})
+	}
+	for _, other := range others {
+		if other.path != "" && samePath(path, other.path) {
+			return other.name
+		}
+	}
+	return ""
+}
+
+// samePath reports whether two paths name the same file, through symlinks
+// when both exist.
+func samePath(a, b string) bool {
+	if ai, err := os.Stat(a); err == nil {
+		if bi, err := os.Stat(b); err == nil {
+			return os.SameFile(ai, bi)
+		}
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	return errA == nil && errB == nil && absA == absB
 }
 
 // finishInventory writes the inventory and reports what happened. A failure
@@ -193,6 +239,12 @@ func (c *Client) finishInventory(ctx context.Context, results *Results, summary 
 		},
 		PlatformsScanned: run.platforms,
 	})
+	// The path was cleared when the scan started, so a file there now is one
+	// the scan wrote, such as a report given the same name.
+	if _, err := os.Lstat(path); err == nil {
+		contextLogger.Error().Msgf("the scan wrote another file at the inventory path %s; not writing an inventory", path)
+		return inventoryFailure(InventoryReasonPathConflict, fmt.Errorf("the scan wrote another file at %s", path))
+	}
 	if err := inventory.WriteFile(path, inv); err != nil {
 		contextLogger.Error().Err(err).Msgf("failed to write the inventory %s", path)
 		return inventoryFailure(InventoryReasonWriteError, err)

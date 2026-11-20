@@ -55,15 +55,18 @@ const (
 
 // Parameters represents all available scan parameters
 type Parameters struct {
-	CloudProvider               []string
-	ExperimentalQueries         bool
-	InputData                   string
-	OutputName                  string
-	OutputPath                  string
-	RepoPath                    string
-	Path                        []string
-	PayloadPath                 string
-	InventoryPath               string
+	CloudProvider       []string
+	ExperimentalQueries bool
+	InputData           string
+	OutputName          string
+	OutputPath          string
+	RepoPath            string
+	Path                []string
+	PayloadPath         string
+	InventoryPath       string
+	// MetadataPath is where the caller writes the scan metadata, which the
+	// inventory must not replace.
+	MetadataPath                string
 	PreviewLines                int
 	QueriesPath                 []string
 	LibrariesPath               string

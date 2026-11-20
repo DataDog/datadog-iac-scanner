@@ -139,4 +139,35 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	require.Equal(t, 1, metadata.Stats.Files, "the fixture file should have been scanned")
 	require.Equal(t, 1, metadata.Stats.Violations, "the offline bundle's rule should have fired exactly once")
 	require.Contains(t, metadata.Stats.ViolationBreakdowns["HIGH"], "terraform-s3-bucket-versioning-disabled")
+
+	// An inventory path that is another output of the scan never replaces it.
+	sarifPath := filepath.Join(outputDir, "datadog-iac-scanner-result.sarif")
+	sarif, err := os.ReadFile(filepath.Clean(sarifPath))
+	require.NoError(t, err)
+	for _, inventoryPath := range []string{sarifPath, metadataPath} {
+		err = scanAction.Run(t.Context(), []string{
+			"scan",
+			"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+			"--type", "terraform",
+			"--output-path", outputDir,
+			"--offline-bundle-path", bundleDir,
+			"--metadata-path", metadataPath,
+			"--inventory-path", inventoryPath,
+		})
+		require.ErrorAs(t, err, &exitErr)
+		require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+
+		again, err := os.ReadFile(filepath.Clean(sarifPath))
+		require.NoError(t, err)
+		require.Equal(t, len(sarif), len(again), "the report stays a report")
+		require.Contains(t, string(again), "terraform-s3-bucket-versioning-disabled")
+
+		metadataBytes, err = os.ReadFile(filepath.Clean(metadataPath))
+		require.NoError(t, err)
+		metadata = scan.ScanMetadata{}
+		require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
+		require.NotNil(t, metadata.Inventory, inventoryPath)
+		require.Equal(t, scan.InventoryFailed, metadata.Inventory.Status)
+		require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
+	}
 }

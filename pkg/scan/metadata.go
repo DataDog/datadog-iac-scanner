@@ -27,10 +27,10 @@ type ScanMetadata struct {
 
 // InventoryMetadata reports what happened to the resource inventory.
 type InventoryMetadata struct {
-	// Status is "written" or "failed". A failed inventory leaves no file.
+	// Status is "written" or "failed". A failed inventory writes no file.
 	Status string
 	// Reason is a short code for a failure: stale_file, write_error, panic,
-	// terraform_evaluation_panic or documents_panic.
+	// path_conflict, terraform_evaluation_panic or documents_panic.
 	Reason string `json:",omitempty"`
 	// Error is the failure message.
 	Error string `json:",omitempty"`
