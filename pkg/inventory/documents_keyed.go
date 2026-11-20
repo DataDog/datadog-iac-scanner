@@ -48,7 +48,11 @@ func (e *documentEnumerator) keyedRows(
 	if found {
 		if keyNode, value := mappingEntry(node, collection); value != nil {
 			collectionLine = keyNode.Line
-			spans = childSpans(value, doc.end, e.yamlFile(f).lines)
+			lines := e.yamlFile(f).lines
+			// The collection ends before the next top-level key, so that its
+			// last entry does not take the sections after it.
+			bound := sectionEnd(childSpans(node, doc.end, lines), collection, doc.end)
+			spans = childSpans(value, bound, lines)
 		}
 	}
 

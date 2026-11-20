@@ -163,7 +163,9 @@ const inventoryPlaybook = `- hosts: all
 func TestInventoryKeyedRows(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"cfn/stack.yaml": "AWSTemplateFormatVersion: \"2010-09-09\"\nResources:\n  LogsBucket:\n    Type: AWS::S3::Bucket\n" +
-			"    Properties:\n      BucketName: acme-logs\n\n  Queue:\n    Type: AWS::SQS::Queue\n",
+			"    Properties:\n      BucketName: acme-logs\n\n  Queue:\n    Type: AWS::SQS::Queue\n" +
+			// A section after the collection is not part of its last entry.
+			"Parameters:\n  Env:\n    Type: String\n    Default: prod\n",
 		"docker-compose.yml": "services:\n  web:\n    image: nginx:1.27\n  db:\n    image: postgres:16\n",
 		".github/workflows/ci.yml": "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n" +
 			"  _lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ github.sha }}\n" +

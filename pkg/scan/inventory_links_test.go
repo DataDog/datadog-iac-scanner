@@ -125,7 +125,7 @@ func TestInventoryLinksDocumentFindings(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"k8s/web.yaml": inventoryK8sYAML,
 		"cfn/stack.yaml": "AWSTemplateFormatVersion: \"2010-09-09\"\nResources:\n  LogsBucket:\n    Type: AWS::S3::Bucket\n" +
-			"\n  Queue:\n    Type: AWS::SQS::Queue\n",
+			"\n  Queue:\n    Type: AWS::SQS::Queue\nParameters:\n  Env:\n    Type: String\n    Default: prod\n",
 	})
 	service := syntheticQuery("test-k8s-service", "k8s", "Kubernetes", `	input.document[i].kind == "Service"
 	typ := "Service"
@@ -136,20 +136,28 @@ func TestInventoryLinksDocumentFindings(t *testing.T) {
 	typ := resource.Type
 	name := logical
 	key := sprintf("Resources.%s.Type", [logical])`)
+	parameter := syntheticQuery("test-cfn-parameter", "cloudFormation", "CloudFormation", `	input.document[i].Parameters[p]
+	typ := "parameter"
+	name := p
+	key := sprintf("Parameters.%s.Default", [p])`)
 	params := documentParams(root)
 	params.Platform = []string{"Kubernetes", "CloudFormation"}
 
-	inv, fingerprints := scanLinks(t, params, service, queue)
-	require.Len(t, fingerprints, 2)
-	require.Zero(t, inv.Stats.FindingsUnlinked)
+	inv, fingerprints := scanLinks(t, params, service, queue, parameter)
+	require.Len(t, fingerprints, 3)
+	require.Equal(t, 1, inv.Stats.FindingsUnlinked, "the parameter belongs to no resource")
 	refs := linkedRefs(inv)
 	var linked []string
 	for _, fp := range fingerprints {
-		require.Len(t, refs[fp], 1)
-		linked = append(linked, refs[fp][0])
+		linked = append(linked, refs[fp]...)
 	}
 	require.ElementsMatch(t, []string{"k8s/web.yaml|v1/Service/shop/web", "cfn/stack.yaml|Queue"}, linked,
-		"a finding links to its document's row, or to the entry holding its line")
+		"a finding links to its document's row, or to the entry its key names; the parameter after the last entry links to none")
+	for _, r := range inv.Resources {
+		if r.ResourceRef == "cfn/stack.yaml|Queue" {
+			require.Equal(t, 7, r.LineEnd, "the last entry ends with its collection")
+		}
+	}
 }
 
 func TestInventoryCountsUnlinkedFindings(t *testing.T) {
