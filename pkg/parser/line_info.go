@@ -20,3 +20,33 @@ func IsLineInfoOnly(ctx context.Context) bool {
 	v, _ := ctx.Value(lineInfoOnlyKey{}).(bool)
 	return v
 }
+
+type lineInfoExportKey struct{}
+
+// WithLineInfoExport marks a line-info reparse whose documents are exported
+// whole as the line-info payload (see model.FileMetadatas.Combine), so
+// parsers must not reduce them to the part line detection reads.
+func WithLineInfoExport(ctx context.Context) context.Context {
+	return context.WithValue(ctx, lineInfoExportKey{}, true)
+}
+
+// IsLineInfoExport reports whether ctx was marked with WithLineInfoExport.
+func IsLineInfoExport(ctx context.Context) bool {
+	v, _ := ctx.Value(lineInfoExportKey{}).(bool)
+	return v
+}
+
+type lazyLineInfoKey struct{}
+
+// WithLazyLineInfo marks a parse whose documents' line markers are never
+// read, because line info is rebuilt on demand by a line-info reparse (see
+// WithLineInfoOnly), so parsers may leave the markers out.
+func WithLazyLineInfo(ctx context.Context) context.Context {
+	return context.WithValue(ctx, lazyLineInfoKey{}, true)
+}
+
+// IsLazyLineInfo reports whether ctx was marked with WithLazyLineInfo.
+func IsLazyLineInfo(ctx context.Context) bool {
+	v, _ := ctx.Value(lazyLineInfoKey{}).(bool)
+	return v
+}

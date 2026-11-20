@@ -7,6 +7,7 @@ package minified
 
 import (
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,5 +56,25 @@ func Test_IsMinified(t *testing.T) {
 				assert.False(t, result, tt.name)
 			}
 		})
+	}
+}
+
+// TestIsMinifiedJSONMatchesRegexpCount checks the whitespace count against
+// the regexp replacement it replaces.
+func TestIsMinifiedJSONMatchesRegexpCount(t *testing.T) {
+	whitespace := regexp.MustCompile(`\s+`)
+	for _, content := range []string{
+		"",
+		" ",
+		"{}",
+		"{\"a\": 1}",
+		"{\n\t\"a\":\r\n 1\f}",
+		"{\"a\":\"\u00a0\u2003\"}",
+		"\xff\xfe {\"a\" :\v1}",
+		"{\"a\":1,\"b\":2,\"c\":3,\"d\":[1,2,3,4,5,6,7,8,9]}  ",
+	} {
+		nonWhitespace := len(whitespace.ReplaceAllString(content, ""))
+		want := float64(nonWhitespace)/float64(len(content)) > 0.8
+		assert.Equal(t, want, isMinifiedJSON([]byte(content)), "%q", content)
 	}
 }

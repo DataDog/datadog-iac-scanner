@@ -13,9 +13,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	iniHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
@@ -343,6 +345,13 @@ func TestSink_TFPlanExposesAfterUnknownAndConfiguration(t *testing.T) {
 			}
 		}
 	}`, string(b))
+	// Sunk, the plan's equal subtrees are a single tree.
+	file := sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(p) }, "tfplan.json", planJSON)
+	meta := file.Document["_dd_tfplan_meta"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})["main"]
+	change := file.Document["resource_changes"].([]interface{})[0].(map[string]interface{})["change"]
+	require.Equal(t,
+		reflect.ValueOf(meta.(map[string]interface{})["after_unknown"]).Pointer(),
+		reflect.ValueOf(change.(map[string]interface{})["after_unknown"]).Pointer())
 }
 
 func TestKics_resolveCRLFFile(t *testing.T) {
@@ -532,9 +541,14 @@ func TestSink_IgnoreLinesWithResolvedFiles(t *testing.T) {
 
 func sinkFile(t *testing.T, filename string, content []byte) *model.FileMetadata {
 	t.Helper()
+	return sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(&yamlParser.Parser{}) }, filename, content)
+}
+
+func sinkFileWith(t *testing.T, add func(*parser.Builder) *parser.Builder, filename string, content []byte,
+	configure ...func(*Service)) *model.FileMetadata {
+	t.Helper()
 	ctx := context.Background()
-	parsers, err := parser.NewBuilder(ctx).
-		Add(&yamlParser.Parser{}).
+	parsers, err := add(parser.NewBuilder(ctx)).
 		Build([]string{""}, []string{""})
 	require.NoError(t, err)
 	require.NotEmpty(t, parsers)
@@ -544,6 +558,9 @@ func sinkFile(t *testing.T, filename string, content []byte) *model.FileMetadata
 		Storage:     storage.NewMemoryStorage(),
 		Tracker:     noopTracker{},
 		MaxFileSize: 5,
+	}
+	for _, configure := range configure {
+		configure(s)
 	}
 	require.NoError(t, sinkReader(s, ctx, filename, "scanID", bytes.NewReader(content), make([]byte, mbConst), false, 15))
 	require.Len(t, s.files, 1)
@@ -564,4 +581,72 @@ func sinkReader(s *Service, ctx context.Context, filename, scanID string,
 	rc io.Reader, data []byte, openAPIResolveReferences bool, maxResolverDepth int) error {
 	c, err := getContent(rc, data, s.MaxFileSize, filename)
 	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
+}
+
+// TestSink_planLineInfoRetention checks that a scan keeps a plan's line-info
+// tree across decode passes, and that a scan exporting line info does not
+// keep trees in a retention that could drop them under the export.
+func TestSink_planLineInfoRetention(t *testing.T) {
+	plan := []byte(`{"format_version": "1.0", "planned_values": {"root_module": {"resources": [
+		{"address": "aws_s3_bucket.main", "type": "aws_s3_bucket", "name": "main", "values": {"acl": "private"}}]}}}`)
+	p := &jsonParser.Parser{}
+	add := func(b *parser.Builder) *parser.Builder { return b.Add(p) }
+	ctx := context.Background()
+	use := func(file *model.FileMetadata) {
+		require.NoError(t, file.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+			require.Contains(t, doc, "resource")
+			return nil
+		}))
+		file.DiscardLineInfoDocument()
+	}
+
+	scan := sinkFileWith(t, add, "plan.json", plan)
+	use(scan)
+	require.NotNil(t, scan.LineInfoDocument, "kept for the next finding")
+
+	exported := sinkFileWith(t, add, "plan.json", plan, func(s *Service) { s.LineInfoPayload = true })
+	use(exported)
+	require.Nil(t, exported.LineInfoDocument)
+}
+
+// TestSink_planChangeSectionBuiltForAnchoredKeys checks that a scan's plan
+// line-info holds the change list only for a finding whose search key reads
+// it, and that the finding then gets its exact line.
+func TestSink_planChangeSectionBuiltForAnchoredKeys(t *testing.T) {
+	plan := []byte(`{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {}
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.main",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ]
+      }
+    }
+  ]
+}`)
+	p := &jsonParser.Parser{}
+	file := sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(p) }, "plan.json", plan)
+	ctx := context.Background()
+	detect := func(searchKey string) (line int, hasChanges bool) {
+		require.NoError(t, file.UseLineInfoDocumentSections(ctx, detector.LineInfoSections(file.Kind, searchKey),
+			func(doc map[string]interface{}) error {
+				line = detector.NewDetectLine(0).DetectLine(ctx, file, searchKey).Line
+				_, hasChanges = doc["resource_changes"]
+				return nil
+			}))
+		return line, hasChanges
+	}
+
+	_, hasChanges := detect("aws_s3_bucket[main].acl")
+	require.False(t, hasChanges, "not built for a key that does not read it")
+
+	line, hasChanges := detect("address={{aws_s3_bucket.main}}.change.actions[1]")
+	require.True(t, hasChanges)
+	require.Equal(t, 12, line)
 }

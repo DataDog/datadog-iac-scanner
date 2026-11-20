@@ -84,6 +84,173 @@ func TestUseLineInfoDocument_discardReloads(t *testing.T) {
 	require.Equal(t, int32(2), loads.Load())
 }
 
+func planWithLineInfo(name string, loads *atomic.Int32, r *LineInfoRetention) *FileMetadata {
+	fm := &FileMetadata{FilePath: name, Kind: KindTerraformPlan, OriginalData: "{}"}
+	fm.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		loads.Add(1)
+		return Document{"resource": map[string]interface{}{}}, nil
+	})
+	fm.SetLineInfoRetention(r)
+	return fm
+}
+
+func useLineInfo(t *testing.T, fm *FileMetadata) {
+	t.Helper()
+	require.NoError(t, fm.UseLineInfoDocument(context.Background(), func(doc map[string]interface{}) error {
+		require.NotNil(t, doc)
+		return nil
+	}))
+	fm.DiscardLineInfoDocument()
+}
+
+// TestLineInfoRetention_keepsRecentTreesLoaded checks that files in a
+// retention keep their tree across decode passes, and that the least
+// recently used tree is dropped beyond the capacity.
+func TestLineInfoRetention_keepsRecentTreesLoaded(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(2)
+	a, b, c := planWithLineInfo("a.json", &loads, r), planWithLineInfo("b.json", &loads, r), planWithLineInfo("c.json", &loads, r)
+
+	for range 3 {
+		useLineInfo(t, a)
+		useLineInfo(t, b)
+	}
+	require.Equal(t, int32(2), loads.Load(), "each tree is built once while both fit")
+
+	useLineInfo(t, c) // displaces a, the least recently used
+	require.Nil(t, a.LineInfoDocument)
+	require.NotNil(t, b.LineInfoDocument)
+	require.NotNil(t, c.LineInfoDocument)
+
+	useLineInfo(t, a) // reloads, displacing b
+	require.Equal(t, int32(4), loads.Load())
+	require.Nil(t, b.LineInfoDocument)
+
+	for _, fm := range []*FileMetadata{a, b, c} {
+		fm.ReleasePostEvalData()
+		require.Nil(t, fm.LineInfoDocument)
+	}
+}
+
+// TestLineInfoRetention_staleEvictionKeepsReusedTree checks that a file
+// displaced from the retention keeps its tree when it is used again before
+// the displacement gets to drop it.
+func TestLineInfoRetention_staleEvictionKeepsReusedTree(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(1)
+	a, b := planWithLineInfo("a.json", &loads, r), planWithLineInfo("b.json", &loads, r)
+
+	useLineInfo(t, a)
+	displaced := r.touch(b) // b displaces a; dropping a's tree is still pending
+	require.Equal(t, []*FileMetadata{a}, displaced)
+	useLineInfo(t, a) // a decodes again, and is retained again
+	for _, f := range displaced {
+		f.dropRetainedLineInfo()
+	}
+	require.NotNil(t, a.LineInfoDocument, "a was used again, so it stays loaded")
+	require.Equal(t, int32(1), loads.Load())
+
+	// A file that is still displaced does lose its tree.
+	useLineInfo(t, b)
+	require.Nil(t, a.LineInfoDocument)
+}
+
+// TestLineInfoRetention_parallelDecoders checks that decoders of different
+// files, alternating between them, build each tree once when the retention
+// holds as many trees as there are decoders, and never deadlock or race.
+func TestLineInfoRetention_parallelDecoders(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(4)
+	files := make([]*FileMetadata, 4)
+	for i := range files {
+		files[i] = planWithLineInfo(fmt.Sprintf("%d.json", i), &loads, r)
+	}
+	var wg sync.WaitGroup
+	for _, fm := range files {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 200 {
+				useLineInfo(t, fm)
+			}
+		}()
+	}
+	wg.Wait()
+	require.Equal(t, int32(len(files)), loads.Load())
+}
+
+// TestLineInfoRetention_overcommittedDecodersStayCorrect checks that
+// decoders of more files than the retention holds evict each other's trees
+// safely: a tree dropped between findings is rebuilt, never read half-dropped.
+func TestLineInfoRetention_overcommittedDecodersStayCorrect(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(1)
+	var wg sync.WaitGroup
+	for i := range 4 {
+		fm := planWithLineInfo(fmt.Sprintf("%d.json", i), &loads, r)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 100 {
+				useLineInfo(t, fm)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestUseLineInfoDocumentSections_buildsSectionsOnDemand checks that a section
+// the loader leaves out is built the first time a finding asks for it, again
+// after its tree is dropped, and not asked for again when it cannot be built.
+func TestUseLineInfoDocumentSections_buildsSectionsOnDemand(t *testing.T) {
+	ctx := context.Background()
+	var loads, sectionLoads atomic.Int32
+	r := NewLineInfoRetention(1)
+	fm := planWithLineInfo("a.json", &loads, r)
+	fm.SetLineInfoSectionLoader(func(_ context.Context, _ *FileMetadata, name string) (interface{}, bool) {
+		sectionLoads.Add(1)
+		return []interface{}{name}, name == "resource_changes"
+	})
+	has := func(doc map[string]interface{}, name string) bool { _, ok := doc[name]; return ok }
+	use := func(sections ...string) (built bool) {
+		require.NoError(t, fm.UseLineInfoDocumentSections(ctx, sections, func(doc map[string]interface{}) error {
+			built = has(doc, "resource_changes")
+			return nil
+		}))
+		return built
+	}
+
+	require.False(t, use(), "not built for a finding that does not need it")
+	require.Equal(t, int32(0), sectionLoads.Load())
+	require.True(t, use("resource_changes"))
+	require.True(t, use("resource_changes"))
+	require.Equal(t, int32(1), sectionLoads.Load(), "built once")
+
+	other := planWithLineInfo("b.json", &loads, r)
+	useLineInfo(t, other) // displaces a's tree, and its section with it
+	require.True(t, use("resource_changes"))
+	require.Equal(t, int32(2), sectionLoads.Load(), "rebuilt with the tree it belongs to")
+
+	use("unbuildable")
+	use("unbuildable")
+	require.Equal(t, int32(3), sectionLoads.Load(), "a section that cannot be built is asked for once")
+}
+
+// TestLineInfoRetention_noneKeepsExportedTrees checks that without a
+// retention, as in a scan exporting line-info documents, loading other plans
+// never drops a tree.
+func TestLineInfoRetention_noneKeepsExportedTrees(t *testing.T) {
+	var loads atomic.Int32
+	exported := planWithLineInfo("exported.json", &loads, nil)
+	require.NoError(t, exported.EnsureLineInfoDocument(context.Background()))
+	for i := range 8 {
+		other := planWithLineInfo(fmt.Sprintf("%d.json", i), &loads, nil)
+		require.NoError(t, other.EnsureLineInfoDocument(context.Background()))
+	}
+	require.NotNil(t, exported.LineInfoDocument)
+	require.Equal(t, int32(9), loads.Load())
+}
+
 // TestDiscardLineInfoDocumentWithoutLoader verifies the no-op guard: without
 // a lazy loader the tree can never be rebuilt, so discarding is refused
 // rather than writing the field outside the state mutex (which would race

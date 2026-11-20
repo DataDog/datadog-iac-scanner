@@ -9,10 +9,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -156,4 +158,51 @@ func TestJSON_StringifyContent_ConcurrentNonPlan(t *testing.T) {
 	for i, got := range results {
 		require.Equalf(t, nonPlan, got, "iter %d: non-plan content was reformatted (shared parser state leaked)", i)
 	}
+}
+
+func TestParser_mayResolve(t *testing.T) {
+	plan := filepath.FromSlash("/scan/plan.json")
+	p := &Parser{FS: vfs.NewMemFS(map[string][]byte{
+		filepath.FromSlash("/scan/policy.json"): []byte(`{"Version": "2012-10-17"}`),
+	})}
+
+	for name, tc := range map[string]struct {
+		content string
+		want    bool
+	}{
+		"no file name":           {`{"a": "b"}`, false},
+		"missing file":           {`{"a": ["data.aws_iam_policy_document.x.json"]}`, false},
+		"existing file":          {`{"a": {"b": "policy.json"}}`, true},
+		"existing file section":  {`{"$ref": "policy.json#/Version"}`, true},
+		"file itself":            {`{"a": "plan.json"}`, false},
+		"fragment outside $ref":  {`{"a": "#/definitions/x"}`, false},
+		"same-file reference":    {`{"$ref": "#/definitions/x"}`, true},
+		"same-file in ref array": {`{"x": {"allOf$REF": ["#/definitions/x"]}}`, true},
+		"bare fragment":          {`{"$ref": "#"}`, false},
+		"escaped quotes":         {`{"a": "say \"policy.json\""}`, false},
+		"escaped name character": {`{"a": "policy\u002ejson"}`, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, p.mayResolve([]byte(tc.content), plan))
+		})
+	}
+
+	// When nothing can resolve, Resolve returns the content unchanged.
+	content := []byte(`{"a": ["data.aws_iam_policy_document.x.json"], "b": "plan.json"}`)
+	resolved, files, err := p.Resolve(context.Background(), content, plan, false, 15)
+	require.NoError(t, err)
+	require.Equal(t, content, resolved)
+	require.Empty(t, files)
+
+	// Files and same-file references still resolve.
+	resolved, files, err = p.Resolve(context.Background(), []byte(`{"a": "policy.json"}`), plan, false, 15)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Contains(t, string(resolved), "2012-10-17")
+
+	resolved, files, err = p.Resolve(context.Background(),
+		[]byte(`{"definitions": {"x": {"Effect": "Deny"}}, "policy": {"$ref": "#/definitions/x"}}`), plan, true, 15)
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	require.Contains(t, string(resolved), "RefMetadata")
 }

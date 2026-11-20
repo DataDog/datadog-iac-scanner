@@ -6,23 +6,24 @@
 package minified
 
 import (
-	"regexp"
+	"bytes"
 	"strings"
 )
 
 func IsMinified(filename string, content []byte) bool {
 	if strings.HasSuffix(filename, ".json") {
-		return isMinifiedJSON(string(content))
+		return isMinifiedJSON(content)
 	}
 	return false
 }
 
-func isMinifiedJSON(content string) bool {
-	// Define a regular expression to match common minification patterns
-	minifiedPattern := regexp.MustCompile(`\s+`)
-
-	// Count the number of non-whitespace characters
-	nonWhitespaceCount := len(minifiedPattern.ReplaceAllString(content, ""))
+func isMinifiedJSON(content []byte) bool {
+	// Count the number of non-whitespace characters (the ASCII whitespace of
+	// a regexp \s)
+	nonWhitespaceCount := len(content)
+	for _, c := range []byte("\t\n\f\r ") {
+		nonWhitespaceCount -= bytes.Count(content, []byte{c})
+	}
 
 	// 80% of non-whitespace characters
 	minifiedThreshold := 0.8

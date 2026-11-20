@@ -9,6 +9,7 @@ import (
 	"context"
 	"index/suffixarray"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -157,6 +158,14 @@ type lineInfoState struct {
 	// The file itself stays out of it, because its own tree is edited after
 	// instantiation (instantiated resources are removed from it).
 	copies *lineInfoGroup
+	// sectionLoader builds a section of the tree that the loader leaves out,
+	// for the findings that need it (see UseLineInfoDocumentSections);
+	// sectionsMissing are the sections it could not build, not asked again.
+	sectionLoader   func(ctx context.Context, f *FileMetadata, name string) (interface{}, bool)
+	sectionsMissing map[string]struct{}
+	// retention, when set, keeps the file's tree loaded across decode passes
+	// (see LineInfoRetention) instead of discarding it after each use.
+	retention *LineInfoRetention
 }
 
 // lineInfoGroup is the line-info tree shared by the copies of one source file.
@@ -390,6 +399,17 @@ func (f *FileMetadata) SetLineInfoLoader(
 	f.lineInfo = &lineInfoState{loader: loader}
 }
 
+// SetLineInfoSectionLoader sets how a top-level section the line-info loader
+// leaves out is built on demand, from the file's OriginalData. Call it after
+// SetLineInfoLoader.
+func (f *FileMetadata) SetLineInfoSectionLoader(
+	loader func(ctx context.Context, fm *FileMetadata, name string) (interface{}, bool),
+) {
+	if f.lineInfo != nil {
+		f.lineInfo.sectionLoader = loader
+	}
+}
+
 // cloneLineInfoState returns a lazy state that shares loader and, with every
 // other copy of the same file, one line-info tree: module instances are copies
 // of their source file, and reparsing it per instance made line detection cost
@@ -549,6 +569,94 @@ func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
+	if st := f.lineInfo; st != nil && st.retention != nil {
+		// Kept through eval by the retention.
+		st.retention.forget(f)
+		f.dropRetainedLineInfo()
+	}
+}
+
+// LineInfoRetention is a scan's set of line-info trees kept loaded across
+// decode passes, for files whose tree is expensive to rebuild: a Terraform
+// plan's is, because rebuilding it means reading the whole plan again, once
+// for every rule with findings in it. It keeps the trees of the most recently
+// used files, up to its capacity, and drops the tree of the least recently
+// used one beyond it, so a scan over many plans holds a bounded number of
+// them. Size it for the scan's concurrent decoders (see utils.AvailableCPUs):
+// with at least as many entries as decoders, no decoder's tree is dropped
+// while it still decodes that file's findings.
+type LineInfoRetention struct {
+	mu       sync.Mutex
+	capacity int
+	files    []*FileMetadata // least recently used first
+}
+
+// NewLineInfoRetention returns a retention of at most capacity trees.
+func NewLineInfoRetention(capacity int) *LineInfoRetention {
+	return &LineInfoRetention{capacity: max(capacity, 1)}
+}
+
+// touch makes f the most recently used file and returns the files whose trees
+// it displaces.
+func (r *LineInfoRetention) touch(f *FileMetadata) (displaced []*FileMetadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if i := slices.Index(r.files, f); i >= 0 {
+		r.files = slices.Delete(r.files, i, i+1)
+	}
+	r.files = append(r.files, f)
+	if over := len(r.files) - r.capacity; over > 0 {
+		displaced = slices.Clone(r.files[:over])
+		r.files = slices.Delete(r.files, 0, over)
+	}
+	return displaced
+}
+
+func (r *LineInfoRetention) forget(f *FileMetadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if i := slices.Index(r.files, f); i >= 0 {
+		r.files = slices.Delete(r.files, i, i+1)
+	}
+}
+
+// SetLineInfoRetention keeps f's line-info tree loaded across decode passes,
+// within r. Call it after SetLineInfoLoader. A scan that exports line-info
+// documents must not use a retention: the export reads every file's tree.
+func (f *FileMetadata) SetLineInfoRetention(r *LineInfoRetention) {
+	if f.lineInfo != nil {
+		f.lineInfo.retention = r
+	}
+}
+
+// retainLineInfo records a use of f's tree in its retention and drops the
+// trees it displaces. Callers must not hold f's line-info lock: dropping takes
+// the other files', and holding both could deadlock.
+func (f *FileMetadata) retainLineInfo() {
+	st := f.lineInfo
+	if st == nil || st.retention == nil || st.group != nil {
+		return
+	}
+	for _, displaced := range st.retention.touch(f) {
+		if displaced != f {
+			displaced.dropRetainedLineInfo()
+		}
+	}
+}
+
+// dropRetainedLineInfo drops the tree of a file displaced from its retention.
+// It waits for the file's current use of the tree to finish, and keeps the
+// tree if the file was used again, and so retained again, in the meantime.
+func (f *FileMetadata) dropRetainedLineInfo() {
+	st := f.lineInfo
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	r := st.retention
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !slices.Contains(r.files, f) {
+		f.LineInfoDocument = nil
+	}
 }
 
 // DiscardLineInfoDocument drops a memoized line-info tree while keeping the
@@ -556,9 +664,11 @@ func (f *FileMetadata) ReleasePostEvalData() {
 // never lazily loaded: without a loader the tree could not be rebuilt, and
 // writing the field outside the state mutex would race concurrent readers
 // (UseLineInfoDocument reads it unlocked when no loader is configured).
+//
+// A file in a LineInfoRetention keeps its tree: the retention drops it.
 func (f *FileMetadata) DiscardLineInfoDocument() {
 	st := f.lineInfo
-	if st == nil {
+	if st == nil || st.retention != nil {
 		return
 	}
 	st.mu.Lock()
@@ -594,8 +704,12 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 		return nil
 	}
 	st.mu.Lock()
-	defer st.mu.Unlock()
-	return f.ensureLineInfoDocumentLocked(ctx)
+	err := f.ensureLineInfoDocumentLocked(ctx)
+	st.mu.Unlock()
+	if err == nil {
+		f.retainLineInfo()
+	}
+	return err
 }
 
 // UseLineInfoDocument loads line info (when configured) and runs fn against
@@ -603,6 +717,16 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 // serialize on the file. The decode loop owns discarding trees between
 // files (see DiscardLineInfoDocument); fn must not retain the map.
 func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[string]interface{}) error) error {
+	return f.UseLineInfoDocumentSections(ctx, nil, fn)
+}
+
+// UseLineInfoDocumentSections is UseLineInfoDocument with the given sections
+// of the tree built first, when its loader leaves them out (see
+// SetLineInfoSectionLoader): a section is built once, the first time a
+// finding needs it, and stays with the tree until it is dropped.
+func (f *FileMetadata) UseLineInfoDocumentSections(
+	ctx context.Context, sections []string, fn func(map[string]interface{}) error,
+) error {
 	st := f.lineInfo
 	if st == nil {
 		// No lazy loader configured: the document (if any) was populated at
@@ -610,17 +734,48 @@ func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[stri
 		doc := f.LineInfoDocument
 		return fn(doc)
 	}
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if err := f.ensureLineInfoDocumentLocked(ctx); err != nil {
-		return err
+	err := func() error {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if err := f.ensureLineInfoDocumentLocked(ctx); err != nil {
+			return err
+		}
+		f.ensureLineInfoSectionsLocked(ctx, sections)
+		if st.group != nil {
+			// The group owns the shared tree; this copy only holds it while in use,
+			// so discarding the group releases it.
+			defer func() { f.LineInfoDocument = nil }()
+		}
+		return fn(f.LineInfoDocument)
+	}()
+	f.retainLineInfo()
+	return err
+}
+
+// ensureLineInfoSectionsLocked builds the sections of the tree that are not
+// there yet. A tree shared by copies of a file is read-only, so none is added
+// to it.
+func (f *FileMetadata) ensureLineInfoSectionsLocked(ctx context.Context, sections []string) {
+	st := f.lineInfo
+	if st.sectionLoader == nil || st.group != nil || f.LineInfoDocument == nil {
+		return
 	}
-	if st.group != nil {
-		// The group owns the shared tree; this copy only holds it while in use,
-		// so discarding the group releases it.
-		defer func() { f.LineInfoDocument = nil }()
+	for _, name := range sections {
+		if _, built := f.LineInfoDocument[name]; built {
+			continue
+		}
+		if _, missing := st.sectionsMissing[name]; missing {
+			continue
+		}
+		if section, ok := st.sectionLoader(ctx, f, name); ok {
+			f.LineInfoDocument[name] = section
+			continue
+		}
+		if st.sectionsMissing == nil {
+			st.sectionsMissing = make(map[string]struct{})
+		}
+		st.sectionsMissing[name] = struct{}{}
 	}
-	return fn(f.LineInfoDocument)
 }
 
 func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {
