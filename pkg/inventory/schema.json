@@ -34,7 +34,10 @@
         "branch": { "type": "string" }
       }
     },
-    "status": { "enum": ["complete", "partial"] },
+    "status": {
+      "description": "complete: every file the scan considered was scanned and every source it needed was resolved, so every row the scan emits is present. It does not mean that every declared resource has a row: some constructs are not enumerated (see the scanner's known limits). partial: a file failed or a source was unresolved, so rows may be missing. A row without finding links is not proof of a clean resource.",
+      "enum": ["complete", "partial"]
+    },
     "platforms_scanned": {
       "type": "array",
       "items": { "type": "string" },
@@ -116,9 +119,15 @@
         },
         "resource_path": { "type": "string", "minLength": 1 },
         "platform": { "type": "string", "minLength": 1 },
-        "resource_type": { "type": "string" },
+        "resource_type": {
+          "description": "The type as the source declares it. For Ansible, the module as written in the task (ansible.builtin.shell), which a finding on it can name differently (shell): findings link to rows through finding_links, not through their type.",
+          "type": "string"
+        },
         "resource_name": { "type": "string" },
-        "provider": { "type": "string" },
+        "provider": {
+          "description": "Terraform: the provider's local name, from the resource's provider argument without its alias, else the prefix of its type. It is not a cloud vendor (a local name can be production) and the alias is not kept. CloudFormation: aws.",
+          "type": "string"
+        },
         "file": { "type": "string", "minLength": 1 },
         "line_start": { "$ref": "#/definitions/line" },
         "line_end": { "$ref": "#/definitions/line" },

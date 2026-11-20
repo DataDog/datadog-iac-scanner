@@ -21,7 +21,9 @@ const SchemaVersion = "1"
 // Scan status values.
 const (
 	// StatusComplete means every file the scan considered was parsed and every
-	// remote source it needed was resolved.
+	// remote source it needed was resolved, so every row the scan emits is
+	// present. It does not mean every declared resource has a row: some
+	// constructs are not enumerated (see the schema).
 	StatusComplete = "complete"
 	// StatusPartial means at least one file failed or one source could not be
 	// resolved, so some resources may be missing.
@@ -155,9 +157,14 @@ type Resource struct {
 
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`
+	// ResourceType is the type as the source declares it: for Ansible, the
+	// module as written (ansible.builtin.shell), which findings can name
+	// differently (shell).
 	ResourceType string `json:"resource_type"`
 	ResourceName string `json:"resource_name"`
-	Provider     string `json:"provider,omitempty"`
+	// Provider is, for Terraform, the provider's local name, not a cloud
+	// vendor, without its alias.
+	Provider string `json:"provider,omitempty"`
 
 	// File is relative to the repository root, with slash separators.
 	File        string `json:"file"`
