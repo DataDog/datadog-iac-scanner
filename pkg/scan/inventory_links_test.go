@@ -283,7 +283,7 @@ func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 }
 
-func TestInventoryPlayFindingsBelongToNoTask(t *testing.T) {
+func TestInventoryLinksAnsibleFindings(t *testing.T) {
 	play := syntheticQuery("test-ansible-become", "ansible", "Ansible", `	play := input.document[i].playbooks[_]
 	play.become == true
 	typ := "play"
@@ -303,6 +303,25 @@ func TestInventoryPlayFindingsBelongToNoTask(t *testing.T) {
 		require.Empty(t, inv.FindingLinks, "a play-level finding belongs to no task, however many the play has")
 		require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 	}
+
+	// Two tasks the scan reports as one finding, each named by its place in
+	// the document: the finding belongs to both.
+	shell := syntheticQuery("test-ansible-shell", "ansible", "Ansible", `	some j
+	task := input.document[i].playbooks[j]
+	task.shell
+	typ := "shell"
+	name := task.name
+	key := sprintf("playbooks.%d.shell", [j])`)
+	root := writeRepo(t, map[string]string{
+		"roles/web/tasks/main.yml": "- name: Run\n  shell: echo one\n- name: Run\n  shell: echo two\n",
+	})
+	params := documentParams(root)
+	params.Platform = []string{"Ansible"}
+	inv, fingerprints := scanLinks(t, params, shell)
+	require.Len(t, fingerprints, 1, "the scan keeps one finding for the two tasks")
+	require.ElementsMatch(t, []string{"roles/web/tasks/main.yml|tasks[0]", "roles/web/tasks/main.yml|tasks[1]"},
+		linkedRefs(inv)[fingerprints[0]], "each task its search key names")
+	require.Zero(t, inv.Stats.FindingsUnlinked)
 }
 
 func TestInventoryDeduplicatedFindingsKeepEveryResource(t *testing.T) {

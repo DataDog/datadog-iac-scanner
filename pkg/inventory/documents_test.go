@@ -166,3 +166,16 @@ func TestCommentStart(t *testing.T) {
 		require.Equal(t, want, string(runes[:commentStart(runes)]), written)
 	}
 }
+
+func TestAnsibleSearchKeyPath(t *testing.T) {
+	for path, want := range map[string]string{
+		"tasks[2]":                    "playbooks.2",
+		"tasks[2].block[0]":           "playbooks.2.block.0",
+		"plays[0].tasks[1]":           "playbooks.0.tasks.1",
+		"plays[1].handlers[0]":        "playbooks.1.handlers.0",
+		"plays[0].pre_tasks[3]":       "playbooks.0.pre_tasks.3",
+		"plays[0].tasks[1].rescue[2]": "playbooks.0.tasks.1.rescue.2",
+	} {
+		require.Equal(t, want, ansibleSearchKeyPath(path), path)
+	}
+}

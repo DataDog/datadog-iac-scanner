@@ -330,8 +330,24 @@ func (e *documentEnumerator) addAnsibleTasks(
 			LineStart:    span.start,
 			LineEnd:      span.end,
 			Completeness: CompletenessComplete,
+			// A search key can name the task by its place in the document.
+			searchKeyPrefix: ansibleSearchKeyPath(path),
 		})
 	}
+}
+
+// ansibleSearchKeyPath writes a task's path as a search key names its place
+// in the parsed document, which holds the plays, or a task file's tasks,
+// under playbooks: plays[0].tasks[1].block[0] is playbooks.0.tasks.1.block.0
+// and, in a task file, tasks[2] is playbooks.2.
+func ansibleSearchKeyPath(path string) string {
+	for _, head := range []string{"plays", ansibleTasks} {
+		if rest, ok := strings.CutPrefix(path, head+"["); ok {
+			path = "playbooks[" + rest
+			break
+		}
+	}
+	return strings.NewReplacer("[", ".", "]", "").Replace(path)
 }
 
 // addAnsibleBlock lists the tasks of a block and reports whether task is one.
