@@ -252,7 +252,14 @@ func NewClient(ctx context.Context, params *Parameters, customPrint *consolePrin
 // HTTP server; the CLI uses PerformScan (which additionally produces reports).
 func (c *Client) Scan(ctx context.Context) (*Results, error) {
 	c.ScanStartTime = time.Now()
-	return c.executeScan(ctx)
+	result, err := c.executeScan(ctx)
+	if err != nil {
+		return result, err
+	}
+	if result != nil && result.failedCoverage.Len() > 0 {
+		return result, &IncompleteScanError{failures: result.failedCoverage}
+	}
+	return result, nil
 }
 
 // PerformScan executes executeScan and postScan
@@ -273,12 +280,15 @@ func (c *Client) PerformScan(ctx context.Context) (ScanMetadata, error) {
 
 	if postScanError != nil {
 		contextLogger.Err(postScanError)
-		return ScanMetadata{}, postScanError
+		return scanMetadata, postScanError
 	}
 
 	peakBytes, peakPhase := watcher.Peak()
 	scanMetadata.PeakRSSBytes = peakBytes
 	scanMetadata.PeakRSSPhase = peakPhase
 
+	if scanResults != nil && scanResults.failedCoverage.Len() > 0 {
+		return scanMetadata, &IncompleteScanError{failures: scanResults.failedCoverage}
+	}
 	return scanMetadata, nil
 }

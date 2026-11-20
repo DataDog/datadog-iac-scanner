@@ -20,12 +20,12 @@ func PrintCodeClimateReport(ctx context.Context, path, filename string, body int
 	}
 
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "codeclimate")
 		if err != nil {
 			return err
 		}
 
-		body = reportModel.BuildCodeClimateReport(&summary)
+		body = reportModel.BuildCodeClimateReport(summary.Queries)
 	}
 
 	return ExportJSONReport(ctx, path, filename, body)

@@ -102,3 +102,39 @@ func TestPrintJSONReportDoesNotMutateSummary(t *testing.T) {
 	require.Equal(t, "description", query.CISDescriptionText)
 	require.Equal(t, "rationale", query.CISRationaleText)
 }
+
+// Every direct report entry point owns its capability check before creating an
+// artifact. Findings-only schemas cannot truthfully encode failed coverage.
+func TestEvaluationReportCapabilities(t *testing.T) {
+	failures := model.NewEvaluationFailures([]model.EvaluationFailure{{
+		Scope:       model.EvaluationScope{Kind: "inspection", Platforms: []string{"Terraform"}},
+		Diagnostics: []model.EvaluationDiagnostic{{Summary: "Configuration unavailable"}},
+	}})
+	body, err := json.Marshal(test.SummaryMock)
+	require.NoError(t, err)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(body, &wire))
+	wire["evaluation"] = failures.Report()
+	body, err = json.Marshal(wire)
+	require.NoError(t, err)
+	var summary model.Summary
+	require.NoError(t, json.Unmarshal(body, &summary))
+	formats := map[string]func(context.Context, string, string, interface{}, *model.SCIInfo) error{
+		"simple-json": PrintSimpleJSONReport, "junit": PrintJUnitReport,
+		"html": PrintHTMLReport, "pdf": PrintPdfReport, "csv": PrintCSVReport,
+		"asff": PrintASFFReport, "codeclimate": PrintCodeClimateReport,
+		"cyclonedx": PrintCycloneDxReport, "glsast": PrintGitlabSASTReport,
+		"sonarqube": PrintSonarQubeReport,
+	}
+	for format, generate := range formats {
+		t.Run(format, func(t *testing.T) {
+			dir := t.TempDir()
+			var unsupported *UnsupportedEvaluationFormatError
+			require.ErrorAs(t, generate(t.Context(), dir, "failed", &summary, &model.SCIInfo{}), &unsupported)
+			require.Equal(t, []string{format}, unsupported.Formats)
+			files, readErr := os.ReadDir(dir)
+			require.NoError(t, readErr)
+			require.Empty(t, files, "a rejected report must not create an apparently successful artifact")
+		})
+	}
+}

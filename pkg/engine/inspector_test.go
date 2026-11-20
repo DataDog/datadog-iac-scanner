@@ -2805,7 +2805,8 @@ DatadogPolicy contains result if {
 }`}
 		inspector := newTestInspector(t, inspectorOpts{queries: []model.QueryMetadata{query}, repoPath: root, vb: DefaultVulnerabilityBuilder})
 		inspector.fsys = &moduleProducerFailureFS{FS: vfs.DiskFS{}, dir: root, failure: "document inputs must not acquire source"}
-		findings, err := inspector.InspectDocuments(context.Background(), "documents", files, []string{"terraform"})
+		findingsInspection, err := inspector.InspectDocuments(context.Background(), "documents", files, []string{"terraform"})
+		findings := findingsInspection.Findings
 		require.NoError(t, err)
 		require.Empty(t, inspector.GetFailedQueries())
 		require.Len(t, findings, 2, "the predicate requires both supplied documents in one query input")
@@ -2818,7 +2819,8 @@ DatadogPolicy contains result if {
 		}
 		require.Equal(t, map[string]bool{"first.tf": true, "second.tf": true}, sources)
 		// The source frontend still acquires its configuration and surfaces failure.
-		findings, err = inspector.Inspect(context.Background(), "configuration", files, []string{"terraform"})
+		findingsInspection, err = inspector.Inspect(context.Background(), "configuration", files, []string{"terraform"})
+		findings = findingsInspection.Findings
 		require.ErrorIs(t, err, errModuleEvaluationFailed)
 		require.Empty(t, findings)
 	})
@@ -2831,11 +2833,14 @@ DatadogPolicy contains result if {
 DatadogPolicy contains {`}}, repoPath: root, vb: DefaultVulnerabilityBuilder})
 			files := parseTerraform(t, path)
 			var findings []model.Vulnerability
+			var findingsInspection InspectionResult
 			var err error
 			if documents {
-				findings, err = inspector.InspectDocuments(context.Background(), "documents", files, []string{"terraform"})
+				findingsInspection, err = inspector.InspectDocuments(context.Background(), "documents", files, []string{"terraform"})
+				findings = findingsInspection.Findings
 			} else {
-				findings, err = inspector.Inspect(context.Background(), "configuration", files, []string{"terraform"})
+				findingsInspection, err = inspector.Inspect(context.Background(), "configuration", files, []string{"terraform"})
+				findings = findingsInspection.Findings
 			}
 			require.NoError(t, err)
 			require.Empty(t, findings)
@@ -2846,7 +2851,8 @@ DatadogPolicy contains {`}}, repoPath: root, vb: DefaultVulnerabilityBuilder})
 		inspector := newTestInspector(t, inspectorOpts{})
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		findings, err := inspector.InspectDocuments(ctx, "canceled", nil, []string{"terraform"})
+		findingsInspection, err := inspector.InspectDocuments(ctx, "canceled", nil, []string{"terraform"})
+		findings := findingsInspection.Findings
 		require.ErrorIs(t, err, context.Canceled)
 		require.Empty(t, findings)
 	})

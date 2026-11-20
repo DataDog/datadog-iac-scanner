@@ -69,7 +69,8 @@ type Compliance struct {
 }
 
 // BuildASFF builds the ASFF report
-func BuildASFF(ctx context.Context, summary *model.Summary) []AwsSecurityFinding {
+// It projects findings only; the report frontend owns evaluation-status capability checks.
+func BuildASFF(ctx context.Context, queries model.QueryResultSlice) []AwsSecurityFinding {
 	contextLogger := logger.FromContext(ctx)
 	findings := []AwsSecurityFinding{}
 
@@ -80,8 +81,8 @@ func BuildASFF(ctx context.Context, summary *model.Summary) []AwsSecurityFinding
 		contextLogger.Debug().Msg(fmt.Sprintf("failed to get AWS account information: check your environment variables (%s)", variables))
 	}
 
-	for idx := range summary.Queries {
-		query := summary.Queries[idx]
+	for idx := range queries {
+		query := queries[idx]
 
 		findingPerQuery := awsAccountInfo.getFindingsPerQuery(&query)
 		findings = append(findings, findingPerQuery...)

@@ -56,7 +56,7 @@ func TestFindingIdentity_EqualIdentityMeansEqualCreateSummaryFingerprint(t *test
 
 	require.Equal(t, FindingIdentity(&a), FindingIdentity(&b), "precondition: the two findings share an identity")
 
-	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{a, b}, "scan", nil, "/repo", SCIInfo{})
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{a, b}, "scan", nil, "/repo", SCIInfo{}, EvaluationFailures{})
 	require.Len(t, summary.Queries, 1)
 	files := summary.Queries[0].Files
 	require.Len(t, files, 2, "CreateSummary keeps every finding it is given; identity reduction is storage's job")
@@ -80,7 +80,7 @@ func TestFindingIdentity_IgnoresLegacyQueryIDs(t *testing.T) {
 	require.Equal(t, FindingIdentity(&before), FindingIdentity(&withLegacyIDs),
 		"legacy_ids entries must not enter the finding identity")
 
-	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{before, withLegacyIDs}, "scan", nil, "/repo", SCIInfo{})
+	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{before, withLegacyIDs}, "scan", nil, "/repo", SCIInfo{}, EvaluationFailures{})
 	require.Len(t, summary.Queries, 1)
 	files := summary.Queries[0].Files
 	require.Len(t, files, 2)

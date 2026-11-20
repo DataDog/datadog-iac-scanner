@@ -123,10 +123,10 @@ func match(fileNames []model.VulnerableFile, fileName string) bool {
 	return false
 }
 
-func getAllFiles(summary *model.Summary) []model.VulnerableFile {
+func getAllFiles(queries model.QueryResultSlice) []model.VulnerableFile {
 	var fileNames []model.VulnerableFile
-	for i := range summary.Queries {
-		files := summary.Queries[i].Files
+	for i := range queries {
+		files := queries[i].Files
 		for idx := range files {
 			if !match(fileNames, files[idx].FileName) {
 				fileNames = append(fileNames, files[idx])
@@ -205,10 +205,10 @@ func getVulnerabilitiesByFile(query *model.QueryResult, fileName, purl string) [
 	return vulns
 }
 
-func getVulnerabilities(fileName, purl string, summary *model.Summary) []Vulnerability {
+func getVulnerabilities(fileName, purl string, queries model.QueryResultSlice) []Vulnerability {
 	vulns := make([]Vulnerability, 0)
-	for i := range summary.Queries {
-		query := summary.Queries[i]
+	for i := range queries {
+		query := queries[i]
 		vulns = append(vulns, getVulnerabilitiesByFile(&query, fileName, purl)...)
 	}
 	return vulns
@@ -237,14 +237,15 @@ func InitCycloneDxReport() *CycloneDxReport {
 }
 
 // BuildCycloneDxReport builds the CycloneDX report
-func BuildCycloneDxReport(ctx context.Context, summary *model.Summary, filePaths map[string]string) *CycloneDxReport {
+// It projects findings only; the report frontend owns evaluation-status capability checks.
+func BuildCycloneDxReport(ctx context.Context, queries model.QueryResultSlice, filePaths map[string]string) *CycloneDxReport {
 	contextLogger := logger.FromContext(ctx)
 	var component Component
 	var vuln []Vulnerability
 	var version, sha, purl, filePath string
 
 	bom := InitCycloneDxReport()
-	files := getAllFiles(summary)
+	files := getAllFiles(queries)
 
 	for i := range files {
 		filePath = strings.ReplaceAll(files[i].FileName, "\\", "/")
@@ -258,7 +259,7 @@ func BuildCycloneDxReport(ctx context.Context, summary *model.Summary, filePaths
 
 		version = fmt.Sprintf("0.0.0-%s", sha[0:12])
 		purl = getPurl(filePath, version)
-		vuln = getVulnerabilities(files[i].FileName, purl, summary)
+		vuln = getVulnerabilities(files[i].FileName, purl, queries)
 
 		component = Component{
 			Type:    "file",

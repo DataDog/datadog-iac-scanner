@@ -100,7 +100,8 @@ resource "aws_s3_bucket" "plain" {
 		repoPath: root,
 		vb:       DefaultVulnerabilityBuilder,
 	})
-	shared, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	sharedInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	shared := sharedInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries(), "no query should fail")
 
@@ -159,7 +160,8 @@ resource "aws_s3_bucket" "b" {
 		repoPath: root,
 		vb:       DefaultVulnerabilityBuilder,
 	})
-	shared, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	sharedInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	shared := sharedInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries(), "no query should fail")
 

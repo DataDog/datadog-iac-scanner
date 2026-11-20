@@ -83,9 +83,10 @@ func NewSonarQubeRepory() *SonarQubeReportBuilder {
 }
 
 // BuildReport builds the SonarQubeReport from the given QueryResults
-func (s *SonarQubeReportBuilder) BuildReport(summary *model.Summary) *SonarQubeReport {
-	for i := range summary.Queries {
-		s.buildIssue(&summary.Queries[i])
+// It projects findings only; the report frontend owns evaluation-status capability checks.
+func (s *SonarQubeReportBuilder) BuildReport(queries model.QueryResultSlice) *SonarQubeReport {
+	for i := range queries {
+		s.buildIssue(&queries[i])
 	}
 	return s.report
 }

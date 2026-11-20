@@ -31,7 +31,7 @@ func PrintSimpleJSONReport(ctx context.Context, path, filename string, body inte
 
 	findings := []SimpleJSONFinding{}
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "simple-json")
 		if err != nil {
 			return err
 		}

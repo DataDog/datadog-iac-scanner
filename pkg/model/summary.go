@@ -105,7 +105,8 @@ type Times struct {
 
 // Summary is a report of a single scan
 type Summary struct {
-	Version string `json:"kics_version,omitempty"`
+	failedCoverage EvaluationFailures
+	Version        string `json:"kics_version,omitempty"`
 	Counters
 	SeveritySummary
 	Times
@@ -317,7 +318,8 @@ func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObje
 //
 //nolint:gocritic
 func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vulnerability,
-	scanID string, pathExtractionMap map[string]ExtractedPathObject, repoDir string, sciInfo SCIInfo) Summary {
+	scanID string, pathExtractionMap map[string]ExtractedPathObject, repoDir string, sciInfo SCIInfo,
+	failedCoverage EvaluationFailures) Summary {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("model.CreateSummary()")
 	q := make(map[string]QueryResult, len(vulnerabilities))
@@ -450,6 +452,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 	severitySummary.SeverityCounters = sevs
 
 	return Summary{
+		failedCoverage:  failedCoverage,
 		Bom:             materials,
 		Counters:        counters,
 		Queries:         queries,

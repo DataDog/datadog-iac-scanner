@@ -140,7 +140,9 @@ resource "aws_s3_bucket" "this" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries(), "no query should fail")
 
@@ -213,7 +215,9 @@ resource "google_sql_database_instance" "this" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Len(t, vulns, 1)
 	require.Equal(t, modPath, vulns[0].FileName)
@@ -332,7 +336,9 @@ resource "aws_s3_bucket" "this" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -419,7 +425,9 @@ resource "aws_s3_bucket" "this" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -494,7 +502,9 @@ resource "aws_s3_bucket" "this" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -589,7 +599,9 @@ resource "aws_s3_bucket" "this" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -687,7 +699,9 @@ resource "aws_instance" "app" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -736,7 +750,9 @@ resource "aws_instance" "app" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	return len(vulns)
 }
@@ -793,7 +809,9 @@ resource "aws_instance" "app" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -862,7 +880,9 @@ resource "aws_instance" "server" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -926,7 +946,9 @@ resource "aws_s3_bucket" "replica" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 
@@ -968,7 +990,9 @@ resource "aws_s3_bucket" "this" {
 		vb:         DefaultVulnerabilityBuilder,
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, numQueries)
@@ -1014,7 +1038,9 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.NotEmpty(t, vulns, "rule should fire on resolved module resource")
@@ -1032,16 +1058,23 @@ func TestInspectorModuleProducerOutcomes(t *testing.T) {
 			rootEvalWorkers = workers
 			defer func() { rootEvalWorkers = previous }()
 			for _, test := range []struct {
-				name     string
-				failure  any
-				canceled bool
-				longPeer bool
+				name                                         string
+				failure                                      any
+				canceled, longPeer, child, first, expression bool
+				override                                     string
 			}{
-				{"healthy", nil, false, false},
-				{"canceled", nil, true, false},
-				{"opaque string failure", "private-source-content-must-not-be-exposed", false, false},
-				{"opaque error failure", errors.New("private-source-content-must-not-be-exposed"), false, false},
-				{"fatal cancels uncapped peer", "private-source-content-must-not-be-exposed", false, true},
+				{name: "healthy"},
+				{name: "unrelated expression diagnostic", expression: true},
+				{name: "canceled", canceled: true},
+				{name: "opaque string failure", failure: "private-source-content-must-not-be-exposed"},
+				{name: "opaque error failure", failure: errors.New("private-source-content-must-not-be-exposed")},
+				{name: "fatal cancels uncapped peer", failure: "private-source-content-must-not-be-exposed", longPeer: true},
+				{name: "selected HCL override unavailable", override: "unavailable"},
+				{name: "malformed selected HCL override", override: "hcl"},
+				{name: "malformed selected JSON override", override: "json"},
+				{name: "unavailable child override", override: "hcl", child: true},
+				{name: "override failure in first root", override: "hcl", first: true},
+				{name: "unavailable override cancels uncapped peer", override: "unavailable", longPeer: true},
 			} {
 				if test.longPeer && workers == 1 {
 					continue
@@ -1049,6 +1082,10 @@ func TestInspectorModuleProducerOutcomes(t *testing.T) {
 				t.Run(test.name, func(t *testing.T) {
 					root := t.TempDir()
 					var files model.FileMetadatas
+					faultRoot := "b"
+					if test.first {
+						faultRoot = "a"
+					}
 					for _, name := range []string{"a", "b"} {
 						path := filepath.Join(root, name, "main.tf")
 						require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
@@ -1059,13 +1096,43 @@ count=1000000000000000
 acl="public-read"
 }`
 						}
+						if name == faultRoot && test.child {
+							source += "\nmodule \"child\" {source=\"./child\"}"
+						}
+						if name == faultRoot && test.expression {
+							source += "\noutput \"invalid\" {value=tonumber(\"invalid\")}"
+						}
 						require.NoError(t, os.WriteFile(path, []byte(source), 0600))
 						files = append(files, parseTerraform(t, path)...)
 					}
+					var overridePath string
+					if test.override != "" {
+						dir := filepath.Join(root, faultRoot)
+						if test.child {
+							dir = filepath.Join(dir, "child")
+							require.NoError(t, os.Mkdir(dir, 0700))
+							require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(`output "acl" {value="private"}`), 0600))
+						}
+						overridePath = filepath.Join(dir, "invalid_override.tf")
+						content := `locals {`
+						if test.override == "json" {
+							overridePath += ".json"
+							content = `{"locals":`
+						}
+						if test.override == "unavailable" {
+							content = `locals {safe=true}`
+						}
+						require.NoError(t, os.WriteFile(overridePath, []byte(content), 0600))
+					}
 					queries := []model.QueryMetadata{{Query: "acl-rule", Content: aclRule, InputData: "{}", Platform: "terraform", Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1}}
 					inspector := newTestInspector(t, inspectorOpts{queries: queries, repoPath: root, vb: DefaultVulnerabilityBuilder})
-					if test.failure != nil {
-						fsys := &moduleProducerFailureFS{FS: vfs.DiskFS{}, dir: filepath.Join(root, "b"), failure: test.failure}
+					if test.failure != nil || test.override == "unavailable" {
+						fsys := &moduleProducerFailureFS{FS: vfs.DiskFS{}, failure: test.failure}
+						if test.failure != nil {
+							fsys.dir = filepath.Join(root, faultRoot)
+						} else {
+							fsys.unavailable = overridePath
+						}
 						if test.longPeer {
 							fsys.peerRead = make(chan struct{})
 							fsys.peerDir = filepath.Join(root, "a")
@@ -1087,8 +1154,33 @@ acl="public-read"
 						ctx, cancel = context.WithCancel(ctx)
 						cancel()
 					}
-					findings, err := inspector.Inspect(ctx, "producer-outcomes", files, []string{"terraform"})
+					inspection, err := inspector.Inspect(ctx, "producer-outcomes", files, []string{"terraform"})
+					findings := inspection.Findings
 					switch {
+					case test.override != "":
+						var incomplete *IncompleteInspectionError
+						require.ErrorAs(t, err, &incomplete)
+						require.NotErrorIs(t, err, errModuleEvaluationFailed)
+						require.NoError(t, ctx.Err())
+						require.Empty(t, findings)
+						failures := inspection.FailedCoverage()
+						require.Equal(t, 1, failures.Len())
+						for _, value := range []any{inspection, &inspection, failures, &failures} {
+							_, marshalErr := json.Marshal(value)
+							require.Error(t, marshalErr, "implicit JSON must not erase failure")
+						}
+						snapshot := failures.Snapshot()
+						require.Equal(t, "inspection", snapshot[0].Scope.Kind)
+						require.Equal(t, []string{"terraform"}, snapshot[0].Scope.Platforms)
+						require.NotEmpty(t, snapshot[0].Diagnostics)
+						require.Equal(t, overridePath, snapshot[0].Diagnostics[0].Location.Filename)
+						if test.child {
+							require.Equal(t, "module.child", snapshot[0].Diagnostics[0].ModuleAddress)
+						}
+						snapshot[0].Scope.Platforms[0] = "mutated"
+						snapshot[0].Diagnostics = nil
+						require.NotEmpty(t, incomplete.FailedCoverage().Snapshot()[0].Diagnostics)
+						require.Equal(t, []string{"terraform"}, incomplete.FailedCoverage().Snapshot()[0].Scope.Platforms)
 					case test.failure != nil:
 						require.ErrorIs(t, err, errModuleEvaluationFailed)
 						if test.longPeer {
@@ -1103,8 +1195,16 @@ acl="public-read"
 					default:
 						require.NoError(t, err)
 						require.Len(t, findings, 2)
+						type plain InspectionResult
+						expectedJSON, marshalErr := json.Marshal(plain(inspection))
+						require.NoError(t, marshalErr)
+						for _, value := range []any{inspection, &inspection} {
+							encoded, marshalErr := json.Marshal(value)
+							require.NoError(t, marshalErr)
+							require.JSONEq(t, string(expectedJSON), string(encoded))
+						}
 					}
-					if test.failure != nil || test.canceled {
+					if test.failure != nil || test.canceled || test.override != "" {
 						after, marshalErr := json.Marshal([]model.Document{files[0].Document, files[1].Document})
 						require.NoError(t, marshalErr)
 						require.JSONEq(t, string(before), string(after))
@@ -1117,11 +1217,12 @@ acl="public-read"
 
 type moduleProducerFailureFS struct {
 	vfs.FS
-	dir      string
-	failure  any
-	peerRead chan struct{}
-	peerDir  string
-	notified sync.Once
+	dir         string
+	unavailable string
+	failure     any
+	peerRead    chan struct{}
+	peerDir     string
+	notified    sync.Once
 }
 
 func (f *moduleProducerFailureFS) ReadDir(dir string) ([]fs.DirEntry, error) {
@@ -1135,6 +1236,12 @@ func (f *moduleProducerFailureFS) ReadDir(dir string) ([]fs.DirEntry, error) {
 }
 
 func (f *moduleProducerFailureFS) ReadFile(path string) ([]byte, error) {
+	if filepath.Clean(path) == filepath.Clean(f.unavailable) {
+		if f.peerRead != nil {
+			<-f.peerRead
+		}
+		return nil, fs.ErrPermission
+	}
 	if f.peerRead != nil && filepath.Dir(path) == f.peerDir {
 		f.notified.Do(func() { close(f.peerRead) })
 	}

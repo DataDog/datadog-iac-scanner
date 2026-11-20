@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacplatforms "github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/DataDog/datadog-iac-scanner/pkg/report"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	git "github.com/go-git/go-git/v5"
 	cli "github.com/urfave/cli/v3"
@@ -412,8 +413,13 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	}
 
 	metadata, err := console.ExecuteScan(ctx, params, opts...)
+	scanFailure := err
 	if err != nil {
-		return errorWithExitCode(fmt.Errorf("error during IaC scan: %w", err), constants.EngineErrorCode)
+		_, incomplete := err.(*scan.IncompleteScanError)
+		_, unsupported := err.(*report.UnsupportedEvaluationFormatError)
+		if !incomplete && (!unsupported || metadata.FailedCoverage().Len() == 0) {
+			return errorWithExitCode(fmt.Errorf("error during IaC scan: %w", err), constants.EngineErrorCode)
+		}
 	}
 
 	reportResult(repoDir, params.OutputPath, params.OutputName, &metadata)
@@ -423,6 +429,9 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("error saving the metadata JSON: %w", err)
 	}
 
+	if scanFailure != nil {
+		return errorWithExitCode(fmt.Errorf("incomplete IaC scan: %w", scanFailure), constants.EngineErrorCode)
+	}
 	return getExitCode(&metadata)
 }
 

@@ -190,10 +190,20 @@ type sarifTaxonomy struct {
 }
 
 // SarifRun - sarifRun is a component of the SARIF report
+type sarifNotification struct {
+	Level      string          `json:"level"`
+	Message    sarifMessage    `json:"message"`
+	Properties sarifProperties `json:"properties,omitempty"`
+}
+type sarifInvocation struct {
+	ExecutionSuccessful        bool                `json:"executionSuccessful"`
+	ToolExecutionNotifications []sarifNotification `json:"toolExecutionNotifications,omitempty"`
+}
 type SarifRun struct {
-	Tool       sarifTool       `json:"tool"`
-	Results    []sarifResult   `json:"results"`
-	Taxonomies []sarifTaxonomy `json:"taxonomies,omitempty"`
+	Invocations []sarifInvocation `json:"invocations,omitempty"`
+	Tool        sarifTool         `json:"tool"`
+	Results     []sarifResult     `json:"results"`
+	Taxonomies  []sarifTaxonomy   `json:"taxonomies,omitempty"`
 }
 
 // SarifReport represents a usable sarif report reference
@@ -677,6 +687,19 @@ func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diff
 	contextLogger := logger.FromContext(ctx)
 	if len(sr.Runs) != 1 {
 		return errors.New("sarifReport must have exactly one run")
+	}
+	if summary.FailedCoverage().Len() > 0 {
+		invocation := sarifInvocation{ExecutionSuccessful: false}
+		for _, failure := range summary.FailedCoverage().Snapshot() {
+			for _, diagnostic := range failure.Diagnostics {
+				text := diagnostic.Message()
+				invocation.ToolExecutionNotifications = append(invocation.ToolExecutionNotifications, sarifNotification{
+					Level: "error", Message: sarifMessage{Text: text},
+					Properties: sarifProperties{"evaluation_scope": failure.Scope},
+				})
+			}
+		}
+		sr.Runs[0].Invocations = []sarifInvocation{invocation}
 	}
 	tagsToAppend := []string{}
 	executionTimeTag := GetScanDurationTag(*summary)

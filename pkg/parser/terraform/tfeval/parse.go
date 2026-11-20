@@ -116,7 +116,7 @@ func parseDir(
 func (p *dirParse) nativeConfigurationFailure() error {
 	for _, diagnostic := range p.diagnostics {
 		if tfpath.IsOverrideFile(diagnostic.Subject.Filename) {
-			return &moduleConfigurationFailure{diagnostics: p.diagnostics}
+			return &ConfigurationError{diagnostics: p.diagnostics}
 		}
 	}
 	return nil

@@ -50,7 +50,7 @@ func TestCreateSummary_ReportedFindingsKeepTheirIdentity(t *testing.T) {
 	summary := CreateSummary(context.Background(), Counters{}, []Vulnerability{
 		finding("/repo/web/charts/pkg/templates/deploy.yaml"),
 		finding("/repo/web/charts/cache/templates/deploy.yaml"),
-	}, "scan", nil, "/repo", SCIInfo{})
+	}, "scan", nil, "/repo", SCIInfo{}, EvaluationFailures{})
 
 	files := summary.Queries[0].Files
 	require.Len(t, files, 2)
@@ -98,7 +98,7 @@ func TestCreateSummary(t *testing.T) {
 
 	ctx := context.Background()
 	t.Run("create_summary_empty", func(t *testing.T) {
-		summary := CreateSummary(ctx, counter, []Vulnerability{}, "scanID", pathExtractionMap, "", SCIInfo{})
+		summary := CreateSummary(ctx, counter, []Vulnerability{}, "scanID", pathExtractionMap, "", SCIInfo{}, EvaluationFailures{})
 		require.Equal(t, summary, Summary{
 			Counters: counter,
 			SeveritySummary: SeveritySummary{
@@ -122,7 +122,7 @@ func TestCreateSummary(t *testing.T) {
 	t.Run("create_summary", func(t *testing.T) {
 		filePaths := make(map[string]string)
 		filePaths["fileName"] = "fileName"
-		summary := CreateSummary(ctx, counter, vulnerabilities, "scanID", pathExtractionMap, "", SCIInfo{})
+		summary := CreateSummary(ctx, counter, vulnerabilities, "scanID", pathExtractionMap, "", SCIInfo{}, EvaluationFailures{})
 		require.Equal(t, summary, Summary{
 			Counters: counter,
 			SeveritySummary: SeveritySummary{

@@ -112,7 +112,20 @@ func ExportJSONReport(ctx context.Context, path, filename string, body interface
 	return json.NewEncoder(f).Encode(body)
 }
 
-func getSummary(body interface{}) (sum model.Summary, err error) {
+// UnsupportedEvaluationFormatError prevents a status-incapable report from
+// presenting failed evaluation as an ordinary findings-only result.
+type UnsupportedEvaluationFormatError struct{ Formats []string }
+
+func (e *UnsupportedEvaluationFormatError) Error() string {
+	return fmt.Sprintf("report formats %s cannot represent failed evaluation; use json or sarif", strings.Join(e.Formats, ", "))
+}
+
+func getSummary(body interface{}, format string) (sum model.Summary, err error) {
+	defer func() {
+		if err == nil && sum.FailedCoverage().Len() > 0 && format != "json" && format != "sarif" {
+			err = &UnsupportedEvaluationFormatError{Formats: []string{format}}
+		}
+	}()
 	switch summary := body.(type) {
 	case model.Summary:
 		return summary, nil

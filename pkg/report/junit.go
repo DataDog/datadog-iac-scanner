@@ -23,7 +23,7 @@ func PrintJUnitReport(ctx context.Context, path, filename string, body interface
 
 	if body != "" {
 		var err error
-		summary, err = getSummary(body)
+		summary, err = getSummary(body, "junit")
 		if err != nil {
 			return err
 		}

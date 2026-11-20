@@ -27,11 +27,11 @@ func PrepareAndScan(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 	services serviceSlice,
-) error {
+) (model.EvaluationFailures, error) {
 	// A config or platform filter can leave no service, which is an empty scan,
 	// not a mix of providers.
 	if len(services) == 0 {
-		return nil
+		return model.EvaluationFailures{}, nil
 	}
 	metrics.Metric.Start("prepare_sources")
 
@@ -41,7 +41,7 @@ func PrepareAndScan(
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
-			return err
+			return model.EvaluationFailures{}, err
 		}
 		// The cached file bytes were only needed during the shared walk; release them
 		// before eval so they are not held through the query phase.
@@ -57,7 +57,7 @@ func PrepareAndScan(
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
-			return err
+			return model.EvaluationFailures{}, err
 		}
 		releasePrepareState(services)
 		return StartScan(ctx, scanID, services)
@@ -65,7 +65,7 @@ func PrepareAndScan(
 
 	metrics.Metric.Stop()
 	memwatch.Sample(ctx, memwatch.PhasePrepareSources)
-	return errors.New("services must share one source provider")
+	return model.EvaluationFailures{}, errors.New("services must share one source provider")
 }
 
 // releasePrepareState drops the dedup state that only the prepare phase uses,
@@ -104,21 +104,16 @@ func liveHeapAfterGC() uint64 {
 }
 
 // StartScan will run concurrent scans by parser
-func StartScan(ctx context.Context, scanID string, services serviceSlice) error {
+func StartScan(ctx context.Context, scanID string, services serviceSlice) (model.EvaluationFailures, error) {
 	defer metrics.Metric.Stop()
 	defer memwatch.Sample(ctx, memwatch.PhaseStartScan)
 	metrics.Metric.Start("start_scan")
+	if err := ctx.Err(); err != nil {
+		return model.EvaluationFailures{}, err
+	}
 	contextLogger := logger.FromContext(ctx)
-	var wg sync.WaitGroup
-	wgDone := make(chan bool)
-	errCh := make(chan error)
-
 	contextLogger.Info().Msgf("Starting scan with id: %s", scanID)
-
-	total := services.GetQueriesLength()
-	contextLogger.Info().Msgf("Got %d queries", total)
-
-	// GC pressure relief for large scans, gated on measured live heap.
+	contextLogger.Info().Msgf("Got %d queries", services.GetQueriesLength())
 	if services.TotalFiles() > evalGcFileThreshold && liveHeapAfterGC() > evalGcHeapBytes {
 		previous := debug.SetGCPercent(reducedEvalGCPercent)
 		defer debug.SetGCPercent(previous)
@@ -126,28 +121,76 @@ func StartScan(ctx context.Context, scanID string, services serviceSlice) error 
 			service.Inspector.SetEvalGcRelief(true)
 		}
 	}
-
-	workersCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	for _, service := range services {
-		wg.Add(1)
-		go service.StartScan(workersCtx, scanID, errCh, &wg)
+	type serviceOutcome struct {
+		failures model.EvaluationFailures
+		fatal    error
 	}
+	outcomes := make(chan serviceOutcome, len(services))
+	workersCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	var joined sync.WaitGroup
+	for _, service := range services {
+		joined.Add(1)
+		go func() {
+			defer joined.Done()
+			failures, err := service.StartScan(workersCtx, scanID)
+			outcomes <- serviceOutcome{failures: failures, fatal: err}
+		}()
+	}
+	groups := make([]model.EvaluationFailures, 0, len(services))
+	var operational []error
+	parentDone := ctx.Done()
+	remaining := len(services)
+	for remaining > 0 {
+		select {
+		case outcome := <-outcomes:
+			remaining--
+			groups = append(groups, outcome.failures)
+			if outcome.fatal == nil {
+				continue
+			}
+			// Peer cancellation is an effect of the original fatal cause. Every
+			// leaf must be cancellation; a joined sink failure is never discarded.
+			if context.Cause(workersCtx) != nil && ctx.Err() == nil && onlyCancellation(outcome.fatal) {
+				continue
+			}
+			operational = append(operational, outcome.fatal)
+			cancel(outcome.fatal)
+		case <-parentDone:
+			cancel(ctx.Err())
+			parentDone = nil
+		}
+	}
+	joined.Wait()
+	if ctx.Err() != nil {
+		operational = append(operational, ctx.Err())
+	}
+	return model.MergeEvaluationFailures(groups...), errors.Join(operational...)
+}
 
-	go func() {
-		wg.Wait()
-		close(wgDone)
-		close(errCh)
-	}()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-wgDone:
-		return nil
-	case err := <-errCh:
-		return err
+func onlyCancellation(err error) bool {
+	if err == nil {
+		return false
+	}
+	if err == context.Canceled || err == context.DeadlineExceeded {
+		return true
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		children := wrapped.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !onlyCancellation(child) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return onlyCancellation(wrapped.Unwrap())
+	default:
+		return false
 	}
 }
 

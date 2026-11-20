@@ -232,7 +232,7 @@ func TestCompareFindings_TotalOrderOverReportedFields(t *testing.T) {
 func TestCreateSummary_FilesOrderDoesNotDependOnInputOrder(t *testing.T) {
 	var want []VulnerableFile
 	for _, raised := range permutations(orderedFindings()) {
-		files := CreateSummary(context.Background(), Counters{}, raised, "scan", nil, "", SCIInfo{}).Queries[0].Files
+		files := CreateSummary(context.Background(), Counters{}, raised, "scan", nil, "", SCIInfo{}, EvaluationFailures{}).Queries[0].Files
 		got := make([]VulnerableFile, len(files))
 		copy(got, files)
 		if want == nil {

@@ -18,7 +18,7 @@ const jsonExtension = ".json"
 // PrintJSONReport prints on JSON file the summary results
 func PrintJSONReport(ctx context.Context, path, filename string, body interface{}, sciInfo *model.SCIInfo) error {
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "json")
 		if err != nil {
 			return err
 		}

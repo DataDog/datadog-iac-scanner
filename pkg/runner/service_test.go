@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
-	"sync"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
@@ -102,24 +101,10 @@ func TestService(t *testing.T) { //nolint
 			}
 		})
 		t.Run(fmt.Sprintf("%s", tt.name+"_start_scan"), func(t *testing.T) {
-			var wg sync.WaitGroup
-			errCh := make(chan error)
-			wgDone := make(chan bool)
 			for _, serv := range s {
-				wg.Add(1)
-				serv.StartScan(tt.args.ctx, tt.args.scanID, errCh, &wg)
-			}
-			go func() {
-				defer close(wgDone)
-				wg.Wait()
-			}()
-			select {
-			case <-wgDone:
-				break
-			case err := <-errCh:
-				close(errCh)
+				_, err := serv.StartScan(tt.args.ctx, tt.args.scanID)
 				if (err != nil) != tt.wantErr {
-					t.Errorf("Service.StartScan() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("Service.StartScan() error=%v,wantErr %v", err, tt.wantErr)
 				}
 			}
 		})
@@ -218,8 +203,8 @@ func TestStartScan_OrdersFindingsByCanonicalPaths(t *testing.T) {
 	// match field for field. (The summary's file-path bookkeeping maps the
 	// canonical names back to each scan's own detected paths, which are
 	// legitimately per-scan; the reports read those files from disk.)
-	firstSummary := model.CreateSummary(ctx, model.Counters{}, first, "scan", extractionMap, "", model.SCIInfo{})
-	secondSummary := model.CreateSummary(ctx, model.Counters{}, second, "scan", otherExtraction, "", model.SCIInfo{})
+	firstSummary := model.CreateSummary(ctx, model.Counters{}, first, "scan", extractionMap, "", model.SCIInfo{}, model.EvaluationFailures{})
+	secondSummary := model.CreateSummary(ctx, model.Counters{}, second, "scan", otherExtraction, "", model.SCIInfo{}, model.EvaluationFailures{})
 	require.Equal(t, firstSummary.Queries, secondSummary.Queries)
 	// The file-path bookkeeping keys on the canonical report path, identical
 	// across the runs; the values are each scan's own detected paths.

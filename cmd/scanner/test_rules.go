@@ -314,18 +314,19 @@ func runFiles(
 		return nil, nil, err
 	}
 
-	var vulns []model.Vulnerability
+	var inspection engine.InspectionResult
 	switch input.domain {
 	case datadog.RuleTestDocuments:
-		vulns, err = inspector.InspectDocuments(ctx, "test", allFiles, []string{platformStr})
+		inspection, err = inspector.InspectDocuments(ctx, "test", allFiles, []string{platformStr})
 	case datadog.RuleTestConfiguration:
-		vulns, err = inspector.Inspect(ctx, "test", allFiles, []string{platformStr})
+		inspection, err = inspector.Inspect(ctx, "test", allFiles, []string{platformStr})
 	default:
 		return nil, nil, fmt.Errorf("unsupported fixture input %q", input.domain)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
+	vulns := inspection.Findings
 
 	out := make([]ruleFinding, len(vulns))
 	for i := range vulns {

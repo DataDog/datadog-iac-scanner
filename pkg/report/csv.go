@@ -21,12 +21,12 @@ func PrintCSVReport(ctx context.Context, path, filename string, body interface{}
 
 	var report []reportModel.CSVReport
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "csv")
 		if err != nil {
 			return err
 		}
 
-		report = reportModel.BuildCSVReport(&summary)
+		report = reportModel.BuildCSVReport(summary.Queries)
 	}
 
 	return exportCSVReport(ctx, path, filename, report)

@@ -21,28 +21,44 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// EvaluationDiagnostic is an unrecovered producer error in a completed module
+type diagnosticOrigin uint8
+
+const (
+	diagnosticEvaluation diagnosticOrigin = iota
+	diagnosticConfiguration
+)
+
+// EvaluationDiagnostic is an unrecovered producer error from a module
 // evaluation. It retains source and module identity, never an evaluation context
 // or AST. It is separate from unknown values and from security findings.
 type EvaluationDiagnostic struct {
+	origin        diagnosticOrigin
 	Summary       string
 	Detail        string
 	Subject       hcl.Range
 	ModuleAddress string
 }
 
-// moduleConfigurationFailure is expected invalid/unavailable input, not an
-// internal abort. The parse cache owns these immutable frozen facts. Unwrap
-// returns copies so error inspection cannot mutate a later evaluation's cause.
-type moduleConfigurationFailure struct {
+// ConfigurationError reports invalid or unavailable module configuration, not
+// an internal evaluator abort. Its source facts are immutable. Unwrap returns
+// copies so error inspection cannot mutate a later evaluation's cause.
+type ConfigurationError struct {
 	diagnostics []EvaluationDiagnostic
 }
 
-func (f *moduleConfigurationFailure) Error() string {
-	return "module configuration has an unavailable override"
+func (f *ConfigurationError) Error() string {
+	const summary = "module configuration is invalid or unavailable"
+	if len(f.diagnostics) == 0 {
+		return summary
+	}
+	message := summary + ": " + f.diagnostics[0].Error()
+	if len(f.diagnostics) > 1 {
+		message += fmt.Sprintf(" (%d more)", len(f.diagnostics)-1)
+	}
+	return message
 }
 
-func (f *moduleConfigurationFailure) Unwrap() []error {
+func (f *ConfigurationError) Unwrap() []error {
 	failures := make([]error, 0, len(f.diagnostics))
 	for _, original := range f.diagnostics {
 		diagnostic := original
@@ -119,22 +135,38 @@ func (r *ModuleEvaluation) Diagnostics() []EvaluationDiagnostic {
 	return slices.Clone(r.diagnostics)
 }
 
-// PolicyUnit binds the policy view to the same evaluation's producer failures.
-// It does not select subjects or infer inventory completeness; those remain
-// responsibilities of the platform adapter constructing the reader.
-func (r *ModuleEvaluation) PolicyUnit(reader policy.Reader) policy.Unit {
+// Failure returns the sealed producer failure for this native evaluation.
+// Configuration load failures retain their type across child occurrences and
+// cache reuse. Error inspection receives copies of the original source facts.
+func (r *ModuleEvaluation) Failure() error {
 	if r.failure == nil && len(r.diagnostics) == 0 {
-		return &modulePolicyUnit{reader: reader}
+		return nil
 	}
 	failures := make([]error, 0, len(r.diagnostics)+1)
 	if r.failure != nil {
 		failures = append(failures, r.failure)
 	}
+	var configuration *ConfigurationError
 	for i := range r.diagnostics {
 		diagnostic := r.diagnostics[i]
+		if diagnostic.origin == diagnosticConfiguration {
+			if configuration == nil {
+				configuration = &ConfigurationError{}
+				failures = append(failures, configuration)
+			}
+			configuration.diagnostics = append(configuration.diagnostics, diagnostic)
+			continue
+		}
 		failures = append(failures, &diagnostic)
 	}
-	return &modulePolicyUnit{reader: reader, failure: errors.Join(failures...)}
+	return errors.Join(failures...)
+}
+
+// PolicyUnit binds the policy view to the same evaluation's producer failure.
+// It does not select subjects or infer inventory completeness; those remain
+// responsibilities of the platform adapter constructing the reader.
+func (r *ModuleEvaluation) PolicyUnit(reader policy.Reader) policy.Unit {
+	return &modulePolicyUnit{reader: reader, failure: r.Failure()}
 }
 
 type modulePolicyUnit struct {
@@ -206,10 +238,11 @@ func (e *Evaluator) recordModuleFailure(err error, address string, anchor hcl.Ra
 	if errors.Is(err, ErrModuleNotEvaluated) {
 		return
 	}
-	var configuration *moduleConfigurationFailure
+	var configuration *ConfigurationError
 	if errors.As(err, &configuration) {
 		for _, original := range configuration.diagnostics {
 			diagnostic := original
+			diagnostic.origin = diagnosticConfiguration
 			diagnostic.ModuleAddress = address
 			e.diagnostics = append(e.diagnostics, diagnostic)
 		}

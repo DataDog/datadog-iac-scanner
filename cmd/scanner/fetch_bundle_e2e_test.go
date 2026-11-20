@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
@@ -60,6 +62,13 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 				Name: "Default",
 				Rules: []*datadog.Rule{
 					{
+						ID: "kubernetes-outcome", Name: "pod-outcome", ShortDescription: "Pod outcome", Description: "Pod outcome",
+						Platform: "Kubernetes", Type: "rego", Severity: "HIGH", Category: "Best Practices", IsPublished: true,
+						RegoQuery: []byte(`package datadog
+import rego.v1
+DatadogPolicy contains result if {some doc in input.document;doc.kind=="Pod";result:={"documentId":doc.id,"resourceType":"Pod","resourceName":"retained","searchKey":"kind"}}`),
+					},
+					{
 						ID:               "terraform-s3-bucket-versioning-disabled",
 						Name:             "s3-bucket-versioning-disabled",
 						ShortDescription: "S3 bucket versioning disabled",
@@ -82,6 +91,7 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 			libraries := []*datadog.Library{
 				{ID: "common", RegoCode: "package generic.common\n"},
 				{ID: "terraform", RegoCode: "package generic.terraform\n"},
+				{ID: "k8s", RegoCode: "package generic.k8s\n"},
 			}
 			body, err := jsonapi.Marshal(libraries)
 			require.NoError(t, err)
@@ -150,4 +160,91 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	require.Equal(t, 1, metadata.Stats.Files, "the fixture file should have been scanned")
 	require.Equal(t, 1, metadata.Stats.Violations, "the offline bundle's rule should have fired exactly once")
 	require.Contains(t, metadata.Stats.ViolationBreakdowns["HIGH"], "terraform-s3-bucket-versioning-disabled")
+	// The same CLI must persist a failed evaluation even when no trustworthy
+	// finding can be produced from the now-invalid Terraform input domain.
+	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "invalid_override.tf"), []byte(`locals {`), 0600))
+	failedOutput := t.TempDir()
+	failedMetadata := filepath.Join(failedOutput, "metadata.json")
+	err = scanAction.Run(t.Context(), []string{"scan", "--path", repoPath, "--type", "terraform", "--output-path", failedOutput, "--offline-bundle-path", bundleDir, "--metadata-path", failedMetadata})
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, 126, exitErr.code)
+	failedBytes, readErr := os.ReadFile(failedMetadata)
+	require.NoError(t, readErr)
+	var failed scan.ScanMetadata
+	require.NoError(t, json.Unmarshal(failedBytes, &failed))
+	require.Equal(t, 1, failed.FailedCoverage().Len())
+	require.Zero(t, failed.Stats.Violations)
+	reports, readErr := filepath.Glob(filepath.Join(failedOutput, "*.sarif"))
+	require.NoError(t, readErr)
+	require.Len(t, reports, 1)
+	reportBytes, readErr := os.ReadFile(reports[0])
+	require.NoError(t, readErr)
+	var report struct {
+		Runs []struct {
+			Invocations []struct {
+				ExecutionSuccessful bool  `json:"executionSuccessful"`
+				Notifications       []any `json:"toolExecutionNotifications"`
+			} `json:"invocations"`
+		} `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(reportBytes, &report))
+	require.Len(t, report.Runs, 1)
+	require.Len(t, report.Runs[0].Invocations, 1)
+	require.False(t, report.Runs[0].Invocations[0].ExecutionSuccessful)
+	require.NotEmpty(t, report.Runs[0].Invocations[0].Notifications)
+
+	for _, knownWitness := range []bool{false, true} {
+		for _, formats := range []string{"simple-json", "simple-json,sarif", "sarif,simple-json"} {
+			t.Run(fmt.Sprintf("witness=%t/formats=%s", knownWitness, formats), func(t *testing.T) {
+				kind := "Service"
+				if knownWitness {
+					kind = "Pod"
+				}
+				require.NoError(t, os.WriteFile(filepath.Join(repoPath, "known.yaml"), []byte("apiVersion: v1\nkind: "+kind+"\nmetadata:\n  name: retained\n"), 0600))
+				output := t.TempDir()
+				metadataFile := filepath.Join(output, "metadata.json")
+				err := scanAction.Run(t.Context(), []string{
+					"scan", "--path", repoPath, "--type", "terraform,kubernetes", "--output-path", output,
+					"--offline-bundle-path", bundleDir, "--metadata-path", metadataFile, "--report-format", formats,
+				})
+				var failedExit *withExitCodeError
+				require.ErrorAs(t, err, &failedExit)
+				require.Equal(t, 126, failedExit.code)
+				body, readErr := os.ReadFile(metadataFile)
+				require.NoError(t, readErr)
+				var metadata scan.ScanMetadata
+				require.NoError(t, json.Unmarshal(body, &metadata))
+				require.Equal(t, 1, metadata.FailedCoverage().Len())
+				expected := 0
+				if knownWitness {
+					expected = 1
+				}
+				require.Equal(t, expected, metadata.Stats.Violations)
+				unsafeReports, readErr := filepath.Glob(filepath.Join(output, "*.simple.json"))
+				require.NoError(t, readErr)
+				require.Empty(t, unsafeReports)
+				safeReports, readErr := filepath.Glob(filepath.Join(output, "*.sarif"))
+				require.NoError(t, readErr)
+				if strings.Contains(formats, "sarif") {
+					require.Len(t, safeReports, 1)
+					body, readErr := os.ReadFile(safeReports[0])
+					require.NoError(t, readErr)
+					var emitted struct {
+						Runs []struct {
+							Invocations []struct {
+								ExecutionSuccessful bool `json:"executionSuccessful"`
+							} `json:"invocations"`
+						} `json:"runs"`
+					}
+					require.NoError(t, json.Unmarshal(body, &emitted))
+					require.Len(t, emitted.Runs, 1)
+					require.Len(t, emitted.Runs[0].Invocations, 1)
+					require.False(t, emitted.Runs[0].Invocations[0].ExecutionSuccessful)
+				} else {
+					require.Empty(t, safeReports)
+				}
+			})
+		}
+	}
+
 }

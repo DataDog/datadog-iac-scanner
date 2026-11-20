@@ -118,6 +118,9 @@ func RunCustomRegoQuery(
 	}
 
 	narrowToAttributeLocation(results.Results)
+	if results.failedCoverage.Len() > 0 {
+		return results.Results, results.FailedQueries, &IncompleteScanError{failures: results.failedCoverage}
+	}
 	return results.Results, results.FailedQueries, nil
 }
 

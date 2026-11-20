@@ -191,8 +191,8 @@ func TestBuildCycloneDxReport(t *testing.T) {
 	// paths. Keyed on slash form because that's what filepath.ToSlash returns
 	// on both Windows and Unix.
 	mapping := map[string]string{
-		filepath.ToSlash(filepath.Join("testdata", "guardduty_detector_disabled", "positive.tf")): positivePath,
-		filepath.ToSlash(filepath.Join("testdata", "guardduty_detector_disabled", "negative.tf")): negativePath,
+		filepath.ToSlash(filepath.Join("testdata", "guardduty_detector_disabled", "positive.tf")):                                                             positivePath,
+		filepath.ToSlash(filepath.Join("testdata", "guardduty_detector_disabled", "negative.tf")):                                                             negativePath,
 		filepath.ToSlash(filepath.Join("test", "fixtures", "test_critical_custom_queries", "amazon_mq_broker_encryption_disabled", "test", "positive1.yaml")): criticalPath,
 	}
 
@@ -238,7 +238,7 @@ func TestBuildCycloneDxReport(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildCycloneDxReport(ctx, tt.args.summary, tt.args.filePaths)
+			got := BuildCycloneDxReport(ctx, tt.args.summary.Queries, tt.args.filePaths)
 			got.SerialNumber = "urn:uuid:" // set to "urn:uuid:" because it will be different for every report
 			assert.Equal(t, len(tt.want.Components.Components), len(got.Components.Components), "Comparing number of components")
 			for idx := range got.Components.Components {
@@ -256,4 +256,3 @@ func TestBuildCycloneDxReport(t *testing.T) {
 		})
 	}
 }
-

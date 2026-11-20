@@ -123,7 +123,9 @@ func inspectRemoteBucket(t *testing.T, fx remoteBucketFixture, callerPaths []str
 	})
 	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	return vulns
@@ -236,7 +238,9 @@ module "bucket" {
 		RemoteModuleKey(bRoot, remoteBucketSource, remoteBucketVersion): {Path: fx.cacheDir, PackageRoot: fx.cacheDir},
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1, "only the public-read caller should produce a finding")
@@ -283,7 +287,9 @@ module "bucket" {
 		RemoteModuleKey(bRoot, remoteBucketSource, remoteBucketVersion): {Path: fx.cacheDir, PackageRoot: fx.cacheDir},
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 2)
@@ -358,7 +364,9 @@ module "bucket" {
 	})
 	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1)
@@ -401,7 +409,9 @@ module "bucket" {
 	})
 	// Deliberately omit SetRemoteModuleDirectories.
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1,
@@ -448,7 +458,9 @@ func inspectExternalRemoteBucket(t *testing.T, fx remoteBucketFixture, callerPat
 	registerRemoteBucket(ins, fx.callerRoot, fx.cacheDir)
 	ins.SetExternalModulePaths([]string{fx.cacheDir})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	return vulns

@@ -23,7 +23,7 @@ func PrintGitlabSASTReport(ctx context.Context, path, filename string, body inte
 		filename = "gl-sast-" + filename
 	}
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "glsast")
 		if err != nil {
 			return err
 		}

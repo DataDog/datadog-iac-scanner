@@ -311,39 +311,18 @@ func (s *Service) isUnderFailedHelmChart(filePath string) bool {
 }
 
 // StartScan executes scan over the context, using the scanID as reference
-func (s *Service) StartScan(
-	ctx context.Context,
-	scanID string,
-	errCh chan<- error,
-	wg *sync.WaitGroup) {
-	contextLogger := logger.FromContext(ctx)
-	contextLogger.Debug().Msg("service.StartScan()")
-	defer wg.Done()
-
-	vulnerabilities, err := s.Inspector.Inspect(
-		ctx,
-		scanID,
-		s.files,
-		s.Parser.Platform,
-	)
+func (s *Service) StartScan(ctx context.Context, scanID string) (model.EvaluationFailures, error) {
+	result, err := s.Inspector.Inspect(ctx, scanID, s.files, s.Parser.Platform)
 	if err != nil {
-		select {
-		case errCh <- errors.Wrap(err, "failed to inspect files"):
-		case <-ctx.Done():
-			return
+		if _, expected := err.(*engine.IncompleteInspectionError); !expected {
+			return result.FailedCoverage(), errors.Wrap(err, "failed to inspect files")
 		}
 	}
-
-	s.canonicalizeFindingNames(vulnerabilities)
-
-	err = s.Storage.SaveVulnerabilities(ctx, vulnerabilities)
-	if err != nil {
-		select {
-		case errCh <- errors.Wrap(err, "failed to save vulnerabilities"):
-		case <-ctx.Done():
-			return
-		}
+	s.canonicalizeFindingNames(result.Findings)
+	if err := s.Storage.SaveVulnerabilities(ctx, result.Findings); err != nil {
+		return result.FailedCoverage(), errors.Wrap(err, "failed to save vulnerabilities")
 	}
+	return result.FailedCoverage(), nil
 }
 
 // Content keeps the content of the file and the number of lines

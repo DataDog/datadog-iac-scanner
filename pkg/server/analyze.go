@@ -98,10 +98,11 @@ type analyzeRequest struct {
 // charts/*.tgz it came from, so the client can attach the finding to a file it
 // sent.
 type analyzeResponse struct {
-	Findings      []model.Vulnerability `json:"findings"`
-	MissingFiles  []string              `json:"missing_files"`
-	FailedQueries map[string]string     `json:"failed_queries,omitempty"`
-	ArchiveFiles  map[string]string     `json:"archive_files,omitempty"`
+	Evaluation    *model.EvaluationReport `json:"evaluation,omitempty"`
+	Findings      []model.Vulnerability   `json:"findings"`
+	MissingFiles  []string                `json:"missing_files"`
+	FailedQueries map[string]string       `json:"failed_queries,omitempty"`
+	ArchiveFiles  map[string]string       `json:"archive_files,omitempty"`
 }
 
 func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +140,10 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := s.analyze(r.Context(), &req)
+	if _, incomplete := err.(*scan.IncompleteScanError); incomplete {
+		writeJSON(w, http.StatusUnprocessableEntity, out)
+		return
+	}
 	if err != nil {
 		contextLogger.Err(err).Msg("analyze failed")
 		writeError(w, http.StatusInternalServerError, "analysis failed: "+err.Error())
@@ -382,8 +387,11 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 	}
 
 	res, err := client.Scan(ctx)
+	scanFailure := err
 	if err != nil {
-		return nil, err
+		if _, incomplete := err.(*scan.IncompleteScanError); !incomplete {
+			return nil, err
+		}
 	}
 
 	resp := &analyzeResponse{
@@ -394,6 +402,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		// No analyzable content for the requested platforms.
 		return resp, nil
 	}
+	resp.Evaluation = res.FailedCoverage().Report()
 	if len(res.Results) > 0 {
 		resp.Findings = res.Results
 		resp.ArchiveFiles = archiveSources(ctx, res.Results, memfs)
@@ -407,7 +416,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 			resp.FailedQueries[q] = e.Error()
 		}
 	}
-	return resp, nil
+	return resp, scanFailure
 }
 
 // querySourceFactory returns a factory that serves rules and libraries only

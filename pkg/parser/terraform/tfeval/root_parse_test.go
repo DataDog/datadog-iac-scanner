@@ -221,6 +221,8 @@ func TestModuleConfigurationOverrideLoading(t *testing.T) {
 				require.Error(t, err)
 				require.Empty(t, result.Resources)
 				require.Empty(t, result.Outputs)
+				var configuration *ConfigurationError
+				require.ErrorAs(t, result.Failure(), &configuration)
 				require.False(t, result.InventoryObservations().EvaluationCompleted)
 				var diagnostic *EvaluationDiagnostic
 				require.ErrorAs(t, err, &diagnostic)
@@ -264,6 +266,16 @@ resource "test_resource" "dependent" {acl=module.left.acl}`})
 		require.Len(t, result.Resources, 2)
 		requireString(t, findResource(t, result.Resources, "test_resource", "independent").Attributes, "acl", "public")
 		requireUnknown(t, findResource(t, result.Resources, "test_resource", "dependent").Attributes, "acl")
+		var configuration *ConfigurationError
+		require.ErrorAs(t, result.Failure(), &configuration)
+		require.Len(t, configuration.Unwrap(), 2)
+		originalFailure := result.Failure().Error()
+		for _, cause := range configuration.Unwrap() {
+			var diagnostic *EvaluationDiagnostic
+			require.ErrorAs(t, cause, &diagnostic)
+			diagnostic.Subject.Filename = "mutated detached failure"
+		}
+		require.Equal(t, originalFailure, result.Failure().Error())
 		diagnostics := result.Diagnostics()
 		require.Len(t, diagnostics, 2)
 		require.Equal(t, []string{"module.left", "module.right"}, []string{diagnostics[0].ModuleAddress, diagnostics[1].ModuleAddress})
@@ -285,7 +297,7 @@ count=0
 	mixed := writeModule(t, root, "mixed", map[string]string{"bad.tf": `bad {`, "bad_override.tf": `bad {`})
 	_, err = e.EvaluateModule(context.Background(), mixed, nil)
 	require.Error(t, err)
-	var failure *moduleConfigurationFailure
+	var failure *ConfigurationError
 	require.ErrorAs(t, err, &failure)
 	sources := map[string]bool{}
 	for _, cause := range failure.Unwrap() {

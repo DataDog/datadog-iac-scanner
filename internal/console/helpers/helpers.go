@@ -94,7 +94,7 @@ func GenerateReport(ctx context.Context, path, filename string, body interface{}
 	nonSarifBody := body
 	filtered := false
 
-	var err error = nil
+	var rejected []string
 
 	for _, format := range formats {
 		format = strings.ToLower(format)
@@ -105,12 +105,22 @@ func GenerateReport(ctx context.Context, path, filename string, body interface{}
 			}
 			target = nonSarifBody
 		}
-		if err = reportGenerators[format](ctx, path, filename, target, sciInfo); err != nil {
+		if err := reportGenerators[format](ctx, path, filename, target, sciInfo); err != nil {
 			log.Error().Msgf("Failed to generate %s report", format)
-			break
+			if unsupported, ok := err.(*report.UnsupportedEvaluationFormatError); ok {
+				rejected = append(rejected, unsupported.Formats...)
+				continue
+			}
+			if len(rejected) > 0 {
+				return errors.Join(&report.UnsupportedEvaluationFormatError{Formats: rejected}, err)
+			}
+			return err
 		}
 	}
-	return err
+	if len(rejected) > 0 {
+		return &report.UnsupportedEvaluationFormatError{Formats: rejected}
+	}
+	return nil
 }
 
 // GetExecutableDirectory - returns the path to the directory containing the scanner executable

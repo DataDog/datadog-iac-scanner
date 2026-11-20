@@ -19,12 +19,12 @@ func PrintASFFReport(ctx context.Context, path, filename string, body interface{
 		filename = "asff-" + filename
 	}
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "asff")
 		if err != nil {
 			return err
 		}
 
-		body = reportModel.BuildASFF(ctx, &summary)
+		body = reportModel.BuildASFF(ctx, summary.Queries)
 	}
 
 	return ExportJSONReport(ctx, path, filename, body)

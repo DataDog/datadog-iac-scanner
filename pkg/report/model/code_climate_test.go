@@ -101,7 +101,7 @@ func TestBuildCodeClimateReport(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			report := BuildCodeClimateReport(&test.summary)
+			report := BuildCodeClimateReport(test.summary.Queries)
 			require.Equal(t, test.want, report)
 		})
 	}

@@ -19,7 +19,7 @@ func PrintSarifReport(ctx context.Context, path, filename string, body interface
 		filename += ".sarif"
 	}
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "sarif")
 		if err != nil {
 			return err
 		}

@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -58,9 +59,22 @@ type moduleResolutionResult struct {
 // The source configuration and evaluator errors may contain sensitive data.
 var errModuleEvaluationFailed = errors.New("terraform module evaluation failed")
 
+// moduleInputFailure is produced only by native configuration authority.
+// Operational errors are never promoted by searching a joined error tree.
+type moduleInputFailure struct {
+	root          string
+	configuration *tfeval.ConfigurationError
+}
+
+func (f *moduleInputFailure) Error() string {
+	return fmt.Sprintf("terraform root %q: %s", f.root, f.configuration.Error())
+}
+func (f *moduleInputFailure) Unwrap() error { return f.configuration }
+
 // moduleInstantiation retains only the projection consumed by policy execution;
 // resolver suppression indexes and root bookkeeping can be released on return.
 type moduleInstantiation struct {
+	failedInput    *moduleInputFailure
 	docs           []model.Document
 	syntheticFiles []*model.FileMetadata
 	extras         map[string][]extraCallerInfo
@@ -89,6 +103,12 @@ func (c *Inspector) instantiateLocalModules(
 ) (moduleInstantiation, error) {
 	resolver := c.buildRemoteResolver()
 	res, err := c.resolveModulesSafely(ctx, files, resolver, targets)
+	if stopped := ctx.Err(); stopped != nil {
+		return moduleInstantiation{}, errors.Join(err, stopped)
+	}
+	if failure, expected := err.(*moduleInputFailure); expected {
+		return moduleInstantiation{failedInput: failure}, nil
+	}
 	if err != nil {
 		return moduleInstantiation{}, err
 	}
@@ -380,7 +400,7 @@ func (c *Inspector) resolveModulesSafely(
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys,
 		externalModuleFile,
-	), nil
+	)
 }
 
 // resolveModuleDocuments instantiates all local modules referenced by the
@@ -413,9 +433,9 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
-) {
+) error {
 	m := &rootMerge{
-		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
+		evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
@@ -423,22 +443,38 @@ func evaluateRootModules(
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
-		next = m.evaluateConcurrently(ctx, roots, workers)
+		var err error
+		next, err = m.evaluateConcurrently(ctx, roots, workers)
+		if err != nil {
+			return err
+		}
 	}
 	if ctx.Err() != nil {
 		// The workers stop with the context; do not merge their partial results.
-		return
+		return ctx.Err()
 	}
 	for _, dir := range roots[next:] {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		evaluation, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
 		// The cache key includes rootDir, so the next root cannot reuse these
 		// evaluations. Release their subtree slices and memo keys before building
 		// documents; resources and instances keep the values merging still needs.
 		evaluator.ReleaseEvalCache()
-		// Legacy projection consumes only its document and attribution fields;
-		// v2 execution binds the full native result through PolicyUnit instead.
-		m.merge(dir, evaluation.Resources, evaluation.ModuleInstances, evaluation.VisitedChildDirs, err)
+		var configuration *tfeval.ConfigurationError
+		if errors.As(evaluation.Failure(), &configuration) {
+			failure := &moduleInputFailure{root: dir, configuration: configuration}
+			if stopped := ctx.Err(); stopped != nil {
+				return errors.Join(failure, stopped)
+			}
+			return failure
+		}
+		// Expression diagnostics retain the legacy projection's existing behavior;
+		// configuration load failures never reach document mutation or queries.
+		m.merge(ctx, dir, evaluation.Resources, evaluation.ModuleInstances, evaluation.VisitedChildDirs, err)
 	}
+	return ctx.Err()
 }
 
 // rootEvalWorkers bounds the roots evaluated at once. Each holds its own
@@ -448,7 +484,6 @@ var rootEvalWorkers = 4
 
 // rootMerge folds root evaluations into the scan's documents, in root order.
 type rootMerge struct {
-	ctx                  context.Context
 	evaluator            *tfeval.Evaluator
 	filesByDir           map[string][]*model.FileMetadata
 	repoPath             string
@@ -470,7 +505,7 @@ type rootMerge struct {
 }
 
 func (m *rootMerge) merge(
-	dir string,
+	ctx context.Context, dir string,
 	resources []tfeval.ResolvedResource,
 	instances []tfeval.ModuleInstance,
 	childDirs map[string]bool,
@@ -482,10 +517,10 @@ func (m *rootMerge) merge(
 			// The scan is stopping; there is nothing left to attribute.
 			return
 		}
-		contextLogger := logger.FromContext(m.ctx)
+		contextLogger := logger.FromContext(ctx)
 		contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
 		for _, called := range discoverCalledModuleClosure(
-			m.ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, dir,
+			ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, dir,
 		) {
 			m.unresolvedModuleDirs[called] = true
 		}
@@ -498,7 +533,7 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -519,8 +554,9 @@ type rootResult struct {
 // shared documents get the same owners as when roots are evaluated one by one.
 // A root is only evaluated apart from the roots before it, and merging follows
 // the same order, so ownership is identical. It returns the index of the first
-// root it did not merge, from which the caller evaluates serially.
-func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, workers int) int {
+// root it did not merge. A producer failure returns its ordinary cause and
+// prevents a serial retry of roots canceled by that failure.
+func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, workers int) (int, error) {
 	// Fatal failure is independent of ordered successful merging. Peers see a
 	// derived cancellation, while the scan context keeps its original authority.
 	workerCtx, cancelWorkers := context.WithCancelCause(ctx)
@@ -532,6 +568,7 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 	// before an index, so the roots in flight are always the next ones to merge.
 	window := make(chan struct{}, 2*workers)
 	stop := make(chan struct{})
+	var fatalPanic atomic.Bool
 	var (
 		mu       sync.Mutex
 		nextRoot int
@@ -559,9 +596,7 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 				default:
 				}
 				result := evaluateRoot(workerCtx, worker, roots[i])
-				if result.panicked {
-					cancelWorkers(errModuleEvaluationFailed)
-				}
+				result.cancelFailedPeers(cancelWorkers, &fatalPanic)
 				results[i] <- result
 			}
 		})
@@ -570,6 +605,9 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 		cancelWorkers(nil)
 		close(stop)
 		wg.Wait()
+		if fatalPanic.Load() {
+			panic(errModuleEvaluationFailed)
+		}
 	}()
 
 	for i, dir := range roots {
@@ -577,20 +615,34 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 		select {
 		case r = <-results[i]:
 		case <-workerCtx.Done():
-			if errors.Is(context.Cause(workerCtx), errModuleEvaluationFailed) {
+		}
+		if cause := context.Cause(workerCtx); cause != nil {
+			if errors.Is(cause, errModuleEvaluationFailed) {
 				panic(errModuleEvaluationFailed)
 			}
-			// Ordinary scan cancellation retains its existing caller-visible outcome.
-			return i
+			if stopped := ctx.Err(); stopped != nil {
+				return i, errors.Join(cause, stopped)
+			}
+			return i, cause
 		}
 		<-window
-		if r.panicked {
-			panic(errModuleEvaluationFailed)
-		}
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
+		m.merge(workerCtx, dir, r.resources, r.instances, r.childDirs, r.err)
 	}
-	return len(roots)
+	return len(roots), nil
+}
+
+// cancelFailedPeers records fatal recovery independently of the first cancellation
+// cause. A concurrent configuration failure must not hide a later producer panic.
+func (r *rootResult) cancelFailedPeers(cancel context.CancelCauseFunc, fatal *atomic.Bool) {
+	if r.panicked {
+		fatal.Store(true)
+		cancel(errModuleEvaluationFailed)
+		return
+	}
+	if _, expected := r.err.(*moduleInputFailure); expected {
+		cancel(r.err)
+	}
 }
 
 func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
@@ -602,6 +654,11 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 		worker.ReleaseEvalCache()
 	}()
 	evaluation, err := worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
+	var configuration *tfeval.ConfigurationError
+	if errors.As(evaluation.Failure(), &configuration) {
+		r.err = &moduleInputFailure{root: dir, configuration: configuration}
+		return r
+	}
 	// Drop unused outputs before queuing the legacy projection: a large output
 	// must not stay resident until an earlier root finishes merging.
 	r.resources, r.instances, r.childDirs, r.err = evaluation.Resources, evaluation.ModuleInstances, evaluation.VisitedChildDirs, err
@@ -686,10 +743,10 @@ func resolveModuleDocuments(
 	mergeAllow map[string]struct{},
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
-) moduleResolutionResult {
+) (moduleResolutionResult, error) {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
-		return moduleResolutionResult{}
+		return moduleResolutionResult{}, nil
 	}
 	// Evaluating a module tree is the expensive part, and it is pure waste when
 	// the repository declares nothing any rule can match by name. The block
@@ -698,7 +755,7 @@ func resolveModuleDocuments(
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	declaresResource := declaresTargetedResource(files, targets)
 	if moduleCalls == nil && !declaresResource {
-		return moduleResolutionResult{}
+		return moduleResolutionResult{}, nil
 	}
 	// With no resource to resolve, a root only matters for the calls it makes
 	// to external module directories, so the others are not evaluated.
@@ -746,16 +803,15 @@ func resolveModuleDocuments(
 		evaluatedRoots = rootsReaching(roots, staticCalls, moduleCalls.files)
 	}
 
-	evaluateRootModules(
+	err := evaluateRootModules(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
 	)
-	if ctx.Err() != nil {
-		// The scan is stopping: report no resolution rather than one whose
-		// modules were evaluated only in part.
-		return moduleResolutionResult{}
+	if err != nil {
+		evaluator.ReleaseCaches()
+		return moduleResolutionResult{}, err
 	}
 	collectNotEvaluatedDirs(
 		ctx, evaluator, filesByDir, repoPath, resolver, unresolvedModuleDirs,
@@ -768,7 +824,7 @@ func resolveModuleDocuments(
 	// budget and truncation stats of a failed evaluation are moot, since nothing it
 	// computed reaches the scan output.
 	if !rootEvalOK {
-		return moduleResolutionResult{rootCount: len(roots)}
+		return moduleResolutionResult{rootCount: len(roots)}, nil
 	}
 
 	// A call site is only stripped once the module behind it actually produced
@@ -808,7 +864,7 @@ func resolveModuleDocuments(
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
-	}
+	}, nil
 }
 
 // discoverStaticCalls returns the directories some scanned directory calls,

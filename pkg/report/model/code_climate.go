@@ -38,23 +38,24 @@ var severityMap = map[string]string{
 }
 
 // BuildCodeClimateReport builds the code climate report
-func BuildCodeClimateReport(summary *model.Summary) []CodeClimateReport {
+// It projects findings only; the report frontend owns evaluation-status capability checks.
+func BuildCodeClimateReport(queries model.QueryResultSlice) []CodeClimateReport {
 	var codeClimateReport []CodeClimateReport
 
-	for i := range summary.Queries {
-		for j := range summary.Queries[i].Files {
+	for i := range queries {
+		for j := range queries[i].Files {
 			codeClimateReport = append(codeClimateReport, CodeClimateReport{
 				Type:        "issue",
-				CheckName:   summary.Queries[i].QueryName,
-				CWE:         summary.Queries[i].CWE,
-				Description: summary.Queries[i].Description,
+				CheckName:   queries[i].QueryName,
+				CWE:         queries[i].CWE,
+				Description: queries[i].Description,
 				Categories:  []string{"Security"},
 				Location: location{
-					Path:  summary.Queries[i].Files[j].FileName,
-					Lines: lines{Begin: summary.Queries[i].Files[j].Line},
+					Path:  queries[i].Files[j].FileName,
+					Lines: lines{Begin: queries[i].Files[j].Line},
 				},
-				Severity:    severityMap[string(summary.Queries[i].Severity)],
-				Fingerprint: summary.Queries[i].Files[j].Fingerprint,
+				Severity:    severityMap[string(queries[i].Severity)],
+				Fingerprint: queries[i].Files[j].Fingerprint,
 			})
 		}
 	}

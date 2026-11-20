@@ -87,6 +87,9 @@ func getVersion() string {
 
 // PrintHTMLReport creates a report file on HTML format
 func PrintHTMLReport(ctx context.Context, path, filename string, body interface{}, sciInfo *model.SCIInfo) error {
+	if _, err := getSummary(body, "html"); err != nil {
+		return err
+	}
 	contextLogger := logger.FromContext(ctx)
 	if !strings.HasSuffix(filename, ".html") {
 		filename += ".html"

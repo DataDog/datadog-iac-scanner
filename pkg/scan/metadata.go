@@ -1,10 +1,14 @@
 package scan
 
 import (
+	"encoding/json"
 	"time"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
 type ScanMetadata struct {
+	failedCoverage model.EvaluationFailures
 	// StartTime contains the instant in which the analysis started.
 	StartTime time.Time
 	// EndTime contains the instant in which the analysis ended.
@@ -50,4 +54,33 @@ type RuleStats struct {
 type RuleTiming struct {
 	Name string
 	Time time.Duration
+}
+
+// FailedCoverage returns immutable producer failures, separate from normal unknown values.
+func (m *ScanMetadata) FailedCoverage() model.EvaluationFailures { return m.failedCoverage }
+
+//nolint:gocritic // encoding/json must retain failed coverage for values and pointers; this copy occurs only when reporting.
+func (m ScanMetadata) MarshalJSON() ([]byte, error) {
+	type plain ScanMetadata
+	return json.Marshal(struct {
+		plain
+		Evaluation *model.EvaluationReport `json:"evaluation,omitempty"`
+	}{plain: plain(m), Evaluation: m.failedCoverage.Report()})
+}
+func (m *ScanMetadata) UnmarshalJSON(data []byte) error {
+	type plain ScanMetadata
+	var wire struct {
+		plain
+		Evaluation *model.EvaluationReport `json:"evaluation"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	failures, err := model.EvaluationFailuresFromReport(wire.Evaluation)
+	if err != nil {
+		return err
+	}
+	*m = ScanMetadata(wire.plain)
+	m.failedCoverage = failures
+	return nil
 }

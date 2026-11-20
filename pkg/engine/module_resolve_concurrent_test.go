@@ -24,7 +24,7 @@ type rootEvaluationOutcome struct {
 	Docs, SyntheticFiles, Seen, Extras, Instantiated string
 	Successful, Unresolved, Called                   map[string]bool
 	ResourceCount                                    int
-	RootEvalOK bool
+	RootEvalOK                                       bool
 	NotEvaluated                                     []string
 	// ModuleCalls are the evaluated calls of the module directories, by directory.
 	ModuleCalls map[string][]string
@@ -51,9 +51,12 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	out := rootEvaluationOutcome{Successful: map[string]bool{}, Unresolved: map[string]bool{}, Called: map[string]bool{}}
 	var docs []model.Document
 	var synthetic []*model.FileMetadata
-	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
+	err := evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated, out.Successful, out.Unresolved, out.Called,
 		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	encode := func(v any) string {
 		b, err := json.Marshal(v)

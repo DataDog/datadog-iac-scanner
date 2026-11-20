@@ -236,7 +236,9 @@ func TestInspect_TwoViolationsOnOneResource_InspectReturnsBoth(t *testing.T) {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 2, "Inspect must return every decoded finding, one per violating ingress block")
@@ -259,7 +261,9 @@ func TestInspect_TwoViolationsOnOneResource_CompactedScanPathKeepsOne(t *testing
 	})
 	ins.SetCompactFindingsAtDecode(true)
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1, "the scan path that retains findings for storage keeps one finding per identity")

@@ -1403,3 +1403,64 @@ func readAll(resp *http.Response) ([]byte, error) {
 	_, err := buf.ReadFrom(resp.Body)
 	return buf.Bytes(), err
 }
+
+func TestAnalyze_EvaluationOutcomes(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		failed, pod bool
+	}{
+		{name: "failed input retains independent findings", failed: true, pod: true},
+		{name: "zero findings cannot hide failed input", failed: true},
+		{name: "successful input", pod: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rule := datadog.Rule{ID: "kubernetes-retained", Name: "retained", ShortDescription: "retained", Platform: "Kubernetes", Severity: "HIGH", IsPublished: true, RegoQuery: []byte(`package datadog
+import rego.v1
+DatadogPolicy contains result if {some doc in input.document;doc.kind=="Pod";result:={"documentId":doc.id,"resourceType":"Pod","resourceName":"retained","searchKey":"kind"}}`)}
+			kind := "Service"
+			if test.pod {
+				kind = "Pod"
+			}
+			tfRule := syntheticRule()
+			tfRule.RegoQuery = []byte(`package datadog
+import rego.v1
+DatadogPolicy contains result if {some doc in input.document;some name;doc.resource.aws_s3_bucket[name].acl=="public";result:={"documentId":doc.id,"resourceType":"aws_s3_bucket","resourceName":name,"searchKey":"acl"}}`)
+			req := analyzeRequest{Files: []analyzeFile{{Path: "infra/main.tf", Content: `resource "aws_s3_bucket" "same" {labels={owner="safe"}}`}, {Path: "main.yaml", Content: "apiVersion: v1\nkind: " + kind + "\nmetadata:\n  name: retained\n"}}, Ruleset: ruleset(tfRule, rule), Platform: []string{"terraform", "kubernetes"}, Libraries: append(testLibraries(true), datadog.Library{ID: "k8s", RegoCode: "package generic.k8s\n"})}
+			if test.failed {
+				req.Files = append(req.Files, analyzeFile{Path: "infra/invalid_override.tf", Content: `locals {`})
+			}
+			body, err := json.Marshal(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/analyze", bytes.NewReader(body))
+			newTestServer(t).handleAnalyze(recorder, request)
+			expectedStatus := http.StatusOK
+			if test.failed {
+				expectedStatus = http.StatusUnprocessableEntity
+			}
+			if recorder.Code != expectedStatus {
+				t.Fatalf("status=%d want%d body=%s", recorder.Code, expectedStatus, recorder.Body.String())
+			}
+			var result analyzeResponse
+			if err = json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			expectedFindings := 0
+			if test.pod {
+				expectedFindings = 1
+			}
+			if len(result.Findings) != expectedFindings {
+				t.Fatalf("findings=%+v want%d", result.Findings, expectedFindings)
+			}
+			if test.failed {
+				if result.Evaluation == nil || result.Evaluation.Status != "failed" || len(result.Evaluation.Failures) != 1 {
+					t.Fatalf("missing nonclean outcome: %+v", result.Evaluation)
+				}
+			} else if result.Evaluation != nil {
+				t.Fatalf("unexpected failure: %+v", result.Evaluation)
+			}
+		})
+	}
+}

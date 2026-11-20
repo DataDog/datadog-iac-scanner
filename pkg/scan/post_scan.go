@@ -8,7 +8,6 @@ package scan
 import (
 	"context"
 	_ "embed" // Embed scanner CLI img and scan-flags
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,7 +23,7 @@ import (
 )
 
 func (c *Client) getSummary(ctx context.Context, results []model.Vulnerability,
-	end time.Time, pathParameters model.PathParameters) model.Summary {
+	end time.Time, pathParameters model.PathParameters, failedCoverage model.EvaluationFailures) model.Summary {
 	counters := model.Counters{
 		ScannedFiles:           c.Tracker.FoundFiles,
 		ScannedFilesLines:      c.Tracker.FoundCountLines,
@@ -44,6 +43,7 @@ func (c *Client) getSummary(ctx context.Context, results []model.Vulnerability,
 		pathParameters.PathExtractionMap,
 		c.ScanParams.RepoPath,
 		c.ScanParams.SCIInfo,
+		failedCoverage,
 	)
 	summary.Times = model.Times{
 		Start: c.ScanStartTime,
@@ -121,32 +121,30 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	summary := c.getSummary(ctx, scanResults.Results, time.Now(), model.PathParameters{
 		ScannedPaths:      c.ScanParams.Path,
 		PathExtractionMap: scanResults.ExtractedPaths.ExtractionMap,
-	})
+	}, scanResults.failedCoverage)
 
-	if err := c.resolveOutputs(
+	outputError := c.resolveOutputs(
 		ctx,
 		&summary,
 		scanResults.Files.Combine(ctx, c.ScanParams.LineInfoPayload),
-		c.Printer); err != nil {
-		contextLogger.Err(err).Msgf("failed to resolve outputs %v", err)
+		c.Printer)
+	if outputError != nil {
+		contextLogger.Err(outputError).Msgf("failed to resolve outputs %v", outputError)
 		memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
-		return metadata, err
+		if _, unsupported := outputError.(*report.UnsupportedEvaluationFormatError); !unsupported {
+			return metadata, outputError
+		}
 	}
 
 	endTime := time.Now()
 	scanDuration := endTime.Sub(c.ScanStartTime)
 	consolePrinter.PrintScanDuration(ctx, scanDuration)
 
-	handler, exitCode := consoleHelpers.ResultsExitCode(&summary)
-	if handler.ShowError("results") && exitCode != 0 {
-		os.Exit(exitCode)
-	}
-
 	// generate metadata payload
 	metadata = c.generateMetadata(scanResults, c.ScanStartTime, endTime)
 	memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 
-	return metadata, nil
+	return metadata, outputError
 }
 
 func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.Time) ScanMetadata {
@@ -154,6 +152,7 @@ func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.
 	ruleStats := c.generateRuleStats(scanResults)
 
 	metadata := ScanMetadata{
+		failedCoverage: scanResults.failedCoverage,
 		StartTime:      startTime,
 		EndTime:        endTime,
 		CoresAvailable: int(consoleHelpers.GetNumCPU()),

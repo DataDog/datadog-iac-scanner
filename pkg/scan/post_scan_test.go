@@ -102,7 +102,7 @@ func Test_GetSummary(t *testing.T) {
 			c.Tracker = &tt.tracker
 			c.ScanParams = &tt.scanParameters
 
-			v := c.getSummary(ctx, tt.results, tt.endTime, tt.pathParameters)
+			v := c.getSummary(ctx, tt.results, tt.endTime, tt.pathParameters, model.EvaluationFailures{})
 
 			require.Equal(t, tt.expectedResult.Counters, v.Counters)
 			require.Equal(t, tt.expectedResult.SeveritySummary, v.SeveritySummary)

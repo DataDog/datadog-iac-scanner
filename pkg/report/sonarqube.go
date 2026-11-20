@@ -24,13 +24,13 @@ func PrintSonarQubeReport(ctx context.Context, path, filename string, body inter
 	}
 
 	if body != "" {
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "sonarqube")
 		if err != nil {
 			return err
 		}
 
 		SonarQubeReport := reportModel.NewSonarQubeRepory()
-		body = SonarQubeReport.BuildReport(&summary)
+		body = SonarQubeReport.BuildReport(summary.Queries)
 	}
 
 	return ExportJSONReport(ctx, path, filename, body)

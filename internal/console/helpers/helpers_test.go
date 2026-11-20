@@ -119,7 +119,6 @@ func TestFileAnalyzer_Error_File(t *testing.T) {
 
 func TestHelpers_GenerateReport(t *testing.T) {
 	type args struct {
-		path     string
 		filename string
 		body     interface{}
 		formats  []string
@@ -128,64 +127,62 @@ func TestHelpers_GenerateReport(t *testing.T) {
 		name    string
 		args    args
 		wantErr bool
-		remove  []string
+		files   []string
 	}{
 		{
 			name: "test_generate_report",
 			args: args{
-				path:     ".",
 				filename: "result",
 				body:     "",
 				formats:  []string{"json"},
 			},
 			wantErr: false,
-			remove:  []string{"result.json"},
+			files:   []string{"result.json"},
 		},
 		{
 			name: "test_generate_report_error",
 			args: args{
-				path:     ".",
 				filename: "result",
 				body:     "",
 				formats:  []string{"html"},
 			},
 			wantErr: true,
-			remove:  []string{"result.html"},
 		},
 		{
 			name: "test_generate_report_error",
 			args: args{
-				path:     ".",
 				filename: "result",
 				body:     "",
 				formats:  []string{"sarif"},
 			},
 			wantErr: false,
-			remove:  []string{"result.sarif"},
+			files:   []string{"result.sarif"},
 		},
 		{
 			name: "test_generate_report_error",
 			args: args{
-				path:     ".",
 				filename: "result",
 				body:     "",
 				formats:  []string{"glsast"},
 			},
 			wantErr: false,
-			remove:  []string{"gl-sast-result.json"},
+			files:   []string{"gl-sast-result.json"},
 		},
 	}
 
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := GenerateReport(ctx, tt.args.path, tt.args.filename, tt.args.body, tt.args.formats, &model.SCIInfo{})
+			dir := t.TempDir()
+			err := GenerateReport(ctx, dir, tt.args.filename, tt.args.body, tt.args.formats, &model.SCIInfo{})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateReport() = %v, wantErr = %v", err, tt.wantErr)
 			}
-			for _, file := range tt.remove {
-				err := os.Remove(filepath.Join(tt.args.path, file))
-				require.NoError(t, err)
+			entries, readErr := os.ReadDir(dir)
+			require.NoError(t, readErr)
+			require.Len(t, entries, len(tt.files))
+			for _, file := range tt.files {
+				require.FileExists(t, filepath.Join(dir, file))
 			}
 		})
 	}

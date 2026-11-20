@@ -81,7 +81,11 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 	const depth, branch = 12, 2
 	root, files := writeDeepFanOut(t, depth, branch)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res, resolveErr := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+
+	if resolveErr != nil {
+		t.Fatal(resolveErr)
+	}
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected the nested module tree to instantiate resources, got none")
@@ -106,7 +110,11 @@ func TestResolveModuleDocuments_DeepFanOutStaysAffordable(t *testing.T) {
 func TestResolveModuleDocuments_NoDirectorySuppressedWithoutReplacement(t *testing.T) {
 	root, files := writeBudgetFanOut(t, 6, 4)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res, resolveErr := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+
+	if resolveErr != nil {
+		t.Fatal(resolveErr)
+	}
 
 	if res.resourceCount == 0 {
 		t.Fatal("expected resources to be instantiated")
@@ -184,7 +192,11 @@ func TestResolveModuleDocuments_PartiallyResolvedModuleKeepsItsBody(t *testing.T
 	// Traverse a deep acyclic chain before the actual active-path cycle.
 	root, files := writePartiallyResolvedShare(t, 25)
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res, resolveErr := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+
+	if resolveErr != nil {
+		t.Fatal(resolveErr)
+	}
 
 	if !res.ok {
 		t.Fatal("expected module resolution to succeed for the shallow call")

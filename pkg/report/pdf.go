@@ -288,7 +288,11 @@ func PrintPdfReport(ctx context.Context, path, filename string, body interface{}
 	startTime := time.Now()
 	contextLogger.Info().Msg("Started generating pdf report")
 
-	summary := body.(*model.Summary)
+	normalized, err := getSummary(body, "pdf")
+	if err != nil {
+		return err
+	}
+	summary := &normalized
 
 	m := pdf.NewMaroto(consts.Portrait, consts.A4)
 	m.SetPageMargins(pgMarginLeft, pgMarginTop, pgMarginRight)
@@ -309,7 +313,7 @@ func PrintPdfReport(ctx context.Context, path, filename string, body interface{}
 
 	m.Line(1.0)
 
-	err := createQueriesTable(m, summary.Queries)
+	err = createQueriesTable(m, summary.Queries)
 	if err != nil {
 		return err
 	}

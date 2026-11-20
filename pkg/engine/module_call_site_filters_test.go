@@ -72,7 +72,9 @@ resource "aws_s3_bucket" "this" {
 	})
 	ins.ruleConfigs = ruleConfigs
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns = vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	return vulns, aPath, bPath
@@ -188,7 +190,9 @@ resource "aws_s3_bucket" "this" {
 		"acl-rule": {OnlyPaths: []string{filepath.Join(repoRoot, "src")}},
 	}
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	require.Len(t, vulns, 1)

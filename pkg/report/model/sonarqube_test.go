@@ -164,7 +164,7 @@ func TestSonarQubeReportBuilder_BuildReport(t *testing.T) {
 				version: tt.fields.version,
 				report:  tt.fields.report,
 			}
-			got := s.BuildReport(tt.args.summary)
+			got := s.BuildReport(tt.args.summary.Queries)
 			if len(got.Issues) != len(tt.want.Issues) {
 				t.Errorf("Number of issues mismatch: got %d, want %d", len(got.Issues), len(tt.want.Issues))
 				return

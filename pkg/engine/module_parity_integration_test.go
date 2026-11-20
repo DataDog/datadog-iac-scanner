@@ -141,7 +141,8 @@ func parityFindings(t *testing.T, root string, files model.FileMetadatas) []mode
 		vb:            DefaultVulnerabilityBuilder,
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
 	return vulns

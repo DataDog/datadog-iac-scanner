@@ -31,31 +31,32 @@ type CSVReport struct {
 }
 
 // BuildCSVReport builds the CSV report
-func BuildCSVReport(summary *model.Summary) []CSVReport {
+// It projects findings only; the report frontend owns evaluation-status capability checks.
+func BuildCSVReport(queries model.QueryResultSlice) []CSVReport {
 	csvReport := []CSVReport{}
 
-	for i := range summary.Queries {
-		for j := range summary.Queries[i].Files {
+	for i := range queries {
+		for j := range queries[i].Files {
 			csvReport = append(csvReport, CSVReport{
-				QueryName:                   summary.Queries[i].QueryName,
-				QueryID:                     summary.Queries[i].QueryID,
-				QueryURI:                    summary.Queries[i].QueryURI,
-				Severity:                    string(summary.Queries[i].Severity),
-				Platform:                    summary.Queries[i].Platform,
-				CWE:                         summary.Queries[i].CWE,
-				CloudProvider:               summary.Queries[i].CloudProvider,
-				Category:                    summary.Queries[i].Category,
-				DescriptionID:               summary.Queries[i].DescriptionID,
-				Description:                 summary.Queries[i].Description,
-				CISDescriptionIDFormatted:   summary.Queries[i].CISDescriptionIDFormatted,
-				CISDescriptionTitle:         summary.Queries[i].CISDescriptionTitle,
-				CISDescriptionTextFormatted: summary.Queries[i].CISDescriptionTextFormatted,
-				FileName:                    summary.Queries[i].Files[j].FileName,
-				Fingerprint:                 summary.Queries[i].Files[j].Fingerprint,
-				Line:                        summary.Queries[i].Files[j].Line,
-				SearchKey:                   summary.Queries[i].Files[j].SearchKey,
-				SearchLine:                  summary.Queries[i].Files[j].SearchLine,
-				SearchValue:                 summary.Queries[i].Files[j].SearchValue,
+				QueryName:                   queries[i].QueryName,
+				QueryID:                     queries[i].QueryID,
+				QueryURI:                    queries[i].QueryURI,
+				Severity:                    string(queries[i].Severity),
+				Platform:                    queries[i].Platform,
+				CWE:                         queries[i].CWE,
+				CloudProvider:               queries[i].CloudProvider,
+				Category:                    queries[i].Category,
+				DescriptionID:               queries[i].DescriptionID,
+				Description:                 queries[i].Description,
+				CISDescriptionIDFormatted:   queries[i].CISDescriptionIDFormatted,
+				CISDescriptionTitle:         queries[i].CISDescriptionTitle,
+				CISDescriptionTextFormatted: queries[i].CISDescriptionTextFormatted,
+				FileName:                    queries[i].Files[j].FileName,
+				Fingerprint:                 queries[i].Files[j].Fingerprint,
+				Line:                        queries[i].Files[j].Line,
+				SearchKey:                   queries[i].Files[j].SearchKey,
+				SearchLine:                  queries[i].Files[j].SearchLine,
+				SearchValue:                 queries[i].Files[j].SearchValue,
 			})
 		}
 	}

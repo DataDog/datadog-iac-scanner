@@ -561,7 +561,7 @@ func (c *Inspector) Inspect(
 	ctx context.Context,
 	scanID string,
 	files model.FileMetadatas,
-	platforms []string) ([]model.Vulnerability, error) {
+	platforms []string) (InspectionResult, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
 
@@ -573,12 +573,17 @@ func (c *Inspector) Inspect(
 		var err error
 		instantiated, err = c.instantiateLocalModules(ctx, files, targets)
 		if err != nil {
-			return nil, err
+			return InspectionResult{}, err
+		}
+		if instantiated.failedInput != nil {
+			failure := configurationCoverage(instantiated.failedInput, platforms, c.repoPath)
+			result := InspectionResult{failedCoverage: model.NewEvaluationFailures([]model.EvaluationFailure{failure})}
+			return result, &IncompleteInspectionError{failures: result.failedCoverage}
 		}
 		// A canceled scan must not scan the modules that were evaluated only in
 		// part; instantiateLocalModules mutates nothing in that case.
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return InspectionResult{}, err
 		}
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
 	}
@@ -592,7 +597,7 @@ func (c *Inspector) Inspect(
 	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+			return InspectionResult{}, ctxErr
 		}
 		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
 	}
@@ -605,7 +610,7 @@ func (c *Inspector) Inspect(
 	enrichedModules, err := tfmodules.ParseAllModuleVariables(
 		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver(), c.mergeAllow)
 	if err != nil {
-		return nil, err
+		return InspectionResult{}, err
 	}
 
 	return c.evaluateDocumentInput(ctx, scanID, &documentPolicyInput{
@@ -621,9 +626,9 @@ func (c *Inspector) Inspect(
 // Production source scans use Inspect instead.
 func (c *Inspector) InspectDocuments(
 	ctx context.Context, scanID string, files model.FileMetadatas, platforms []string,
-) ([]model.Vulnerability, error) {
+) (InspectionResult, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return InspectionResult{}, err
 	}
 	documents := files.Combine(ctx, false)
 	return c.evaluateDocumentInput(ctx, scanID, &documentPolicyInput{
@@ -647,10 +652,10 @@ type documentPolicyInput struct {
 // acquisition is complete before payload conversion, compilation and reporting.
 func (c *Inspector) evaluateDocumentInput(
 	ctx context.Context, scanID string, input *documentPolicyInput, queries []model.QueryMetadata,
-) ([]model.Vulnerability, error) {
+) (InspectionResult, error) {
 	contextLogger := logger.FromContext(ctx)
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return InspectionResult{}, err
 	}
 
 	// Synthetic files are source metadata for an already acquired projection.
@@ -663,7 +668,7 @@ func (c *Inspector) evaluateDocumentInput(
 
 	payloads, err := c.buildPlatformPayloads(ctx, filesMap, input.documents, input.projection.docs, queries)
 	if err != nil {
-		return nil, err
+		return InspectionResult{}, err
 	}
 	// The payload owns its converted values. Drop the consumed envelopes so this
 	// input bundle cannot pin released document trees throughout query execution.
@@ -706,7 +711,7 @@ func (c *Inspector) evaluateDocumentInput(
 		sharedQueries, cacheHit, err = c.QueryLoader.loadSharedQueriesCached(
 			ctx, queries, baseStores, baseDataHashes)
 		if err != nil {
-			return nil, err
+			return InspectionResult{}, err
 		}
 		contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
 	} else {
@@ -720,11 +725,11 @@ func (c *Inspector) evaluateDocumentInput(
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
 		input.modules, baseStores, baseDataHashes, sharedQueries, routing)
 	if err != nil {
-		return nil, err
+		return InspectionResult{}, err
 	}
 
 	c.releasePostEvalFileData(filesMap)
-	return vulnerabilities, nil
+	return InspectionResult{Findings: vulnerabilities}, nil
 }
 
 // filterAtCallSites applies the root caller file's rule path filters and

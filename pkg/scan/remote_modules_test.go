@@ -356,7 +356,7 @@ resource "aws_vpc" "this" {
 		legacyParams.ScanID,
 		legacy.ExtractedPaths.ExtractionMap,
 		root,
-		model.SCIInfo{},
+		model.SCIInfo{}, model.EvaluationFailures{},
 	)
 	v1Summary := model.CreateSummary(
 		t.Context(),
@@ -365,7 +365,7 @@ resource "aws_vpc" "this" {
 		v1Params.ScanID,
 		v1.ExtractedPaths.ExtractionMap,
 		root,
-		model.SCIInfo{},
+		model.SCIInfo{}, model.EvaluationFailures{},
 	)
 	require.Len(t, legacySummary.Queries, 1)
 	require.Len(t, v1Summary.Queries, 1)
@@ -531,8 +531,8 @@ func TestRemoteModuleCycloneDXReportKeepsTheComponentHash(t *testing.T) {
 	require.NotEmpty(t, results.Results)
 
 	summary := model.CreateSummary(t.Context(), model.Counters{}, results.Results, params.ScanID,
-		results.ExtractedPaths.ExtractionMap, root, model.SCIInfo{})
-	report := cyclonedx.BuildCycloneDxReport(t.Context(), &summary, summary.FilePaths)
+		results.ExtractedPaths.ExtractionMap, root, model.SCIInfo{}, model.EvaluationFailures{})
+	report := cyclonedx.BuildCycloneDxReport(t.Context(), summary.Queries, summary.FilePaths)
 	require.NotEmpty(t, report.Components.Components)
 	for _, component := range report.Components.Components {
 		require.Len(t, component.Hashes, 1)

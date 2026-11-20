@@ -82,12 +82,14 @@ resource "aws_s3_bucket" "this" {
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
 
-	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Len(t, vulns, 1)
 	require.Equal(t, "customer-bucket", vulns[0].ResourceName)
 
-	summary := model.CreateSummary(context.Background(), model.Counters{}, vulns, "test", nil, root, model.SCIInfo{})
+	summary := model.CreateSummary(context.Background(), model.Counters{}, vulns, "test", nil, root, model.SCIInfo{}, model.EvaluationFailures{})
 	require.Len(t, summary.Queries, 1)
 	require.Len(t, summary.Queries[0].Files, 1)
 	require.NotNil(t, summary.Queries[0].Files[0].ModuleAttribution)

@@ -25,12 +25,12 @@ func PrintCycloneDxReport(ctx context.Context, path, filename string, body inter
 		if s, ok := body.(*model.Summary); ok {
 			filePaths = s.FilePaths
 		}
-		summary, err := getSummary(body)
+		summary, err := getSummary(body, "cyclonedx")
 		if err != nil {
 			return err
 		}
 
-		body = reportModel.BuildCycloneDxReport(ctx, &summary, filePaths)
+		body = reportModel.BuildCycloneDxReport(ctx, summary.Queries, filePaths)
 	}
 
 	return exportXMLReport(ctx, path, filename, body)

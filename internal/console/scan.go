@@ -30,7 +30,7 @@ func ExecuteScan(ctx context.Context, scanParams *scan.Parameters, opts ...scan.
 
 	if err != nil {
 		log.Err(err).Msgf("failed to perform scan: %v", err)
-		return scan.ScanMetadata{}, err
+		return scanMetadata, err
 	}
 
 	return scanMetadata, nil

@@ -153,7 +153,9 @@ func TestInspect_TFPlanMetaNotExposedAsFakeResource(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	vulns, err := ins.Inspect(ctx, "test", model.FileMetadatas{&doc}, []string{"terraform"})
+	vulnsInspection, err := ins.Inspect(ctx, "test", model.FileMetadatas{&doc}, []string{"terraform"})
+
+	vulns := vulnsInspection.Findings
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries(), "no query should fail")
 
