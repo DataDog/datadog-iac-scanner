@@ -229,7 +229,7 @@ var ansibleKeywords = map[string]bool{
 	"no_log": true, "run_once": true, "check_mode": true, "diff": true, "any_errors_fatal": true,
 	"connection": true, "collections": true, "module_defaults": true, "throttle": true,
 	"timeout": true, "debugger": true, "async": true, "poll": true, "remote_user": true,
-	"port": true,
+	"port": true, "action": true, "local_action": true,
 }
 
 // ansibleRows returns one row per task of a playbook or task file, across
@@ -360,9 +360,15 @@ func sectionEnd(spans map[string]lineRange, key string, bound int) int {
 	return bound
 }
 
-// ansibleModule returns the module a task calls: its first key, in sorted
-// order, that is not a task keyword.
+// ansibleModule returns the module a task calls: the one its action or
+// local_action names, else its first key, in sorted order, that is not a
+// task keyword.
 func ansibleModule(task map[string]interface{}) string {
+	for _, key := range []string{"action", "local_action"} {
+		if module := actionModule(task[key]); module != "" {
+			return module
+		}
+	}
 	keys := make([]string, 0, len(task))
 	for key := range task {
 		if !ansibleKeywords[key] && !strings.HasPrefix(key, "with_") && !strings.HasPrefix(key, "_") {
@@ -374,6 +380,22 @@ func ansibleModule(task map[string]interface{}) string {
 		return ""
 	}
 	return keys[0]
+}
+
+// actionModule returns the module an action or local_action names: the
+// first word of its string form, or the module key of its mapping form.
+func actionModule(action interface{}) string {
+	switch a := action.(type) {
+	case string:
+		if fields := strings.Fields(a); len(fields) > 0 {
+			return fields[0]
+		}
+	case map[string]interface{}:
+		if module, ok := a["module"].(string); ok {
+			return module
+		}
+	}
+	return ""
 }
 
 func firstNonEmpty(values ...string) string {

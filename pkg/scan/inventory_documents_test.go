@@ -171,7 +171,10 @@ func TestInventoryKeyedRows(t *testing.T) {
 			"  _lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ github.sha }}\n" +
 			"  _dd_build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n",
 		"site.yml":                 inventoryPlaybook,
-		"roles/web/tasks/main.yml": "- name: Copy config\n  ansible.builtin.copy:\n    src: a\n    dest: b\n",
+		"roles/web/tasks/main.yml": "- name: Copy config\n  ansible.builtin.copy:\n    src: a\n    dest: b\n" +
+			"- name: Copy by action\n  action: ansible.builtin.copy src=a dest=b\n" +
+			"- name: Echo locally\n  local_action: ansible.builtin.command echo hello\n" +
+			"- name: Copy by mapping\n  action:\n    module: ansible.builtin.copy\n    src: a\n",
 		// A list the scanner reads as Ansible tasks, outside any tasks
 		// directory: not a task file.
 		"data/cities.yml": "- name: Paris\n  country: FR\n- name: Madrid\n  country: ES\n",
@@ -203,10 +206,14 @@ func TestInventoryKeyedRows(t *testing.T) {
 		{"site.yml|plays[0].handlers[0]", "ansible.builtin.service", "restart nginx", 11, 14},
 		{"site.yml|plays[1].tasks[0]", "ansible.builtin.ping", "ansible.builtin.ping", 17, 17},
 		{"roles/web/tasks/main.yml|tasks[0]", "ansible.builtin.copy", "Copy config", 1, 4},
+		// The module an action or local_action names, not the keyword.
+		{"roles/web/tasks/main.yml|tasks[1]", "ansible.builtin.copy", "Copy by action", 5, 6},
+		{"roles/web/tasks/main.yml|tasks[2]", "ansible.builtin.command", "Echo locally", 7, 8},
+		{"roles/web/tasks/main.yml|tasks[3]", "ansible.builtin.copy", "Copy by mapping", 9, 12},
 	} {
 		require.Equal(t, w, got[w.ref], w.ref)
 	}
-	require.Len(t, inv.Resources, 13)
+	require.Len(t, inv.Resources, 16)
 	require.Contains(t, inv.Files, inventory.File{Path: "data/cities.yml", Platform: "ansible", Status: inventory.FileScanned},
 		"the list is scanned as Ansible, yet gives no row")
 	for _, r := range inv.Resources {
