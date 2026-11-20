@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/DataDog/datadog-iac-scanner/pkg/inventory/schema.json",
+  "title": "Datadog IaC scanner resource inventory",
+  "description": "Every resource a scan parsed, the outcome of every file it considered and the links from findings to resources. Optional fields are omitted when they have no value; read an absent field as null.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scan_id",
+    "scanner_version",
+    "scanned_at",
+    "repository",
+    "status",
+    "platforms_scanned",
+    "stats",
+    "files",
+    "unresolved_sources",
+    "resources",
+    "finding_links"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "scan_id": { "type": "string", "minLength": 1 },
+    "scanner_version": { "type": "string" },
+    "scanned_at": { "type": "string", "format": "date-time" },
+    "repository": {
+      "description": "The repository as the scanner sees it. Informative only.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string" },
+        "commit_sha": { "type": "string" },
+        "branch": { "type": "string" }
+      }
+    },
+    "status": {
+      "description": "complete: every file the scan considered was scanned and every source it needed was resolved, so every row the scan emits is present. It does not mean that every declared resource has a row: some constructs are not enumerated (see the scanner's known limits). partial: a file failed or a source was unresolved, so rows may be missing. A row without finding links is not proof of a clean resource.",
+      "enum": ["complete", "partial"]
+    },
+    "platforms_scanned": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resources", "files_failed", "findings_unlinked"],
+      "properties": {
+        "resources": { "type": "integer", "minimum": 0 },
+        "files_failed": { "type": "integer", "minimum": 0 },
+        "findings_unlinked": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/file" }
+    },
+    "unresolved_sources": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/unresolved_source" }
+    },
+    "resources": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/resource" }
+    },
+    "finding_links": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/finding_link" }
+    }
+  },
+  "definitions": {
+    "repo_path": {
+      "description": "A path relative to the repository root, with slash separators.",
+      "type": "string",
+      "minLength": 1
+    },
+    "line": { "type": "integer", "minimum": 1 },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status"],
+      "properties": {
+        "path": { "$ref": "#/definitions/repo_path" },
+        "platform": { "type": "string" },
+        "status": { "enum": ["scanned", "failed"] },
+        "reason": { "type": "string" }
+      }
+    },
+    "unresolved_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "source", "reason"],
+      "properties": {
+        "platform": { "type": "string" },
+        "source": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource_ref",
+        "resource_path",
+        "platform",
+        "resource_type",
+        "resource_name",
+        "file",
+        "line_start",
+        "completeness"
+      ],
+      "properties": {
+        "resource_ref": {
+          "description": "<root module>|<resource path> for Terraform, <file>|<resource path> otherwise. Unique in the inventory: rows that would share a reference, such as two documents of a file with the same name, get #2, #3... after the first in the list.",
+          "type": "string",
+          "minLength": 1
+        },
+        "resource_path": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 },
+        "resource_type": {
+          "description": "The type as the source declares it. For Ansible, the module as written in the task (ansible.builtin.shell), which a finding on it can name differently (shell): findings link to rows through finding_links, not through their type.",
+          "type": "string"
+        },
+        "resource_name": { "type": "string" },
+        "provider": {
+          "description": "Terraform: the provider's local name, from the resource's provider argument without its alias, else the prefix of its type. It is not a cloud vendor (a local name can be production) and the alias is not kept. CloudFormation: aws.",
+          "type": "string"
+        },
+        "file": { "type": "string", "minLength": 1 },
+        "line_start": { "$ref": "#/definitions/line" },
+        "line_end": { "$ref": "#/definitions/line" },
+        "column_start": { "$ref": "#/definitions/line" },
+        "column_end": { "$ref": "#/definitions/line" },
+        "module_call": { "type": "string" },
+        "module_source": { "type": "string" },
+        "module_source_type": { "type": "string" },
+        "module_version": { "type": "string" },
+        "module_dependency_type": { "type": "string" },
+        "call_site_file": { "type": "string" },
+        "call_site_line_start": { "$ref": "#/definitions/line" },
+        "call_site_line_end": { "$ref": "#/definitions/line" },
+        "module_path": {
+          "description": "JSON encoding of the module call hops, for display.",
+          "type": "string"
+        },
+        "completeness": { "enum": ["complete", "instance_unresolved"] },
+        "origin_generator": { "type": "string" },
+        "origin_chart_path": { "type": "string" },
+        "origin_chart_name": { "type": "string" },
+        "origin_chart_version": { "type": "string" },
+        "origin_template": { "type": "string" }
+      }
+    },
+    "finding_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_fingerprint", "resource_ref"],
+      "properties": {
+        "finding_fingerprint": { "type": "string", "minLength": 1 },
+        "resource_ref": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

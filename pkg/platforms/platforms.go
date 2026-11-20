@@ -15,3 +15,15 @@ var Supported = []string{
 	"Kubernetes",
 	"Terraform",
 }
+
+// The platforms as the analyzer assigns them to a scanned file
+// (model.FileMetadata.Platform), the values findings and inventory rows carry.
+const (
+	Ansible        = "ansible"
+	CICD           = "cicd"
+	CloudFormation = "cloudformation"
+	DockerCompose  = "dockercompose"
+	Dockerfile     = "dockerfile"
+	Kubernetes     = "kubernetes"
+	Terraform      = "terraform"
+)

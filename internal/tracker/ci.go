@@ -31,6 +31,9 @@ type CITracker struct {
 	IgnoreCountLines     int
 	BagOfFilesParse      map[string]int
 	BagOfFilesFound      map[string]int
+	FailedFiles          map[string]string
+	EmptyFiles           map[string]bool
+	FailedRenders        map[string]bool
 	syncFileMutex        sync.Mutex
 	FoundResources       int
 	LineInfoLoadFailures int
@@ -100,6 +103,44 @@ func (c *CITracker) TrackFileParse(path string) {
 	} else {
 		c.BagOfFilesParse[path] = count + 1
 	}
+}
+
+// TrackFileFailed records in FailedFiles why a found file gave no documents.
+// Of several reasons for one file, the first in sort order is kept, so the
+// result does not depend on which parser finished first. No counter changes.
+func (c *CITracker) TrackFileFailed(path, reason string) {
+	c.syncFileMutex.Lock()
+	defer c.syncFileMutex.Unlock()
+	if c.FailedFiles == nil {
+		c.FailedFiles = make(map[string]string)
+	}
+	if prev, ok := c.FailedFiles[path]; !ok || reason < prev {
+		c.FailedFiles[path] = reason
+	}
+}
+
+// TrackFileEmpty records in EmptyFiles a found file that rightly gave no
+// documents, such as a Helm template that renders nothing. No counter changes.
+func (c *CITracker) TrackFileEmpty(path string) {
+	c.syncFileMutex.Lock()
+	defer c.syncFileMutex.Unlock()
+	if c.EmptyFiles == nil {
+		c.EmptyFiles = make(map[string]bool)
+	}
+	c.EmptyFiles[path] = true
+}
+
+// TrackRenderFailed records in FailedRenders a chart that failed to render.
+// Its files may still parse, rendered on their own as a dependency of
+// another chart, so this outcome is kept apart from theirs. No counter
+// changes.
+func (c *CITracker) TrackRenderFailed(chart string) {
+	c.syncFileMutex.Lock()
+	defer c.syncFileMutex.Unlock()
+	if c.FailedRenders == nil {
+		c.FailedRenders = make(map[string]bool)
+	}
+	c.FailedRenders[chart] = true
 }
 
 // FailedDetectLine - queries that fail to detect line are counted as failed to execute queries

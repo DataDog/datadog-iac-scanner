@@ -74,10 +74,12 @@ func (s *Service) storeResolvedFiles(
 			// conditionally skipped (e.g. a service disabled in prod). That's expected;
 			// skip silently rather than logging a spurious error.
 			if kind == model.KindHELM && isCommentOnlyContent(rfile.Content) {
+				s.Tracker.TrackFileEmpty(rfile.FileName)
 				continue
 			}
 			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
+			s.Tracker.TrackFileFailed(rfile.FileName, model.ParseFailureParseError)
 			continue
 		}
 

@@ -88,6 +88,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	}
 
 	c.ScanParams.Platform = pathTypes.Types
+	c.inventory.noteTooLarge(pathTypes.TooLarge)
 	c.ScanParams.PreAnalysisExcludePaths = c.ScanParams.Config.IgnorePaths
 	c.ScanParams.Config.IgnorePaths = pathTypes.Exc
 	c.walkInventory = pathTypes.Inventory

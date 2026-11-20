@@ -132,6 +132,8 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 		memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 		return metadata, err
 	}
+	// After the reports, so the inventory can neither delay nor change them.
+	inventoryStatus := c.finishInventory(ctx, scanResults, &summary)
 
 	endTime := time.Now()
 	scanDuration := endTime.Sub(c.ScanStartTime)
@@ -144,6 +146,7 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 
 	// generate metadata payload
 	metadata = c.generateMetadata(scanResults, c.ScanStartTime, endTime)
+	metadata.Inventory = inventoryStatus
 	memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 
 	return metadata, nil

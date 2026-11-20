@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
+	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/google/uuid"
@@ -53,18 +54,33 @@ func redactErrorForLog(err error) string {
 // logParseFailure logs a file that could not be parsed. Raw templates of a
 // failed Helm chart, template syntax outside a chart and deliberately invalid
 // test fixtures are expected not to parse, so they stay at debug level.
-func (s *Service) logParseFailure(ctx context.Context, filename string, content []byte, err error) {
+func (s *Service) logParseFailure(ctx context.Context, filename, reason string, err error) {
 	contextLogger := logger.FromContext(ctx)
-	switch {
-	case s.isUnderFailedHelmChart(filename):
+	switch reason {
+	case model.ParseFailureHelmRenderFailed:
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable raw Helm template: %s", filename)
-	case utils.IsTestFixturePath(filename) || utils.HasYAMLBreakingTemplate(content):
+	case model.ParseFailureTestFixture, model.ParseFailureTemplateSyntax:
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable templated or fixture file: %s", filename)
 	default:
 		contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("failed to parse file content: %s", filename)
+	}
+}
+
+// parseFailureReason classifies a parse failure, for its log level and for
+// the exporters, such as the inventory.
+func (s *Service) parseFailureReason(filename string, content []byte) string {
+	switch {
+	case s.isUnderFailedHelmChart(filename):
+		return model.ParseFailureHelmRenderFailed
+	case utils.IsTestFixturePath(filename):
+		return model.ParseFailureTestFixture
+	case utils.HasYAMLBreakingTemplate(content):
+		return model.ParseFailureTemplateSyntax
+	default:
+		return model.ParseFailureParseError
 	}
 }
 
@@ -97,7 +113,14 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 
 	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
-		s.logParseFailure(ctx, filename, *content, err)
+		reason := s.parseFailureReason(filename, *content)
+		s.logParseFailure(ctx, filename, reason, err)
+		if errors.Is(err, yamlparser.ErrNoDocuments) {
+			// Nothing is missing from a file that holds no document.
+			s.Tracker.TrackFileEmpty(filename)
+		} else {
+			s.Tracker.TrackFileFailed(filename, reason)
+		}
 		return nil
 	}
 	var fileCommands model.CommentsCommands

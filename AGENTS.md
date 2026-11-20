@@ -87,6 +87,9 @@ Run Go lint before every commit or push that touches Go code.
   `git init && git remote add origin https://example.invalid/fixture.git && git add -A && git commit -m fixture`.
 - The report is written to `<out-dir>/datadog-iac-scanner-result.sarif`.
   `--metadata-path <file>` also writes the scan statistics as JSON.
+  `--inventory-path <file>` also writes the resource inventory (schema in
+  `pkg/inventory/schema.json`). It never changes the SARIF or the exit code:
+  on failure no file is written and the metadata's `Inventory` says why.
 - **Exit codes:**
   - `0`: no finding.
   - `20`, `30`, `40`, `50` or `60`: success. The code gives the highest severity

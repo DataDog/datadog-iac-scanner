@@ -99,6 +99,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	moduleCleanup, remoteModulePaths, remoteSourceDirs, remoteModuleProvenance, err := c.resolveTerraformModulesForScan(
 		ctx, paramsPlatforms, &extractedPaths, baselinePaths,
 	)
+	c.inventory.noteFiles(filePlatform, remoteModulePaths)
 	metrics.Metric.Stop()
 	memwatch.Sample(ctx, memwatch.PhaseModuleResolve)
 	if err != nil {
@@ -153,6 +154,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 		inspector.SetRemoteModuleProvenance(remoteModuleProvenance)
 	}
 	inspector.SetExternalModulePaths(remoteModulePaths)
+	inspector.SetInventory(c.inventory.sink())
 	if c.inMemory {
 		inspector.SetMergeAllow(append(append([]string{}, c.inMemoryPaths...), remoteModulePaths...))
 	} else {
@@ -444,6 +446,11 @@ func (c *Client) getFileSystemSourceProvider(
 	var excludePaths []string
 	if c.ScanParams.PayloadPath != "" {
 		excludePaths = append(excludePaths, c.ScanParams.PayloadPath)
+	}
+	// The inventory's own file is not scanned. A path the inventory refused,
+	// such as a source file, stays a scanned file.
+	if c.ScanParams.InventoryPath != "" && c.inventory.writes() {
+		excludePaths = append(excludePaths, c.ScanParams.InventoryPath)
 	}
 
 	if len(c.ScanParams.Config.IgnorePaths) > 0 {

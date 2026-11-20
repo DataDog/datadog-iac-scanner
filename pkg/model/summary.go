@@ -52,6 +52,11 @@ type VulnerableFile struct {
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// FileID is the document the finding was raised on (Vulnerability.FileID).
+	FileID string `json:"-"`
+	// AlsoRaisedOn is where else the finding was raised before the scan kept
+	// one finding per identity (Vulnerability.AlsoRaisedOn).
+	AlsoRaisedOn []RaisedOn `json:"-"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -306,6 +311,13 @@ func CanonicalReportedPath(filePath string, pathExtractionMap map[string]Extract
 	return filePath
 }
 
+// ReportPath names a scanned file as the reports do: a file of an extracted
+// source, such as a fetched module, after where that source came from, and
+// any other file relative to repoDir.
+func ReportPath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
+	return resolvePath(filePath, pathExtractionMap, repoDir)
+}
+
 func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
 	var returnPath string
 	returnPath = replaceIfTemporaryPath(filepath.FromSlash(filePath), pathExtractionMap)
@@ -398,6 +410,8 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
+			FileID:                   item.FileID,
+			AlsoRaisedOn:             item.AlsoRaisedOn,
 		})
 
 		filePaths[resolvedPath] = item.FileName

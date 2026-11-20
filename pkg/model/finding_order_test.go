@@ -248,3 +248,36 @@ func TestCreateSummary_FilesOrderDoesNotDependOnInputOrder(t *testing.T) {
 		require.Equal(t, want, got)
 	}
 }
+
+func TestFirstFindingPerIdentityRecording_KeepsWhereDuplicatesWereRaised(t *testing.T) {
+	for _, raised := range permutations(orderedFindings()) {
+		require.Nil(t, FirstFindingPerIdentity(slices.Clone(raised))[0].AlsoRaisedOn, "nothing is recorded by default")
+
+		kept := FirstFindingPerIdentityRecording(raised)
+		require.Len(t, kept, 2)
+		byFile := map[string]Vulnerability{}
+		for i := range kept {
+			byFile[kept[i].FileName] = kept[i]
+		}
+		require.ElementsMatch(t, []RaisedOn{
+			{Line: 3, SearchKey: "aws_s3_bucket[b].policy"},
+			{Line: 7, SearchKey: "aws_s3_bucket[b].acl"},
+		}, byFile["main.tf"].AlsoRaisedOn, "the kept finding stands for the places of its duplicates")
+		require.Empty(t, byFile["main_override.tf"].AlsoRaisedOn)
+	}
+
+	// A duplicate raised at the kept finding's own place adds nothing.
+	same := orderedFindings()[:1]
+	same = append(same, same[0])
+	require.Empty(t, FirstFindingPerIdentityRecording(same)[0].AlsoRaisedOn)
+
+	// Nor do the other instances of its module: their documents are named
+	// after the same file.
+	instances := orderedFindings()[:1]
+	for _, key := range []string{"a", "b", "c"} {
+		instance := instances[0]
+		instance.FileID = instances[0].FileID + "\x00" + key
+		instances = append(instances, instance)
+	}
+	require.Empty(t, FirstFindingPerIdentityRecording(instances)[0].AlsoRaisedOn)
+}

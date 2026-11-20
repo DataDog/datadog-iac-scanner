@@ -266,3 +266,19 @@ func TestValidateQueriesPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateOutputDirs(t *testing.T) {
+	root := t.TempDir()
+	// A file where a directory is needed: nothing can be created under it.
+	blocker := filepath.Join(root, "blocker")
+	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
+
+	out := filepath.Join(root, "out")
+	payload := filepath.Join(root, "payload", "payload.json")
+	require.NoError(t, createOutputDirs(out, payload))
+	require.DirExists(t, out)
+	require.DirExists(t, filepath.Dir(payload))
+
+	require.Error(t, createOutputDirs(out, filepath.Join(blocker, "sub", "payload.json")),
+		"a payload directory that cannot be created stops the scan")
+}

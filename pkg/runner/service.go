@@ -61,9 +61,15 @@ type Storage interface {
 // TrackFileFound should increment the number of files to be scanned
 // TrackFileParse should increment the number of files parsed successfully to be scanned
 // TrackFileFoundCountResources should increment the number of resources to be scanned
+// TrackFileFailed records why a found file gave no documents
+// TrackFileEmpty records a found file that rightly gave no documents
+// TrackRenderFailed records a chart that failed to render, whatever its files
 type Tracker interface {
 	TrackFileFound(path string)
 	TrackFileParse(path string)
+	TrackFileFailed(path, reason string)
+	TrackFileEmpty(path string)
+	TrackRenderFailed(chart string)
 	TrackFileFoundCountLines(countLines int)
 	TrackFileParseCountLines(countLines int)
 	TrackFileIgnoreCountLines(countLines int)

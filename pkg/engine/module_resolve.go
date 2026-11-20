@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -351,6 +352,7 @@ func (c *Inspector) resolveModulesSafely(
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
 ) (res moduleResolutionResult) {
+	var inv *terraformInventory
 	defer func() {
 		if r := recover(); r != nil {
 			contextLogger := logger.FromContext(ctx)
@@ -358,15 +360,19 @@ func (c *Inspector) resolveModulesSafely(
 				"instantiateLocalModules: recovered from panic; skipping synthetic module docs",
 			)
 			res = moduleResolutionResult{}
+			// The roots after the panic were not evaluated.
+			inv.fail(inventory.FailureTerraformPanic)
 		}
 	}()
 	var externalModuleFile func(string) bool
 	if len(c.externalPathRoots) > 0 {
 		externalModuleFile = c.isExternalModulePath
 	}
+	lookup := c.buildModuleProvenanceLookup()
+	inv = c.newTerraformInventory(lookup, externalModuleFile)
 	return resolveModuleDocuments(
-		ctx, files, c.repoPath, resolver, targets, c.buildModuleProvenanceLookup(), c.mergeAllow, c.fsys,
-		externalModuleFile,
+		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
+		externalModuleFile, inv,
 	)
 }
 
@@ -400,13 +406,14 @@ func evaluateRootModules(
 	resourceCount *int,
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
+	inv *terraformInventory,
 ) {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
-		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls,
+		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -452,6 +459,7 @@ type rootMerge struct {
 	resourceCount        *int
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
+	inventory            *terraformInventory
 }
 
 func (m *rootMerge) merge(
@@ -476,6 +484,9 @@ func (m *rootMerge) merge(
 		}
 		return
 	}
+	// Every resource and data source of the root, before instantiation keeps
+	// only what rules can match.
+	m.inventory.addRoot(dir, resources)
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
 	for d := range childDirs {
@@ -648,6 +659,9 @@ func scrubInstantiatedForUnresolvedDirs(
 	}
 }
 
+// resolveModuleDocuments resolves the scan's local modules, as described above
+// evaluateRootModules. When inv is not nil, every evaluated resource is also
+// reported to it.
 func resolveModuleDocuments(
 	ctx context.Context,
 	files model.FileMetadatas,
@@ -658,6 +672,7 @@ func resolveModuleDocuments(
 	mergeAllow map[string]struct{},
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
+	inv *terraformInventory,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -670,6 +685,7 @@ func resolveModuleDocuments(
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	declaresResource := declaresTargetedResource(files, targets)
 	if moduleCalls == nil && !declaresResource {
+		inv.evaluateAllRoots(ctx, fsys, mergeAllow, resolver, filesByDir, dirsWithTf)
 		return moduleResolutionResult{}
 	}
 	// With no resource to resolve, a root only matters for the calls it makes
@@ -722,7 +738,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv,
 	)
 	if ctx.Err() != nil {
 		// The scan is stopping: report no resolution rather than one whose
@@ -733,6 +749,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, filesByDir, repoPath, resolver, unresolvedModuleDirs,
 	)
 	evaluator.ReleaseCaches()
+	inv.evaluateSkippedRoots(ctx, fsys, mergeAllow, resolver, roots, evaluatedRoots)
 
 	// If every root evaluation failed, do not strip or suppress module bodies: that would
 	// remove coverage with no synthetic replacement. Keep the root count so the
@@ -841,6 +858,21 @@ func hasUnresolvableModuleCall(files []*model.FileMetadata) bool {
 		}
 	}
 	return false
+}
+
+// rootsOutside returns the roots that are not in subset.
+func rootsOutside(roots, subset []string) []string {
+	in := make(map[string]bool, len(subset))
+	for _, dir := range subset {
+		in[dir] = true
+	}
+	var out []string
+	for _, dir := range roots {
+		if !in[dir] {
+			out = append(out, dir)
+		}
+	}
+	return out
 }
 
 // rootsReaching returns the roots whose module calls lead, through any depth

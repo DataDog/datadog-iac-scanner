@@ -42,6 +42,11 @@ type findingSet struct {
 	// when the set is not reducing by identity, so every finding is appended.
 	kept   map[[sha256.Size]byte]int
 	keyBuf []byte
+	// recordDuplicates keeps, on each finding kept, where the findings of
+	// its identity it drops were raised. places gathers them by kept index,
+	// whichever finding wins, and findings assigns them once (model.Places).
+	recordDuplicates bool
+	places           map[int]model.Places
 }
 
 // newFindingSet starts a set that reduces findings to one per identity when
@@ -88,6 +93,18 @@ func (s *findingSet) addRouted(ctx context.Context, c *Inspector, v *model.Vulne
 // that comes first in model.CompareFindings order.
 func (s *findingSet) keep(digest [sha256.Size]byte, v *model.Vulnerability) {
 	if i, ok := s.kept[digest]; ok {
+		if s.recordDuplicates {
+			if s.places == nil {
+				s.places = make(map[int]model.Places)
+			}
+			p := s.places[i]
+			if p == nil {
+				p = model.Places{}
+				p.Add(&s.out[i])
+				s.places[i] = p
+			}
+			p.Add(v)
+		}
 		if model.CompareFindings(v, &s.out[i]) < 0 {
 			s.out[i] = *v
 		}
@@ -99,8 +116,11 @@ func (s *findingSet) keep(digest [sha256.Size]byte, v *model.Vulnerability) {
 
 // findings returns what the set kept and empties the set.
 func (s *findingSet) findings() []model.Vulnerability {
+	for i, p := range s.places {
+		p.Assign(&s.out[i])
+	}
 	out := s.out
-	s.out, s.kept, s.keyBuf = nil, nil, nil
+	s.out, s.kept, s.keyBuf, s.places = nil, nil, nil, nil
 	return out
 }
 

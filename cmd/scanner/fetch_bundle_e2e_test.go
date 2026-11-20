@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
@@ -139,4 +140,116 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	require.Equal(t, 1, metadata.Stats.Files, "the fixture file should have been scanned")
 	require.Equal(t, 1, metadata.Stats.Violations, "the offline bundle's rule should have fired exactly once")
 	require.Contains(t, metadata.Stats.ViolationBreakdowns["HIGH"], "terraform-s3-bucket-versioning-disabled")
+
+	// An inventory path that is another output of the scan never replaces it.
+	sarifPath := filepath.Join(outputDir, "datadog-iac-scanner-result.sarif")
+	sarif, err := os.ReadFile(filepath.Clean(sarifPath))
+	require.NoError(t, err)
+	for _, inventoryPath := range []string{sarifPath, metadataPath} {
+		err = scanAction.Run(t.Context(), []string{
+			"scan",
+			"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+			"--type", "terraform",
+			"--output-path", outputDir,
+			"--offline-bundle-path", bundleDir,
+			"--metadata-path", metadataPath,
+			"--inventory-path", inventoryPath,
+		})
+		require.ErrorAs(t, err, &exitErr)
+		require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+
+		again, err := os.ReadFile(filepath.Clean(sarifPath))
+		require.NoError(t, err)
+		require.Equal(t, len(sarif), len(again), "the report stays a report")
+		require.Contains(t, string(again), "terraform-s3-bucket-versioning-disabled")
+
+		metadataBytes, err = os.ReadFile(filepath.Clean(metadataPath))
+		require.NoError(t, err)
+		metadata = scan.ScanMetadata{}
+		require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
+		require.NotNil(t, metadata.Inventory, inventoryPath)
+		require.Equal(t, scan.InventoryFailed, metadata.Inventory.Status)
+		require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
+	}
+
+	// An inventory directory is created after the reports, so it cannot take
+	// the place of one: here it would be named as the SARIF report is.
+	freshOutput := filepath.Join(t.TempDir(), "out")
+	err = scanAction.Run(t.Context(), []string{
+		"scan",
+		"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+		"--type", "terraform",
+		"--output-path", freshOutput,
+		"--offline-bundle-path", bundleDir,
+		"--metadata-path", metadataPath,
+		"--inventory-path", filepath.Join(freshOutput, "datadog-iac-scanner-result.sarif", "inventory.json"),
+	})
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+	report, err := os.ReadFile(filepath.Join(freshOutput, "datadog-iac-scanner-result.sarif"))
+	require.NoError(t, err, "the report is a file")
+	require.Contains(t, string(report), "terraform-s3-bucket-versioning-disabled")
+	metadataBytes, err = os.ReadFile(filepath.Clean(metadataPath))
+	require.NoError(t, err)
+	metadata = scan.ScanMetadata{}
+	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
+	require.NotNil(t, metadata.Inventory)
+	require.Equal(t, scan.InventoryFailed, metadata.Inventory.Status)
+
+	// Nor can the inventory take the place of a directory the metadata needs.
+	nested := filepath.Join(t.TempDir(), "out")
+	nestedMetadata := filepath.Join(nested, "result.json", "metadata.json")
+	err = scanAction.Run(t.Context(), []string{
+		"scan",
+		"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+		"--type", "terraform",
+		"--output-path", nested,
+		"--offline-bundle-path", bundleDir,
+		"--metadata-path", nestedMetadata,
+		"--inventory-path", filepath.Join(nested, "result.json"),
+	})
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+	metadataBytes, err = os.ReadFile(filepath.Clean(nestedMetadata))
+	require.NoError(t, err, "the metadata is written")
+	metadata = scan.ScanMetadata{}
+	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
+	require.NotNil(t, metadata.Inventory)
+	require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+	// The metadata path reaches the inventory's through symlinks: a link that
+	// points to it before it exists, and a link followed by "..", which the
+	// system resolves before going up.
+	aliases := t.TempDir()
+	elsewhere := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(elsewhere, "sub"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(elsewhere, "sub"), filepath.Join(aliases, "link")))
+	danglingInventory := filepath.Join(aliases, "inventory.json")
+	require.NoError(t, os.Symlink(danglingInventory, filepath.Join(aliases, "metadata.json")))
+	sep := string(filepath.Separator)
+	for _, tt := range []struct{ metadataPath, inventoryPath string }{
+		{filepath.Join(aliases, "metadata.json"), danglingInventory},
+		{aliases + sep + "link" + sep + ".." + sep + "inventory.json", filepath.Join(elsewhere, "inventory.json")},
+	} {
+		err = scanAction.Run(t.Context(), []string{
+			"scan",
+			"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+			"--type", "terraform",
+			"--output-path", t.TempDir(),
+			"--offline-bundle-path", bundleDir,
+			"--metadata-path", tt.metadataPath,
+			"--inventory-path", tt.inventoryPath,
+		})
+		require.ErrorAs(t, err, &exitErr)
+		require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+		metadataBytes, err = os.ReadFile(tt.metadataPath)
+		require.NoError(t, err, "the metadata is written")
+		metadata = scan.ScanMetadata{}
+		require.NoError(t, json.Unmarshal(metadataBytes, &metadata), tt.metadataPath)
+		require.NotNil(t, metadata.Inventory, tt.metadataPath)
+		require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason, tt.metadataPath)
+	}
 }

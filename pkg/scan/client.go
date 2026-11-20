@@ -55,14 +55,18 @@ const (
 
 // Parameters represents all available scan parameters
 type Parameters struct {
-	CloudProvider               []string
-	ExperimentalQueries         bool
-	InputData                   string
-	OutputName                  string
-	OutputPath                  string
-	RepoPath                    string
-	Path                        []string
-	PayloadPath                 string
+	CloudProvider       []string
+	ExperimentalQueries bool
+	InputData           string
+	OutputName          string
+	OutputPath          string
+	RepoPath            string
+	Path                []string
+	PayloadPath         string
+	InventoryPath       string
+	// MetadataPath is where the caller writes the scan metadata, which the
+	// inventory must not replace.
+	MetadataPath                string
 	PreviewLines                int
 	QueriesPath                 []string
 	LibrariesPath               string
@@ -139,6 +143,8 @@ type Client struct {
 	// rendered documents are still scanned.
 	chartFilter  *provider.PathFilter
 	contentCache map[string][]byte
+	// inventory is set while a scan that asked for an inventory runs.
+	inventory *inventoryRun
 }
 
 // ClientOption customizes a Client at construction time.
@@ -262,6 +268,7 @@ func (c *Client) PerformScan(ctx context.Context) (ScanMetadata, error) {
 	ctx, watcher := memwatch.Start(ctx, &contextLogger)
 	defer watcher.Stop()
 
+	c.startInventory(ctx)
 	scanResults, err := c.executeScan(ctx)
 
 	if err != nil {

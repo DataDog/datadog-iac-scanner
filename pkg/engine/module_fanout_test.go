@@ -62,7 +62,7 @@ func TestResolveModuleDocuments_InstantiatesEveryLeafOfANestedFanOut(t *testing.
 	}
 	files = append(files, fileMeta("stack-id", stackFile))
 
-	res := resolveModuleDocuments(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
+	res := resolveModuleDocumentsForTest(context.Background(), files, root, nil, nil, nil, nil, nil, nil)
 	require.True(t, res.ok)
 	require.Equal(t, want, res.resourceCount, "every leaf of the fan-out must be instantiated")
 	require.NotEmpty(t, res.docs)

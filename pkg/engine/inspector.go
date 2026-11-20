@@ -247,6 +247,7 @@ type Inspector struct {
 	remoteModuleDirs       map[string]RemoteModuleDirectory
 	remoteModuleProvenance map[string]RemoteModuleProvenance
 	externalPathRoots      map[string]bool
+	inventory              InventorySink
 	mergeAllow             map[string]struct{}
 	// releaseDocumentsAfterPayload drops each file's Document map once the OPA
 	// payload is built; only a JSON payload export without line-info mode reads it
@@ -547,6 +548,8 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
 		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
 	}
+	// An inventory links a kept finding to every resource it stands for.
+	queryContext.findings.recordDuplicates = c.inventory != nil
 
 	evalStart := time.Now()
 	vuls, moduleRaised, moduleSeverity, err := c.doRun(ctx, queryContext)
@@ -570,6 +573,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Debug().Msg("engine.Inspect()")
 
 	queries := c.getQueriesByPlat(platforms)
+	c.inventoryDocuments(ctx, files)
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo

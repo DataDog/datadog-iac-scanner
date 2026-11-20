@@ -6,9 +6,11 @@
 package model
 
 import (
+	"cmp"
 	"context"
 	"index/suffixarray"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -765,6 +767,58 @@ type Vulnerability struct {
 	// (FileName) is never rewritten, so reports that read the file from disk
 	// keep working.
 	OrderPath string `json:"-"`
+	// AlsoRaisedOn holds where else the scan raised this finding before it
+	// kept one finding per identity, when the scan keeps them (see
+	// RecordDuplicate): an inventory links the kept finding to every
+	// resource it stands for.
+	AlsoRaisedOn []RaisedOn `json:"-"`
+}
+
+// RaisedOn is where a finding was raised: its document, line and search
+// key, and the first line of its Terraform block.
+type RaisedOn struct {
+	FileID     string
+	Line       int
+	SearchKey  string
+	BlockStart int
+}
+
+// raisedOn is where v was raised. A module instance's document is named
+// after its file's: the instances of a module are one place, so that a
+// module instantiated many times adds nothing to the findings it raises.
+func (v *Vulnerability) raisedOn() RaisedOn {
+	fileID, _, _ := strings.Cut(v.FileID, "\x00")
+	return RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
+}
+
+// Places gathers where the findings of one identity were raised, once each,
+// whichever of them the scan keeps: the set grows with every finding of the
+// identity, and Assign gives the result to the kept one once, at the end.
+type Places map[RaisedOn]struct{}
+
+// Add adds where v was raised, and the places v already stood for.
+func (p Places) Add(v *Vulnerability) {
+	p[v.raisedOn()] = struct{}{}
+	for _, place := range v.AlsoRaisedOn {
+		p[place] = struct{}{}
+	}
+}
+
+// Assign sets on kept, the finding of the identity the scan reports, the
+// other places of the set, in a stable order.
+func (p Places) Assign(kept *Vulnerability) {
+	here := kept.raisedOn()
+	var also []RaisedOn
+	for place := range p {
+		if place != here {
+			also = append(also, place)
+		}
+	}
+	slices.SortFunc(also, func(a, b RaisedOn) int {
+		return cmp.Or(strings.Compare(a.FileID, b.FileID), cmp.Compare(a.Line, b.Line),
+			strings.Compare(a.SearchKey, b.SearchKey), cmp.Compare(a.BlockStart, b.BlockStart))
+	})
+	kept.AlsoRaisedOn = also
 }
 
 // Identity returns the file and line text that tell v apart from other
@@ -1098,6 +1152,9 @@ type AnalyzedPaths struct {
 	KustomizeRoots []string
 	TotalFiles     int
 	ContentCache   map[string][]byte
+	// TooLarge holds, per file skipped for its size, the platform its
+	// extension gives.
+	TooLarge map[string]string
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

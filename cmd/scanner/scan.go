@@ -56,6 +56,10 @@ var scanAction = &cli.Command{
 			Name:  "metadata-path",
 			Usage: "file name to store the scan metadata JSON",
 		},
+		&cli.StringFlag{
+			Name:  "inventory-path",
+			Usage: "file name to store the resource inventory JSON",
+		},
 		&cli.IntFlag{
 			Name:  "max-file-size",
 			Usage: "maximum file size that will be scanned, in MB",
@@ -229,6 +233,23 @@ func validateQueriesPaths(paths []string) ([]string, error) {
 	return absolutePaths, nil
 }
 
+// createOutputDirs creates the directories the scan writes to. The
+// inventory creates its own when it is written, after the reports, so that it
+// can neither take a report's place nor stop the scan.
+func createOutputDirs(outputPath, payloadPath string) error {
+	if outputPath != "" {
+		if err := os.MkdirAll(outputPath, dirPerms); err != nil {
+			return err
+		}
+	}
+	if payloadPath != "" {
+		if err := os.MkdirAll(filepath.Dir(payloadPath), dirPerms); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // nolint:gocyclo
 func runScan(ctx context.Context, c *cli.Command) error {
 	if c.Args().Len() > 0 {
@@ -247,15 +268,13 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if outputPath != "" {
-		if err := os.MkdirAll(outputPath, dirPerms); err != nil {
-			return err
-		}
+	inventoryPath, err := getAbsolutePath(c.String("inventory-path"))
+	if err != nil {
+		return err
 	}
-	if payloadPath != "" {
-		if err := os.MkdirAll(filepath.Dir(payloadPath), dirPerms); err != nil {
-			return err
-		}
+	metadataPath := c.String("metadata-path")
+	if err := createOutputDirs(outputPath, payloadPath); err != nil {
+		return err
 	}
 
 	repoInfo, repoDir, err := getRepositoryCommitInfo(inputPaths)
@@ -373,6 +392,8 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		MaxFileSizeFlag:             c.Int("max-file-size"),
 		MaxResolverDepth:            c.Int("max-resolver-depth"),
 		PayloadPath:                 payloadPath,
+		InventoryPath:               inventoryPath,
+		MetadataPath:                metadataPath,
 		SCIInfo:                     model.SCIInfo{RepositoryDir: repoDir, RepositoryCommitInfo: *repoInfo},
 		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
@@ -418,7 +439,6 @@ func runScan(ctx context.Context, c *cli.Command) error {
 
 	reportResult(repoDir, params.OutputPath, params.OutputName, &metadata)
 
-	metadataPath := c.String("metadata-path")
 	if err = saveMetadata(metadataPath, &metadata); err != nil {
 		return fmt.Errorf("error saving the metadata JSON: %w", err)
 	}

@@ -200,16 +200,44 @@ func compareAttribution(a, b *ModuleAttribution) int {
 // FindingIdentity), the first one in CompareFindings order, and returns the
 // kept findings in that order. It reorders findings in place.
 func FirstFindingPerIdentity(findings []Vulnerability) []Vulnerability {
+	return firstFindingPerIdentity(findings, false)
+}
+
+// FirstFindingPerIdentityRecording is FirstFindingPerIdentity that also
+// records, on each kept finding, where the findings it drops were raised
+// (see RecordDuplicate).
+func FirstFindingPerIdentityRecording(findings []Vulnerability) []Vulnerability {
+	return firstFindingPerIdentity(findings, true)
+}
+
+func firstFindingPerIdentity(findings []Vulnerability, record bool) []Vulnerability {
 	SortFindings(findings)
-	seen := make(map[[sha256.Size]byte]struct{}, len(findings))
+	seen := make(map[[sha256.Size]byte]int, len(findings))
+	// The places of each identity with duplicates, by kept finding.
+	var places map[int]Places
 	kept := findings[:0]
 	for i := range findings {
 		digest := sha256.Sum256([]byte(FindingIdentity(&findings[i])))
-		if _, duplicate := seen[digest]; duplicate {
+		if k, duplicate := seen[digest]; duplicate {
+			if record {
+				if places == nil {
+					places = make(map[int]Places)
+				}
+				p := places[k]
+				if p == nil {
+					p = Places{}
+					p.Add(&kept[k])
+					places[k] = p
+				}
+				p.Add(&findings[i])
+			}
 			continue
 		}
-		seen[digest] = struct{}{}
+		seen[digest] = len(kept)
 		kept = append(kept, findings[i])
+	}
+	for k, p := range places {
+		p.Assign(&kept[k])
 	}
 	clear(findings[len(kept):])
 	return kept
