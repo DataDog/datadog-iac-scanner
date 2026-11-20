@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -319,14 +320,14 @@ func (s *resourceSchedule) local(v int, ctx *hcl.EvalContext) {
 	for _, read := range g.reads[v] {
 		s.local(read, ctx)
 	}
-	s.e.resolveLocals(g, ctx, s.localValues, []int{v}, &s.scope.diagnostics)
+	s.e.resolveLocals(g, ctx, s.localValues, []int{v}, &s.scope.observations)
 }
 
 func (s *resourceSchedule) evaluate(unit int) {
 	b := s.graph.blocks[unit]
 	ctx := s.context(s.graph.edges[unit], s.graph.locals[unit])
 	if b.Type == scheduledResource {
-		s.resources[unit] = s.e.expandBlock(s.ctx, b, ctx, s.addr, s.chain, false, &s.scope.diagnostics)
+		s.resources[unit] = s.e.expandBlock(s.ctx, b, ctx, s.addr, s.chain, false, &s.scope.observations)
 		s.exposed[unit] = s.resources[unit]
 		return
 	}
@@ -360,6 +361,13 @@ func (s *resourceSchedule) cycle(component []int) {
 			copyBody.Attributes[name] = &copyAttr
 		}
 		copyBlock.Body = &copyBody
+		// The cyclic fallback intentionally does not publish expression errors,
+		// but it cannot establish membership when a meta-argument is present.
+		reason := inventoryNoGap
+		if count, each := tfinstances.Attributes(b.Body); count != nil || each != nil {
+			reason = InventoryExpansionCycle
+		}
+		s.scope.observations.inventoryGap(b, reason, "")
 		rs := s.e.expandBlock(s.ctx, &copyBlock, s.base, s.addr, s.chain, b.Type == blockTypeData, nil)
 		for i := range rs {
 			rs[i].Body = b.Body
