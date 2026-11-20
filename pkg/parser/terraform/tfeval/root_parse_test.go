@@ -7,7 +7,9 @@ package tfeval
 
 import (
 	"context"
+	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -180,4 +182,116 @@ func (f *configurationReadFS) ReadFile(path string) ([]byte, error) {
 		return nil, fs.ErrPermission
 	}
 	return f.FS.ReadFile(path)
+}
+
+func TestModuleConfigurationOverrideLoading(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		files      map[string]string
+		unreadable string
+		failed     bool
+	}{
+		{"ordinary invalid file", map[string]string{"bad.tf": `resource "test_resource" "broken" {`}, "", false},
+		{"HCL override syntax", map[string]string{"bad_override.tf": `resource "test_resource" "item" {acl="private"`}, "", true},
+		{"JSON override syntax", map[string]string{"bad_override.tf.json": `{"resource":`}, "", true},
+		{"HCL override read", map[string]string{"bad_override.tf": ``}, "bad_override.tf", true},
+		{"JSON override read", map[string]string{"bad_override.tf.json": `{}`}, "bad_override.tf.json", true},
+		{"shadowed invalid Terraform twin", map[string]string{"dialect_override.tf": `invalid {`, "dialect_override.tofu": ``}, "", false},
+		{"selected invalid OpenTofu twin", map[string]string{"dialect_override.tf": ``, "dialect_override.tofu": `invalid {`}, "", true},
+		{"already loaded zero expansion", map[string]string{"main.tf": `resource "test_resource" "item" {count=0}`, "bad_override.tf": `invalid {`}, "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			files := map[string]string{"main.tf": `resource "test_resource" "item" {acl="public"}`}
+			for file, source := range test.files {
+				files[file] = source
+			}
+			dir := writeModule(t, t.TempDir(), "module", files)
+			e := New()
+			if test.unreadable != "" {
+				e = NewWithFS(&configurationReadFS{FS: vfs.DiskFS{}, failPath: filepath.Join(dir, test.unreadable)})
+			}
+			for i := 0; i < 2; i++ {
+				result, err := e.EvaluateModule(context.Background(), dir, nil)
+				if !test.failed {
+					require.NoError(t, err)
+					require.Len(t, result.Resources, 1)
+					requireString(t, result.Resources[0].Attributes, "acl", "public")
+					continue
+				}
+				require.Error(t, err)
+				require.Empty(t, result.Resources)
+				require.Empty(t, result.Outputs)
+				require.False(t, result.InventoryObservations().EvaluationCompleted)
+				var diagnostic *EvaluationDiagnostic
+				require.ErrorAs(t, err, &diagnostic)
+				require.True(t, strings.Contains(diagnostic.Subject.Filename, "override."))
+				require.Greater(t, diagnostic.Subject.Start.Line, 0)
+				original := diagnostic.Subject
+				diagnostic.Subject.Filename = "changed error inspection"
+				var again *EvaluationDiagnostic
+				require.ErrorAs(t, err, &again)
+				require.Equal(t, original, again.Subject)
+				var unitDiagnostic *EvaluationDiagnostic
+				require.ErrorAs(t, result.PolicyUnit(nil).Failure(), &unitDiagnostic)
+				require.Equal(t, original, unitDiagnostic.Subject)
+			}
+		})
+	}
+	t.Run("unavailable confined override", func(t *testing.T) {
+		outside := writeModule(t, t.TempDir(), "outside", map[string]string{"config.tf": ``})
+		dir := writeModule(t, t.TempDir(), "module", map[string]string{"main.tf": `resource "test_resource" "item" {acl="public"}`})
+		require.NoError(t, os.Symlink(filepath.Join(outside, "config.tf"), filepath.Join(dir, "confined_override.tf")))
+		result, err := New().EvaluateModule(context.Background(), dir, nil)
+		require.Error(t, err)
+		require.Empty(t, result.Resources)
+		var diagnostic *EvaluationDiagnostic
+		require.ErrorAs(t, err, &diagnostic)
+		require.Equal(t, filepath.Join(dir, "confined_override.tf"), diagnostic.Subject.Filename)
+	})
+}
+
+func TestModuleConfigurationOverrideContexts(t *testing.T) {
+	root := t.TempDir()
+	child := writeModule(t, root, "child", map[string]string{"main.tf": `output "acl" {value="public"}`, "bad_override.tf": `output "acl" {value="private"`})
+	caller := writeModule(t, root, "caller", map[string]string{"main.tf": `module "left" {source="../child"}
+module "right" {source="../child"}
+resource "test_resource" "independent" {acl="public"}
+resource "test_resource" "dependent" {acl=module.left.acl}`})
+	e := New()
+	for i := 0; i < 2; i++ {
+		result, err := e.EvaluateModule(context.Background(), caller, nil)
+		require.NoError(t, err)
+		require.Len(t, result.Resources, 2)
+		requireString(t, findResource(t, result.Resources, "test_resource", "independent").Attributes, "acl", "public")
+		requireUnknown(t, findResource(t, result.Resources, "test_resource", "dependent").Attributes, "acl")
+		diagnostics := result.Diagnostics()
+		require.Len(t, diagnostics, 2)
+		require.Equal(t, []string{"module.left", "module.right"}, []string{diagnostics[0].ModuleAddress, diagnostics[1].ModuleAddress})
+		for _, diagnostic := range diagnostics {
+			require.Equal(t, filepath.Join(child, "bad_override.tf"), diagnostic.Subject.Filename)
+		}
+	}
+	// A runtime-zero call whose source was never loaded is not a certificate
+	// that the child configuration was parsed or validated. Do not add I/O here.
+	zero := writeModule(t, root, "zero", map[string]string{"main.tf": `module "child" {
+source="../child"
+count=0
+}`})
+	result, err := e.EvaluateModule(context.Background(), zero, nil)
+	require.NoError(t, err)
+	require.True(t, result.InventoryObservations().EvaluationCompleted)
+	require.Empty(t, result.Resources)
+	// The root error keeps every original parse failure through standard unwrap.
+	mixed := writeModule(t, root, "mixed", map[string]string{"bad.tf": `bad {`, "bad_override.tf": `bad {`})
+	_, err = e.EvaluateModule(context.Background(), mixed, nil)
+	require.Error(t, err)
+	var failure *moduleConfigurationFailure
+	require.ErrorAs(t, err, &failure)
+	sources := map[string]bool{}
+	for _, cause := range failure.Unwrap() {
+		var diagnostic *EvaluationDiagnostic
+		require.True(t, errors.As(cause, &diagnostic))
+		sources[filepath.Base(diagnostic.Subject.Filename)] = true
+	}
+	require.Equal(t, map[string]bool{"bad.tf": true, "bad_override.tf": true}, sources)
 }
