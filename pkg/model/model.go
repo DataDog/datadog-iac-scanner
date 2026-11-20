@@ -549,6 +549,49 @@ func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
+	if f.Kind == KindTerraformPlan {
+		// Kept through eval by DiscardLineInfoDocument.
+		f.dropPlanLineInfo()
+		retainedPlanLineInfo.mu.Lock()
+		if retainedPlanLineInfo.file == f {
+			retainedPlanLineInfo.file = nil
+		}
+		retainedPlanLineInfo.mu.Unlock()
+	}
+}
+
+// retainedPlanLineInfo is the Terraform plan whose line-info tree is kept
+// across decode passes (see DiscardLineInfoDocument). Only one plan's tree is
+// kept, so a scan over many plans does not hold all of them until post-eval.
+var retainedPlanLineInfo struct {
+	mu   sync.Mutex
+	file *FileMetadata
+}
+
+// retainPlanLineInfo makes f the plan whose line-info tree is kept and drops
+// the tree of the plan it replaces. Callers must not hold f's line-info lock:
+// dropping takes the other plan's, and holding both could deadlock.
+func (f *FileMetadata) retainPlanLineInfo() {
+	if f.Kind != KindTerraformPlan || f.lineInfo == nil || f.lineInfo.group != nil {
+		return
+	}
+	retainedPlanLineInfo.mu.Lock()
+	previous := retainedPlanLineInfo.file
+	retainedPlanLineInfo.file = f
+	retainedPlanLineInfo.mu.Unlock()
+	if previous != nil && previous != f {
+		previous.dropPlanLineInfo()
+	}
+}
+
+func (f *FileMetadata) dropPlanLineInfo() {
+	st := f.lineInfo
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	f.LineInfoDocument = nil
+	st.mu.Unlock()
 }
 
 // DiscardLineInfoDocument drops a memoized line-info tree while keeping the
@@ -556,9 +599,14 @@ func (f *FileMetadata) ReleasePostEvalData() {
 // never lazily loaded: without a loader the tree could not be rebuilt, and
 // writing the field outside the state mutex would race concurrent readers
 // (UseLineInfoDocument reads it unlocked when no loader is configured).
+//
+// A Terraform plan keeps its tree until another plan's tree is loaded or
+// ReleasePostEvalData: it only holds the plan's resource lines (see
+// json.Parser.ParseLineInfo), a fraction of the plan, while rebuilding it
+// means reading the whole plan again for every rule with findings in it.
 func (f *FileMetadata) DiscardLineInfoDocument() {
 	st := f.lineInfo
-	if st == nil {
+	if st == nil || f.Kind == KindTerraformPlan {
 		return
 	}
 	st.mu.Lock()
@@ -594,8 +642,12 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 		return nil
 	}
 	st.mu.Lock()
-	defer st.mu.Unlock()
-	return f.ensureLineInfoDocumentLocked(ctx)
+	err := f.ensureLineInfoDocumentLocked(ctx)
+	st.mu.Unlock()
+	if err == nil {
+		f.retainPlanLineInfo()
+	}
+	return err
 }
 
 // UseLineInfoDocument loads line info (when configured) and runs fn against
@@ -610,17 +662,21 @@ func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[stri
 		doc := f.LineInfoDocument
 		return fn(doc)
 	}
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if err := f.ensureLineInfoDocumentLocked(ctx); err != nil {
-		return err
-	}
-	if st.group != nil {
-		// The group owns the shared tree; this copy only holds it while in use,
-		// so discarding the group releases it.
-		defer func() { f.LineInfoDocument = nil }()
-	}
-	return fn(f.LineInfoDocument)
+	err := func() error {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if err := f.ensureLineInfoDocumentLocked(ctx); err != nil {
+			return err
+		}
+		if st.group != nil {
+			// The group owns the shared tree; this copy only holds it while in use,
+			// so discarding the group releases it.
+			defer func() { f.LineInfoDocument = nil }()
+		}
+		return fn(f.LineInfoDocument)
+	}()
+	f.retainPlanLineInfo()
+	return err
 }
 
 func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {

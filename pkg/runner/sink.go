@@ -86,16 +86,17 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		return errors.Wrapf(err, "failed to get file content: %s", filename)
 	}
 	// Fast path: duplicate content already parsed and sanitized — reuse the shared
-	// trees with a per-file top-level map and skip parsing. The interned key also
-	// serves the slow path below (pure function of content).
-	shareKey, shared := s.lookupSharedParse(*c.Content)
-	if shared != nil {
+	// trees with a per-file top-level map and skip parsing.
+	if shared := s.lookupSharedParse(*c.Content); shared != nil {
 		fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
-		return s.sinkSharedParse(ctx, filename, scanID, shareKey, shared,
+		return s.sinkSharedParse(ctx, filename, scanID, shared.content, shared,
 			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
 	}
 
-	documents, err := s.Parser.Parse(ctx, filename, *content, openAPIResolveReferences, c.IsMinified, maxResolverDepth)
+	// Line info is rebuilt on demand (see SetLineInfoLoader below), so the
+	// documents' line markers are never read.
+	documents, err := s.Parser.Parse(iacparser.WithLazyLineInfo(ctx), filename, *content,
+		openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
 		s.logParseFailure(ctx, filename, *content, err)
 		return nil
@@ -123,7 +124,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		sort.Ints(documents.IgnoreLines)
 	}
 
-	shareable := shareKey != "" && shareableParse(&documents)
+	shareable := len(*content) > 0 && shareableParse(&documents)
 	var sharedDocs []model.Document
 
 	for docIdx := range documents.Docs {
@@ -135,7 +136,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if shareable && len(sharedDocs) == len(documents.Docs) {
 		// Every document sanitized cleanly: cache the sanitized trees for later
 		// files with identical content (top-level copies, children shared).
-		s.storeSharedParse(shareKey, &documents, sharedDocs)
+		s.storeSharedParse(s.internContentBytes(*content), &documents, sharedDocs)
 	}
 	s.Tracker.TrackFileParse(filename)
 
@@ -180,6 +181,13 @@ func (s *Service) sinkDocument(
 		// Canonicalize structurally identical subtrees; the top-level map stays
 		// per-file (Combine inserts id/file into it).
 		preparedDocument = s.consTreeChildren(preparedDocument)
+	} else if documents.Kind == model.KindTerraformPlan {
+		// A plan repeats most of its values: resource_changes holds each
+		// resource's before and after values (equal for a no-op) next to the
+		// planned values, and the parser's metadata copies after_unknown.
+		// Plans are never module-instantiated, so their trees can be shared
+		// like those of shareable parses; the interner is the plan's own.
+		preparedDocument = newTreeHashCons().consChildren(preparedDocument)
 	}
 
 	file := model.FileMetadata{
@@ -198,7 +206,7 @@ func (s *Service) sinkDocument(
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
-		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
 	// Lazy lines, as in sinkContent.
 	file.SetLazyLines()
 
@@ -236,7 +244,7 @@ func (s *Service) sinkSharedParse(
 			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
 		}
 		file.SetLineInfoLoader(newLineInfoLoader(
-			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth))
+			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
 		file.SetLazyLines()
 		s.saveToFile(ctx, &file)
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/tidwall/gjson"
 	"gopkg.in/yaml.v3"
 )
 
@@ -204,6 +205,43 @@ func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	}
 
 	return fileContent
+}
+
+// MayResolve reports whether Resolve can resolve anything in the JSON
+// document root of the file at path, the only case where its result differs
+// from the file: a string value naming an existing file with one of the
+// resolver's extensions, or a same-file reference under a $ref key. Without
+// one, Resolve decodes, walks and re-encodes the whole file to return it
+// unchanged.
+func (r *Resolver) MayResolve(root *gjson.Result, path string) bool {
+	return r.mayResolveValue(root, filepath.Dir(path), filepath.Base(path), false)
+}
+
+// mayResolveValue mirrors walk and resolvePath: ref tells whether v is under
+// a $ref key.
+func (r *Resolver) mayResolveValue(v *gjson.Result, dir, base string, ref bool) bool {
+	found := false
+	switch {
+	case v.Type == gjson.String:
+		switch {
+		case v.Str == base:
+		case strings.HasPrefix(v.Str, "#"):
+			found = ref && v.Str != "#"
+		default:
+			found, _, _ = r.findFilePath(dir, v.Str, false, r.Extension)
+		}
+	case v.IsArray():
+		v.ForEach(func(_, child gjson.Result) bool {
+			found = r.mayResolveValue(&child, dir, base, ref)
+			return !found
+		})
+	case v.IsObject():
+		v.ForEach(func(key, child gjson.Result) bool {
+			found = r.mayResolveValue(&child, dir, base, strings.Contains(strings.ToLower(key.Str), "$ref"))
+			return !found
+		})
+	}
+	return found
 }
 
 func (r *Resolver) walk(

@@ -84,6 +84,62 @@ func TestUseLineInfoDocument_discardReloads(t *testing.T) {
 	require.Equal(t, int32(2), loads.Load())
 }
 
+// TestDiscardLineInfoDocument_terraformPlanKeptUntilPostEval checks that a
+// plan's line-info tree is loaded once for every decode pass of the eval and
+// released with the rest of the post-eval data.
+func TestDiscardLineInfoDocument_terraformPlanKeptUntilPostEval(t *testing.T) {
+	ctx := context.Background()
+	var loads atomic.Int32
+	fm := &FileMetadata{FilePath: "plan.json", Kind: KindTerraformPlan, OriginalData: "{}"}
+	fm.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		loads.Add(1)
+		return Document{"resource": map[string]interface{}{}}, nil
+	})
+
+	for range 3 {
+		require.NoError(t, fm.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+			require.NotNil(t, doc)
+			return nil
+		}))
+		fm.DiscardLineInfoDocument()
+	}
+	require.Equal(t, int32(1), loads.Load())
+	require.NotNil(t, fm.LineInfoDocument)
+
+	// Loading another plan's tree drops this one, which reloads when used.
+	other := &FileMetadata{FilePath: "other.json", Kind: KindTerraformPlan, OriginalData: "{}"}
+	other.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		return Document{"resource": map[string]interface{}{}}, nil
+	})
+	require.NoError(t, other.EnsureLineInfoDocument(ctx))
+	require.NotNil(t, other.LineInfoDocument)
+	require.Nil(t, fm.LineInfoDocument)
+	require.NoError(t, fm.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil }))
+	require.Equal(t, int32(2), loads.Load())
+	require.Nil(t, other.LineInfoDocument)
+
+	// Decoders of different plans evict each other without deadlocking.
+	var wg sync.WaitGroup
+	for _, f := range []*FileMetadata{fm, other, fm, other} {
+		wg.Add(1)
+		go func(f *FileMetadata) {
+			defer wg.Done()
+			for range 100 {
+				require.NoError(t, f.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+					require.NotNil(t, doc)
+					return nil
+				}))
+			}
+		}(f)
+	}
+	wg.Wait()
+
+	fm.ReleasePostEvalData()
+	other.ReleasePostEvalData()
+	require.Nil(t, fm.LineInfoDocument)
+	require.Nil(t, other.LineInfoDocument)
+}
+
 // TestDiscardLineInfoDocumentWithoutLoader verifies the no-op guard: without
 // a lazy loader the tree can never be rebuilt, so discarding is refused
 // rather than writing the field outside the state mutex (which would race

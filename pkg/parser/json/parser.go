@@ -24,6 +24,11 @@ type Parser struct {
 // Resolve - replace or modifies in-memory content before parsing
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
 	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile, err error) {
+	if !p.mayResolve(fileContent, filename) {
+		// The resolution would decode, walk and re-encode the whole file to
+		// return fileContent unchanged.
+		return fileContent, make(map[string]model.ResolvedFile), nil
+	}
 	// Resolve files passed as arguments with file resolver (e.g. file://)
 	res := file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
@@ -47,6 +52,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolved, resolvedFiles, err = p.Resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
 	if err != nil {
 		return nil, nil, nil, nil, err
+	}
+
+	if len(resolvedFiles) == 0 && looksLikeTerraformPlan(fileContent) {
+		if tfPlan, ok := parseTFPlanContent(fileContent, true); ok {
+			return fileContent, []model.Document{tfPlan}, nil, resolvedFiles, nil
+		}
 	}
 
 	r := model.Document{}
@@ -73,6 +84,44 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	}
 
 	return resolved, []model.Document{tfPlan}, nil, resolvedFiles, nil
+}
+
+// ParseLineInfo returns the line-info documents of a Terraform plan. Line
+// detection only reads a plan's resource lines, so they are rebuilt alone
+// instead of the whole plan for every rule with findings. ok is false for
+// other content, and for a plan referencing files, whose resolved values only
+// a full parse holds; those are parsed whole.
+func (p *Parser) ParseLineInfo(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
+	if !looksLikeTerraformPlan(fileContent) || p.mayResolve(fileContent, filePath) {
+		return nil, false
+	}
+	doc, ok := parseTFPlanLineInfo(fileContent)
+	if !ok {
+		return nil, false
+	}
+	return []model.Document{doc}, true
+}
+
+// ParseUnannotated returns the documents of a Terraform plan without line
+// markers, for a scan that rebuilds line info with ParseLineInfo: annotating
+// the plan was most of its parse. ok is false for other content and for a
+// plan referencing files, which are then parsed whole.
+func (p *Parser) ParseUnannotated(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
+	if !looksLikeTerraformPlan(fileContent) || p.mayResolve(fileContent, filePath) {
+		return nil, false
+	}
+	doc, ok := parseTFPlanContent(fileContent, false)
+	if !ok {
+		return nil, false
+	}
+	return []model.Document{doc}, true
+}
+
+// mayResolve reports whether resolving fileContent can change it (see
+// file.Resolver.MayResolve).
+func (p *Parser) mayResolve(fileContent []byte, filename string) bool {
+	root := jsonView(fileContent)
+	return file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions()).MayResolve(&root, filename)
 }
 
 // SupportedExtensions returns extensions supported by this parser, which is json extension

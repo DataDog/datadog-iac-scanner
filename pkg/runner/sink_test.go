@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
@@ -343,6 +344,13 @@ func TestSink_TFPlanExposesAfterUnknownAndConfiguration(t *testing.T) {
 			}
 		}
 	}`, string(b))
+	// Sunk, the plan's equal subtrees are a single tree.
+	file := sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(p) }, "tfplan.json", planJSON)
+	meta := file.Document["_dd_tfplan_meta"].(map[string]interface{})["aws_s3_bucket"].(map[string]interface{})["main"]
+	change := file.Document["resource_changes"].([]interface{})[0].(map[string]interface{})["change"]
+	require.Equal(t,
+		reflect.ValueOf(meta.(map[string]interface{})["after_unknown"]).Pointer(),
+		reflect.ValueOf(change.(map[string]interface{})["after_unknown"]).Pointer())
 }
 
 func TestKics_resolveCRLFFile(t *testing.T) {
@@ -532,9 +540,13 @@ func TestSink_IgnoreLinesWithResolvedFiles(t *testing.T) {
 
 func sinkFile(t *testing.T, filename string, content []byte) *model.FileMetadata {
 	t.Helper()
+	return sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(&yamlParser.Parser{}) }, filename, content)
+}
+
+func sinkFileWith(t *testing.T, add func(*parser.Builder) *parser.Builder, filename string, content []byte) *model.FileMetadata {
+	t.Helper()
 	ctx := context.Background()
-	parsers, err := parser.NewBuilder(ctx).
-		Add(&yamlParser.Parser{}).
+	parsers, err := add(parser.NewBuilder(ctx)).
 		Build([]string{""}, []string{""})
 	require.NoError(t, err)
 	require.NotEmpty(t, parsers)

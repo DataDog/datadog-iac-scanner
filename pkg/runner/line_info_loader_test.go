@@ -47,7 +47,7 @@ func TestEnsureLineInfoDocument_matchesEagerParse(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 15)
+	loader := newLineInfoLoader(p, path, 0, false, false, 15, false)
 	lazyDoc, err := loader(ctx, file)
 	require.NoError(t, err)
 
@@ -86,19 +86,31 @@ func TestEnsureLineInfoDocument_minifiedTFPlanUsesOriginalData(t *testing.T) {
 		FilePath:          path,
 		LinesOriginalData: utils.SplitLines(parsed.Content),
 	}
-	loader := newLineInfoLoader(p, path, 0, false, false, 1)
+	loader := newLineInfoLoader(p, path, 0, false, false, 1, false)
 	lazyDoc, err := loader(ctx, file)
 	require.NoError(t, err)
 	require.False(t, reflect.DeepEqual(eagerFromMinified[0], lazyDoc),
 		"lazy reparse aligns _dd_lines with indented OriginalData, not the initial minified parse")
 
+	// The lazy document holds the resource lines of a full reparse, the
+	// only part of a plan line detection reads.
 	reparsed, err := p.Parse(ctx, path, []byte(parsed.Content), false, false, 1)
 	require.NoError(t, err)
 	lazyJ, err := json.Marshal(lazyDoc)
 	require.NoError(t, err)
-	reparsedJ, err := json.Marshal(reparsed.Docs[0])
+	reparsedJ, err := json.Marshal(map[string]interface{}{"resource": reparsed.Docs[0]["resource"]})
 	require.NoError(t, err)
 	require.JSONEq(t, string(reparsedJ), string(lazyJ))
+
+	// An exported line-info payload holds the whole reparse.
+	exportedDoc, err := newLineInfoLoader(p, path, 0, false, false, 1, true)(ctx, file)
+	require.NoError(t, err)
+	exportedJ, err := json.Marshal(exportedDoc)
+	require.NoError(t, err)
+	wholeJ, err := json.Marshal(reparsed.Docs[0])
+	require.NoError(t, err)
+	require.JSONEq(t, string(wholeJ), string(exportedJ))
+	require.Contains(t, exportedDoc, "_dd_tfplan_meta")
 
 	file.SetLineInfoLoader(loader)
 	require.NoError(t, file.EnsureLineInfoDocument(ctx))

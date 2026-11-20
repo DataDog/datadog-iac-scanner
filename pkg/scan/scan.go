@@ -432,6 +432,7 @@ func (c *Client) createService(
 				Platforms:          types,
 				FilePlatform:       filePlatform,
 				PathExtractionMap:  pathExtractionMap,
+				LineInfoPayload:    c.ScanParams.LineInfoPayload,
 			},
 		)
 	}
