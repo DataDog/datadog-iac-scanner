@@ -368,27 +368,30 @@ func (c *Client) recordManifest(run *inventoryRun, files model.FileMetadatas) {
 				record(path, "", inventory.FileFailed, inventory.ReasonUnknown)
 			}
 		}
+		recordFailedRenders(run, t.FailedRenders)
 	}
 	for path, platform := range run.tooLarge {
 		record(path, platform, inventory.FileFailed, inventory.ReasonTooLarge)
 	}
-	// A chart whose render failed is a source the scan could not resolve,
-	// even when its files parsed in another render, such as a dependency's.
-	if t := c.Tracker; t != nil {
-		for chart := range t.FailedRenders {
-			if run.isExternal(chart) {
-				continue
-			}
-			rel, ok := run.collector.RelPath(chart)
-			if !ok {
-				continue
-			}
-			run.collector.AddUnresolvedSource(inventory.UnresolvedSource{
-				Platform: inventory.PlatformKubernetes,
-				Source:   rel,
-				Reason:   inventory.ReasonHelmRenderFailed,
-			})
+}
+
+// recordFailedRenders lists each chart whose render failed as a source the
+// scan could not resolve, even when its files parsed in another render, such
+// as a dependency rendered on its own.
+func recordFailedRenders(run *inventoryRun, charts map[string]bool) {
+	for chart := range charts {
+		if run.isExternal(chart) {
+			continue
 		}
+		rel, ok := run.collector.RelPath(chart)
+		if !ok {
+			continue
+		}
+		run.collector.AddUnresolvedSource(inventory.UnresolvedSource{
+			Platform: inventory.PlatformKubernetes,
+			Source:   rel,
+			Reason:   inventory.ReasonHelmRenderFailed,
+		})
 	}
 }
 

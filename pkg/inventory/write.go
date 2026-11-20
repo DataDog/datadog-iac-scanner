@@ -33,7 +33,7 @@ var ErrNotInventory = errors.New("the path holds something other than an invento
 // file only, never the lists that follow.
 var inventoryHeadKeys = []string{"schema_version", "scan_id", "scanner_version", "scanned_at"}
 
-// inventoryHeadLimit bounds how much of a file is read to recognise it.
+// inventoryHeadLimit bounds how much of a file is read to recognize it.
 const inventoryHeadLimit = 64 << 10
 
 // RemoveStale deletes an inventory left at path by an earlier scan, so that a
