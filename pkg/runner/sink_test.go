@@ -543,7 +543,8 @@ func sinkFile(t *testing.T, filename string, content []byte) *model.FileMetadata
 	return sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(&yamlParser.Parser{}) }, filename, content)
 }
 
-func sinkFileWith(t *testing.T, add func(*parser.Builder) *parser.Builder, filename string, content []byte) *model.FileMetadata {
+func sinkFileWith(t *testing.T, add func(*parser.Builder) *parser.Builder, filename string, content []byte,
+	configure ...func(*Service)) *model.FileMetadata {
 	t.Helper()
 	ctx := context.Background()
 	parsers, err := add(parser.NewBuilder(ctx)).
@@ -556,6 +557,9 @@ func sinkFileWith(t *testing.T, add func(*parser.Builder) *parser.Builder, filen
 		Storage:     storage.NewMemoryStorage(),
 		Tracker:     noopTracker{},
 		MaxFileSize: 5,
+	}
+	for _, configure := range configure {
+		configure(s)
 	}
 	require.NoError(t, sinkReader(s, ctx, filename, "scanID", bytes.NewReader(content), make([]byte, mbConst), false, 15))
 	require.Len(t, s.files, 1)
@@ -576,4 +580,30 @@ func sinkReader(s *Service, ctx context.Context, filename, scanID string,
 	rc io.Reader, data []byte, openAPIResolveReferences bool, maxResolverDepth int) error {
 	c, err := getContent(rc, data, s.MaxFileSize, filename)
 	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
+}
+
+// TestSink_planLineInfoRetention checks that a scan keeps a plan's line-info
+// tree across decode passes, and that a scan exporting line info does not
+// keep trees in a retention that could drop them under the export.
+func TestSink_planLineInfoRetention(t *testing.T) {
+	plan := []byte(`{"format_version": "1.0", "planned_values": {"root_module": {"resources": [
+		{"address": "aws_s3_bucket.main", "type": "aws_s3_bucket", "name": "main", "values": {"acl": "private"}}]}}}`)
+	p := &jsonParser.Parser{}
+	add := func(b *parser.Builder) *parser.Builder { return b.Add(p) }
+	ctx := context.Background()
+	use := func(file *model.FileMetadata) {
+		require.NoError(t, file.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+			require.Contains(t, doc, "resource")
+			return nil
+		}))
+		file.DiscardLineInfoDocument()
+	}
+
+	scan := sinkFileWith(t, add, "plan.json", plan)
+	use(scan)
+	require.NotNil(t, scan.LineInfoDocument, "kept for the next finding")
+
+	exported := sinkFileWith(t, add, "plan.json", plan, func(s *Service) { s.LineInfoPayload = true })
+	use(exported)
+	require.Nil(t, exported.LineInfoDocument)
 }

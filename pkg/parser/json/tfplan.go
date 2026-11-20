@@ -20,6 +20,9 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// planAddressKey is the key of a resource's Terraform address in its metadata.
+const planAddressKey = "address"
+
 // planResourceKey is the section of a parsed plan holding its resources.
 const planResourceKey = "resource"
 
@@ -319,7 +322,7 @@ func canonicalConfigAddress(address string) string {
 
 // resourceMetaFor returns the _dd_tfplan_meta entry of the resource at address.
 func resourceMetaFor(address string, c *resourceChangeCorrelation) map[string]interface{} {
-	meta := map[string]interface{}{"address": address}
+	meta := map[string]interface{}{planAddressKey: address}
 	if afterUnknown := c.afterUnknownByAddress[address]; afterUnknown != nil {
 		meta["after_unknown"] = afterUnknown
 	}
@@ -426,65 +429,18 @@ func parseTFPlan(doc model.Document) (model.Document, error) {
 }
 
 // parseTFPlanContent parses the JSON content of a plan one top-level section
-// at a time, where parseTFPlan needs it decoded and line-annotated whole.
-// Only the sections line detection reads are decoded with line markers:
-// planned_values and prior_state, which the resource and data sections are
-// read from, and configuration. Those of resource_changes were most of the
-// plan's memory and were never read. The annotated sections are those of
-// parseTFPlan (line markers are keyed by JSON path, see parseTFPlanLineInfo).
-// Without annotate, no section gets line markers and the plan is read from
-// content directly. ok is false when the content is not a plan this way can
-// parse, which is then parsed whole.
-func parseTFPlanContent(content []byte, annotate bool) (doc model.Document, ok bool) {
+// at a time, without line markers, where parseTFPlan needs it decoded and
+// line-annotated whole: scans that rebuild line info on demand never read
+// the markers, and annotating the plan was most of its parse. ok is false
+// when the content is not a plan this way can parse, which is then parsed
+// whole.
+func parseTFPlanContent(content []byte) (doc model.Document, ok bool) {
 	sections, ok := topLevelSections(content)
-	if !ok {
+	if !ok || !sections["planned_values"].IsObject() {
 		return nil, false
 	}
-	plannedValues, ok := sections["planned_values"]
-	if !ok || !plannedValues.IsObject() {
-		return nil, false
-	}
-	if !annotate {
-		doc, err := readPlanJSON(content, content)
-		return doc, err == nil
-	}
-	states := model.Document{}
-	if formatVersion, ok := sections["format_version"]; ok {
-		states["format_version"] = formatVersion.Value()
-	}
-	if states["planned_values"], ok = annotatedSection(content, &plannedValues); !ok {
-		return nil, false
-	}
-	if priorState, ok := sections["prior_state"]; ok {
-		if !priorState.IsObject() {
-			states["prior_state"] = priorState.Value()
-		} else if states["prior_state"], ok = annotatedSection(content, &priorState); !ok {
-			return nil, false
-		}
-	}
-	b, err := json.Marshal(states)
-	if err != nil {
-		return nil, false
-	}
-	doc, err = readPlanJSON(b, content)
-	if err != nil {
-		return nil, false
-	}
-	if configuration, ok := annotatedConfiguration(content, sections); ok {
-		doc["configuration"] = configuration
-	}
-	return doc, true
-}
-
-// annotatedConfiguration returns the configuration section of a plan with
-// line markers: findings on declarations that only it holds, such as outputs
-// and variables, are located in it.
-func annotatedConfiguration(content []byte, sections map[string]planSection) (map[string]interface{}, bool) {
-	configuration, ok := sections["configuration"]
-	if !ok || !configuration.IsObject() {
-		return nil, false
-	}
-	return annotatedSection(content, &configuration)
+	doc, err := readPlanJSON(content, content)
+	return doc, err == nil
 }
 
 // planSection is a top-level value of a plan, with the offset of its key.
@@ -525,17 +481,29 @@ func jsonView(content []byte) gjson.Result {
 }
 
 // annotatedSection decodes a top-level section of content with line markers
-// counted from the start of content, its own being the line of its key.
-func annotatedSection(content []byte, section *planSection) (map[string]interface{}, bool) {
+// counted from the start of content, its own being the line of its key. An
+// array section is decoded as the value of its key, as it is in a whole plan,
+// so the markers of its elements are the ones a whole parse gives them.
+func annotatedSection(content []byte, key string, section *planSection) (interface{}, bool) {
 	if section.Index <= 0 {
 		return nil, false
 	}
 	raw := content[section.Index : section.Index+len(section.Raw)]
+	lineAt := func(offset int) int { return 1 + bytes.Count(content[:offset], []byte{'\n'}) }
+	if section.IsArray() {
+		wrapped := append(append(append([]byte(`{"`), key...), `":`...), raw...)
+		wrapped = append(wrapped, '}')
+		var values map[string]interface{}
+		if err := json.Unmarshal(wrapped, &values); err != nil {
+			return nil, false
+		}
+		initializeJSONLineAt(wrapped, lineAt(section.Index)).setLineInfo(values)
+		return values[key], true
+	}
 	var values map[string]interface{}
 	if err := json.Unmarshal(raw, &values); err != nil || values == nil {
 		return nil, false
 	}
-	lineAt := func(offset int) int { return 1 + bytes.Count(content[:offset], []byte{'\n'}) }
 	jLine := initializeJSONLineAt(raw, lineAt(section.Index))
 	values["_dd_lines"] = jLine.setLine(values, lineAt(section.keyIndex), "", false)
 	return values, true
@@ -615,13 +583,19 @@ func detachedValue(r *gjson.Result) any {
 	return v
 }
 
+// lineInfoSections are the sections of a plan other than its resources that
+// the line-info document holds, annotated: line detection resolves paths
+// under "resource" (see the detector's terraformPlanPath), "configuration"
+// (outputs, variables) and "resource_changes" (anchored search keys).
+var lineInfoSections = []string{"configuration", "resource_changes"}
+
 // parseTFPlanLineInfo builds the line-info document of a plan for line
-// detection, which resolves paths under "resource" and "configuration" (see
-// the detector's terraformPlanPath): those sections of the parseTFPlan
-// document, the first read from the line-annotated planned_values alone. Line positions are
-// keyed by their JSON path, so the lines found in planned_values on its own
-// are those found in the whole plan. ok is false when planned_values cannot
-// be read this way, and the caller then parses the whole plan.
+// detection: the "resource" section of the parseTFPlan document, read from
+// the line-annotated planned_values alone, and the annotated lineInfoSections.
+// Line positions are keyed by their JSON path, so the lines found in a section
+// on its own are those found in the whole plan. ok is false when
+// planned_values cannot be read this way, and the caller then parses the
+// whole plan.
 func parseTFPlanLineInfo(content []byte) (doc model.Document, ok bool) {
 	sections, ok := topLevelSections(content)
 	plannedValues, formatVersion := sections["planned_values"], sections["format_version"]
@@ -629,10 +603,11 @@ func parseTFPlanLineInfo(content []byte) (doc model.Document, ok bool) {
 		(&hcl_plan.Plan{FormatVersion: formatVersion.Str}).Validate() != nil {
 		return nil, false
 	}
-	values, ok := annotatedSection(content, &plannedValues)
+	annotated, ok := annotatedSection(content, "planned_values", &plannedValues)
 	if !ok {
 		return nil, false
 	}
+	values, _ := annotated.(map[string]interface{})
 	root, ok := values["root_module"].(map[string]interface{})
 	if !ok {
 		return nil, false
@@ -643,8 +618,12 @@ func parseTFPlanLineInfo(content []byte) (doc model.Document, ok bool) {
 		return nil, false
 	}
 	doc = model.Document{planResourceKey: d.resource}
-	if configuration, ok := annotatedConfiguration(content, sections); ok {
-		doc["configuration"] = configuration
+	for _, name := range lineInfoSections {
+		if section, ok := sections[name]; ok && (section.IsObject() || section.IsArray()) {
+			if annotated, ok := annotatedSection(content, name, &section); ok {
+				doc[name] = annotated
+			}
+		}
 	}
 	return doc, true
 }
@@ -889,7 +868,7 @@ func (d *planDocument) readPriorStateData(
 		// readModule does for planned resources. The scanner's flattened data
 		// keys do not preserve Terraform's data. prefix or module path.
 		d.add(d.data, resource.Type, "data."+resource.Type, dataKey, resource.AttributeValues,
-			resourceLines[resource.Address], map[string]interface{}{"address": resource.Address})
+			resourceLines[resource.Address], map[string]interface{}{planAddressKey: resource.Address})
 	}
 
 	for _, childModule := range module.ChildModules {

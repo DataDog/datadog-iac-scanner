@@ -54,12 +54,6 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		return nil, nil, nil, nil, err
 	}
 
-	if len(resolvedFiles) == 0 && looksLikeTerraformPlan(fileContent) {
-		if tfPlan, ok := parseTFPlanContent(fileContent, true); ok {
-			return fileContent, []model.Document{tfPlan}, nil, resolvedFiles, nil
-		}
-	}
-
 	r := model.Document{}
 	err = json.Unmarshal(resolved, &r)
 	if err != nil {
@@ -99,9 +93,7 @@ func (p *Parser) ParseLineInfo(fileContent []byte, filePath string) (documents [
 // markers, for a scan that rebuilds line info with ParseLineInfo: annotating
 // the plan was most of its parse. ok is false as for ParseLineInfo.
 func (p *Parser) ParseUnannotated(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
-	return p.planDocuments(fileContent, filePath, func(content []byte) (model.Document, bool) {
-		return parseTFPlanContent(content, false)
-	})
+	return p.planDocuments(fileContent, filePath, parseTFPlanContent)
 }
 
 // planDocuments parses fileContent with parse when it is a Terraform plan

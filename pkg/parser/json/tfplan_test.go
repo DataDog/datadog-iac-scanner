@@ -2330,7 +2330,11 @@ func compactPlan(t *testing.T) []byte {
 	return out.Bytes()
 }
 
-func TestParse_tfplanSectionsMatchWholePlanParse(t *testing.T) {
+// TestParse_tfplanKeepsEverySectionMarker checks that Parse, which feeds
+// test-rules and line-info payload exports, annotates every section of a
+// plan, resource_changes included, and that the scan's unannotated parse
+// holds the same document without markers.
+func TestParse_tfplanKeepsEverySectionMarker(t *testing.T) {
 	for name, content := range map[string][]byte{
 		"indented": []byte(sectionsPlan),
 		"minified": compactPlan(t),
@@ -2339,24 +2343,16 @@ func TestParse_tfplanSectionsMatchWholePlanParse(t *testing.T) {
 			_, docs, _, _, err := (&Parser{}).Parse(context.Background(), content, "plan.json", false, 15)
 			require.NoError(t, err)
 			require.Len(t, docs, 1)
-			got, want := docs[0], wholePlanParse(t, content)
-
-			// Line detection reads the resource and data sections, markers
-			// included; the rest only differs by markers sanitizing drops.
-			for _, section := range []string{"resource", "data"} {
-				require.NotNil(t, want[section], section)
-				wantJSON, err := json.Marshal(want[section])
-				require.NoError(t, err)
-				require.JSONEq(t, string(wantJSON), mustJSON(t, got[section]), section)
+			require.Equal(t, mustJSON(t, wholePlanParse(t, content)), mustJSON(t, docs[0]))
+			for _, section := range []string{"resource", "data", "resource_changes", "configuration"} {
+				require.Contains(t, mustJSON(t, docs[0][section]), "_dd_lines", section)
 			}
-			require.Equal(t, withoutLineMarkers(t, want), withoutLineMarkers(t, got))
 
-			// A scan that rebuilds line info reads the plan without markers.
 			unannotated, ok := (&Parser{}).ParseUnannotated(content, "plan.json")
 			require.True(t, ok)
 			require.Len(t, unannotated, 1)
 			require.NotContains(t, mustJSON(t, unannotated[0]), "_dd_lines")
-			require.Equal(t, withoutLineMarkers(t, want), mustJSON(t, unannotated[0]))
+			require.Equal(t, withoutLineMarkers(t, docs[0]), mustJSON(t, unannotated[0]))
 		})
 	}
 }
@@ -2366,9 +2362,9 @@ func TestParseLineInfo_tfplanMatchesParseResourceSection(t *testing.T) {
 	docs, ok := (&Parser{}).ParseLineInfo(content, "plan.json")
 	require.True(t, ok)
 	require.Len(t, docs, 1)
-	require.ElementsMatch(t, []string{"resource", "configuration"}, keysOf(docs[0]))
+	require.ElementsMatch(t, []string{"resource", "configuration", "resource_changes"}, keysOf(docs[0]))
 	whole := wholePlanParse(t, content)
-	for _, section := range []string{"resource", "configuration"} {
+	for _, section := range []string{"resource", "configuration", "resource_changes"} {
 		require.JSONEq(t, mustJSON(t, whole[section]), mustJSON(t, docs[0][section]), section)
 	}
 
@@ -2418,11 +2414,9 @@ func TestParse_tfplanFallsBackToWholeParse(t *testing.T) {
 		"no root module":           `{"format_version": "1.2", "planned_values": {}, "configuration": []}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			for _, annotate := range []bool{true, false} {
-				_, ok := parseTFPlanContent([]byte(content), annotate)
-				require.False(t, ok)
-			}
-			_, ok := parseTFPlanLineInfo([]byte(content))
+			_, ok := parseTFPlanContent([]byte(content))
+			require.False(t, ok)
+			_, ok = parseTFPlanLineInfo([]byte(content))
 			require.False(t, ok)
 		})
 	}

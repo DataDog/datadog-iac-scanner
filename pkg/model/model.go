@@ -9,6 +9,7 @@ import (
 	"context"
 	"index/suffixarray"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -157,6 +158,9 @@ type lineInfoState struct {
 	// The file itself stays out of it, because its own tree is edited after
 	// instantiation (instantiated resources are removed from it).
 	copies *lineInfoGroup
+	// retention, when set, keeps the file's tree loaded across decode passes
+	// (see LineInfoRetention) instead of discarding it after each use.
+	retention *LineInfoRetention
 }
 
 // lineInfoGroup is the line-info tree shared by the copies of one source file.
@@ -549,46 +553,85 @@ func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
 	f.linesLazy = nil
-	if f.Kind == KindTerraformPlan {
-		// Kept through eval by DiscardLineInfoDocument.
-		f.dropPlanLineInfo()
-		retainedPlanLineInfo.mu.Lock()
-		if retainedPlanLineInfo.file == f {
-			retainedPlanLineInfo.file = nil
-		}
-		retainedPlanLineInfo.mu.Unlock()
+	if st := f.lineInfo; st != nil && st.retention != nil {
+		// Kept through eval by the retention.
+		st.retention.forget(f)
+		f.dropRetainedLineInfo()
 	}
 }
 
-// retainedPlanLineInfo is the Terraform plan whose line-info tree is kept
-// across decode passes (see DiscardLineInfoDocument). Only one plan's tree is
-// kept, so a scan over many plans does not hold all of them until post-eval.
-var retainedPlanLineInfo struct {
-	mu   sync.Mutex
-	file *FileMetadata
+// LineInfoRetention is a scan's set of line-info trees kept loaded across
+// decode passes, for files whose tree is expensive to rebuild: a Terraform
+// plan's is, because rebuilding it means reading the whole plan again, once
+// for every rule with findings in it. It keeps the trees of the most recently
+// used files, up to its capacity, and drops the tree of the least recently
+// used one beyond it, so a scan over many plans holds a bounded number of
+// them. Size it for the scan's concurrent decoders (see utils.AvailableCPUs):
+// with at least as many entries as decoders, no decoder's tree is dropped
+// while it still decodes that file's findings.
+type LineInfoRetention struct {
+	mu       sync.Mutex
+	capacity int
+	files    []*FileMetadata // least recently used first
 }
 
-// retainPlanLineInfo makes f the plan whose line-info tree is kept and drops
-// the tree of the plan it replaces. Callers must not hold f's line-info lock:
-// dropping takes the other plan's, and holding both could deadlock.
-func (f *FileMetadata) retainPlanLineInfo() {
-	if f.Kind != KindTerraformPlan || f.lineInfo == nil || f.lineInfo.group != nil {
-		return
+// NewLineInfoRetention returns a retention of at most capacity trees.
+func NewLineInfoRetention(capacity int) *LineInfoRetention {
+	return &LineInfoRetention{capacity: max(capacity, 1)}
+}
+
+// touch makes f the most recently used file and returns the files whose trees
+// it displaces.
+func (r *LineInfoRetention) touch(f *FileMetadata) (displaced []*FileMetadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if i := slices.Index(r.files, f); i >= 0 {
+		r.files = slices.Delete(r.files, i, i+1)
 	}
-	retainedPlanLineInfo.mu.Lock()
-	previous := retainedPlanLineInfo.file
-	retainedPlanLineInfo.file = f
-	retainedPlanLineInfo.mu.Unlock()
-	if previous != nil && previous != f {
-		previous.dropPlanLineInfo()
+	r.files = append(r.files, f)
+	if over := len(r.files) - r.capacity; over > 0 {
+		displaced = slices.Clone(r.files[:over])
+		r.files = slices.Delete(r.files, 0, over)
+	}
+	return displaced
+}
+
+func (r *LineInfoRetention) forget(f *FileMetadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if i := slices.Index(r.files, f); i >= 0 {
+		r.files = slices.Delete(r.files, i, i+1)
 	}
 }
 
-func (f *FileMetadata) dropPlanLineInfo() {
+// SetLineInfoRetention keeps f's line-info tree loaded across decode passes,
+// within r. Call it after SetLineInfoLoader. A scan that exports line-info
+// documents must not use a retention: the export reads every file's tree.
+func (f *FileMetadata) SetLineInfoRetention(r *LineInfoRetention) {
+	if f.lineInfo != nil {
+		f.lineInfo.retention = r
+	}
+}
+
+// retainLineInfo records a use of f's tree in its retention and drops the
+// trees it displaces. Callers must not hold f's line-info lock: dropping takes
+// the other files', and holding both could deadlock.
+func (f *FileMetadata) retainLineInfo() {
 	st := f.lineInfo
-	if st == nil {
+	if st == nil || st.retention == nil || st.group != nil {
 		return
 	}
+	for _, displaced := range st.retention.touch(f) {
+		if displaced != f {
+			displaced.dropRetainedLineInfo()
+		}
+	}
+}
+
+// dropRetainedLineInfo drops the tree of a file in a retention. It waits for
+// the file's current use of the tree to finish.
+func (f *FileMetadata) dropRetainedLineInfo() {
+	st := f.lineInfo
 	st.mu.Lock()
 	f.LineInfoDocument = nil
 	st.mu.Unlock()
@@ -600,13 +643,10 @@ func (f *FileMetadata) dropPlanLineInfo() {
 // writing the field outside the state mutex would race concurrent readers
 // (UseLineInfoDocument reads it unlocked when no loader is configured).
 //
-// A Terraform plan keeps its tree until another plan's tree is loaded or
-// ReleasePostEvalData: it only holds the plan's resource lines (see
-// json.Parser.ParseLineInfo), a fraction of the plan, while rebuilding it
-// means reading the whole plan again for every rule with findings in it.
+// A file in a LineInfoRetention keeps its tree: the retention drops it.
 func (f *FileMetadata) DiscardLineInfoDocument() {
 	st := f.lineInfo
-	if st == nil || f.Kind == KindTerraformPlan {
+	if st == nil || st.retention != nil {
 		return
 	}
 	st.mu.Lock()
@@ -645,7 +685,7 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 	err := f.ensureLineInfoDocumentLocked(ctx)
 	st.mu.Unlock()
 	if err == nil {
-		f.retainPlanLineInfo()
+		f.retainLineInfo()
 	}
 	return err
 }
@@ -675,7 +715,7 @@ func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[stri
 		}
 		return fn(f.LineInfoDocument)
 	}()
-	f.retainPlanLineInfo()
+	f.retainLineInfo()
 	return err
 }
 

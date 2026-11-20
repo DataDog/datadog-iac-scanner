@@ -84,60 +84,111 @@ func TestUseLineInfoDocument_discardReloads(t *testing.T) {
 	require.Equal(t, int32(2), loads.Load())
 }
 
-// TestDiscardLineInfoDocument_terraformPlanKeptUntilPostEval checks that a
-// plan's line-info tree is loaded once for every decode pass of the eval and
-// released with the rest of the post-eval data.
-func TestDiscardLineInfoDocument_terraformPlanKeptUntilPostEval(t *testing.T) {
-	ctx := context.Background()
-	var loads atomic.Int32
-	fm := &FileMetadata{FilePath: "plan.json", Kind: KindTerraformPlan, OriginalData: "{}"}
+func planWithLineInfo(name string, loads *atomic.Int32, r *LineInfoRetention) *FileMetadata {
+	fm := &FileMetadata{FilePath: name, Kind: KindTerraformPlan, OriginalData: "{}"}
 	fm.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
 		loads.Add(1)
 		return Document{"resource": map[string]interface{}{}}, nil
 	})
+	fm.SetLineInfoRetention(r)
+	return fm
+}
+
+func useLineInfo(t *testing.T, fm *FileMetadata) {
+	t.Helper()
+	require.NoError(t, fm.UseLineInfoDocument(context.Background(), func(doc map[string]interface{}) error {
+		require.NotNil(t, doc)
+		return nil
+	}))
+	fm.DiscardLineInfoDocument()
+}
+
+// TestLineInfoRetention_keepsRecentTreesLoaded checks that files in a
+// retention keep their tree across decode passes, and that the least
+// recently used tree is dropped beyond the capacity.
+func TestLineInfoRetention_keepsRecentTreesLoaded(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(2)
+	a, b, c := planWithLineInfo("a.json", &loads, r), planWithLineInfo("b.json", &loads, r), planWithLineInfo("c.json", &loads, r)
 
 	for range 3 {
-		require.NoError(t, fm.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
-			require.NotNil(t, doc)
-			return nil
-		}))
-		fm.DiscardLineInfoDocument()
+		useLineInfo(t, a)
+		useLineInfo(t, b)
 	}
-	require.Equal(t, int32(1), loads.Load())
-	require.NotNil(t, fm.LineInfoDocument)
+	require.Equal(t, int32(2), loads.Load(), "each tree is built once while both fit")
 
-	// Loading another plan's tree drops this one, which reloads when used.
-	other := &FileMetadata{FilePath: "other.json", Kind: KindTerraformPlan, OriginalData: "{}"}
-	other.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
-		return Document{"resource": map[string]interface{}{}}, nil
-	})
-	require.NoError(t, other.EnsureLineInfoDocument(ctx))
-	require.NotNil(t, other.LineInfoDocument)
-	require.Nil(t, fm.LineInfoDocument)
-	require.NoError(t, fm.UseLineInfoDocument(ctx, func(map[string]interface{}) error { return nil }))
-	require.Equal(t, int32(2), loads.Load())
-	require.Nil(t, other.LineInfoDocument)
+	useLineInfo(t, c) // displaces a, the least recently used
+	require.Nil(t, a.LineInfoDocument)
+	require.NotNil(t, b.LineInfoDocument)
+	require.NotNil(t, c.LineInfoDocument)
 
-	// Decoders of different plans evict each other without deadlocking.
+	useLineInfo(t, a) // reloads, displacing b
+	require.Equal(t, int32(4), loads.Load())
+	require.Nil(t, b.LineInfoDocument)
+
+	for _, fm := range []*FileMetadata{a, b, c} {
+		fm.ReleasePostEvalData()
+		require.Nil(t, fm.LineInfoDocument)
+	}
+}
+
+// TestLineInfoRetention_parallelDecoders checks that decoders of different
+// files, alternating between them, build each tree once when the retention
+// holds as many trees as there are decoders, and never deadlock or race.
+func TestLineInfoRetention_parallelDecoders(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(4)
+	files := make([]*FileMetadata, 4)
+	for i := range files {
+		files[i] = planWithLineInfo(fmt.Sprintf("%d.json", i), &loads, r)
+	}
 	var wg sync.WaitGroup
-	for _, f := range []*FileMetadata{fm, other, fm, other} {
+	for _, fm := range files {
 		wg.Add(1)
-		go func(f *FileMetadata) {
+		go func() {
 			defer wg.Done()
-			for range 100 {
-				require.NoError(t, f.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
-					require.NotNil(t, doc)
-					return nil
-				}))
+			for range 200 {
+				useLineInfo(t, fm)
 			}
-		}(f)
+		}()
 	}
 	wg.Wait()
+	require.Equal(t, int32(len(files)), loads.Load())
+}
 
-	fm.ReleasePostEvalData()
-	other.ReleasePostEvalData()
-	require.Nil(t, fm.LineInfoDocument)
-	require.Nil(t, other.LineInfoDocument)
+// TestLineInfoRetention_overcommittedDecodersStayCorrect checks that
+// decoders of more files than the retention holds evict each other's trees
+// safely: a tree dropped between findings is rebuilt, never read half-dropped.
+func TestLineInfoRetention_overcommittedDecodersStayCorrect(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(1)
+	var wg sync.WaitGroup
+	for i := range 4 {
+		fm := planWithLineInfo(fmt.Sprintf("%d.json", i), &loads, r)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 100 {
+				useLineInfo(t, fm)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestLineInfoRetention_noneKeepsExportedTrees checks that without a
+// retention, as in a scan exporting line-info documents, loading other plans
+// never drops a tree.
+func TestLineInfoRetention_noneKeepsExportedTrees(t *testing.T) {
+	var loads atomic.Int32
+	exported := planWithLineInfo("exported.json", &loads, nil)
+	require.NoError(t, exported.EnsureLineInfoDocument(context.Background()))
+	for i := range 8 {
+		other := planWithLineInfo(fmt.Sprintf("%d.json", i), &loads, nil)
+		require.NoError(t, other.EnsureLineInfoDocument(context.Background()))
+	}
+	require.NotNil(t, exported.LineInfoDocument)
+	require.Equal(t, int32(9), loads.Load())
 }
 
 // TestDiscardLineInfoDocumentWithoutLoader verifies the no-op guard: without

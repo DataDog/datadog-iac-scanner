@@ -93,6 +93,10 @@ type Service struct {
 	// LineInfoPayload exports line-info documents whole as the scan payload
 	// (see model.FileMetadatas.Combine).
 	LineInfoPayload bool
+	// planLineInfo keeps the line-info trees of the scan's Terraform plans
+	// loaded across decode passes (see model.LineInfoRetention).
+	planLineInfoOnce sync.Once
+	planLineInfo     *model.LineInfoRetention
 	// FilePlatform is the analyzer path → platform map, reused in the sink.
 	FilePlatform map[string]string
 	// PathExtractionMap names each fetched or extracted directory after where
@@ -121,6 +125,20 @@ type Service struct {
 	// shareable documents (see treeHashCons); guarded by treeConsMu.
 	treeConsMu sync.Mutex
 	treeCons   *treeHashCons
+}
+
+// planLineInfoRetention returns the scan's retention of plan line-info trees,
+// sized for the scan's concurrent decoders. A scan exporting line-info
+// documents has none: the export reads every plan's tree, so none may be
+// dropped.
+func (s *Service) planLineInfoRetention() *model.LineInfoRetention {
+	if s.LineInfoPayload {
+		return nil
+	}
+	s.planLineInfoOnce.Do(func() {
+		s.planLineInfo = model.NewLineInfoRetention(utils.AvailableCPUs())
+	})
+	return s.planLineInfo
 }
 
 // consTreeChildren canonicalizes a sanitized shareable document's subtrees

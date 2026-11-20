@@ -567,6 +567,53 @@ func Test_detectLineTerraformPlanDeclarations(t *testing.T) {
 	require.NotContains(t, []int{17, 27}, detect("output[name]"))
 }
 
+// Test_detectLineTerraformPlanAnchoredChange checks that an anchored
+// searchKey into resource_changes finds the same line in the document of a
+// scan's line-info reparse as in a whole parse.
+func Test_detectLineTerraformPlanAnchoredChange(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {}
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.logs",
+      "change": {
+        "actions": [
+          "no-op"
+        ]
+      }
+    },
+    {
+      "address": "aws_s3_bucket.main",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ]
+      }
+    }
+  ]
+}`
+	p := &jsonParser.Parser{}
+	_, whole, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+	lineInfo, ok := p.ParseLineInfo([]byte(plan), "plan.json")
+	require.True(t, ok)
+
+	for name, doc := range map[string]model.Document{"whole parse": whole[0], "line-info reparse": lineInfo[0]} {
+		file := &model.FileMetadata{
+			Kind:              model.KindTerraformPlan,
+			LineInfoDocument:  doc,
+			LinesOriginalData: utils.SplitLines(plan),
+		}
+		got := defaultDetectLine{}.DetectLine(context.Background(), file,
+			"address={{aws_s3_bucket.main}}.change.actions[1]", 0)
+		require.Equal(t, 20, got.Line, name)
+	}
+}
+
 func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
 	plan := `{
   "format_version": "1.0",
