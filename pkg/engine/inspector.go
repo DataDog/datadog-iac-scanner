@@ -608,21 +608,67 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
-	// Synthetic files stand in for module instantiations of a file that has
-	// already been read; they are only joined once findings need to be
-	// attributed back to a call site. Adding them any earlier would have every
-	// pass over the scan input, module parsing above in particular, redo that
-	// file's work once per instantiation.
-	files = append(files, instantiated.syntheticFiles...)
+	return c.evaluateDocumentInput(ctx, scanID, &documentPolicyInput{
+		files: files, documents: combinedFiles.Documents, projection: instantiated, modules: enrichedModules,
+		external: c.isExternalModulePath,
+	}, queries)
+}
 
+// InspectDocuments evaluates exactly the supplied parsed document set. It owns
+// no source configuration: it does not discover Terraform roots, evaluate
+// modules, or read neighboring files to enrich that set. This is the input
+// domain of legacy document-policy fixtures, including cross-document queries.
+// Production source scans use Inspect instead.
+func (c *Inspector) InspectDocuments(
+	ctx context.Context, scanID string, files model.FileMetadatas, platforms []string,
+) ([]model.Vulnerability, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	documents := files.Combine(ctx, false)
+	return c.evaluateDocumentInput(ctx, scanID, &documentPolicyInput{
+		files: files, documents: documents.Documents,
+	}, c.getQueriesByPlat(platforms))
+}
+
+// documentPolicyInput binds the documents a frontend owns to their source
+// metadata and optional evaluated module facts. Only the configuration frontend
+// supplies native documents/caller routing; a document set cannot acquire those
+// facts by sharing a directory with other files.
+type documentPolicyInput struct {
+	files      model.FileMetadatas
+	documents  []model.Document
+	projection moduleInstantiation
+	modules    []tfmodules.ParsedModule
+	external   func(string) bool
+}
+
+// evaluateDocumentInput is the shared policy execution boundary. Input
+// acquisition is complete before payload conversion, compilation and reporting.
+func (c *Inspector) evaluateDocumentInput(
+	ctx context.Context, scanID string, input *documentPolicyInput, queries []model.QueryMetadata,
+) ([]model.Vulnerability, error) {
+	contextLogger := logger.FromContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Synthetic files are source metadata for an already acquired projection.
+	// Join them after acquisition, without reparsing them as configuration.
+	input.files = append(input.files, input.projection.syntheticFiles...)
+	input.projection.syntheticFiles = nil
 	// Compute the file map once and share it (read-only) across all workers and
 	// payload partitioning.
-	filesMap := files.ToMap()
+	filesMap := input.files.ToMap()
 
-	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, instantiated.docs, queries)
+	payloads, err := c.buildPlatformPayloads(ctx, filesMap, input.documents, input.projection.docs, queries)
 	if err != nil {
 		return nil, err
 	}
+	// The payload owns its converted values. Drop the consumed envelopes so this
+	// input bundle cannot pin released document trees throughout query execution.
+	input.documents = nil
+	input.projection.docs = nil
 
 	// Collect the trees released during conversion and recompute the heap goal
 	// from the smaller live set before eval.
@@ -645,7 +691,7 @@ func (c *Inspector) Inspect(
 	// same payload for every PrepareForEval call. The per-platform data hash is
 	// folded into each compiled-query cache key so a compiled query is only
 	// reused by a later scan whose base data is byte-identical.
-	baseInputData := c.QueryLoader.precomputeBaseInputData(enrichedModules)
+	baseInputData := c.QueryLoader.precomputeBaseInputData(input.modules)
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
@@ -669,10 +715,10 @@ func (c *Inspector) Inspect(
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
 		len(sharedQueries), len(queries))
 
-	routing := newFindingRouting(instantiated.extras, instantiated.moduleFiles, files, c.repoPath, c.isExternalModulePath)
-
+	// Build the caller index only after payload preparation, as for source scans.
+	routing := newFindingRouting(input.projection.extras, input.projection.moduleFiles, input.files, c.repoPath, input.external)
 	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
+		input.modules, baseStores, baseDataHashes, sharedQueries, routing)
 	if err != nil {
 		return nil, err
 	}

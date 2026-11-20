@@ -2783,3 +2783,71 @@ func (f directoryFailureFS) ReadDir(dir string) ([]fs.DirEntry, error) {
 	}
 	return f.FS.ReadDir(dir)
 }
+
+// A document set owns its supplied parsed inputs, including cross-document
+// predicates. It does not claim those examples form one Terraform configuration.
+func TestInspectDocumentInputs(t *testing.T) {
+	t.Run("whole set and source reporting without filesystem acquisition", func(t *testing.T) {
+		root := t.TempDir()
+		var files model.FileMetadatas
+		for _, name := range []string{"first.tf", "second.tf"} {
+			path := filepath.Join(root, name)
+			require.NoError(t, os.WriteFile(path, []byte(`resource "aws_s3_bucket" "same" {acl="public-read"}`), 0600))
+			files = append(files, parseTerraform(t, path)...)
+		}
+		query := model.QueryMetadata{Query: "document-set", InputData: "{}", Platform: "terraform", Metadata: map[string]interface{}{"id": "document-set", "platform": "Terraform"}, Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+ count(input.document)==2
+ some i
+ input.document[i].resource.aws_s3_bucket.same.acl=="public-read"
+ result:={"documentId":input.document[i].id,"resourceType":"aws_s3_bucket","resourceName":"same","searchKey":"aws_s3_bucket[same].acl"}
+}`}
+		inspector := newTestInspector(t, inspectorOpts{queries: []model.QueryMetadata{query}, repoPath: root, vb: DefaultVulnerabilityBuilder})
+		inspector.fsys = &moduleProducerFailureFS{FS: vfs.DiskFS{}, dir: root, failure: "document inputs must not acquire source"}
+		findings, err := inspector.InspectDocuments(context.Background(), "documents", files, []string{"terraform"})
+		require.NoError(t, err)
+		require.Empty(t, inspector.GetFailedQueries())
+		require.Len(t, findings, 2, "the predicate requires both supplied documents in one query input")
+		sources := map[string]bool{}
+		for _, finding := range findings {
+			require.Equal(t, "aws_s3_bucket", finding.ResourceType)
+			require.Equal(t, "same", finding.ResourceName)
+			require.Equal(t, 1, finding.Line)
+			sources[filepath.Base(finding.FileName)] = true
+		}
+		require.Equal(t, map[string]bool{"first.tf": true, "second.tf": true}, sources)
+		// The source frontend still acquires its configuration and surfaces failure.
+		findings, err = inspector.Inspect(context.Background(), "configuration", files, []string{"terraform"})
+		require.ErrorIs(t, err, errModuleEvaluationFailed)
+		require.Empty(t, findings)
+	})
+	t.Run("query failures share the execution path", func(t *testing.T) {
+		root := t.TempDir()
+		path := filepath.Join(root, "main.tf")
+		require.NoError(t, os.WriteFile(path, []byte(`resource "aws_s3_bucket" "same" {acl="private"}`), 0600))
+		for _, documents := range []bool{false, true} {
+			inspector := newTestInspector(t, inspectorOpts{queries: []model.QueryMetadata{{Query: "invalid", InputData: "{}", Platform: "terraform", Metadata: map[string]interface{}{"id": "invalid"}, Content: `package datadog
+DatadogPolicy contains {`}}, repoPath: root, vb: DefaultVulnerabilityBuilder})
+			files := parseTerraform(t, path)
+			var findings []model.Vulnerability
+			var err error
+			if documents {
+				findings, err = inspector.InspectDocuments(context.Background(), "documents", files, []string{"terraform"})
+			} else {
+				findings, err = inspector.Inspect(context.Background(), "configuration", files, []string{"terraform"})
+			}
+			require.NoError(t, err)
+			require.Empty(t, findings)
+			require.Len(t, inspector.GetFailedQueries(), 1)
+		}
+	})
+	t.Run("canceled document acquisition does not start execution", func(t *testing.T) {
+		inspector := newTestInspector(t, inspectorOpts{})
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		findings, err := inspector.InspectDocuments(ctx, "canceled", nil, []string{"terraform"})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Empty(t, findings)
+	})
+}

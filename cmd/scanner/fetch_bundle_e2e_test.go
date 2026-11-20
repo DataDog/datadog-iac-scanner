@@ -99,9 +99,20 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	t.Setenv("DD_HOSTNAME", server.URL)
 
 	repoPath := t.TempDir()
+	// This is one Terraform configuration, not the directory of independent
+	// examples that happen to share its resource names.
+	fixture, err := os.ReadFile(filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"))
+	require.NoError(t, err)
+	fixturePath := filepath.Join(repoPath, "main.tf")
+	require.NoError(t, os.WriteFile(fixturePath, fixture, 0600))
+	runTestGit(t, repoPath, "init", "--initial-branch=main")
+	runTestGit(t, repoPath, "remote", "add", "origin", "https://example.com/repo")
+	runTestGit(t, repoPath, "add", "main.tf")
+	runTestGit(t, repoPath, "-c", "user.name=Test User", "-c", "user.email=test@example.com",
+		"-c", "commit.gpgsign=false", "commit", "-m", "fixture")
 	bundleDir := t.TempDir()
 
-	err := fetchBundleAction.Run(t.Context(), []string{
+	err = fetchBundleAction.Run(t.Context(), []string{
 		"fetch-bundle",
 		"--repo-path", repoPath,
 		"--repo-url", "https://example.com/repo",
@@ -118,7 +129,7 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 
 	err = scanAction.Run(t.Context(), []string{
 		"scan",
-		"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+		"--path", fixturePath,
 		"--type", "terraform",
 		"--output-path", outputDir,
 		"--offline-bundle-path", bundleDir,
