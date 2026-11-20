@@ -129,8 +129,8 @@ func TestIsValidExtension(t *testing.T) {
 	parser, _ := NewBuilder(ctx).
 		Add(&jsonParser.Parser{}).
 		Build([]string{""}, []string{""})
-	require.True(t, parser[0].isValidExtension(ctx, "../../test/fixtures/test_extension/test.json"), "test.json should be a valid extension")
-	require.False(t, parser[0].isValidExtension(ctx, "../../test/fixtures/test_extension/test.xml"), "test.xml should not be a valid extension")
+	require.True(t, parser[0].SupportsFile(ctx, "../../test/fixtures/test_extension/test.json"), "test.json should be a valid extension")
+	require.False(t, parser[0].SupportsFile(ctx, "../../test/fixtures/test_extension/test.xml"), "test.xml should not be a valid extension")
 }
 
 func TestParser_Contains(t *testing.T) {

@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -29,6 +29,7 @@ import (
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
+	"github.com/DataDog/datadog-iac-scanner/pkg/rulefixture"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -200,6 +201,14 @@ func runRule(ctx context.Context, rule *datadog.Rule, libSource source.QueriesSo
 	ctx, cancel := context.WithTimeout(ctx, defaultRuleTestTimeoutSecs*time.Second)
 	defer cancel()
 
+	cases, err := rulefixture.Load(rule.Tests)
+	if err != nil {
+		return nil, err
+	}
+	if cases != nil {
+		return runRuleTestCases(ctx, cases, rule, libSource)
+	}
+
 	tmpDir, err := os.MkdirTemp("", "iac-rule-test-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating temp dir: %w", err)
@@ -228,25 +237,21 @@ func runRule(ctx context.Context, rule *datadog.Rule, libSource source.QueriesSo
 		return nil, nil
 	}
 
-	expected := make([]ruleFinding, len(rule.Tests.Expected))
-	for i, ef := range rule.Tests.Expected {
-		expected[i] = ruleFinding{
-			QueryName: ef.ShortDescription,
-			Severity:  ef.Severity,
-			Line:      ef.Line,
-			FileName:  ef.FileName,
-		}
-	}
+	expected := expectedRuleFindings(rule.Tests.Expected)
 
 	query := source.ConvertRule(rule)
 
 	var mismatches []string
 
-	positiveGot, positiveShape, err := runFiles(ctx, tmpDir, rule.ID, &query, positiveFiles, libSource)
+	positiveGot, positiveShape, err := runFiles(ctx, rule.ID, &query, &ruleFixtureInput{
+		root: tmpDir, files: positiveFiles, fsys: vfs.DiskFS{}, domain: datadog.RuleTestConfiguration, format: legacyRuleFixture,
+	}, libSource)
 	if err != nil {
 		return nil, err
 	}
-	negativeGot, negativeShape, err := runFiles(ctx, tmpDir, rule.ID, &query, negativeFiles, libSource)
+	negativeGot, negativeShape, err := runFiles(ctx, rule.ID, &query, &ruleFixtureInput{
+		root: tmpDir, files: negativeFiles, fsys: vfs.DiskFS{}, domain: datadog.RuleTestConfiguration, format: legacyRuleFixture,
+	}, libSource)
 	if err != nil {
 		return nil, err
 	}
@@ -263,15 +268,19 @@ func runRule(ctx context.Context, rule *datadog.Rule, libSource source.QueriesSo
 // plus any result-shape errors.
 func runFiles(
 	ctx context.Context,
-	rootPath, ruleID string,
+	ruleID string,
 	query *model.QueryMetadata,
-	files []string,
+	input *ruleFixtureInput,
 	libSource source.QueriesSource,
 ) ([]ruleFinding, []string, error) {
 	var allFiles model.FileMetadatas
 	platformStr, _ := query.Metadata["platform"].(string)
-	for _, f := range files {
-		parsed, err := parseFixtureFile(ctx, rootPath, f, platformStr)
+	parsers, err := newFixtureParsers(ctx, input.fsys)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, f := range input.files {
+		parsed, err := input.parseFile(ctx, f, platformStr, parsers)
 		if err != nil {
 			return nil, nil, fmt.Errorf("parsing %s: %w", f, err)
 		}
@@ -293,19 +302,27 @@ func runFiles(
 			FlagEvaluator: featureflags.NewLocalEvaluator(),
 		},
 		map[string]config.IacRuleConfig{},
-		rootPath,
+		input.root,
 		false,
 		false,
 		0,
 		featureflags.NewLocalEvaluator(),
-		vfs.DiskFS{},
+		input.fsys,
 		false,
 	)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	vulns, err := inspector.Inspect(ctx, "test", allFiles, []string{platformStr})
+	var vulns []model.Vulnerability
+	switch input.domain {
+	case datadog.RuleTestDocuments:
+		vulns, err = inspector.InspectDocuments(ctx, "test", allFiles, []string{platformStr})
+	case datadog.RuleTestConfiguration:
+		vulns, err = inspector.Inspect(ctx, "test", allFiles, []string{platformStr})
+	default:
+		return nil, nil, fmt.Errorf("unsupported fixture input %q", input.domain)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -317,12 +334,20 @@ func runFiles(
 			QueryName: v.QueryName,
 			Severity:  string(v.Severity),
 			Line:      v.Line,
-			FileName:  filepath.Base(v.FileName),
 		}
+		filename := v.FileName
 		// Instantiated module findings are reported at the call site, as in SARIF.
 		if attr := v.ModuleAttribution; attr != nil && attr.CallSite.Filename != "" {
 			out[i].Line = attr.CallSite.LineStart
-			out[i].FileName = filepath.Base(attr.CallSite.Filename)
+			filename = attr.CallSite.Filename
+		}
+		if input.format == explicitRuleFixture {
+			out[i].FileName, err = rulefixture.FindingPath(input.root, input.files, filename)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			out[i].FileName = filepath.Base(filename)
 		}
 	}
 	return out, shapeErrs, nil
@@ -404,30 +429,35 @@ func findingsMatch(exp, got ruleFinding) bool {
 		(exp.FileName == "" || exp.FileName == got.FileName)
 }
 
-func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (model.FileMetadatas, error) {
-	cleanRoot := filepath.Clean(tmpRoot)
+func (input *ruleFixtureInput) parseFile(
+	ctx context.Context, filePath, platform string, parsers []*parser.Parser,
+) (model.FileMetadatas, error) {
+	cleanRoot := filepath.Clean(input.root)
 	cleanPath := filepath.Clean(filePath)
 	rel, err := filepath.Rel(cleanRoot, cleanPath)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return nil, fmt.Errorf("test file path %q escapes fixture root", filePath)
 	}
 
-	content, err := os.ReadFile(cleanPath)
-	if err != nil {
-		return nil, err
-	}
-
-	ps, err := getFixtureParsers(ctx)
+	content, err := input.fsys.ReadFile(cleanPath)
 	if err != nil {
 		return nil, err
 	}
 
 	var files model.FileMetadatas
-	for _, p := range ps {
+	accepted := false
+	for _, p := range parsers {
 		if !p.Parsers.SupportedTypes()[normalizePlatform(platform)] {
 			continue
 		}
-		docs, _ := p.Parse(ctx, cleanPath, content, true, false, defaultRuleTestMaxResolverDepth)
+		docs, parseErr := p.Parse(ctx, cleanPath, content, true, false, defaultRuleTestMaxResolverDepth)
+		if errors.Is(parseErr, parser.ErrNotSupportedFile) {
+			continue
+		}
+		accepted = true
+		if parseErr != nil && input.format == explicitRuleFixture {
+			return nil, parseErr
+		}
 		// Computed once per file and shared across every document's
 		// FileMetadata below; docs.Content is identical for every document.
 		linesOriginalData := scanUtils.SplitLines(docs.Content)
@@ -445,6 +475,9 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 			})
 		}
 	}
+	if input.format == explicitRuleFixture && !accepted {
+		return nil, fmt.Errorf("no parser accepts fixture %q for %s", filePath, platform)
+	}
 	return files, nil
 }
 
@@ -455,29 +488,21 @@ func normalizePlatform(platform string) string {
 	return strings.ToLower(platform)
 }
 
-var (
-	fixtureParsersOnce sync.Once
-	fixtureParsers     []*parser.Parser
-	fixtureParsersErr  error
-)
-
-func getFixtureParsers(ctx context.Context) ([]*parser.Parser, error) {
-	fixtureParsersOnce.Do(func() {
-		fixtureParsers, fixtureParsersErr = parser.NewBuilder(ctx).
-			Add(&jsonParser.Parser{}).
-			Add(&yamlParser.Parser{}).
-			Add(dockerComposeParser.NewDefaultWithFS(nil)).
-			Add(terraformParser.NewDefault()).
-			Add(&bicepParser.Parser{}).
-			Add(&cicdParser.Parser{}).
-			Add(&dockerParser.Parser{}).
-			Add(&protoParser.Parser{}).
-			Add(&buildahParser.Parser{}).
-			Add(&ansibleConfigParser.Parser{}).
-			Add(&ansibleHostsParser.Parser{}).
-			Build([]string{""}, []string{""})
-	})
-	return fixtureParsers, fixtureParsersErr
+func newFixtureParsers(ctx context.Context, fsys vfs.FS) ([]*parser.Parser, error) {
+	return parser.NewBuilder(ctx).
+		WithFS(fsys).
+		Add(&jsonParser.Parser{FS: fsys}).
+		Add(&yamlParser.Parser{FS: fsys}).
+		Add(dockerComposeParser.NewDefaultWithFS(fsys)).
+		Add(terraformParser.NewDefaultWithParams(fsys, "", model.SCIInfo{})).
+		Add(&bicepParser.Parser{}).
+		Add(&cicdParser.Parser{FS: fsys}).
+		Add(&dockerParser.Parser{}).
+		Add(&protoParser.Parser{}).
+		Add(&buildahParser.Parser{}).
+		Add(&ansibleConfigParser.Parser{}).
+		Add(&ansibleHostsParser.Parser{}).
+		Build([]string{""}, []string{""})
 }
 
 type singleRuleSource struct {

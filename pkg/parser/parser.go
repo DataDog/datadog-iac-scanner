@@ -149,7 +149,7 @@ type ParsedDocument struct {
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
 func (c *Parser) CommentsCommands(ctx context.Context, filePath string, fileContent []byte) model.CommentsCommands {
-	if !c.isValidExtension(ctx, filePath) {
+	if !c.SupportsFile(ctx, filePath) {
 		return nil
 	}
 	return c.commentsCommands(filePath, string(fileContent))
@@ -158,7 +158,7 @@ func (c *Parser) CommentsCommands(ctx context.Context, filePath string, fileCont
 // CommentsCommandsFromString reads file directives from content already stored
 // as a string, without copying the complete source back to bytes.
 func (c *Parser) CommentsCommandsFromString(ctx context.Context, filePath, fileContent string) model.CommentsCommands {
-	if !c.isValidExtension(ctx, filePath) {
+	if !c.SupportsFile(ctx, filePath) {
 		return nil
 	}
 	return c.commentsCommands(filePath, fileContent)
@@ -204,7 +204,7 @@ func (c *Parser) Parse(
 	fileContent []byte,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ParsedDocument, error) {
-	if !c.isValidExtension(ctx, filePath) {
+	if !c.SupportsFile(ctx, filePath) {
 		return unsupportedDocument(), ErrNotSupportedFile
 	}
 	return c.parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
@@ -299,7 +299,9 @@ func contains(types []string, supportedTypes map[string]bool) bool {
 	return false
 }
 
-func (c *Parser) isValidExtension(ctx context.Context, filePath string) bool {
+// SupportsFile reports path admission for this configured parser. It uses its
+// filesystem for extensionless detection and does not parse or resolve inputs.
+func (c *Parser) SupportsFile(ctx context.Context, filePath string) bool {
 	if ext := utils.ExtensionFromPath(filePath); ext != "" {
 		_, ok := c.extensions[ext]
 		return ok
