@@ -167,19 +167,44 @@ func (c *Client) startInventory(ctx context.Context) {
 // inventory path, "" when there is none. A report is checked when the
 // inventory is written, since only the report writers know their names.
 func (c *Client) inventoryPathConflict(path string) string {
-	others := []struct{ name, path string }{
-		{"the metadata path", c.ScanParams.MetadataPath},
-		{"the payload path", c.ScanParams.PayloadPath},
+	// The metadata and the payload are written after the inventory: a path
+	// under one of them would make a directory where it goes.
+	others := []struct {
+		name, path string
+		laterFile  bool
+	}{
+		{"the metadata path", c.ScanParams.MetadataPath, true},
+		{"the payload path", c.ScanParams.PayloadPath, true},
 	}
 	for _, input := range c.ScanParams.Path {
-		others = append(others, struct{ name, path string }{"a scanned path", input})
+		others = append(others, struct {
+			name, path string
+			laterFile  bool
+		}{"a scanned path", input, false})
 	}
 	for _, other := range others {
-		if other.path != "" && samePath(path, other.path) {
+		if other.path == "" {
+			continue
+		}
+		if samePath(path, other.path) {
 			return other.name
+		}
+		if other.laterFile && isUnder(path, other.path) {
+			return "under " + other.name
 		}
 	}
 	return ""
+}
+
+// isUnder reports whether path lies inside dir.
+func isUnder(path, dir string) bool {
+	absPath, errPath := filepath.Abs(path)
+	absDir, errDir := filepath.Abs(dir)
+	if errPath != nil || errDir != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absDir, absPath)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // samePath reports whether two paths name the same file, through symlinks

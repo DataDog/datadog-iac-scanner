@@ -273,6 +273,12 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 		params func(path string) Parameters
 	}{
 		{"the metadata path", func(path string) Parameters { return Parameters{InventoryPath: path, MetadataPath: path} }},
+		{"under the metadata path", func(path string) Parameters {
+			return Parameters{InventoryPath: filepath.Join(path, "inventory.json"), MetadataPath: path}
+		}},
+		{"under the payload path", func(path string) Parameters {
+			return Parameters{InventoryPath: filepath.Join(path, "inventory.json"), PayloadPath: path}
+		}},
 		{"the payload path", func(path string) Parameters { return Parameters{InventoryPath: path, PayloadPath: path} }},
 		{"a scanned file", func(path string) Parameters { return Parameters{InventoryPath: path, Path: []string{path}} }},
 		{"a file the scanner did not write", func(path string) Parameters { return Parameters{InventoryPath: path} }},
@@ -318,6 +324,14 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 		c.startInventory(context.Background())
 		require.NotNil(t, c.inventory.failure)
 		require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason)
+		// Nor may the inventory make a directory where the metadata goes.
+		under := filepath.Join(path, "inventory.json")
+		c = &Client{ScanParams: &Parameters{InventoryPath: under, MetadataPath: path}}
+		c.startInventory(context.Background())
+		require.NotNil(t, c.inventory.failure)
+		require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason)
+		require.Equal(t, InventoryFailed, c.finishInventory(context.Background(), nil, nil).Status, "no inventory is written")
+		require.NoDirExists(t, filepath.Clean(path))
 	})
 }
 
@@ -333,8 +347,8 @@ func TestInventoryFailuresDoNotFailTheScan(t *testing.T) {
 	})
 
 	t.Run("the file cannot be written", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("a read-only directory does not stop writes on Windows")
+		if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+			t.Skip("needs file permissions that stop the directory from being created")
 		}
 		readOnly := t.TempDir()
 		require.NoError(t, os.Chmod(readOnly, 0o500))
