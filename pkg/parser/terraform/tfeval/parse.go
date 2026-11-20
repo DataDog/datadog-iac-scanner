@@ -110,6 +110,18 @@ func parseDir(
 	return parsed
 }
 
+// nativeConfigurationFailure rejects an unavailable selected override before
+// evaluation can treat the surviving configuration as authoritative. Discovery
+// may still inspect partial bodies; it is not an evaluation/closure certificate.
+func (p *dirParse) nativeConfigurationFailure() error {
+	for _, diagnostic := range p.diagnostics {
+		if tfpath.IsOverrideFile(diagnostic.Subject.Filename) {
+			return &moduleConfigurationFailure{diagnostics: p.diagnostics}
+		}
+	}
+	return nil
+}
+
 func parseConfigBody(src []byte, path string) (*hclsyntax.Body, hcl.Diagnostics) {
 	if tfpath.IsJSONConfig(path) {
 		return parseJSONAsHCLBody(src, path)

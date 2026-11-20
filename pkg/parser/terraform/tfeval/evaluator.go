@@ -527,6 +527,9 @@ func (e *Evaluator) evaluate(
 	if parsed.err != nil {
 		return nil, nil, parsed.err
 	}
+	if err := parsed.nativeConfigurationFailure(); err != nil {
+		return nil, nil, err
+	}
 	e.collectConfigurationObservations(addr, &parsed)
 	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
 

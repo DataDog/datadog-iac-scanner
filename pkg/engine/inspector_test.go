@@ -2656,6 +2656,58 @@ count=-1
 	}
 
 	for _, test := range []struct {
+		name               string
+		child, independent bool
+		confirmed          int
+	}{
+		{"unavailable root override invalidates configured values", false, false, 0},
+		{"unavailable child override invalidates dependent values", true, false, 0},
+		{"unavailable child override preserves independent witness", true, true, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			affected := dir
+			configuration := `resource "aws_s3_bucket" "dependent" {acl="public"}`
+			if test.child {
+				affected = filepath.Join(dir, "child")
+				require.NoError(t, os.Mkdir(affected, 0700))
+				require.NoError(t, os.WriteFile(filepath.Join(affected, "main.tf"), []byte(`output "acl" {value="public"}`), 0600))
+				configuration = `module "child" {source="./child"}
+resource "aws_s3_bucket" "dependent" {acl=module.child.acl}`
+			}
+			if test.independent {
+				configuration += `
+resource "aws_s3_bucket" "independent" {acl="public"}`
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(configuration), 0600))
+			failedFile := filepath.Join(affected, "invalid_override.tf")
+			require.NoError(t, os.WriteFile(failedFile, []byte(`output "acl" {value="private"`), 0600))
+			evaluation, nativeErr := tfeval.New().EvaluateModule(context.Background(), dir, nil)
+			if test.child {
+				require.NoError(t, nativeErr)
+			} else {
+				require.Error(t, nativeErr)
+				require.Empty(t, evaluation.Resources)
+			}
+			subjects := map[string]tfeval.ValueSubject{}
+			for _, resource := range evaluation.Resources {
+				subjects[resource.Name] = tfeval.ValueSubject{Kind: "resource", Type: resource.Type, Value: cty.ObjectVal(resource.Attributes)}
+			}
+			emitted := 0
+			result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
+				Unit: evaluation.PolicyUnit(tfeval.NewValueReader(subjects, true)),
+				Emit: func(EntityFinding) error { emitted++; return nil },
+			})
+			var diagnostic *tfeval.EvaluationDiagnostic
+			require.ErrorAs(t, err, &diagnostic)
+			require.Equal(t, failedFile, diagnostic.Subject.Filename)
+			require.Equal(t, test.confirmed, result.Confirmed)
+			require.Equal(t, test.confirmed, emitted)
+			require.Equal(t, test.child, result.Indeterminate)
+		})
+	}
+
+	for _, test := range []struct {
 		name, flag, other             string
 		confirmed                     int
 		indeterminate, failed, cancel bool
