@@ -12,6 +12,7 @@ import (
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1648,4 +1649,42 @@ func TestResolveValidatesSourceAfterMergingOverrides(t *testing.T) {
 	require.Len(t, result.Modules, 1)
 	require.Equal(t, "v5.5.1", result.Modules[0].Version)
 	require.Equal(t, mainFile, result.Modules[0].CallerFile)
+}
+
+func TestResolveRepositoryFilesystemAuthority(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(path, []byte(`module "host" {source="git::https://example.invalid/host.git"}`), 0o600))
+	acquired := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(acquired, "main.tf"), []byte(`module "child" {source="./child"}`), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(acquired, "child"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(acquired, "child", "main.tf"), []byte(`resource "terraform_data" "downloaded" {input="disk-owned"}`), 0o600))
+	ownedModule := []byte(`module "owned" {source="git::https://example.invalid/owned.git"}`)
+	for _, tc := range []struct {
+		name  string
+		root  string
+		files map[string][]byte
+		want  int
+	}{
+		{name: "conflicting host", root: root, files: map[string][]byte{path: []byte(`resource "terraform_data" "owned" {input="known"}`)}},
+		{name: "memory only and acquired disk", root: filepath.Join(root, "absent"), files: map[string][]byte{filepath.Join(root, "absent", "main.tf"): ownedModule}, want: 1},
+		{name: "memory local child and acquired disk", root: "local-pushed", files: map[string][]byte{"local-pushed/main.tf": []byte(`module "child" {source="./child"}`), "local-pushed/child/main.tf": ownedModule}, want: 1},
+		{name: "relative memory and acquired disk", root: "pushed", files: map[string][]byte{"pushed/main.tf": ownedModule}, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			discoveryPaths := make([]string, 0, len(tc.files))
+			for path := range tc.files {
+				discoveryPaths = append(discoveryPaths, path)
+			}
+			result := Resolve(t.Context(), &Request{RootPaths: []string{tc.root}, DiscoveryPaths: discoveryPaths, FS: vfs.NewMemFS(tc.files), Resolver: mapResolver{bySource: map[string]resolver.Resolution{"git::https://example.invalid/owned.git": {LocalPath: acquired, PackageRoot: acquired, Origin: "prefetched"}}}, MaxDepth: 4})
+			defer result.Cleanup()
+			require.Len(t, result.Modules, tc.want)
+			require.Empty(t, result.Failures)
+			require.Len(t, result.ScanPaths, 2*tc.want)
+			if tc.want > 0 {
+				require.Equal(t, "git::https://example.invalid/owned.git", result.Modules[0].Source)
+				require.ElementsMatch(t, []string{filepath.Join(acquired, "main.tf"), filepath.Join(acquired, "child", "main.tf")}, result.ScanPaths)
+			}
+		})
+	}
 }
