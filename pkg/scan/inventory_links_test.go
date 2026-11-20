@@ -201,3 +201,50 @@ func TestInventoryDuplicateDocumentsGetTheirOwnRows(t *testing.T) {
 		"k8s/dup.yaml|v1/ConfigMap//cm"}, linked,
 		"each document's finding links to its own row, and the finding kept once to the row holding its line")
 }
+
+func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
+	tfjson := `{
+  "resource": {
+    "aws_s3_bucket": {
+      "logs": {
+        "bucket": "logs"
+      },
+      "pair": {
+        "count": 2,
+        "bucket": "pair",
+        "tags": {
+          "team": "data"
+        }
+      }
+    }
+  }
+}
+`
+	root := writeRepo(t, map[string]string{"infra/main.tf.json": tfjson})
+	bucket := syntheticQuery("test-tf-bucket", "terraform", "Terraform", `	input.document[i].resource.aws_s3_bucket[name].bucket
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s].bucket", [name])`)
+	inv, fingerprints := scanLinks(t, terraformParams(root), inventoryTestQuery, bucket)
+	require.NotEmpty(t, fingerprints)
+	require.Zero(t, inv.Stats.FindingsUnlinked, "every bucket finding belongs to a row")
+
+	// Every block of a type shares the type's key in JSON: each row spans its
+	// own object instead.
+	lines := make(map[string][2]int)
+	for _, r := range inv.Resources {
+		lines[r.ResourceRef] = [2]int{r.LineStart, r.LineEnd}
+	}
+	require.Equal(t, map[string][2]int{
+		"infra|aws_s3_bucket.logs":    {lineOf(t, tfjson, `"logs"`), lineOf(t, tfjson, `"bucket": "logs"`)},
+		"infra|aws_s3_bucket.pair[0]": {lineOf(t, tfjson, `"pair"`), lineOf(t, tfjson, `"team"`) + 1},
+		"infra|aws_s3_bucket.pair[1]": {lineOf(t, tfjson, `"pair"`), lineOf(t, tfjson, `"team"`) + 1},
+	}, lines)
+
+	refs := linkedRefs(inv)
+	for _, fp := range fingerprints {
+		require.Contains(t, [][]string{
+			{"infra|aws_s3_bucket.logs"},
+			{"infra|aws_s3_bucket.pair[0]", "infra|aws_s3_bucket.pair[1]"},
+		}, refs[fp], "fingerprint %s links to its block", fp)
+	}
+}

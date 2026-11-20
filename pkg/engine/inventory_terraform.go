@@ -184,9 +184,9 @@ func (inv *terraformInventory) row(
 	if !complete {
 		row.Completeness = inventory.CompletenessInstanceUnresolved
 	}
-	// In JSON configuration every block of a type shares the range of the
-	// type's key, so only the start line says anything.
-	if !strings.HasSuffix(r.DefinedIn, ".json") {
+	if strings.HasSuffix(r.DefinedIn, ".json") {
+		row.LineStart, row.LineEnd = jsonBlockLines(r)
+	} else {
 		row.LineEnd = max(r.DefEndLine, r.DefLine)
 		row.ColumnStart = r.DefColumn
 		row.ColumnEnd = r.DefEndColumn
@@ -196,6 +196,25 @@ func (inv *terraformInventory) row(
 	attr := callAttribution(r.CallChain, absPath(r.DefinedIn, inv.repoPath), inv.repoPath, inv.lookup, attributions)
 	inv.addModuleFields(&row, attr)
 	return row
+}
+
+// jsonBlockLines returns the lines of a block of JSON configuration. Every
+// block of a type shares the range of the type's key, so a block starts at
+// the brace of its own object, which its body's range gives, and ends at its
+// last attribute.
+func jsonBlockLines(r *tfeval.ResolvedResource) (start, end int) {
+	if r.Body == nil || r.Body.SrcRange.Start.Line < 1 {
+		return r.DefLine, 0
+	}
+	start = r.Body.SrcRange.Start.Line
+	end = start
+	for _, attr := range r.Body.Attributes {
+		end = max(end, attr.SrcRange.End.Line)
+	}
+	for _, block := range r.Body.Blocks {
+		end = max(end, block.Range().End.Line)
+	}
+	return start, end
 }
 
 // addModuleFields fills the module fields of a module resource from the
