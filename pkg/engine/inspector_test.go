@@ -8,11 +8,14 @@ package engine
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,11 +33,14 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/open-policy-agent/opa/v1/cover"
 )
@@ -1925,4 +1931,1256 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 
 	// Non-canizable nodes never validate.
 	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
+}
+
+func TestEntityPolicyScalarReads(t *testing.T) {
+	const source = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["acl"])=="public"}
+DatadogPolicy contains iac.finding(e,["encrypted"],{}) if {some e in iac.targets("resource","bucket");not iac.nonnull(e,["encrypted"])}
+`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	program := programs["policy"]
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name                string
+		acl, encrypted      cty.Value
+		count               int
+		symbolic, uncertain bool
+	}{
+		{"known", cty.StringVal("public"), cty.True, 1, false, false},
+		{"private", cty.StringVal("private"), cty.True, 0, false, false},
+		{"null", cty.StringVal("private"), cty.NullVal(cty.Bool), 1, false, false},
+		{"false is present", cty.StringVal("private"), cty.False, 0, false, false},
+		{"unknown required", cty.UnknownVal(cty.String), cty.True, 0, true, true},
+		{"known witness and unknown other predicate", cty.StringVal("public"), cty.UnknownVal(cty.Bool), 1, true, true},
+		{"nonnull refinement", cty.StringVal("private"), cty.UnknownVal(cty.Bool).RefineNotNull(), 0, false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque:1": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": test.acl, "encrypted": test.encrypted, "unrelated": cty.DynamicVal})}}, true)
+			var gotFindings []EntityFinding
+
+			got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+				gotFindings = append(gotFindings, f)
+				return nil
+			}})
+			require.NoError(t, err)
+			require.Len(t, gotFindings, test.count)
+			require.Equal(t, test.symbolic, got.Symbolic)
+			require.Equal(t, test.uncertain, got.Indeterminate)
+			for _, finding := range gotFindings {
+				require.Equal(t, "opaque:1", finding.Subject)
+			}
+		})
+	}
+	t.Run("absence", func(t *testing.T) {
+		reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque:1": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal}}, true)
+		var gotFindings []EntityFinding
+
+		got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+			gotFindings = append(gotFindings, f)
+			return nil
+		}})
+		require.NoError(t, err)
+		require.Len(t, gotFindings, 1)
+		require.False(t, got.Symbolic)
+	})
+	t.Run("producer error preserves completed progress", func(t *testing.T) {
+		reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+			"a": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public"), "encrypted": cty.True})},
+			"b": {Kind: "resource", Type: "bucket", Err: fmt.Errorf("native evaluation failed")},
+		}, true)
+		emitted := 0
+		result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: 1, Emit: func(EntityFinding) error { emitted++; return nil }})
+		require.ErrorContains(t, err, "native evaluation failed")
+		require.Equal(t, 1, result.Confirmed)
+		require.Equal(t, 1, emitted)
+	})
+	t.Run("open inventory", func(t *testing.T) {
+		_, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: tfeval.NewValueReader(nil, false), Emit: func(f EntityFinding) error {
+			return nil
+		}})
+		require.ErrorContains(t, err, "open Terraform inventory")
+	})
+}
+
+func TestEntityPolicyReadContract(t *testing.T) {
+	for _, body := range []string{
+		`not e.acl`,
+		`count(object.keys(e))==0`,
+		`input.__dd_symbols.x`,
+		`data.__dd_entity_rules.q0.expected=="public"`,
+		`iac.raw(e,["acl"]) with input.arguments as {}`,
+		`dd.describe("opaque",["acl"])`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");` + body + `}`
+			_, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			require.Error(t, err)
+		})
+	}
+	for _, namespace := range []string{"iac", "__dd_entity_partial", "__dd_entity_rules.q0"} {
+		t.Run("reserved library/"+namespace, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket")}`
+			_, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, map[string]string{"library.rego": "package " + namespace + "\nvalue := true"})
+			require.ErrorContains(t, err, "engine-owned policy namespace")
+		})
+	}
+	t.Run("concurrent reusable program", func(t *testing.T) {
+		source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["acl"])=="public"}`
+		programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+		program := programs["policy"]
+		require.NoError(t, err)
+		for _, test := range []struct {
+			name, id string
+			acl      cty.Value
+			want     int
+			symbolic bool
+		}{
+			{"known public", "shared-id", cty.StringVal("public"), 1, false},
+			{"known private", "shared-id", cty.StringVal("private"), 0, false},
+			{"unknown nullable", "first-id", cty.UnknownVal(cty.String), 0, true},
+			{"unknown nonnull", "second-id", cty.UnknownVal(cty.String).RefineNotNull(), 0, true},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+				reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{test.id: {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": test.acl})}}, true)
+				var findings []EntityFinding
+				result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
+				require.NoError(t, err)
+				require.Len(t, findings, test.want)
+				require.Equal(t, test.symbolic, result.Symbolic)
+				require.Equal(t, test.symbolic, result.Indeterminate)
+			})
+		}
+	})
+	t.Run("reporting metadata belongs to the scanner", func(t *testing.T) {
+		for _, field := range []string{"documentId", "searchKey", "resourceType", "resourceName"} {
+			source := fmt.Sprintf(`package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{%q:"author-supplied"}) if {some e in iac.targets("resource","bucket")}`, field)
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			require.NoError(t, err)
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"subject": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal}}, true)
+			_, err = programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(EntityFinding) error { t.Fatal("invalid reporting metadata emitted"); return nil }})
+			require.ErrorContains(t, err, field)
+		}
+	})
+}
+
+func TestEntityPolicyHelperBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name, helper, body string
+		wantError          bool
+	}{
+		{"explicit read helper", `secure(e) if {iac.raw(e,["acl"])=="private"}`, `not secure(e)`, false},
+		{"ordered fallback helper", `secure(x):=true if {iac.raw(x,["acl"])=="private"} else:=false`, `secure(e)==false`, true},
+		{"default helper", `default secure(_):=false
+secure(x):=true if {iac.raw(x,["acl"])=="private"}`, `secure(e)==false`, true},
+		{"ordered helper with failing builtin", `secure(x):=true if {to_number(iac.raw(x,["acl"]))>0} else:=false`, `secure(e)==false`, true},
+		{"unreachable ordered helper", `unused(x):=true if x else:=false`, `iac.raw(e,["acl"])=="public"`, false},
+		{"private helper import alias", `import data.iac._present as hidden`, `peer:=iac.raw(e,["peer"]);not hidden(peer,["acl"])`, true},
+		{"private iac helper", ``, `peer:=iac.raw(e,["peer"]);not iac._present(peer,["acl"])`, true},
+		{"private iac qualified helper", ``, `peer:=iac.raw(e,["peer"]);not data.iac._present(peer,["acl"])`, true},
+		{"literal read subject", ``, `iac.raw("not-a-handle",["acl"])=="public"`, true},
+		{"configured read subject", ``, `peer:=iac.raw(e,["peer"]);iac.raw(peer,["acl"])=="public"`, true},
+		{"mixed helper subject roles", `read(x):=iac.raw(x,["acl"])`, `read(e)=="public";read("not-a-handle")=="public"`, true},
+		{"entity collection helper", `public(xs) if {some x in xs;iac.raw(x,["acl"])=="public"}`, `public(iac.entities("resource","bucket"))`, false},
+		{"literal collection helper", `public(xs) if {some x in xs;iac.raw(x,["acl"])=="public"}`, `public(iac.entities("resource","bucket"));public(["b"])`, true},
+		{"configured collection helper", `public(xs) if {some x in xs;iac.raw(x,["acl"])=="public"}`, `peer:=iac.raw(e,["peer"]);public(iac.entities("resource","bucket"));public([peer])`, true},
+		{"negative equality is not a binding", ``, `peer:=iac.raw(e,["peer"]);not peer==e;iac.raw(peer,["acl"])=="public"`, true},
+		{"negative helper equality is not a binding", `same(x,y) if x==y`, `peer:=iac.raw(e,["peer"]);not same(peer,e);iac.raw(peer,["acl"])=="public"`, true},
+		{"negative membership is not a binding", ``, `peer:=iac.raw(e,["peer"]);not peer in iac.entities("resource","protector");iac.raw(peer,["acl"])=="public"`, true},
+		{"scalar equality cannot mint a subject", ``, `peer:=iac.raw(e,["peer"]);peer==e;iac.raw(peer,["acl"])=="public"`, true},
+		{"mixed entity and scalar result", `pick(x):=x if iac.raw(x,["which"])=="self"
+pick(x):=iac.raw(x,["peer"]) if iac.raw(x,["which"])=="other"`, `iac.raw(pick(e),["acl"])=="public"`, true},
+		{"mixed entity and literal result", `pick(x):=x if input.arguments.pick
+pick(x):="b" if not input.arguments.pick`, `iac.raw(pick(e),["acl"])=="public"`, true},
+		{"mixed inventory and literal result", `pick:=iac.entities("resource","bucket") if input.arguments.pick
+pick:=["b"] if not input.arguments.pick`, `some peer in pick;iac.raw(peer,["acl"])=="public"`, true},
+		{"conditional entity result", `pick(x):=x if iac.raw(x,["which"])=="self"`, `iac.raw(pick(e),["acl"])=="public"`, false},
+		{"conditional entity collection result", `pick(xs):=xs if input.arguments.pick
+public(xs) if {some x in xs;iac.raw(x,["acl"])=="public"}`, `public(pick(iac.entities("resource","bucket")))`, false},
+		{"unreachable qualified helper", `unused.hidden(x) if data.iac._present(x,["acl"])`, `iac.raw(e,["acl"])=="public"`, false},
+		{"qualified default helper", `default util.secure(_):=false
+util.secure(v):=true if v=="private"`, `util.secure(iac.raw(e,["acl"]))==false`, true},
+		{"qualified private helper", `util.hidden(x) if data.iac._present(x,["acl"])`, `not util.hidden(iac.raw(e,["peer"]))`, true},
+		{"qualified untyped subject helper", `util.read(x):=iac.raw(x,["acl"])`, `util.read("not-a-handle")=="public"`, true},
+		{"qualified comprehension helper", `util.values(x):=[v | some v in x]`, `count(util.values([true]))==1`, true},
+		{"negated field in a polymorphic helper", `missing(x) if not x.acl`, `missing(e)`, true},
+		{"polymorphic object helper", `valid(x,k) if {is_object(x);x[k]!=null}`, `not valid(e,"acl")`, true},
+		{"helper through alias", `valid(x,k) if {is_object(x);x[k]!=null}
+wrapper(x) if {copy:=x;valid(copy,"acl")}`, `not wrapper(e)`, true},
+		{"opaque collection helper patterns", `missing([x]) if not x.acl`, `missing(iac.entities("resource","bucket"))`, true},
+		{"opaque container escape", `wrapped(x):={"value":x}`, `object.get(wrapped(e),"acl",null)==null`, true},
+		{"derived partial set", `publics contains x if {some x in iac.entities("resource","bucket");iac.raw(x,["acl"])=="public"}`, `count(publics)==1`, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+` + test.helper + `
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");` + test.body + `}`
+			_, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			if test.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestEntityPolicyUnknownLogic(t *testing.T) {
+	for _, test := range []struct {
+		name, body string
+		uncertain  bool
+	}{
+		{"read implies presence", `iac.raw(e,["acl"])=="public";not iac.present(e,["acl"])`, false},
+		{"nonnull implies presence", `iac.nonnull(e,["acl"]);not iac.present(e,["acl"])`, false},
+		{"non-null value cannot equal null", `iac.value(e,["acl"])==null`, false},
+		{"Boolean data view", `iac.valid_key(e,["acl"])==false`, true},
+		{"Boolean data contradiction", `iac.valid_key(e,["acl"])==true;not iac.present(e,["acl"])`, false},
+		{"unknown equality", `iac.raw(e,["acl"])=="public"`, true},
+		{"unknown negation", `not iac.nonnull(e,["acl"])`, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");` + test.body + `}`
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			program := programs["policy"]
+			require.NoError(t, err)
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.UnknownVal(cty.Map(cty.String))}}, true)
+			var gotFindings []EntityFinding
+
+			got, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+				gotFindings = append(gotFindings, f)
+				return nil
+			}})
+			require.NoError(t, err)
+			require.Empty(t, gotFindings)
+			require.Equal(t, test.uncertain, got.Indeterminate)
+			require.True(t, got.Symbolic)
+		})
+	}
+	t.Run("policy function assertion values", func(t *testing.T) {
+		for _, test := range []struct {
+			name, helper, body string
+			value              cty.Value
+			count              int
+			uncertain          bool
+			errorText          string
+		}{
+			{"true", `check(x):=true`, `check(e)`, cty.True, 1, false, ""},
+			{"false", `check(x):=false`, `check(e)`, cty.True, 0, false, ""},
+			{"number", `check(x):=0`, `check(e)`, cty.True, 1, false, ""},
+			{"null", `check(x):=null`, `check(e)`, cty.True, 1, false, ""},
+			{"negated number", `check(x):=0`, `not check(e)`, cty.True, 0, false, ""},
+			{"negated null", `check(x):=null`, `not check(e)`, cty.True, 0, false, ""},
+			{"untyped false", `check(x):=iac.raw(x,["acl"])`, `check(e)`, cty.False, 0, false, ""},
+			{"untyped null", `check(x):=iac.raw(x,["acl"])`, `check(e)`, cty.NullVal(cty.String), 1, false, ""},
+			{"untyped unknown", `check(x):=iac.raw(x,["acl"])`, `check(e)`, cty.DynamicVal, 0, true, ""},
+			{"computed unknown Boolean", `check(x):=contains(iac.raw(x,["acl"]),"public")`, `check(e)`, cty.UnknownVal(cty.String), 0, true, ""},
+			{"builtin error", `check(x):=to_number(iac.raw(x,["acl"]))`, `check(e)`, cty.StringVal("invalid"), 0, false, "to_number"},
+			{"forwarded builtin error", `check(x):=to_number(iac.raw(x,["acl"]))
+proxy(x):=check(x)`, `proxy(e)`, cty.StringVal("invalid"), 0, false, "to_number"},
+			{"Boolean builtin error", `check(x):=regex.match("[",iac.raw(x,["acl"]))`, `check(e)`, cty.StringVal("public"), 0, false, "regex.match"},
+			{"forwarded Boolean builtin error", `check(x):=regex.match("[",iac.raw(x,["acl"]))
+proxy(x):=check(x)`, `proxy(e)`, cty.StringVal("public"), 0, false, "regex.match"},
+			{"conflicting Boolean definitions", `check(x):=true if iac.raw(x,["acl"])=="public"
+check(x):=false if startswith(iac.raw(x,["acl"]),"pub")`, `check(e)`, cty.StringVal("public"), 0, false, "functions must not produce multiple outputs"},
+			{"negated conflicting Boolean definitions", `check(x):=true if iac.raw(x,["acl"])=="public"
+check(x):=false if startswith(iac.raw(x,["acl"]),"pub")`, `not check(e)`, cty.StringVal("public"), 0, false, "functions must not produce multiple outputs"},
+			{"false Boolean branch error", `check(x):=true if iac.raw(x,["acl"])=="public"
+check(x):=false if to_number(iac.raw(x,["acl"]))>0`, `check(e)`, cty.StringVal("public"), 0, false, "to_number"},
+			{"negated false Boolean branch error", `check(x):=true if iac.raw(x,["acl"])=="public"
+check(x):=false if to_number(iac.raw(x,["acl"]))>0`, `not check(e)`, cty.StringVal("public"), 0, false, "to_number"},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				source := `package datadog
+import rego.v1
+import data.iac
+` + test.helper + `
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");` + test.body + `}`
+				programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+				require.NoError(t, err)
+				subjects := map[string]tfeval.ValueSubject{"subject": {
+					Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": test.value}),
+				}}
+				if test.errorText != "" {
+					subjects["before"] = tfeval.ValueSubject{Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)})}
+				}
+				reader := tfeval.NewValueReader(subjects, true)
+				for _, size := range []int{1, 2, 0} {
+					count := 0
+					result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
+					if test.errorText != "" {
+						require.ErrorContains(t, err, test.errorText, "batch size %d", size)
+						continue
+					}
+					require.NoError(t, err)
+					require.Equal(t, test.count, count)
+					require.Equal(t, test.uncertain, result.Indeterminate)
+				}
+			})
+		}
+	})
+	t.Run("guarded operations and value flow", func(t *testing.T) {
+		const gate = `gate(e):=iac.raw(e,["flag"])`
+		const bad = `bad(e):=true if iac.raw(e,["acl"])=="public"
+bad(e):=false if startswith(iac.raw(e,["acl"]),"pub")`
+		for _, test := range []struct {
+			name, helpers, body string
+			flag                cty.Value
+			bad                 any
+			want                int
+			errorText           string
+		}{
+			{"opaque false before union", gate, `gate(e);object.union(input.arguments.bad,{})=={}`, cty.False, "wrong type", 0, ""},
+			{"opaque unknown before union", gate, `gate(e);object.union(input.arguments.bad,{})=={}`, cty.UnknownVal(cty.Bool), "wrong type", 0, ""},
+			{"opaque true exposes union error", gate, `gate(e);object.union(input.arguments.bad,{})=={}`, cty.True, "wrong type", 0, "object.union"},
+			{"opaque true union value", gate, `gate(e);object.union(input.arguments.bad,{})=={}`, cty.True, map[string]any{}, 2, ""},
+			{"opaque false before conflicting function", gate + "\n" + bad, `gate(e);bad(e)`, cty.False, nil, 0, ""},
+			{"opaque unknown before conflicting function", gate + "\n" + bad, `gate(e);bad(e)`, cty.UnknownVal(cty.Bool), nil, 0, ""},
+			{"opaque true exposes function conflict", gate + "\n" + bad, `gate(e);bad(e)`, cty.True, nil, 0, "functions must not produce multiple outputs"},
+			{"negated conflicting function", bad, `not bad(e)`, cty.True, nil, 0, "functions must not produce multiple outputs"},
+			{"conflicting complete document", `bad:=true if input.arguments.conflict
+bad:=false if input.arguments.conflict`, `bad`, cty.True, nil, 0, "complete rules must not produce multiple outputs"},
+			{"negated conflicting complete document", `bad:=true if input.arguments.conflict
+bad:=false if input.arguments.conflict`, `not bad`, cty.True, nil, 0, "complete rules must not produce multiple outputs"},
+			{"known helper output feeds another helper", `first(e):=iac.raw(e,["acl"])
+second(x):=x`, `second(first(e))=="public"`, cty.True, nil, 2, ""},
+			{"zero remains truthy under symbolic fallback", gate, `gate(e)`, cty.NumberIntVal(0), nil, 2, ""},
+			{"null remains truthy under symbolic fallback", gate, `gate(e)`, cty.NullVal(cty.String), nil, 2, ""},
+			{"negative zero remains false under symbolic fallback", gate, `not gate(e)`, cty.NumberIntVal(0), nil, 0, ""},
+			{"negative null remains false under symbolic fallback", gate, `not gate(e)`, cty.NullVal(cty.String), nil, 0, ""},
+			{"undefined remains false under symbolic fallback", `gate(e):=iac.raw(e,["missing"])`, `gate(e)`, cty.True, nil, 0, ""},
+			{"negative undefined remains true under symbolic fallback", `gate(e):=iac.raw(e,["missing"])`, `not gate(e)`, cty.True, nil, 2, ""},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				source := `package datadog
+import rego.v1
+import data.iac
+` + test.helpers + `
+DatadogPolicy contains iac.finding(e,["pending"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["pending"])==true}
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");` + test.body + `}`
+				programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+				require.NoError(t, err)
+				subjects := map[string]tfeval.ValueSubject{}
+				for _, id := range []string{"a", "b"} {
+					subjects[id] = tfeval.ValueSubject{Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public"), "flag": test.flag, "pending": cty.UnknownVal(cty.Bool)})}
+				}
+				reader := tfeval.NewValueReader(subjects, true)
+				for _, size := range []int{1, 2, 0} {
+					count := 0
+					result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Arguments: map[string]any{"bad": test.bad, "conflict": true}, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
+					if test.errorText != "" {
+						require.ErrorContains(t, err, test.errorText, "batch size %d", size)
+						continue
+					}
+					require.NoError(t, err, "batch size %d", size)
+					require.Equal(t, test.want, count, "batch size %d", size)
+					require.True(t, result.Indeterminate, "batch size %d", size)
+				}
+			})
+		}
+	})
+	t.Run("opaque reads preserve provider failures", func(t *testing.T) {
+		for _, body := range []string{`read(e)=="public"`, `not read(e)`, `not read(e)=="public"`} {
+			t.Run(body, func(t *testing.T) {
+				source := `package datadog
+import rego.v1
+import data.iac
+read(e):=iac.raw(e,["acl"])
+DatadogPolicy contains iac.finding(e,["pending"],{}) if {some e in iac.targets("resource","waiting");iac.raw(e,["pending"])==true}
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");` + body + `}`
+				programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+				require.NoError(t, err)
+				reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+					"a-waiting":        {Kind: "resource", Type: "waiting", Value: cty.ObjectVal(map[string]cty.Value{"pending": cty.UnknownVal(cty.Bool)})},
+					"b-reader-failure": {Kind: "resource", Type: "bucket", Err: errors.New("provider read failed")},
+				}, true)
+				for _, size := range []int{1, 2, 0} {
+					_, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error { t.Fatal("unexpected finding"); return nil }})
+					require.ErrorContains(t, err, "provider read failed", "batch size %d", size)
+				}
+			})
+		}
+	})
+	t.Run("public Boolean read forms", func(t *testing.T) {
+		reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+			"a": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public")})},
+			"b": {Kind: "resource", Type: "bucket", Value: cty.UnknownVal(cty.Map(cty.String))},
+			"c": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal},
+			"d": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.NullVal(cty.String)})},
+			"e": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.False})},
+			"f": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String).RefineNotNull()})},
+			"g": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)})},
+		}, true)
+		for _, helper := range []struct {
+			name               string
+			positive, negative []string
+		}{
+			{"iac.present_value", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"has_acl", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"iac.valid_key", []string{"a", "e", "f"}, []string{"c", "d"}},
+			{"valid_acl", []string{"a", "e", "f"}, []string{"c", "d"}},
+			{"forwarded_presence", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"forwarded_nonnull", []string{"a", "e", "f"}, []string{"c", "d"}},
+			{"transitive_presence", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"transitive_nonnull", []string{"a", "e", "f"}, []string{"c", "d"}},
+			{"guarded_presence", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"guarded_nonnull", []string{"a", "e", "f"}, []string{"c", "d"}},
+			{"transitive_guarded_presence", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"transitive_guarded_nonnull", []string{"a", "e", "f"}, []string{"c", "d"}},
+			{"shared.presence", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"shared.nonnull", []string{"a", "e", "f"}, []string{"c", "d"}},
+			{"shared.outer_presence", []string{"a", "d", "e", "f", "g"}, []string{"c"}},
+			{"shared.outer_nonnull", []string{"a", "e", "f"}, []string{"c", "d"}},
+		} {
+			call := helper.name + `(e,["acl"])`
+			for _, form := range []struct {
+				body string
+				want []string
+			}{{call, helper.positive}, {call + "==true", helper.positive}, {call + "==false", helper.negative}, {"not " + call, helper.negative}} {
+				t.Run(form.body, func(t *testing.T) {
+					source := `package datadog
+import rego.v1
+import data.iac
+import data.iac.present_value as has_acl
+import data.iac.valid_key as valid_acl
+import data.helperreads as shared
+forwarded_presence(e,p):=iac.present_value(e,p)
+forwarded_nonnull(e,p):=iac.valid_key(e,p)
+transitive_presence(e,p):=forwarded_presence(e,p)
+transitive_nonnull(e,p):=forwarded_nonnull(e,p)
+guarded_presence(e,p):=iac.present_value(e,p) if input.arguments.enabled
+guarded_nonnull(e,p):=iac.valid_key(e,p) if input.arguments.enabled
+transitive_guarded_presence(e,p):=guarded_presence(e,p)
+transitive_guarded_nonnull(e,p):=guarded_nonnull(e,p)
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");` + form.body + `}`
+					programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, map[string]string{"shared.rego": `package helperreads
+import rego.v1
+import data.iac
+presence(e,p):=iac.present_value(e,p)
+nonnull(e,p):=iac.valid_key(e,p)
+guarded_presence(e,p):=presence(e,p) if input.arguments.enabled
+guarded_nonnull(e,p):=nonnull(e,p) if input.arguments.enabled
+outer_presence(e,p):=guarded_presence(e,p)
+outer_nonnull(e,p):=guarded_nonnull(e,p)`})
+					require.NoError(t, err)
+					for _, size := range []int{1, 2, 0} {
+						var subjects []string
+						result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Arguments: map[string]any{"enabled": true}, BatchSize: size, Emit: func(f EntityFinding) error { subjects = append(subjects, f.Subject); return nil }})
+						require.NoError(t, err)
+						require.ElementsMatch(t, form.want, subjects)
+						require.True(t, result.Indeterminate)
+					}
+				})
+			}
+		}
+	})
+	t.Run("atomic independent projection units", func(t *testing.T) {
+		for _, spec := range []struct {
+			name, helper, diagnostic string
+			producer                 bool
+		}{
+			{"builtin error", `bad(e,r):=to_number(iac.raw(e,["acl"])) if iac.raw(r,["enabled"])==false`, "to_number", false},
+			{"late conflict", `bad(e,r):=1 if iac.raw(r,["enabled"])==false
+bad(e,r):=0 if {iac.raw(r,["enabled"])==false;iac.raw(r,["kind"])=="bad";iac.raw(e,["acl"])=="public"}`, "eval_conflict_error", false},
+			{"producer error", `bad(e,r):=to_number(iac.raw(e,["acl"])) if iac.raw(r,["enabled"])==false`, "producer failed", true},
+		} {
+			t.Run(spec.name, func(t *testing.T) {
+				source := `package datadog
+import rego.v1
+import data.iac
+` + spec.helper + `
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");some r in iac.entities("resource","protection");bad(e,r)>0}`
+				programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+				require.NoError(t, err)
+				b := tfeval.ValueSubject{Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public")})}
+				if spec.producer {
+					b.Err = errors.New("producer failed")
+				}
+				reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+					"a":   {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("1")})},
+					"b":   b,
+					"r-a": {Kind: "resource", Type: "protection", Value: cty.ObjectVal(map[string]cty.Value{"enabled": cty.UnknownVal(cty.Bool), "kind": cty.StringVal("unknown")})},
+					"r-b": {Kind: "resource", Type: "protection", Value: cty.ObjectVal(map[string]cty.Value{"enabled": cty.False, "kind": cty.StringVal("good")})},
+					"r-c": {Kind: "resource", Type: "protection", Value: cty.ObjectVal(map[string]cty.Value{"enabled": cty.False, "kind": cty.StringVal("bad")})},
+				}, true)
+				for _, size := range []int{1, 2, 0} {
+					var subjects []string
+					result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { subjects = append(subjects, f.Subject); return nil }})
+					require.ErrorContains(t, err, spec.diagnostic)
+					require.Equal(t, 1, result.Confirmed)
+					require.Equal(t, []string{"a"}, subjects)
+					require.True(t, result.Indeterminate)
+				}
+			})
+		}
+	})
+
+	t.Run("independent native units", func(t *testing.T) {
+		const prefix = "package datadog\nimport rego.v1\nimport data.iac\n"
+		const debug = `DatadogPolicy contains iac.finding(e,["debug"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["debug"])==true}
+`
+		const conversion = `bad(e):=to_number(iac.raw(e,["acl"]))
+`
+		for _, spec := range []struct {
+			name, body, diagnostic string
+			findings               int
+			samePrimary            bool
+		}{
+			{"conversion before guard", conversion + `DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");bad(e)>0;iac.raw(e,["flag"])==true}`, "to_number", 0, false},
+			{"guarded conversion", conversion + `DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["flag"])==true;bad(e)>0}`, "", 0, false},
+			{"independent clause witness", `DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["acl"])=="public"}`, "", 1, false},
+			{"same primary independent clauses", conversion + `DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");bad(e)>0;iac.raw(e,["flag"])==true}`, "to_number", 0, true},
+		} {
+			t.Run(spec.name, func(t *testing.T) {
+				programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": prefix + debug + spec.body}, nil)
+				require.NoError(t, err)
+				subjects := map[string]tfeval.ValueSubject{
+					"a": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("0"), "flag": cty.False, "debug": cty.UnknownVal(cty.Bool)})},
+					"b": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public"), "flag": cty.False, "debug": cty.False})},
+				}
+				if spec.samePrimary {
+					delete(subjects, "a")
+					subjects["b"] = tfeval.ValueSubject{Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public"), "flag": cty.False, "debug": cty.UnknownVal(cty.Bool)})}
+				}
+				reader := tfeval.NewValueReader(subjects, true)
+				for _, size := range []int{1, 2, 0} {
+					count := 0
+					result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
+					if spec.diagnostic == "" {
+						require.NoError(t, err)
+					} else {
+						require.ErrorContains(t, err, spec.diagnostic)
+					}
+					require.Equal(t, spec.findings, count)
+					require.Equal(t, spec.findings, result.Confirmed)
+					require.True(t, result.Indeterminate)
+				}
+			})
+		}
+	})
+
+	t.Run("discovery context isolation", func(t *testing.T) {
+		const prefix = "package datadog\nimport rego.v1\nimport data.iac\n"
+		const protected = `protected if {some r in iac.entities("resource","peer");iac.raw(r,["acl"])=="private"}
+`
+		const knownClause = `DatadogPolicy contains iac.finding(e,["known"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["flag"])==false;iac.raw(e,["number"])==0;iac.raw(e,["nil"])==null;not iac.raw(e,["absent"])}
+`
+		for _, spec := range []struct {
+			name, source string
+			valid        bool
+			known        []string
+			dirty        []int
+			diagnostic   string
+		}{
+			{"shared virtual negation", protected + `DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");not protected}`, true, nil, []int{2}, ""},
+			{"clause and primary marks", protected + `DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");not protected}` + "\n" + knownClause, true, []string{"a", "b"}, []int{2, 0}, ""},
+			{"false null zero absent", knownClause + `DatadogPolicy contains iac.finding(e,["acl"],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["acl"])=="private"}`, true, []string{"a", "b", "b"}, []int{0, 1}, ""},
+			{"discard failed reader pass", protected + `DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");not protected;some r in iac.entities("resource","bomb");iac.raw(r,["value"])==true}` + "\n" + knownClause, false, []string{"a", "b"}, nil, "reader bomb"},
+			{"preserve later related reader failure", `bad(r):=to_number(iac.raw(r,["value"]))
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");some r in iac.entities("resource","protection");bad(r)>0;iac.raw(e,["flag"])==true}`, false, nil, nil, "reader bomb"},
+			{"discard failed conflict pass", `check(e):=true if iac.raw(e,["acl"])=="private"
+check(e):=false if iac.raw(e,["acl"])=="private"
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");check(e)}
+` + knownClause, false, []string{"a", "b"}, nil, "eval_conflict_error"},
+		} {
+			for _, memoReads := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/memo=%v", spec.name, memoReads), func(t *testing.T) {
+					programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": prefix + spec.source}, nil)
+					require.NoError(t, err)
+					program := programs["policy"]
+					if memoReads {
+						for _, f := range program.compilation.functions {
+							if strings.HasPrefix(f.definition.Name, "dd.native_") {
+								f.definition.Memoize = true
+							}
+						}
+					}
+					object := func(acl cty.Value) cty.Value {
+						return cty.ObjectVal(map[string]cty.Value{"acl": acl, "flag": cty.False, "number": cty.NumberIntVal(0), "nil": cty.NullVal(cty.String)})
+					}
+					reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+						"a":         {Kind: "resource", Type: "bucket", Value: object(cty.UnknownVal(cty.String))},
+						"b":         {Kind: "resource", Type: "bucket", Value: object(cty.StringVal("private"))},
+						"shared":    {Kind: "resource", Type: "peer", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)})},
+						"bomb":      {Kind: "resource", Type: "bomb", Err: errors.New("reader bomb")},
+						"related-a": {Kind: "resource", Type: "protection", Value: cty.ObjectVal(map[string]cty.Value{"value": cty.UnknownVal(cty.String)})},
+						"related-b": {Kind: "resource", Type: "protection", Err: errors.New("reader bomb")},
+					}, true)
+					input, err := prepareEntityInput(nil)
+					require.NoError(t, err)
+					selection, err := program.selectTargets(context.Background(), reader)
+					require.NoError(t, err)
+					values, dirty, valid, err := program.discover(context.Background(), reader, input.discovery, selection.batch(selection.ids[len(selection.ids)-1]))
+					require.NoError(t, err)
+					require.Equal(t, spec.valid, valid)
+					if valid {
+						var subjects []string
+						for _, value := range values {
+							id := value.Value.(ast.Object).Get(ast.StringTerm("_dd_id")).Value.(ast.String)
+							subjects = append(subjects, string(id))
+						}
+						require.ElementsMatch(t, spec.known, subjects)
+						var counts []int
+						for _, unit := range program.plan.units {
+							counts = append(counts, len(dirty[unit.id]))
+						}
+						require.Equal(t, spec.dirty, counts)
+					} else {
+						require.Nil(t, values)
+						require.Nil(t, dirty)
+					}
+					for _, size := range []int{1, 2, 0} {
+						var subjects []string
+						result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { subjects = append(subjects, f.Subject); return nil }})
+						if spec.diagnostic == "" {
+							require.NoError(t, err)
+						} else {
+							require.ErrorContains(t, err, spec.diagnostic)
+						}
+						require.ElementsMatch(t, spec.known, subjects)
+						require.Equal(t, len(spec.known), result.Confirmed)
+						require.True(t, result.Indeterminate || err != nil)
+					}
+				})
+			}
+		}
+	})
+
+}
+
+func TestEntityPolicySharedPreparation(t *testing.T) {
+	for _, namespace := range []string{"output", "datadog.output"} {
+		t.Run(namespace, func(t *testing.T) {
+			for _, reference := range []string{"expected", "data.datadog.expected", "self.expected", "data.datadog.__entity_q0"} {
+				t.Run(reference, func(t *testing.T) {
+					source := func(want string) string {
+						return `package datadog
+		import rego.v1
+		import data.iac
+		import data.datadog as self
+		import data.` + namespace + ` as output
+		expected := "` + want + `"
+		__entity_q0 := expected
+		local_check(self) if self.expected=="public"
+		DatadogPolicy contains iac.finding(e,["acl"],output.details) if {some e in iac.targets("resource","bucket");iac.raw(e,["acl"])==` + reference + `;local_check({"expected":"public"})}`
+					}
+					sources := map[string]string{"public": source("public"), "private": source("private")}
+					libraries := map[string]string{"output.rego": "package " + namespace + `
+		import rego.v1
+		details := {"remediation": "restrict acl"}`, "shared.rego": `package datadog
+		import rego.v1
+		expected := "shared"`}
+					programs, err := PrepareEntityPolicies(context.Background(), sources, libraries)
+					sources["public"] = "invalid after preparation"
+					sources["private"] = "invalid after preparation"
+					require.NoError(t, err)
+					require.Same(t, programs["public"].symbolic, programs["private"].symbolic)
+					require.Nil(t, programs["public"].symbolic.programs)
+					uncertain := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)})}}, true)
+					summary, err := programs["public"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: uncertain, Emit: func(EntityFinding) error { return nil }})
+					require.NoError(t, err)
+					require.True(t, summary.Indeterminate)
+					require.Len(t, programs["public"].symbolic.programs, 2)
+					reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public")})}}, true)
+					for id, program := range programs {
+						t.Run(id, func(t *testing.T) {
+							t.Parallel()
+							var resultFindings []EntityFinding
+							_, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+								resultFindings = append(resultFindings, f)
+								return nil
+							}})
+							require.NoError(t, err)
+							want := 0
+							if id == "public" {
+								want = 1
+							}
+							require.Len(t, resultFindings, want)
+							for _, finding := range resultFindings {
+								require.Equal(t, "restrict acl", finding.Details["remediation"])
+							}
+						})
+					}
+				})
+			}
+		})
+	}
+	t.Run("native and partial code ownership", func(t *testing.T) {
+		for _, condition := range []string{`iac.raw(e,["acl"])=="public"`, `contains(iac.raw(e,["acl"]),"pub")`} {
+			helpers := ""
+			if strings.HasPrefix(condition, "contains") {
+				helpers = "unused(x):=x if x else:=false\n"
+			}
+			source := `package datadog
+import rego.v1
+import data.iac
+` + helpers + `DatadogPolicy contains iac.finding(e,["acl"],{"nested":[{"value":"private"}]}) if {some e in iac.targets("resource","bucket");` + condition + `}`
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			require.NoError(t, err)
+			program := programs["policy"]
+			native := program.compilation.compiler
+			texts := map[string]string{}
+			modules := map[*ast.Module]bool{}
+			rules := map[*ast.Rule]bool{}
+			arrays := map[*ast.Array]bool{}
+			for name, module := range native.Modules {
+				texts[name] = module.String()
+				modules[module] = true
+				ast.WalkRules(module, func(rule *ast.Rule) bool { rules[rule] = true; require.Same(t, module, rule.Module); return false })
+				ast.WalkTerms(module, func(term *ast.Term) bool {
+					if array, ok := term.Value.(*ast.Array); ok {
+						arrays[array] = true
+					}
+					return false
+				})
+			}
+			reader := func(value cty.Value) policy.Reader {
+				return tfeval.NewValueReader(map[string]tfeval.ValueSubject{"a": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": value})}}, true)
+			}
+			result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader(cty.UnknownVal(cty.String)), Emit: func(EntityFinding) error { return nil }})
+			require.NoError(t, err)
+			require.True(t, result.Indeterminate)
+			partial := program.symbolic.boundary.compiler
+			require.NotSame(t, native, partial)
+			for _, module := range partial.Modules {
+				require.False(t, modules[module])
+				ast.WalkRules(module, func(rule *ast.Rule) bool {
+					require.False(t, rules[rule])
+					require.Same(t, module, rule.Module)
+					return false
+				})
+				ast.WalkTerms(module, func(term *ast.Term) bool {
+					if array, ok := term.Value.(*ast.Array); ok {
+						require.False(t, arrays[array])
+					}
+					return false
+				})
+			}
+			for name, module := range native.Modules {
+				require.Equal(t, texts[name], module.String())
+			}
+			require.Nil(t, program.symbolic.native)
+			require.Nil(t, program.symbolic.plans)
+			result, err = program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader(cty.StringVal("public")), Emit: func(EntityFinding) error { return nil }})
+			require.NoError(t, err)
+			require.Equal(t, 1, result.Confirmed)
+		}
+	})
+
+}
+
+func TestEntityPolicyTypedFindingPaths(t *testing.T) {
+	source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["0",0,1.0,"with.dot[0]"],{"_dd_id":"unregistered","path":["forged"]}) if {some e in iac.targets("resource","bucket")}`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	program := programs["policy"]
+	require.NoError(t, err)
+	reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal}}, true)
+	var resultFindings []EntityFinding
+	_, err = program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+		resultFindings = append(resultFindings, f)
+		return nil
+	}})
+	require.NoError(t, err)
+	require.Len(t, resultFindings, 1)
+	require.Empty(t, resultFindings[0].Details, "identity/path belong to typed fields, not business details")
+	key, property := resultFindings[0].Path[0].Property()
+	require.True(t, property)
+	require.Equal(t, "0", key)
+	index, indexed := resultFindings[0].Path[1].Position()
+	require.True(t, indexed)
+	require.EqualValues(t, 0, index)
+	index, indexed = resultFindings[0].Path[2].Position()
+	require.True(t, indexed)
+	require.EqualValues(t, 1, index)
+	key, property = resultFindings[0].Path[3].Property()
+	require.True(t, property)
+	require.Equal(t, "with.dot[0]", key)
+	t.Run("location descriptors do not gate the security proof", func(t *testing.T) {
+		for _, path := range []string{`input.arguments.path`, `["items",iac.raw(e,["index"])]`} {
+			query := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,` + path + `,{}) if {some e in iac.targets("resource","bucket")}`
+			_, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": query}, nil)
+			require.ErrorContains(t, err, "ground typed descriptors")
+		}
+	})
+}
+
+func TestEntityPolicyFindingDescriptors(t *testing.T) {
+	for _, test := range []struct {
+		name, helper, details string
+		valid                 bool
+	}{
+		{"literal", ``, `{"remediation":"enabled = true","remediationType":"addition"}`, true},
+		{"JSON encoding", ``, `{"remediation":json.marshal({"before":"false","after":"true"}),"remediationType":"replacement"}`, true},
+		{"JSON encoding of constant", `base:={"enabled":true}`, `{"remediation":json.marshal(base)}`, true},
+		{"JSON encoding through constant aliases", `base:={"enabled":true}
+ alias:=base
+ encoded:=json.marshal(alias)`, `{"remediation":encoded}`, true},
+		{"conditional argument to constant function", `missing:="value" if false
+ fix(x):={"remediation":"enabled = true"}`, `fix(missing)`, false},
+		{"constant helper", `fix := {"remediation":"enabled = true"}`, `fix`, true},
+		{"pattern-matched descriptor helper", `fix({"allowed":true}):={"remediation":"enabled = true"}`, `fix({"allowed":false})`, false},
+		{"conditional helper", `fix := {"remediation":"enabled = true"} if false`, `fix`, false},
+		{"unknown dependent helper", `fix(e):={"remediation":"enabled = true"} if iac.nonnull(e,["other"])`, `fix(e)`, false},
+		{"value formatting", ``, `{"remediation":json.marshal({"before":iac.raw(e,["other"]),"after":"true"})}`, false},
+		{"optional argument", ``, `{"remediation":input.arguments.text}`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+` + test.helper + `
+DatadogPolicy contains iac.finding(e,["acl"],` + test.details + `) if {
+ some e in iac.targets("resource","bucket")
+ iac.raw(e,["acl"])=="public"
+}`
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			program := programs["policy"]
+			if !test.valid {
+				require.ErrorContains(t, err, "ground declarative")
+				return
+			}
+			require.NoError(t, err)
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{"opaque": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public"), "other": cty.DynamicVal})}}, true)
+			var resultFindings []EntityFinding
+
+			result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, Emit: func(f EntityFinding) error {
+				resultFindings = append(resultFindings, f)
+				return nil
+			}})
+			require.NoError(t, err)
+			require.Len(t, resultFindings, 1)
+			require.False(t, result.Symbolic)
+			require.NotEmpty(t, resultFindings[0].Details["remediation"])
+		})
+	}
+}
+
+func TestEntityPolicyTargetScopes(t *testing.T) {
+	const source = `package datadog
+import rego.v1
+import data.iac
+linked(e) if {
+ peer:=iac.raw(e,["peer"])
+ some other in iac.entities("resource","bucket")
+ other==peer
+ iac.raw(other,["public"])==true
+}
+DatadogPolicy contains iac.finding(e,["peer"],{}) if {
+ some e in iac.targets("resource","bucket")
+ not linked(e)
+}`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name      string
+		public    cty.Value
+		count     int
+		uncertain bool
+	}{
+		{"known protection outside focus", cty.True, 1, false},
+		{"known unprotected peers", cty.False, 2, false},
+		{"known violation beside unknown protection", cty.UnknownVal(cty.Bool), 1, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+				"a": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"peer": cty.StringVal("b"), "public": cty.False})},
+				"b": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"peer": cty.StringVal("a"), "public": test.public})},
+			}, true)
+			var baseline []EntityFinding
+			for _, size := range []int{1, 2, 8, 0} {
+				var findings []EntityFinding
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
+					Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil },
+				})
+				require.NoError(t, err)
+				require.Equal(t, test.count, result.Confirmed)
+				require.Equal(t, test.uncertain, result.Indeterminate)
+				require.Len(t, findings, test.count)
+				if size == 1 {
+					baseline = findings
+				} else {
+					require.ElementsMatch(t, baseline, findings)
+				}
+			}
+		})
+	}
+}
+
+func TestEntityPolicyExecutionLifecycle(t *testing.T) {
+	const source = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(copy,[],{}) if {some e in iac.targets("resource","bucket");copy:=e}`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	require.NoError(t, err)
+	reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+		"a": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal},
+		"b": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal},
+		"c": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal},
+	}, true)
+	t.Run("emitter failure retains accepted progress", func(t *testing.T) {
+		failure := errors.New("finding sink failed")
+		calls := 0
+		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: 1, Emit: func(EntityFinding) error {
+			calls++
+			if calls == 2 {
+				return failure
+			}
+			return nil
+		}})
+		require.ErrorIs(t, err, failure)
+		require.Equal(t, 1, result.Confirmed)
+		require.Equal(t, 2, calls)
+	})
+	t.Run("cancellation retains accepted progress", func(t *testing.T) {
+		for _, cancelAt := range []int{1, 3} {
+			for _, size := range []int{1, 0} {
+				ctx, cancel := context.WithCancel(context.Background())
+				accepted := 0
+				result, err := programs["policy"].Evaluate(ctx, EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error {
+					accepted++
+					if accepted == cancelAt {
+						cancel()
+					}
+					return nil
+				}})
+				cancel()
+				require.ErrorIs(t, err, context.Canceled)
+				require.Equal(t, cancelAt, result.Confirmed)
+			}
+		}
+	})
+
+	t.Run("native residual VM cancellation", func(t *testing.T) {
+		compiled, err := compileEntitySources(map[string]string{"policy": source}, nil)
+		require.NoError(t, err)
+		boundary := &entityDeferredBoundary{compiler: compiled.compiler, ops: map[string]entityDeferredOp{}}
+		program := &EntityProgram{compilation: compiled}
+		input, err := prepareEntityInput(nil)
+		require.NoError(t, err)
+		body := ast.MustParseBody(`xs:=numbers.range(1,200);some a in xs;some b in xs;some c in xs;a+b+c<0;result={"_dd_id":"a","path":[]}`)
+		for _, alreadyCanceled := range []bool{false, true} {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+			if alreadyCanceled {
+				cancel()
+			}
+			ctx = context.WithValue(ctx, entitySessionKey{}, &entitySession{reader: reader})
+			start := time.Now()
+			values, unknown, err := program.nativeResidual(ctx, body, input.symbolic, boundary)
+			cancel()
+			require.Error(t, err)
+			require.True(t, errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded), "%v", err)
+			require.Empty(t, values)
+			require.False(t, unknown)
+			require.Less(t, time.Since(start), 5*time.Second)
+		}
+	})
+	t.Run("empty authoritative inventory", func(t *testing.T) {
+		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: tfeval.NewValueReader(nil, true), Emit: func(EntityFinding) error { t.Fatal("unexpected finding"); return nil }})
+		require.NoError(t, err)
+		require.Zero(t, result)
+	})
+	t.Run("inventory ownership", func(t *testing.T) {
+		for _, test := range []struct {
+			name  string
+			ids   []string
+			valid bool
+		}{
+			{"unordered inventory", []string{"c", "a", "b"}, true},
+			{"duplicate registered subject", []string{"a", "b", "a"}, false},
+			{"unregistered subject", []string{"a", "missing"}, false},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				original := append([]string{}, test.ids...)
+				var emitted []string
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
+					Reader: entityReaderFixture{Reader: reader, ids: test.ids}, BatchSize: 1,
+					Emit: func(f EntityFinding) error { emitted = append(emitted, f.Subject); return nil },
+				})
+				require.Equal(t, original, test.ids)
+				if test.valid {
+					require.NoError(t, err)
+					require.Equal(t, []string{"a", "b", "c"}, emitted)
+					require.Equal(t, 3, result.Confirmed)
+				} else {
+					require.Error(t, err)
+					require.Empty(t, emitted)
+				}
+			})
+		}
+	})
+}
+
+type entityReaderFixture struct {
+	policy.Reader
+	ids    []string
+	symbol string
+}
+
+func (r entityReaderFixture) Entities(kind, typ string) ([]string, error) {
+	if r.ids == nil {
+		return r.Reader.Entities(kind, typ)
+	}
+	return slices.Clone(r.ids), nil
+}
+
+func (r entityReaderFixture) Read(subject string, path policy.Path) (policy.Read, error) {
+	read, err := r.Reader.Read(subject, path)
+	if read.State == policy.Unknown || read.MaybeAbsent {
+		read.Symbol = r.symbol
+	}
+	return read, err
+}
+
+func TestEntityPolicyFocusDomain(t *testing.T) {
+	for _, test := range []struct{ name, helper, body, owner string }{
+		{"global owner", ``, `some e in iac.targets("resource","bucket");some other in iac.entities("resource","bucket")`, `other`},
+		{"target index selection", ``, `e:=iac.targets("resource","bucket")[0]`, `e`},
+		{"target position observation", ``, `some i,e in iac.targets("resource","bucket");i==0`, `e`},
+		{"target inventory observation", ``, `xs:=iac.targets("resource","bucket");some e in xs;count(xs)>0`, `e`},
+		{"multiple target iterators", ``, `some e in iac.targets("resource","bucket");some other in iac.targets("resource","bucket");iac.present(other,[])`, `e`},
+		{"helper target inventory", `chosen:=iac.targets("resource","bucket")`, `some e in chosen`, `e`},
+		{"helper owner alias", `identity(x):=x`, `some e in iac.targets("resource","bucket");copy:=identity(e)`, `copy`},
+		{"negated alias", ``, `some e in iac.targets("resource","bucket");some other in iac.entities("resource","bucket");not other==e`, `other`},
+		{"missing primary selector", ``, `some e in iac.entities("resource","bucket")`, `e`},
+		{"dynamic primary selector", ``, `some e in iac.targets("resource",input.arguments.type)`, `e`},
+		{"decision namespace observation", ``, `some e in iac.targets("resource","bucket");count(data.datadog)>0`, `e`},
+		{"nondeterministic security predicate", ``, `some e in iac.targets("resource","bucket");time.now_ns()>0`, `e`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+` + test.helper + `
+DatadogPolicy contains iac.finding(` + test.owner + `,[],{}) if {` + test.body + `}`
+			_, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			require.Error(t, err)
+		})
+	}
+	t.Run("library namespaces cannot hide focus dependencies", func(t *testing.T) {
+		library := `package lookup
+import rego.v1
+import data.iac
+public if {some x in iac.targets("resource","bucket");iac.raw(x,["public"])==true}`
+		for _, body := range []string{`object.get(data.lookup,input.arguments.key,false)==false`, `not data.lookup[input.arguments.key]`} {
+			source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","bucket");` + body + `}`
+			_, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, map[string]string{"lookup.rego": library})
+			require.Error(t, err)
+		}
+	})
+}
+
+func TestEntityPolicySelectorUnion(t *testing.T) {
+	reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+		"a": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal},
+		"b": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal},
+	}, true)
+	for _, test := range []struct {
+		name, path string
+		count      int
+	}{
+		{"same witness through overlapping selectors", `[]`, 2},
+		{"distinct paths through overlapping selectors", `["other"]`, 4},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("resource","left")}
+DatadogPolicy contains iac.finding(e,` + test.path + `,{}) if {some e in iac.targets("resource","right")}`
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			require.NoError(t, err)
+			for _, size := range []int{1, 2, 0} {
+				var findings []EntityFinding
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{
+					Reader: entityReaderFixture{Reader: reader, ids: []string{"b", "a"}}, BatchSize: size,
+					Emit: func(f EntityFinding) error { findings = append(findings, f); return nil },
+				})
+				require.NoError(t, err)
+				require.Equal(t, test.count, result.Confirmed)
+				require.Len(t, findings, test.count)
+			}
+		})
+	}
+	t.Run("symbolic clause association", func(t *testing.T) {
+		for _, reverse := range []bool{false, true} {
+			clauses := []string{
+				`DatadogPolicy contains iac.finding(e,["left"],{}) if {some e in iac.targets("resource","left");iac.raw(e,["public"])==true}`,
+				`DatadogPolicy contains iac.finding(e,["right"],{}) if {some e in iac.targets("resource","right");iac.raw(e,["public"])==true}`,
+			}
+			if reverse {
+				slices.Reverse(clauses)
+			}
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": "package datadog\nimport rego.v1\nimport data.iac\n" + strings.Join(clauses, "\n")}, nil)
+			require.NoError(t, err)
+			for _, leftUnknown := range []bool{false, true} {
+				left, right := cty.True, cty.UnknownVal(cty.Bool)
+				want := []string{"a:left"}
+				if leftUnknown {
+					left, right = right, left
+					want = []string{"b:right"}
+				}
+				reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+					"a": {Kind: "resource", Type: "left", Value: cty.ObjectVal(map[string]cty.Value{"public": left})},
+					"b": {Kind: "resource", Type: "right", Value: cty.ObjectVal(map[string]cty.Value{"public": right})},
+				}, true)
+				for _, size := range []int{1, 2, 0} {
+					var findings []string
+					result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error {
+						require.Len(t, f.Path, 1)
+						key, ok := f.Path[0].Property()
+						require.True(t, ok)
+						findings = append(findings, f.Subject+":"+key)
+						return nil
+					}})
+					require.NoError(t, err)
+					require.Equal(t, 1, result.Confirmed)
+					require.ElementsMatch(t, want, findings)
+					require.True(t, result.Indeterminate)
+				}
+			}
+		}
+	})
+
+}
+
+func TestEntityPolicyCorrelatedObservations(t *testing.T) {
+	for _, test := range []struct {
+		name, condition string
+		left, right     cty.Value
+		count           int
+		uncertain       bool
+	}{
+		{"required shared-origin values prove equality", `iac.raw(e,["acl"])==iac.raw(other,["acl"])`, cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), 1, false},
+		{"required origin does not establish optional presence", `iac.raw(e,["acl"])==iac.raw(other,["acl"])`, cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), cty.UnknownVal(cty.Map(cty.String)), 0, true},
+		{"optional observation precedes required same origin", `iac.raw(e,["acl"])==iac.raw(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), 0, true},
+		{"optional shared-origin equality needs presence", `iac.raw(e,["acl"])==iac.raw(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.UnknownVal(cty.Map(cty.String)), 0, true},
+		{"shared value with independent optional attributes", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.UnknownVal(cty.Map(cty.String)), 0, true},
+		{"shared value with required peer attribute", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), 0, false},
+		{"shared value with absent peer attribute", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.UnknownVal(cty.Map(cty.String)), cty.EmptyObjectVal, 0, true},
+		{"known witness with absent peer attribute", `iac.raw(e,["acl"])=="public";not iac.present(other,["acl"])`, cty.ObjectVal(map[string]cty.Value{"acl": cty.StringVal("public")}), cty.EmptyObjectVal, 1, false},
+		{"same present unknown value preserves equality correlation", `iac.raw(e,["acl"])=="public";not iac.raw(other,["acl"])=="public"`, cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), cty.ObjectVal(map[string]cty.Value{"acl": cty.UnknownVal(cty.String)}), 0, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["acl"],{}) if {
+ some e in iac.targets("resource","bucket")
+ some other in iac.entities("resource","peer")
+ ` + test.condition + `
+}`
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+			require.NoError(t, err)
+			reader := entityReaderFixture{Reader: tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+				"a": {Kind: "resource", Type: "bucket", Value: test.left},
+				"b": {Kind: "resource", Type: "peer", Value: test.right},
+			}, true), symbol: "shared-value-origin"}
+			for _, size := range []int{1, 0} {
+				var findings []EntityFinding
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
+				require.NoError(t, err)
+				require.Len(t, findings, test.count)
+				require.Equal(t, test.count, result.Confirmed)
+				require.Equal(t, test.uncertain, result.Indeterminate)
+			}
+		})
+	}
+}
+
+func TestEntityPolicyFindingSetSemantics(t *testing.T) {
+	const source = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[1],{"value":1}) if {some e in iac.targets("resource","bucket")}
+DatadogPolicy contains iac.finding(e,[1.0],{"value":1.0}) if {some e in iac.targets("resource","bucket")}
+DatadogPolicy contains iac.finding(e,[2],{}) if {some e in iac.targets("resource","bucket");iac.raw(e,["public"])==true}
+`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name      string
+		public    cty.Value
+		count     int
+		uncertain bool
+	}{
+		{"known", cty.True, 4, false},
+		{"mixed", cty.UnknownVal(cty.Bool), 3, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+				"a": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"public": cty.True})},
+				"b": {Kind: "resource", Type: "bucket", Value: cty.ObjectVal(map[string]cty.Value{"public": test.public})},
+			}, true)
+			for _, size := range []int{1, 2, 0} {
+				count := 0
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
+				require.NoError(t, err)
+				require.Equal(t, test.count, count)
+				require.Equal(t, test.count, result.Confirmed)
+				require.Equal(t, test.uncertain, result.Indeterminate)
+			}
+		})
+	}
+	t.Run("native and projected value identity", func(t *testing.T) {
+		for _, test := range []struct {
+			name, left, right string
+			want              int
+		}{
+			{"numeric identity", `{"value":1}`, `{"value":1.0}`, 1},
+			{"set differs from array", `{"value":{1}}`, `{"value":[1]}`, 2},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				source := `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],` + test.left + `) if {some e in iac.targets("resource","bucket")}
+DatadogPolicy contains iac.finding(e,[],` + test.right + `) if {some e in iac.targets("resource","bucket");some related in iac.entities("resource","peer");iac.raw(related,["enabled"])==false}`
+				programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+				require.NoError(t, err)
+				reader := tfeval.NewValueReader(map[string]tfeval.ValueSubject{
+					"primary": {Kind: "resource", Type: "bucket", Value: cty.EmptyObjectVal},
+					"a":       {Kind: "resource", Type: "peer", Value: cty.ObjectVal(map[string]cty.Value{"enabled": cty.UnknownVal(cty.Bool)})},
+					"b":       {Kind: "resource", Type: "peer", Value: cty.ObjectVal(map[string]cty.Value{"enabled": cty.False})},
+				}, true)
+				for _, size := range []int{1, 2, 0} {
+					count := 0
+					result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Reader: reader, BatchSize: size, Emit: func(EntityFinding) error { count++; return nil }})
+					require.NoError(t, err)
+					require.Equal(t, test.want, count)
+					require.Equal(t, test.want, result.Confirmed)
+					require.True(t, result.Indeterminate)
+				}
+			})
+		}
+	})
+
 }
