@@ -44,17 +44,17 @@ var reservedModuleAttrs = map[string]bool{
 
 // parseDir parses HCL and JSON config in dir (non-recursively) and returns
 // their bodies, with the source of each parsed file by the filename its ranges
-// carry. Files that fail to parse are skipped. Reads go through fsys so
-// content-push scans only ever see pushed files.
+// carry. Failed files contribute diagnostics while valid files remain available.
+// Reads go through fsys so content-push scans only ever see pushed files.
 func parseDir(
 	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
-) ([]*hclsyntax.Body, map[string][]byte, error) {
+) dirParse {
 	if fsys == nil {
 		fsys = vfs.Default()
 	}
 	entries, err := fsys.ReadDir(dir)
 	if err != nil {
-		return nil, nil, err
+		return dirParse{err: err}
 	}
 
 	byName := make(map[string]fs.DirEntry, len(entries))
@@ -70,39 +70,55 @@ func parseDir(
 	// files, matching the order module discovery assembles the same directory in.
 	names = tfpath.OrderOverrideLast(names, func(name string) string { return name })
 
-	bodies := make([]*hclsyntax.Body, 0, len(names))
-	sources := make(map[string][]byte, len(names))
+	parsed := dirParse{bodies: make([]*hclsyntax.Body, 0, len(names)), sources: make(map[string][]byte, len(names))}
 	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return dirParse{err: err}
+		}
 		entry, ok := byName[name]
 		if !ok {
 			continue
 		}
 		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
 		if !ok {
+			parsed.diagnostics = append(parsed.diagnostics, EvaluationDiagnostic{
+				Summary: "Configuration file unavailable",
+				Detail:  "The selected file is not a readable regular file within the module package boundary.",
+				Subject: hcl.Range{Filename: filepath.Join(dir, name), Start: hcl.InitialPos, End: hcl.InitialPos},
+			})
 			continue
 		}
 		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
 		if rErr != nil {
+			parsed.diagnostics = append(parsed.diagnostics, EvaluationDiagnostic{
+				Summary: "Failed to read configuration file", Detail: rErr.Error(),
+				Subject: hcl.Range{Filename: path, Start: hcl.InitialPos, End: hcl.InitialPos},
+			})
 			continue
 		}
-		if body, ok := parseConfigBody(src, path); ok {
-			bodies = append(bodies, body)
-			sources[path] = src
+		body, diagnostics := parseConfigBody(src, path)
+		parsed.diagnostics = append(parsed.diagnostics, evaluationDiagnostics(diagnostics,
+			hcl.Range{Filename: path, Start: hcl.InitialPos, End: hcl.InitialPos})...)
+		if body != nil {
+			parsed.bodies = append(parsed.bodies, body)
+			parsed.sources[path] = src
 		}
 	}
-	return bodies, sources, nil
+	if err := ctx.Err(); err != nil {
+		return dirParse{err: err}
+	}
+	return parsed
 }
 
-func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
+func parseConfigBody(src []byte, path string) (*hclsyntax.Body, hcl.Diagnostics) {
 	if tfpath.IsJSONConfig(path) {
 		return parseJSONAsHCLBody(src, path)
 	}
 	f, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
 	if diags.HasErrors() {
-		return nil, false
+		return nil, diags
 	}
-	body, ok := f.Body.(*hclsyntax.Body)
-	return body, ok
+	return f.Body.(*hclsyntax.Body), diags
 }
 
 // variableDecl is what a variable block declares about the values it accepts.

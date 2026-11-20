@@ -28,30 +28,31 @@ var jsonConfigSchema = &hcl.BodySchema{
 	},
 }
 
-func parseJSONAsHCLBody(src []byte, filename string) (*hclsyntax.Body, bool) {
+func parseJSONAsHCLBody(src []byte, filename string) (*hclsyntax.Body, hcl.Diagnostics) {
 	file, diags := hcljson.Parse(src, filename)
 	if diags.HasErrors() {
-		return nil, false
+		return nil, diags
 	}
-	content, _, _ := file.Body.PartialContent(jsonConfigSchema)
+	content, _, contentDiags := file.Body.PartialContent(jsonConfigSchema)
+	diags = append(diags, contentDiags...)
 	if content == nil {
-		return nil, false
+		return nil, diags
 	}
 	body := &hclsyntax.Body{
 		Attributes: make(hclsyntax.Attributes),
 		SrcRange:   hcl.Range{Filename: filename, Start: hcl.Pos{Line: 1, Column: 1, Byte: 0}},
 	}
 	for _, block := range content.Blocks {
-		body.Blocks = append(body.Blocks, jsonBlockToHCL(block, src))
+		body.Blocks = append(body.Blocks, jsonBlockToHCL(block, src, &diags))
 	}
-	return body, true
+	return body, diags
 }
 
-func jsonBlockToHCL(block *hcl.Block, src []byte) *hclsyntax.Block {
+func jsonBlockToHCL(block *hcl.Block, src []byte, diagnostics *hcl.Diagnostics) *hclsyntax.Block {
 	return &hclsyntax.Block{
 		Type:            block.Type,
 		Labels:          block.Labels,
-		Body:            jsonBodyToHCL(block.Body, src, block.DefRange),
+		Body:            jsonBodyToHCL(block.Body, src, block.DefRange, diagnostics),
 		TypeRange:       block.TypeRange,
 		LabelRanges:     block.LabelRanges,
 		OpenBraceRange:  block.DefRange,
@@ -59,8 +60,9 @@ func jsonBlockToHCL(block *hcl.Block, src []byte) *hclsyntax.Block {
 	}
 }
 
-func jsonBodyToHCL(body hcl.Body, src []byte, defRange hcl.Range) *hclsyntax.Body {
-	attrs, _ := body.JustAttributes()
+func jsonBodyToHCL(body hcl.Body, src []byte, defRange hcl.Range, diagnostics *hcl.Diagnostics) *hclsyntax.Body {
+	attrs, diags := body.JustAttributes()
+	*diagnostics = append(*diagnostics, diags...)
 	out := &hclsyntax.Body{
 		Attributes: make(hclsyntax.Attributes, len(attrs)),
 		SrcRange:   defRange,
@@ -68,7 +70,7 @@ func jsonBodyToHCL(body hcl.Body, src []byte, defRange hcl.Range) *hclsyntax.Bod
 	for name, attr := range attrs {
 		out.Attributes[name] = &hclsyntax.Attribute{
 			Name:      name,
-			Expr:      jsonExprToHCL(attr.Expr, src),
+			Expr:      jsonExprToHCL(attr.Expr, src, diagnostics),
 			NameRange: attr.NameRange,
 			SrcRange:  attr.Range,
 		}
@@ -76,24 +78,24 @@ func jsonBodyToHCL(body hcl.Body, src []byte, defRange hcl.Range) *hclsyntax.Bod
 	return out
 }
 
-func jsonExprToHCL(expr hcl.Expression, src []byte) hclsyntax.Expression {
-	if obj, ok := jsonObjectExprToHCL(expr, src); ok {
+func jsonExprToHCL(expr hcl.Expression, src []byte, diagnostics *hcl.Diagnostics) hclsyntax.Expression {
+	if obj, ok := jsonObjectExprToHCL(expr, src, diagnostics); ok {
 		return obj
 	}
-	if list, ok := jsonListExprToHCL(expr, src); ok {
+	if list, ok := jsonListExprToHCL(expr, src, diagnostics); ok {
 		return list
 	}
 	val, diags := expr.Value(&hcl.EvalContext{})
 	if !diags.HasErrors() && val.IsWhollyKnown() {
 		return &hclsyntax.LiteralValueExpr{Val: val, SrcRange: expr.Range()}
 	}
-	if parsed := parseJSONInterpolation(expr, src); parsed != nil {
+	if parsed := parseJSONInterpolation(expr, src, diagnostics); parsed != nil {
 		return parsed
 	}
 	return &hclsyntax.LiteralValueExpr{Val: cty.UnknownVal(cty.DynamicPseudoType), SrcRange: expr.Range()}
 }
 
-func jsonObjectExprToHCL(expr hcl.Expression, src []byte) (hclsyntax.Expression, bool) {
+func jsonObjectExprToHCL(expr hcl.Expression, src []byte, diagnostics *hcl.Diagnostics) (hclsyntax.Expression, bool) {
 	pairs, diags := hcl.ExprMap(expr)
 	if diags.HasErrors() || len(pairs) == 0 {
 		return nil, false
@@ -101,26 +103,26 @@ func jsonObjectExprToHCL(expr hcl.Expression, src []byte) (hclsyntax.Expression,
 	items := make([]hclsyntax.ObjectConsItem, 0, len(pairs))
 	for _, pair := range pairs {
 		items = append(items, hclsyntax.ObjectConsItem{
-			KeyExpr:   jsonExprToHCL(pair.Key, src),
-			ValueExpr: jsonExprToHCL(pair.Value, src),
+			KeyExpr:   jsonExprToHCL(pair.Key, src, diagnostics),
+			ValueExpr: jsonExprToHCL(pair.Value, src, diagnostics),
 		})
 	}
 	return &hclsyntax.ObjectConsExpr{Items: items, SrcRange: expr.Range()}, true
 }
 
-func jsonListExprToHCL(expr hcl.Expression, src []byte) (hclsyntax.Expression, bool) {
+func jsonListExprToHCL(expr hcl.Expression, src []byte, diagnostics *hcl.Diagnostics) (hclsyntax.Expression, bool) {
 	items, diags := hcl.ExprList(expr)
 	if diags.HasErrors() || len(items) == 0 {
 		return nil, false
 	}
 	exprs := make([]hclsyntax.Expression, 0, len(items))
 	for _, item := range items {
-		exprs = append(exprs, jsonExprToHCL(item, src))
+		exprs = append(exprs, jsonExprToHCL(item, src, diagnostics))
 	}
 	return &hclsyntax.TupleConsExpr{Exprs: exprs, SrcRange: expr.Range()}, true
 }
 
-func parseJSONInterpolation(expr hcl.Expression, src []byte) hclsyntax.Expression {
+func parseJSONInterpolation(expr hcl.Expression, src []byte, diagnostics *hcl.Diagnostics) hclsyntax.Expression {
 	raw := jsonExprSource(expr, src)
 	if raw == "" {
 		return nil
@@ -133,6 +135,7 @@ func parseJSONInterpolation(expr hcl.Expression, src []byte) hclsyntax.Expressio
 		unquoted = strings.TrimSpace(raw)
 	}
 	parsed, diags := hclsyntax.ParseExpression([]byte(strconv.Quote(unquoted)), expr.Range().Filename, expr.Range().Start)
+	*diagnostics = append(*diagnostics, diags...)
 	if diags.HasErrors() {
 		return nil
 	}
