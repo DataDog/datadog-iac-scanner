@@ -54,7 +54,7 @@ type inventoryRun struct {
 // noteFiles keeps what the scan learnt about its files before parsing them.
 // A nil run, a scan without inventory, ignores it.
 func (run *inventoryRun) noteFiles(filePlatform map[string]string, remoteModulePaths []string) {
-	if run == nil {
+	if !run.writes() {
 		return
 	}
 	run.filePlatform = filePlatform
@@ -66,7 +66,7 @@ func (run *inventoryRun) noteFiles(filePlatform map[string]string, remoteModuleP
 
 // noteTooLarge keeps the files the analyzer skipped for their size.
 func (run *inventoryRun) noteTooLarge(tooLarge map[string]string) {
-	if run != nil {
+	if run.writes() {
 		run.tooLarge = tooLarge
 	}
 }
@@ -78,7 +78,9 @@ func (run *inventoryRun) writes() bool {
 
 // sink is where the engine reports resources, nil without an inventory.
 func (run *inventoryRun) sink() engine.InventorySink {
-	if run == nil {
+	// An inventory that already failed is not written: nothing is evaluated
+	// or listed for it.
+	if !run.writes() {
 		return nil
 	}
 	return run.collector
@@ -86,7 +88,7 @@ func (run *inventoryRun) sink() engine.InventorySink {
 
 // noteModuleFailures records the remote modules the scan could not resolve.
 func (run *inventoryRun) noteModuleFailures(failures []modulegraph.ResolutionFailure) {
-	if run == nil {
+	if !run.writes() {
 		return
 	}
 	for i := range failures {

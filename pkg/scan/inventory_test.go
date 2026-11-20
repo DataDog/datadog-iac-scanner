@@ -292,6 +292,7 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 
 			require.NotNil(t, c.inventory.failure)
 			require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason)
+			require.Nil(t, c.inventory.sink(), "nothing is evaluated or listed for an inventory that is not written")
 			data, err := os.ReadFile(path)
 			require.NoError(t, err)
 			require.Equal(t, "resource \"aws_s3_bucket\" \"b\" {}\n", string(data), "the file is not removed")
