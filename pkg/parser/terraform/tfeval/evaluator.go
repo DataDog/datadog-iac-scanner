@@ -27,6 +27,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -35,7 +36,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
-	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 const (
@@ -812,14 +812,16 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			continue
 		}
 		plan := moduleInstances(ctx, mb, callCtx)
+		if plan.plan != nil {
+			recordExpansionDiagnostics(mb.Body, plan.plan, &scope.diagnostics)
+		}
 		site := call.site(scope)
 		// Do not pre-size to plan.Len(): an uncapped count panics before cancel.
 		outs := make([]cty.Value, 0)
-		for i := range plan.Len() {
+		for instance := range plan.Instances() {
 			if ctx.Err() != nil {
 				break
 			}
-			instance := plan.At(i)
 			modInputs := e.evaluateModuleInputs(ctx, mb.Body, instance.ctx, scope)
 			childAddr := instance.address(addr, call.label)
 			instanceSite := site
@@ -999,7 +1001,7 @@ func (e *Evaluator) evalResourceBlocks(
 ) []ResolvedResource {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
-		resources = append(resources, e.expandBlock(ctx, rb, evalCtx, addr, chain, false)...)
+		resources = append(resources, e.expandBlock(ctx, rb, evalCtx, addr, chain, false, nil)...)
 	}
 	return resources
 }
@@ -1014,6 +1016,7 @@ func (e *Evaluator) expandBlock(
 	addr string,
 	chain []CallSite,
 	data bool,
+	diagnostics *expressionDiagnostics,
 ) []ResolvedResource {
 	if len(rb.Labels) < 2 {
 		return nil
@@ -1052,126 +1055,41 @@ func (e *Evaluator) expandBlock(
 		}
 	}
 
-	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne); ok {
-		return out
-	}
-	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne); ok {
-		return out
-	}
-	return []ResolvedResource{makeOne(resName, evalCtx)}
-}
-
-func (e *Evaluator) expandCountInstances(
-	ctx context.Context,
-	rb *hclsyntax.Block,
-	resName string,
-	evalCtx *hcl.EvalContext,
-	makeOne func(string, *hcl.EvalContext) ResolvedResource,
-) ([]ResolvedResource, bool) {
-	countAttr := rb.Body.Attributes["count"]
-	if countAttr == nil {
-		return nil, false
-	}
-	cv, diags := countAttr.Expr.Value(evalCtx)
-	if !diags.HasErrors() && cv.IsKnown() && !cv.IsNull() && cv.Type() == cty.Number {
-		var n int
-		if err := gocty.FromCtyValue(cv, &n); err != nil {
-			return nil, false
-		}
-		if n <= 0 {
-			return nil, true
-		}
-		// Grown with append, never sized from n: an uncapped count from an
-		// untrusted repository must not allocate before the scan can stop.
-		out := make([]ResolvedResource, 0)
-		for i := 0; i < n; i++ {
-			if ctx.Err() != nil {
-				break
-			}
-			child := evalCtx.NewChild()
-			child.Variables = map[string]cty.Value{
-				"count": cty.ObjectVal(map[string]cty.Value{
-					"index": cty.NumberIntVal(int64(i)),
-				}),
-			}
-			resource := makeOne(fmt.Sprintf("%s[%d]", resName, i), child)
-			resource.InstanceKey = cty.NumberIntVal(int64(i))
-			out = append(out, resource)
-		}
-		return out, true
-	}
-	child := evalCtx.NewChild()
-	child.Variables = map[string]cty.Value{
-		"count": cty.ObjectVal(map[string]cty.Value{
-			"index": cty.UnknownVal(cty.Number),
-		}),
-	}
-	resource := makeOne(resName, child)
-	resource.InstanceKey = cty.DynamicVal
-	return []ResolvedResource{resource}, true
-}
-
-func (e *Evaluator) expandForEachInstances(
-	ctx context.Context,
-	rb *hclsyntax.Block,
-	resName string,
-	evalCtx *hcl.EvalContext,
-	makeOne func(string, *hcl.EvalContext) ResolvedResource,
-) ([]ResolvedResource, bool) {
-	feAttr := rb.Body.Attributes["for_each"]
-	if feAttr == nil {
-		return nil, false
-	}
-	fv, diags := feAttr.Expr.Value(evalCtx)
-	if diags.HasErrors() || !isForEachCollection(fv) {
-		return []ResolvedResource{unknownForEachResource(resName, evalCtx, makeOne)}, true
-	}
-	if fv.LengthInt() == 0 {
-		return nil, true
-	}
-	return e.expandKnownForEachResources(ctx, fv, resName, evalCtx, makeOne), true
-}
-
-func unknownForEachResource(
-	resName string,
-	evalCtx *hcl.EvalContext,
-	makeOne func(string, *hcl.EvalContext) ResolvedResource,
-) ResolvedResource {
-	child := evalCtx.NewChild()
-	child.Variables = map[string]cty.Value{
-		"each": cty.ObjectVal(map[string]cty.Value{
-			"key":   cty.UnknownVal(cty.String),
-			"value": cty.UnknownVal(cty.DynamicPseudoType),
-		}),
-	}
-	resource := makeOne(resName, child)
-	resource.InstanceKey = cty.DynamicVal
-	return resource
-}
-
-func (e *Evaluator) expandKnownForEachResources(
-	ctx context.Context,
-	fv cty.Value,
-	resName string,
-	evalCtx *hcl.EvalContext,
-	makeOne func(string, *hcl.EvalContext) ResolvedResource,
-) []ResolvedResource {
-	if ctx.Err() != nil {
+	count, forEach := tfinstances.Attributes(rb.Body)
+	plan := tfinstances.Resolve(ctx, count, forEach, evalCtx)
+	recordExpansionDiagnostics(rb.Body, &plan, diagnostics)
+	if plan.State == tfinstances.Invalid {
 		return nil
 	}
-	// Grown with append, never sized from the collection: an uncapped for_each
-	// from an untrusted repository must not allocate before the scan can stop.
-	out := make([]ResolvedResource, 0)
-	for it := fv.ElementIterator(); it.Next(); {
+	if plan.Kind == "" {
+		return []ResolvedResource{makeOne(resName, evalCtx)}
+	}
+	if plan.State == tfinstances.Unknown {
+		child := evalCtx.NewChild()
+		name, value := plan.Variable(tfinstances.Item{})
+		child.Variables = map[string]cty.Value{name: value}
+		resource := makeOne(resName, child)
+		resource.InstanceKey = cty.DynamicVal
+		return []ResolvedResource{resource}
+	}
+	var out []ResolvedResource
+	i := 0
+	for item := range plan.Instances() {
 		if ctx.Err() != nil {
 			break
 		}
-		k, kv := it.Element()
-		keyStr := "__"
-		if s, ok := ctyutil.ConcreteString(k); ok {
-			keyStr = s
+		if plan.Kind == tfinstances.KindForEach {
+			key, _ := ctyutil.ConcreteString(item.Key)
+			out = append(out, makeForEachResource(resName, key, item.Key, item.Value, evalCtx, makeOne))
+			continue
 		}
-		out = append(out, makeForEachResource(resName, keyStr, k, kv, evalCtx, makeOne))
+		child := evalCtx.NewChild()
+		name, value := plan.Variable(item)
+		child.Variables = map[string]cty.Value{name: value}
+		resource := makeOne(fmt.Sprintf("%s[%d]", resName, i), child)
+		resource.InstanceKey = item.Key
+		out = append(out, resource)
+		i++
 	}
 	return out
 }
@@ -1692,11 +1610,10 @@ func (e *Evaluator) preliminaryModuleOutputs(
 		// Grown with append, never sized from plan.Len(): an uncapped count
 		// panics in make before the loop can check the context.
 		outs := make([]cty.Value, 0)
-		for i := range plan.Len() {
+		for instance := range plan.Instances() {
 			if ctx.Err() != nil {
 				break
 			}
-			instance := plan.At(i)
 			modInputs := e.evalBodyWith(ctx, mb.Body, instance.ctx, reservedModuleAttrs, nil)
 			instanceSite := site
 			instanceSite.InstanceKey = instance.key
