@@ -778,9 +778,12 @@ type RaisedOn struct {
 	BlockStart int
 }
 
-// raisedOn is where v was raised.
+// raisedOn is where v was raised. A module instance's document is named
+// after its file's: the instances of a module are one place, so that a
+// module instantiated many times adds nothing to the findings it raises.
 func (v *Vulnerability) raisedOn() RaisedOn {
-	return RaisedOn{FileID: v.FileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
+	fileID, _, _ := strings.Cut(v.FileID, "\x00")
+	return RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
 }
 
 // RecordDuplicate adds where dropped was raised, and where it stood for, to

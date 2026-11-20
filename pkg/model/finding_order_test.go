@@ -270,4 +270,14 @@ func TestFirstFindingPerIdentityRecording_KeepsWhereDuplicatesWereRaised(t *test
 	same := orderedFindings()[:1]
 	same = append(same, same[0])
 	require.Empty(t, FirstFindingPerIdentityRecording(same)[0].AlsoRaisedOn)
+
+	// Nor do the other instances of its module: their documents are named
+	// after the same file.
+	instances := orderedFindings()[:1]
+	for _, key := range []string{"a", "b", "c"} {
+		instance := instances[0]
+		instance.FileID = instances[0].FileID + "\x00" + key
+		instances = append(instances, instance)
+	}
+	require.Empty(t, FirstFindingPerIdentityRecording(instances)[0].AlsoRaisedOn)
 }
