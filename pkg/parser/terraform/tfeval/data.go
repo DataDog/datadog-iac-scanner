@@ -292,6 +292,7 @@ func (d *moduleData) evalBlock(
 		view := *inst
 		if source, ok := localdata.Lookup(inst.Type); ok {
 			view.Attributes = computedDataAttributes(inst, b, ctx, source)
+			view.referenceAttrs = nil
 		}
 		if d.addr == "" {
 			inst.Iteration = nil
@@ -475,8 +476,9 @@ func computedDataAttributes(
 			})
 		}
 	}
-	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(result.Attributes))
-	for name, value := range inst.Attributes {
+	reference := inst.referenceAttributes()
+	attrs := make(map[string]cty.Value, len(reference)+len(result.Attributes))
+	for name, value := range reference {
 		attrs[name] = value
 	}
 	for name, value := range result.Attributes {

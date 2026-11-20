@@ -15,12 +15,11 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// addDynamicBlocks adds the nested blocks a dynamic block generates to out, in
-// the shape a block written once per element would have. A dynamic block whose
-// for_each or labels do not resolve is kept as written. A canceled ctx stops
-// before further generated blocks are evaluated.
+// addDynamicBlocks composes generated blocks in both body projections. An
+// unresolved block stays as written only in configuration; its generated runtime
+// aggregate remains unknown. Cancellation stops further generated evaluation.
 func (e *Evaluator) addDynamicBlocks(
-	ctx context.Context, out *nestedBlocks, b *hclsyntax.Block, evalCtx *hcl.EvalContext, st *bodyState,
+	ctx context.Context, out *bodyBlocks, b *hclsyntax.Block, evalCtx *hcl.EvalContext, st *bodyState,
 ) {
 	content := dynamicblock.Content(b)
 	exp := dynamicblock.Expand(ctx, b, evalCtx)
@@ -34,7 +33,8 @@ func (e *Evaluator) addDynamicBlocks(
 	if !resolved {
 		st.observations.dynamicIncomplete = true
 		st.recordDynamic(b, keptAsWritten)
-		out.add(append([]string{b.Type}, b.Labels...), objectOrEmpty(e.evalBodyWith(ctx, b.Body, evalCtx, nil, st.withoutMemo())))
+		written := e.evalBodyWith(ctx, b.Body, evalCtx, nil, st.withoutMemo())
+		out.unresolved(append([]string{b.Type}, b.Labels...), dynamicblock.GeneratedType(b), written)
 		return
 	}
 	st.recordDynamic(b, len(scopes))
@@ -56,7 +56,7 @@ func (e *Evaluator) addDynamicBlocks(
 		marker := &hclsyntax.Block{Type: generatedBlockType, Labels: paths[i][1:], Body: content}
 		st.document.generated[b] = append(st.document.generated[b], marker)
 		st.document.children[marker] = document
-		out.add(paths[i], objectOrEmpty(e.evalBodyWith(ctx, content, scope, nil, st.inDynamic(name, document))))
+		out.add(paths[i], e.evalBodyWith(ctx, content, scope, nil, st.inDynamic(name, document)))
 	}
 }
 

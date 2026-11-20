@@ -2288,7 +2288,7 @@ dynamic "a" {
 	if diags.HasErrors() {
 		t.Fatal(diags)
 	}
-	out := New().evalBodyWith(context.Background(), file.Body.(*hclsyntax.Body), &hcl.EvalContext{}, nil, nil)
+	out := New().evalBodyWith(context.Background(), file.Body.(*hclsyntax.Body), &hcl.EvalContext{}, nil, nil).configured
 	if _, expanded := out["a"]; expanded {
 		t.Fatalf("a was expanded: %#v", out["a"])
 	}
@@ -2356,12 +2356,12 @@ func TestReferenceAttributesDropsMetaArguments(t *testing.T) {
 		"for_each": cty.SetVal([]cty.Value{cty.StringVal("b")}),
 		"count":    cty.NumberIntVal(2),
 	}
-	got := referenceAttributes(attrs)
+	got := (&ResolvedResource{Attributes: attrs}).referenceAttributes()
 	require.Equal(t, map[string]cty.Value{"bucket": cty.StringVal("b")}, got)
 	require.Len(t, attrs, 3, "the instance attributes are left unchanged")
 
 	plain := map[string]cty.Value{"bucket": cty.StringVal("b")}
-	require.Equal(t, plain, referenceAttributes(plain))
+	require.Equal(t, plain, (&ResolvedResource{Attributes: plain}).referenceAttributes())
 }
 
 // Siblings reading earlier siblings, directly or through locals, see their
@@ -3591,5 +3591,210 @@ resource "aws_s3_bucket" "example" {acl="public"}`,
 				}
 			}
 		})
+	}
+}
+
+// A generated aggregate is complete only after every contributing dynamic block
+// resolved. Configuration retains its as-written blocks independently of the
+// values published to dependent Terraform expressions.
+func TestEvaluateModule_DynamicReferenceShape(t *testing.T) {
+	for _, source := range []struct {
+		kind, typ, reference string
+		dynamicFirst         bool
+	}{
+		{"resource", "example_policy", "example_policy.p", false},
+		{"resource", "example_policy", "example_policy.p", true},
+		{"data", "example_policy", "data.example_policy.p", false},
+		{"data", "example_policy", "data.example_policy.p", true},
+		{"data", "aws_iam_policy_document", "data.aws_iam_policy_document.p", false},
+		{"data", "aws_iam_policy_document", "data.aws_iam_policy_document.p", true},
+	} {
+		t.Run(fmt.Sprintf("%s/%s/dynamicFirst=%t", source.kind, source.typ, source.dynamicFirst), func(t *testing.T) {
+			configuration := fmt.Sprintf(`
+variable "extra" { type = list(string) }
+%s "%s" "p" {
+  independent = "known"
+  dynamic = "literal attribute"
+  statement {
+    sid = "StaticA"
+    effect = "Deny"
+    actions = ["s3:GetObject"]
+    resources = ["*"]
+  }
+  statement {
+    sid = "StaticB"
+    effect = "Deny"
+    actions = ["s3:PutObject"]
+    resources = ["*"]
+  }
+  dynamic "statement" {
+    for_each = var.extra
+    content {
+      sid = statement.value
+      effect = "Allow"
+      actions = ["s3:DeleteObject"]
+      resources = ["*"]
+    }
+  }
+}
+resource "example_consumer" "c" {
+  independent = %[3]s.independent
+  literal_dynamic = %[3]s.dynamic
+  n = length(%[3]s.statement)
+  names = [for st in %[3]s.statement : st.sid]
+  splat = %[3]s.statement[*].sid
+  all_deny = alltrue([for st in %[3]s.statement : st.effect == "Deny"])
+  allow_names = [for st in %[3]s.statement : st.sid if st.effect == "Allow"]
+  allow_try = try(one([for st in %[3]s.statement : st if st.effect == "Allow"]).sid, "MISSING")
+  allow_can = can(one([for st in %[3]s.statement : st if st.effect == "Allow"]).sid)
+}
+`, source.kind, source.typ, source.reference)
+			if source.typ == "aws_iam_policy_document" {
+				configuration = strings.ReplaceAll(configuration, `  independent = "known"`+"\n", "")
+				configuration = strings.ReplaceAll(configuration, `  dynamic = "literal attribute"`+"\n", "")
+				configuration = strings.ReplaceAll(configuration, source.reference+".independent", `"known"`)
+				configuration = strings.ReplaceAll(configuration, source.reference+".dynamic", `"literal attribute"`)
+			}
+			if source.dynamicFirst {
+				start := strings.Index(configuration, `  dynamic "statement"`)
+				end := start + strings.Index(configuration[start:], "\n}\nresource")
+				block := configuration[start:end] + "\n"
+				configuration = configuration[:start] + configuration[end:]
+				before := strings.Index(configuration, "  statement {")
+				configuration = configuration[:before] + block + configuration[before:]
+			}
+			dir := writeModule(t, t.TempDir(), "", map[string]string{"main.tf": configuration})
+			evaluator := New()
+			for _, tc := range []struct {
+				name  string
+				input cty.Value
+				count int
+			}{
+				{"zero", cty.ListValEmpty(cty.String), 0},
+				{"one", cty.ListVal([]cty.Value{cty.StringVal("A")}), 1},
+				{"two", cty.ListVal([]cty.Value{cty.StringVal("A"), cty.StringVal("B")}), 2},
+				{"unknown", cty.UnknownVal(cty.List(cty.String)), -1},
+				{"known after unknown", cty.ListVal([]cty.Value{cty.StringVal("A")}), 1},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					evaluation, err := evaluator.EvaluateModule(context.Background(), dir, map[string]cty.Value{"extra": tc.input})
+					require.NoError(t, err)
+					require.Empty(t, evaluation.Diagnostics())
+					producer := findResource(t, evaluation.Resources, source.typ, "p")
+					consumer := findResource(t, evaluation.Resources, "example_consumer", "c")
+					requireString(t, consumer.Attributes, "independent", "known")
+					requireString(t, consumer.Attributes, "literal_dynamic", "literal attribute")
+					if tc.count < 0 {
+						require.Len(t, producer.Attributes["statement"].AsValueSlice(), 2)
+						require.Contains(t, producer.Attributes, "dynamic")
+						require.False(t, producer.referenceAttributes()["statement"].IsKnown())
+						require.Equal(t, cty.DynamicPseudoType, producer.referenceAttributes()["statement"].Type())
+						for _, name := range []string{"n", "names", "splat", "all_deny", "allow_names", "allow_try", "allow_can"} {
+							requireUnknown(t, consumer.Attributes, name)
+						}
+					} else {
+						require.Nil(t, producer.referenceAttrs)
+						require.True(t, consumer.Attributes["n"].RawEquals(cty.NumberIntVal(int64(2+tc.count))))
+						require.True(t, consumer.Attributes["all_deny"].RawEquals(cty.BoolVal(tc.count == 0)))
+						require.True(t, consumer.Attributes["allow_can"].RawEquals(cty.BoolVal(tc.count == 1)))
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestEvaluateModule_DynamicReferenceChildOccurrences(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "", map[string]string{"main.tf": `
+variable "groups" { type = map(list(string)) }
+resource "example_tree" "p" {
+  independent = "known"
+  dynamic "branch" {
+    for_each = var.groups
+    content {
+      id = branch.key
+      dynamic "leaf" {
+        for_each = branch.value
+        content { value = leaf.value }
+      }
+    }
+  }
+}
+resource "example_consumer" "c" {
+  first = try(length(example_tree.p.branch[0].leaf), 0)
+  second = try(length(example_tree.p.branch[1].leaf), 0)
+  ids = example_tree.p.branch[*].id
+  independent = example_tree.p.independent
+}
+`})
+	for _, tc := range []struct {
+		name   string
+		second cty.Value
+		known  bool
+	}{
+		{"heterogeneous known children", cty.ListVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")}), true},
+		{"unresolved second child", cty.UnknownVal(cty.List(cty.String)), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			evaluation, err := New().EvaluateModule(context.Background(), dir, map[string]cty.Value{"groups": cty.MapVal(map[string]cty.Value{"a": cty.ListValEmpty(cty.String), "b": tc.second})})
+			require.NoError(t, err)
+			require.Empty(t, evaluation.Diagnostics())
+			producer := findResource(t, evaluation.Resources, "example_tree", "p")
+			consumer := findResource(t, evaluation.Resources, "example_consumer", "c")
+			require.True(t, consumer.Attributes["first"].RawEquals(cty.NumberIntVal(0)))
+			require.True(t, consumer.Attributes["ids"].RawEquals(cty.TupleVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")})))
+			requireString(t, consumer.Attributes, "independent", "known")
+			if tc.known {
+				require.Nil(t, producer.referenceAttrs)
+				require.True(t, consumer.Attributes["second"].RawEquals(cty.NumberIntVal(2)))
+				// The same nested AST generated different *known* counts. A
+				// negative presentation count is not evidence of open shape.
+				require.Equal(t, unknownDynamicCount, producer.DynamicCounts[producer.Body.Blocks[0].Body.Blocks[0].Body.Blocks[0]])
+			} else {
+				requireUnknown(t, consumer.Attributes, "second")
+				require.NotContains(t, producer.referenceAttributes(), "dynamic")
+				require.Contains(t, producer.Attributes, "branch")
+			}
+		})
+	}
+}
+
+func TestEvaluateModule_DynamicReferenceLabels(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "", map[string]string{"main.tf": `
+variable "label" { type = string }
+resource "example_tree" "p" {
+  independent = "known"
+  setting "static" { value = "static" }
+  dynamic "setting" {
+    for_each = [1]
+    labels = [var.label]
+    content { value = "generated" }
+  }
+}
+resource "example_consumer" "c" {
+  independent = example_tree.p.independent
+  generated = try(example_tree.p.setting.generated.value, "MISSING")
+}
+`})
+	for _, value := range []cty.Value{cty.StringVal("generated"), cty.UnknownVal(cty.String)} {
+		evaluation, err := New().EvaluateModule(context.Background(), dir, map[string]cty.Value{"label": value})
+		require.NoError(t, err)
+		require.Empty(t, evaluation.Diagnostics())
+		producer := findResource(t, evaluation.Resources, "example_tree", "p")
+		consumer := findResource(t, evaluation.Resources, "example_consumer", "c")
+		requireString(t, consumer.Attributes, "independent", "known")
+		if value.IsKnown() {
+			require.Nil(t, producer.referenceAttrs)
+			requireString(t, consumer.Attributes, "generated", "generated")
+		} else {
+			requireUnknown(t, consumer.Attributes, "generated")
+			require.Contains(t, producer.Attributes, "dynamic")
+			require.NotContains(t, producer.referenceAttributes(), "dynamic")
+			// Runtime uncertainty does not replace the configured source view
+			// retained for legacy rendering and attribution.
+			document := AttributesToDocument(&producer)
+			require.Contains(t, document, "dynamic")
+			require.Contains(t, document, "setting")
+		}
 	}
 }
