@@ -328,11 +328,9 @@ func TestEvaluateModule_InventoryConfigurationAndStops(t *testing.T) {
 	writeModule(t, root, "child", map[string]string{"main.tf": `resource "test_resource" "child" {}`})
 	caller := writeModule(t, root, "caller", map[string]string{"main.tf": `module "child" {source="../child"}`})
 	e := New()
-	e.maxDepth = 0
 	result, err := e.EvaluateModule(context.Background(), caller, nil)
 	require.NoError(t, err)
-	require.Len(t, result.InventoryObservations().Gaps, 1)
-	require.Equal(t, InventoryModuleDepth, result.InventoryObservations().Gaps[0].Reason)
+	require.Empty(t, result.InventoryObservations().Gaps)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	result, err = e.EvaluateModule(ctx, caller, nil)
@@ -341,7 +339,6 @@ func TestEvaluateModule_InventoryConfigurationAndStops(t *testing.T) {
 	require.Empty(t, result.InventoryObservations().Gaps)
 	// Cancellation must not replace the earlier completed facts or poison a fork.
 	fork := e.Fork()
-	fork.maxDepth = defaultMaxDepth
 	result, err = fork.EvaluateModule(context.Background(), caller, nil)
 	require.NoError(t, err)
 	require.True(t, result.InventoryObservations().EvaluationCompleted)

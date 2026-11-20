@@ -29,7 +29,6 @@ const (
 	InventoryModuleDirectoryUnavailable
 	InventoryRemoteModuleUnavailable
 	InventoryModuleCycle
-	InventoryModuleDepth
 	InventoryModuleEvaluationFailed
 	// The dependency-cycle fallback did not establish expansion keys.
 	InventoryExpansionCycle

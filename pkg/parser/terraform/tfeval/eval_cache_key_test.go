@@ -152,55 +152,33 @@ module "beta" {
 	}
 }
 
-// A module the evaluator declines to evaluate must be reported as not evaluated
-// rather than as a module that resolved to nothing. The caller uses that to keep
-// it in the scan, so conflating the two silently drops it.
-func TestEvaluate_DepthCapReportsNotEvaluated(t *testing.T) {
-	root := t.TempDir()
-	// One level deeper than the evaluator will follow.
-	depth := defaultMaxDepth + 3
-	for i := 0; i < depth; i++ {
-		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i))
-		body := "variable \"in\" { type = string }\n"
-		if i == depth-1 {
-			body += "resource \"aws_s3_bucket\" \"leaf\" { bucket = var.in }\n"
-		} else {
-			body += fmt.Sprintf("module \"next\" {\n  source = \"../lvl%02d\"\n  in = var.in\n}\n", i+1)
-		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "main.tf"), []byte(body), 0o644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-	}
-
-	e := New()
-	evaluation, err := e.EvaluateModule(context.Background(), filepath.Join(root, "lvl00"),
-		map[string]cty.Value{"in": cty.StringVal("seed")})
-	visited := evaluation.VisitedChildDirs
-	if err != nil {
-		t.Fatalf("EvaluateModule: %v", err)
-	}
-
-	// The levels past the cap were never resolved, so they must not be recorded as
-	// evaluated — otherwise their bodies are suppressed with nothing standing in.
-	skipped := map[string]bool{}
-	for _, dir := range e.NotEvaluatedDirs() {
-		skipped[dir] = true
-	}
-	for i := defaultMaxDepth + 1; i < depth; i++ {
-		dir := filepath.Join(root, fmt.Sprintf("lvl%02d", i))
-		if visited[dir] {
-			t.Errorf("%s was not evaluated (past the depth cap) but is recorded as visited, "+
-				"so it would be dropped from the scan", dir)
-		}
-	}
-	// Only the first directory past the cap is entered, and it has to be
-	// reported: the caller keeps a skipped directory in the scan.
-	firstSkipped := filepath.Join(root, fmt.Sprintf("lvl%02d", defaultMaxDepth+1))
-	if !skipped[firstSkipped] {
-		t.Errorf("%s was declined and is not reported as not evaluated: %v", firstSkipped, e.NotEvaluatedDirs())
+func TestEvaluateModule_DeepLocalModules(t *testing.T) {
+	for _, levels := range []int{24, 64} {
+		t.Run(fmt.Sprint(levels), func(t *testing.T) {
+			root := t.TempDir()
+			for i := levels - 1; i >= 0; i-- {
+				source := `resource "terraform_data" "leaf" {input="leaf-known"}
+output "value" {value="leaf-known"}`
+				if i < levels-1 {
+					source = fmt.Sprintf("module \"n\" {source=\"../l%02d\"}\noutput \"value\" {value=module.n.value}", i+1)
+				}
+				writeModule(t, root, fmt.Sprintf("l%02d", i), map[string]string{"main.tf": source})
+			}
+			evaluator := New()
+			evaluator.SetTrackModuleInstances(true)
+			result, err := evaluator.EvaluateModule(t.Context(), filepath.Join(root, "l00"), nil)
+			require.NoError(t, err)
+			require.NoError(t, result.PolicyUnit(nil).Failure())
+			require.Len(t, result.Resources, 1)
+			require.Equal(t, cty.StringVal("leaf-known"), result.Resources[0].Attributes["input"])
+			require.Equal(t, cty.StringVal("leaf-known"), result.Outputs["value"])
+			require.Len(t, result.ModuleInstances, levels-1)
+			require.Empty(t, result.InventoryObservations().Gaps)
+			require.Empty(t, evaluator.NotEvaluatedDirs())
+			for i := 1; i < levels; i++ {
+				require.True(t, result.VisitedChildDirs[filepath.Join(root, fmt.Sprintf("l%02d", i))])
+			}
+		})
 	}
 }
 
@@ -238,129 +216,43 @@ resource "test_resource" "root" {
 	requireString(t, r.Attributes, "value", filepath.ToSlash(rootB))
 }
 
-func TestEvalCache_DoesNotReuseDepthTruncatedResult(t *testing.T) {
+func TestEvalCache_DoesNotReuseCycleStoppedResult(t *testing.T) {
 	root := t.TempDir()
-	leaf := filepath.Join(root, "leaf")
-	target := filepath.Join(root, "target")
-	for _, dir := range []string{leaf, target} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(leaf, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "leaf" { bucket = var.in }
-`), 0o644); err != nil {
-		t.Fatalf("write leaf: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(target, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "target" { bucket = var.in }
-module "leaf" {
-  source = "../leaf"
-  in     = var.in
-}
-`), 0o644); err != nil {
-		t.Fatalf("write target: %v", err)
-	}
-
-	e := New()
-	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
-	partial, _, err := e.evaluate(
-		context.Background(), target, target, "", inputs, "module.deep", nil,
-		e.maxDepth, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("deep evaluate: %v", err)
-	}
-	if len(partial) != 1 {
-		t.Fatalf("deep evaluate returned %d resources, want the target resource only", len(partial))
-	}
-	key := evalCacheKey{dir: target, rootDir: target, inputs: canonicalInputsKey(inputs)}
-	if _, ok := e.cache[key]; ok {
-		t.Fatal("depth-truncated evaluation was cached as complete")
-	}
-
-	complete, _, err := e.evaluate(
-		context.Background(), target, target, "", inputs, "module.shallow", nil,
-		0, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("shallow evaluate: %v", err)
-	}
-	if len(complete) != 2 {
-		t.Fatalf("shallow evaluate returned %d resources, want target and leaf", len(complete))
-	}
+	leaf := writeModule(t, root, "leaf", map[string]string{"main.tf": `resource "terraform_data" "leaf" {input="leaf"}`})
+	target := writeModule(t, root, "target", map[string]string{"main.tf": `resource "terraform_data" "target" {input="target"}
+module "leaf" {source="../leaf"}`})
+	evaluator := New()
+	stopped, _, err := evaluator.evaluate(t.Context(), target, target, "", nil, "module.first", nil, map[string]bool{leaf: true}, map[string]bool{})
+	require.NoError(t, err)
+	require.Len(t, stopped, 1)
+	key := evalCacheKey{dir: target, rootDir: target, inputs: canonicalInputsKey(nil)}
+	require.NotContains(t, evaluator.cache, key, "a skipped subtree is never cached as complete")
+	complete, _, err := evaluator.evaluate(t.Context(), target, target, "", nil, "module.second", nil, map[string]bool{}, map[string]bool{})
+	require.NoError(t, err)
+	require.Len(t, complete, 2)
+	require.Contains(t, evaluator.cache, key)
 }
 
-func TestEvalCache_DoesNotReuseResultCachedFromDeeperDepth(t *testing.T) {
+func TestEvalCache_ReusesCompleteResultAcrossCallChains(t *testing.T) {
 	root := t.TempDir()
-	leaf := filepath.Join(root, "leaf")
-	mid := filepath.Join(root, "mid")
-	wrapper := filepath.Join(root, "wrapper")
-	for _, dir := range []string{leaf, mid, wrapper} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", dir, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(leaf, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "leaf" { bucket = var.in }
-`), 0o644); err != nil {
-		t.Fatalf("write leaf: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(mid, "main.tf"), []byte(`
-variable "in" { type = string }
-resource "aws_s3_bucket" "mid" { bucket = var.in }
-module "leaf" {
-  source = "../leaf"
-  in     = var.in
-}
-`), 0o644); err != nil {
-		t.Fatalf("write mid: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(wrapper, "main.tf"), []byte(`
-variable "in" { type = string }
-module "mid" {
-  source = "../mid"
-  in     = var.in
-}
-`), 0o644); err != nil {
-		t.Fatalf("write wrapper: %v", err)
-	}
-
-	e := New()
-	inputs := map[string]cty.Value{"in": cty.StringVal("same")}
-	deepDepth := e.maxDepth - 1
-	deep, _, err := e.evaluate(
-		context.Background(), mid, mid, "", inputs, "module.deep", nil,
-		deepDepth, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("deep evaluate: %v", err)
-	}
-	if len(deep) != 2 {
-		t.Fatalf("deep evaluate returned %d resources, want mid and leaf", len(deep))
-	}
-	key := evalCacheKey{dir: mid, rootDir: mid, inputs: canonicalInputsKey(inputs)}
-	entry, ok := e.cache[key]
-	if !ok {
-		t.Fatal("expected mid module to cache its partial deep evaluation")
-	}
-	if entry.evalDepth != deepDepth {
-		t.Fatalf("cached evalDepth = %d, want %d", entry.evalDepth, deepDepth)
-	}
-
-	shallow, _, err := e.evaluate(
-		context.Background(), mid, mid, "", inputs, "module.shallow", nil,
-		0, map[string]bool{}, map[string]bool{},
-	)
-	if err != nil {
-		t.Fatalf("shallow evaluate: %v", err)
-	}
-	if len(shallow) != 2 {
-		t.Fatalf("shallow evaluate returned %d resources, want mid and leaf", len(shallow))
-	}
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `resource "terraform_data" "leaf" {input="leaf"}`})
+	mid := writeModule(t, root, "mid", map[string]string{"main.tf": `resource "terraform_data" "mid" {input="mid"}
+module "leaf" {source="../leaf"}`})
+	evaluator := New()
+	deep, _, err := evaluator.evaluate(t.Context(), mid, root, "", nil, "module.outer.module.mid", []CallSite{{ModuleName: "outer"}, {ModuleName: "mid"}}, map[string]bool{}, map[string]bool{})
+	require.NoError(t, err)
+	require.Len(t, deep, 2)
+	key := evalCacheKey{dir: mid, rootDir: root, inputs: canonicalInputsKey(nil)}
+	entry := evaluator.cache[key]
+	require.NotNil(t, entry)
+	shallow, _, err := evaluator.evaluate(t.Context(), mid, root, "", nil, "module.mid", []CallSite{{ModuleName: "mid"}}, map[string]bool{}, map[string]bool{})
+	require.NoError(t, err)
+	require.Len(t, shallow, 2)
+	require.Same(t, entry, evaluator.cache[key], "a complete subtree is reused regardless of calling depth")
+	require.Equal(t, "module.mid", findResource(t, shallow, "terraform_data", "mid").ModuleAddress)
+	require.Equal(t, "module.mid.module.leaf", findResource(t, shallow, "terraform_data", "leaf").ModuleAddress)
+	require.Len(t, findResource(t, shallow, "terraform_data", "mid").CallChain, 1)
+	require.Len(t, findResource(t, shallow, "terraform_data", "leaf").CallChain, 2)
 }
 
 func TestEvalCache_RespectsActiveModulePath(t *testing.T) {
@@ -385,7 +277,7 @@ output "v" {value=module.a.v}`})
 				if contextName == "previously visited active descendant" {
 					primingVisited[a] = true
 				}
-				primed, _, err := cached.evaluate(t.Context(), m, root, "", nil, "module.m", []CallSite{{ModuleName: "m"}}, 1, map[string]bool{}, primingVisited)
+				primed, _, err := cached.evaluate(t.Context(), m, root, "", nil, "module.m", []CallSite{{ModuleName: "m"}}, map[string]bool{}, primingVisited)
 				require.NoError(t, err)
 				key := evalCacheKey{dir: m, rootDir: root, inputs: canonicalInputsKey(nil)}
 				entry := cached.cache[key]
@@ -406,9 +298,9 @@ output "v" {value=module.a.v}`})
 					chain = append([]CallSite{{ModuleName: "current"}}, chain...)
 					addr = "module.current.module.m"
 				}
-				freshResources, freshOutputs, err := fresh.evaluate(t.Context(), m, root, "", nil, addr, chain, callDepth, visiting, freshVisited)
+				freshResources, freshOutputs, err := fresh.evaluate(t.Context(), m, root, "", nil, addr, chain, visiting, freshVisited)
 				require.NoError(t, err)
-				cachedResources, cachedOutputs, err := cached.evaluate(t.Context(), m, root, "", nil, addr, chain, callDepth, visiting, cachedVisited)
+				cachedResources, cachedOutputs, err := cached.evaluate(t.Context(), m, root, "", nil, addr, chain, visiting, cachedVisited)
 				require.NoError(t, err)
 				require.True(t, freshOutputs["v"].RawEquals(cachedOutputs["v"]), "cached output %#v differs from fresh %#v", cachedOutputs["v"], freshOutputs["v"])
 				require.Len(t, cachedResources, len(freshResources))

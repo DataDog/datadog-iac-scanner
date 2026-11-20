@@ -36,11 +36,6 @@ import (
 	"github.com/zclconf/go-cty/cty/function"
 )
 
-const (
-	// defaultMaxDepth caps nested module recursion (cycles, deep graphs).
-	defaultMaxDepth = 15
-)
-
 // ErrModuleNotEvaluated reports that a module was skipped rather than evaluated,
 // so callers must leave it to be scanned as written instead of treating it as a
 // module that resolved to nothing.
@@ -148,8 +143,7 @@ type ModuleInstance struct {
 
 // Evaluator evaluates local Terraform modules.
 type Evaluator struct {
-	funcs    map[string]function.Function
-	maxDepth int
+	funcs map[string]function.Function
 	// cycleWarned holds the directories already warned about for a reference
 	// cycle among their locals or data blocks.
 	cycleWarned sync.Map
@@ -182,7 +176,7 @@ type Evaluator struct {
 	dataBlockEvals int
 
 	// notEvaluatedDirs holds every module directory this evaluator declined to
-	// evaluate for depth or cycle. It accumulates for the whole scan
+	// evaluate for an active-path cycle. It accumulates for the whole scan
 	// because suppression is decided per directory over all call sites at once:
 	// one skipped instance means the directory is only partially resolved, so
 	// its body must stay in the scan even though other instances did resolve.
@@ -241,7 +235,6 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 	}
 	return &Evaluator{
 		funcs:            tffunctions.TerraformFuncs,
-		maxDepth:         defaultMaxDepth,
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
@@ -311,7 +304,6 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 func (e *Evaluator) Fork() *Evaluator {
 	return &Evaluator{
 		funcs:            e.funcs,
-		maxDepth:         e.maxDepth,
 		fsys:             e.fsys,
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		remoteResolver:   e.remoteResolver,
@@ -454,7 +446,7 @@ func (e *Evaluator) EvaluateModule(
 	e.instances = nil
 	e.diagnostics = nil
 	e.inventoryGaps = nil
-	resources, outputs, err := e.evaluate(ctx, abs, abs, "", inputs, "", nil, 0, visiting, allVisited)
+	resources, outputs, err := e.evaluate(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited)
 	if err == nil {
 		// A canceled or timed-out scan may have stopped mid-expansion. Do not
 		// return that partial tree as a completed evaluation.
@@ -487,11 +479,10 @@ func (e *Evaluator) evaluate(
 	inputs map[string]cty.Value,
 	addr string,
 	chain []CallSite,
-	depth int,
 	visiting map[string]bool,
 	allVisited map[string]bool,
 ) ([]ResolvedResource, map[string]cty.Value, error) {
-	if err := e.evaluationStop(ctx, dir, depth, visiting); err != nil {
+	if err := e.evaluationStop(ctx, dir, visiting); err != nil {
 		return nil, nil, err
 	}
 
@@ -505,7 +496,7 @@ func (e *Evaluator) evaluate(
 		inputs:      inputsKey,
 	}
 	if inputsKeyOK {
-		if resources, outputs, hit := e.reuseCachedEvaluation(cacheKey, addr, chain, depth, visiting, allVisited); hit {
+		if resources, outputs, hit := e.reuseCachedEvaluation(cacheKey, addr, chain, visiting, allVisited); hit {
 			return resources, outputs, nil
 		}
 	}
@@ -567,11 +558,11 @@ func (e *Evaluator) evaluate(
 
 	reads := parsed.static.siblings
 	e.applySiblingModulePrepass(
-		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, visiting,
 	)
 
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
-		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, depth, visiting, subtreeVisited,
+		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, visiting, subtreeVisited,
 	)
 
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
@@ -618,7 +609,7 @@ func (e *Evaluator) evaluate(
 		e.cacheCompletedEvaluation(
 			cacheKey, skippedBefore, resources, e.instances[instancesBefore:],
 			e.diagnostics[diagnosticsBefore:], e.inventoryGaps[inventoryGapsBefore:],
-			outputs, subtreeVisited, addr, len(chain), depth,
+			outputs, subtreeVisited, addr, len(chain),
 		)
 	}
 
@@ -663,17 +654,12 @@ func (e *Evaluator) installModuleOutputs(
 func (e *Evaluator) evaluationStop(
 	ctx context.Context,
 	dir string,
-	depth int,
 	visiting map[string]bool,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	contextLogger := logger.FromContext(ctx)
-	if depth > e.maxDepth {
-		contextLogger.Warn().Msgf("tfeval: max module depth %d exceeded at %s", e.maxDepth, dir)
-		return e.skipEvaluation(dir, InventoryModuleDepth)
-	}
 	if visiting[dir] {
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
 		return e.skipEvaluation(dir, InventoryModuleCycle)
@@ -685,14 +671,10 @@ func (e *Evaluator) reuseCachedEvaluation(
 	key evalCacheKey,
 	addr string,
 	chain []CallSite,
-	depth int,
 	visiting, allVisited map[string]bool,
 ) (resources []ResolvedResource, outputs map[string]cty.Value, hit bool) {
 	entry, ok := e.cache[key]
 	if !ok {
-		return nil, nil, false
-	}
-	if entry.evalDepth > depth {
 		return nil, nil, false
 	}
 	// A complete result from another ancestry must not bypass the same cycle
@@ -749,7 +731,6 @@ func (e *Evaluator) cacheCompletedEvaluation(
 	subtreeVisited map[string]bool,
 	addr string,
 	chainLen int,
-	depth int,
 ) {
 	if e.skipped != skippedBefore {
 		return
@@ -767,7 +748,6 @@ func (e *Evaluator) cacheCompletedEvaluation(
 		visitedDirs:   visitedDirs,
 		baseAddr:      addr,
 		baseChainLen:  chainLen,
-		evalDepth:     depth,
 	}
 }
 
@@ -780,14 +760,13 @@ func (e *Evaluator) applySiblingModulePrepass(
 	data *moduleData,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
-	depth int,
 	visiting map[string]bool,
 ) {
 	if len(moduleBlocks) <= 1 || scope.static.moduleOrder != nil {
 		return
 	}
 	prelimOutputs := e.preliminaryModuleOutputs(
-		ctx, moduleBlocks, reads, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, depth, visiting,
+		ctx, moduleBlocks, reads, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, visiting,
 	)
 	e.installModuleOutputs(ctx, evalCtx, scope, data, prelimOutputs)
 }
@@ -801,7 +780,6 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	data *moduleData,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
-	depth int,
 	visiting map[string]bool,
 	allVisited map[string]bool,
 ) (childResources []ResolvedResource, moduleOutputs map[string]cty.Value) {
@@ -867,7 +845,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 
 			childRes, childOuts, cErr := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
-				childChain, depth+1, visiting, allVisited,
+				childChain, visiting, allVisited,
 			)
 			if cErr != nil {
 				if isReportableModuleEvalError(cErr) {
@@ -880,7 +858,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				e.inventoryGaps = e.inventoryGaps[:inventoryGapsBefore]
 				e.recordModuleFailure(cErr, childAddr, mb.Range())
 				scope.observations.inventoryGap(mb, moduleFailureGap(cErr), cErr.Error())
-				// What stopped this instance — the depth, a cycle or a directory
+				// What stopped this instance — a cycle or a directory
 				// that does not resolve — is the same for every instance of the
 				// call. The loop stops instead of redoing the same failing work
 				// once per instance; the un-evaluated instances stay unknown in
@@ -1578,7 +1556,6 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
 	chain []CallSite,
-	depth int,
 	visiting map[string]bool,
 ) map[string]cty.Value {
 	// The calls evaluated here are speculative; cache entries keep their own.
@@ -1642,7 +1619,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			childChain := append(cloneChain(chain), instanceSite)
 			_, childOuts, err := e.evaluate(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
-				depth+1, tmpVisiting, map[string]bool{},
+				tmpVisiting, map[string]bool{},
 			)
 			if err == nil {
 				outs = append(outs, objectOrEmpty(childOuts))

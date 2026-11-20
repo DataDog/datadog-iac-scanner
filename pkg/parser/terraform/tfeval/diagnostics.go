@@ -201,7 +201,7 @@ func sortEvaluationDiagnostics(diagnostics []EvaluationDiagnostic) {
 }
 
 // recordModuleFailure retains an authoritative child failure after discarding
-// its partial work. Deliberate depth/cycle skips remain coverage observations.
+// its partial work. Deliberate cycle skips remain coverage observations.
 func (e *Evaluator) recordModuleFailure(err error, address string, anchor hcl.Range) {
 	if errors.Is(err, ErrModuleNotEvaluated) {
 		return
