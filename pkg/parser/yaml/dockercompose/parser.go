@@ -62,7 +62,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
-		return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
+		documents = yamlParser.AddExtraInfo(ctx, p.fsys, documents, filePath)
+		return resolved, yamlParser.ConvertKeysToString(documents), ignoreLines, resolvedFiles, nil
 	}
 
 	t := &transformer{
@@ -87,7 +88,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	return fileContent, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, documents, filePath)), ignoreLines, resolvedFiles, nil
+	documents = yamlParser.AddExtraInfo(ctx, p.fsys, documents, filePath)
+	return fileContent, yamlParser.ConvertKeysToString(documents), ignoreLines, resolvedFiles, nil
 }
 
 // loadEnv reads the .env file next to the compose file, returning nil when it

@@ -308,7 +308,7 @@ func TestTerraform_ProcessContent(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			processContent(ctx, tt.args.elements, tt.args.content, tt.args.path)
+			NewDefault().processContent(ctx, tt.args.elements, tt.args.content, tt.args.path)
 			require.Equal(t, tt.want, tt.args.elements["certificate_body"])
 		})
 	}
@@ -551,4 +551,34 @@ func TestParseUnavailableJSONLinkPlaceholder(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, docs)
 	require.Contains(t, logs.String(), `"level":"debug"`)
+}
+
+func TestParser_CertificateFilesystem(t *testing.T) {
+	pem, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"))
+	require.NoError(t, err)
+	for _, format := range []struct {
+		name, source string
+	}{
+		{"main.tf", `resource "aws_acm_certificate" "cert" {certificate_body="certificate.pem"}`},
+		{"main.tf.json", `{"resource":{"aws_acm_certificate":{"cert":{"certificate_body":"certificate.pem"}}}}`},
+	} {
+		t.Run(format.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cert := filepath.Join(dir, "certificate.pem")
+			require.NoError(t, os.WriteFile(cert, []byte("conflicting invalid host certificate"), 0600))
+			path := filepath.Join(dir, format.name)
+			source := []byte(format.source)
+			p := NewDefaultWithParams(vfs.NewMemFS(map[string][]byte{path: source, cert: pem}), "", model.SCIInfo{})
+			for range 2 {
+				_, docs, _, _, err := p.Parse(t.Context(), source, path, false, 0)
+				require.NoError(t, err)
+				require.Len(t, docs, 1)
+				body := docs[0]["resource"].(model.Document)["aws_acm_certificate"].(model.Document)["cert"].(model.Document)["certificate_body"]
+				require.IsType(t, map[string]interface{}{}, body)
+				info := body.(map[string]interface{})
+				require.Equal(t, cert, info["file"])
+				require.Contains(t, info, "expiration_date")
+			}
+		})
+	}
 }
