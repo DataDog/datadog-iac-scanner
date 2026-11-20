@@ -19,7 +19,6 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmaction"
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
-	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/minified"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -80,7 +79,7 @@ func (s *Service) storeResolvedFiles(
 			}
 			contextLogger.Error().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 				Msgf("failed to parse file content '%s' with fileType '%s'", rfile.FileName, kind)
-			s.Tracker.TrackFileFailed(rfile.FileName, inventory.ReasonParseError)
+			s.Tracker.TrackFileFailed(rfile.FileName, model.ParseFailureParseError)
 			continue
 		}
 

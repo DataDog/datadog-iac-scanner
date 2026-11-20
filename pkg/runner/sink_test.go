@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/build"
 	"io"
 	"os"
 	"path/filepath"
@@ -566,4 +567,12 @@ func sinkReader(s *Service, ctx context.Context, filename, scanID string,
 	rc io.Reader, data []byte, openAPIResolveReferences bool, maxResolverDepth int) error {
 	c, err := getContent(rc, data, s.MaxFileSize, filename)
 	return s.sinkContent(ctx, filename, scanID, c, err, openAPIResolveReferences, maxResolverDepth)
+}
+
+// The runner records parse outcomes in the scan's own vocabulary: the
+// optional inventory exporter reads them, the runner does not depend on it.
+func TestRunnerDoesNotDependOnTheInventory(t *testing.T) {
+	pkg, err := build.ImportDir(".", 0)
+	require.NoError(t, err)
+	require.NotContains(t, pkg.Imports, "github.com/DataDog/datadog-iac-scanner/pkg/inventory")
 }
