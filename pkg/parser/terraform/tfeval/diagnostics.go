@@ -31,6 +31,26 @@ type EvaluationDiagnostic struct {
 	ModuleAddress string
 }
 
+// moduleConfigurationFailure is expected invalid/unavailable input, not an
+// internal abort. The parse cache owns these immutable frozen facts. Unwrap
+// returns copies so error inspection cannot mutate a later evaluation's cause.
+type moduleConfigurationFailure struct {
+	diagnostics []EvaluationDiagnostic
+}
+
+func (f *moduleConfigurationFailure) Error() string {
+	return "module configuration has an unavailable override"
+}
+
+func (f *moduleConfigurationFailure) Unwrap() []error {
+	failures := make([]error, 0, len(f.diagnostics))
+	for _, original := range f.diagnostics {
+		diagnostic := original
+		failures = append(failures, &diagnostic)
+	}
+	return failures
+}
+
 type expressionFailure struct{ diagnostics []EvaluationDiagnostic }
 type expressionValue struct {
 	value   cty.Value
@@ -186,6 +206,16 @@ func (e *Evaluator) recordModuleFailure(err error, address string, anchor hcl.Ra
 	if errors.Is(err, ErrModuleNotEvaluated) {
 		return
 	}
+	var configuration *moduleConfigurationFailure
+	if errors.As(err, &configuration) {
+		for _, original := range configuration.diagnostics {
+			diagnostic := original
+			diagnostic.ModuleAddress = address
+			e.diagnostics = append(e.diagnostics, diagnostic)
+		}
+		return
+	}
+
 	e.diagnostics = append(e.diagnostics, EvaluationDiagnostic{
 		Summary: "Module evaluation failed", Detail: err.Error(), Subject: anchor, ModuleAddress: address,
 	})
