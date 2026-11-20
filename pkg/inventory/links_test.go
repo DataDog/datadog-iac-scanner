@@ -110,6 +110,19 @@ func TestSearchKeyBlock(t *testing.T) {
 	} {
 		require.Equal(t, want, searchKeyBlock(key), key)
 	}
+	for key, want := range map[string]bool{
+		"variable[env]":           true,
+		"output[url].value":       true,
+		"locals.region":           true,
+		"module[network].source":  true,
+		"provider[aws].region":    true,
+		"terraform.required":      true,
+		"aws_s3_bucket[logs].acl": false,
+		"data.aws_ami[web]":       false,
+		"resource.aws_vpc[main]":  false,
+	} {
+		require.Equal(t, want, namesNonResourceBlock(key), key)
+	}
 }
 
 func TestLinkEveryPlaceOfAFinding(t *testing.T) {

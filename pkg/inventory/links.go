@@ -151,6 +151,11 @@ func namedBySearchKey(rows []Resource, candidates []int, searchKey string) (int,
 // matchTerraform returns the instances of a Terraform finding's block among
 // the rows of its scope, given those that start where its block does.
 func matchTerraform(rows []Resource, candidates, atStart []int, f *Finding) []int {
+	// A finding on a variable, an output or another block that is not a
+	// resource belongs to no row, whatever shares its line.
+	if namesNonResourceBlock(f.SearchKey) {
+		return nil
+	}
 	block := searchKeyBlock(f.SearchKey)
 	if f.BlockStart > 0 && len(atStart) > 0 {
 		if named := ofBlock(rows, atStart, block); len(named) > 0 {
@@ -190,6 +195,22 @@ func ofBlock(rows []Resource, candidates []int, block string) []int {
 		}
 	}
 	return named
+}
+
+// nonResourceBlocks are the top-level Terraform blocks that hold no resource.
+var nonResourceBlocks = map[string]bool{
+	"variable": true, "output": true, "locals": true, "module": true, "provider": true,
+	"terraform": true, "moved": true, "import": true, "removed": true, "check": true,
+}
+
+// namesNonResourceBlock reports a Terraform search key that starts with a
+// block holding no resource, such as variable[env] or output.url.
+func namesNonResourceBlock(searchKey string) bool {
+	head := searchKey
+	if i := strings.IndexAny(head, "[."); i >= 0 {
+		head = head[:i]
+	}
+	return nonResourceBlocks[head]
 }
 
 // searchKeyBlock returns the block a Terraform search key starts with, as

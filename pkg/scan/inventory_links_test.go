@@ -270,6 +270,17 @@ func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
 	}
 	require.Equal(t, 3, perRow["infra|aws_s3_bucket.bad"], "the bad bucket has its three findings")
 	require.Equal(t, 2, perRow["infra|aws_s3_bucket.good"], "the clean sibling on the same line gets no public-bucket finding")
+
+	// A finding on a variable belongs to no resource, even one on its line.
+	shared := `{"variable":{"env":{"default":"prod"}},"resource":{"aws_s3_bucket":{"one":{"bucket":"one"}}}}` + "\n"
+	root = writeRepo(t, map[string]string{"infra/main.tf.json": shared})
+	variable := syntheticQuery("test-tf-variable", "terraform", "Terraform", `	input.document[i].variable[name]
+	typ := "variable"
+	key := sprintf("variable[%s]", [name])`)
+	inv, fingerprints = scanLinks(t, terraformParams(root), variable)
+	require.Len(t, fingerprints, 1)
+	require.Empty(t, inv.FindingLinks, "the bucket on the variable's line is not its resource")
+	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 }
 
 func TestInventoryPlayFindingsBelongToNoTask(t *testing.T) {
