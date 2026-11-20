@@ -244,7 +244,7 @@ func TestBuildMakesReferencesUnique(t *testing.T) {
 	row := func(line, documentIndex int, document string) *Resource {
 		return &Resource{ResourcePath: "v1/ConfigMap//cm", Platform: "kubernetes", ResourceType: "ConfigMap",
 			ResourceName: "cm", File: "k8s/dup.yaml", LineStart: line, Completeness: CompletenessComplete,
-			DocumentID: document, documentIndex: documentIndex}
+			DocumentID: document, documentIndex: documentIndex, ownsDocument: true}
 	}
 	c := NewCollector(t.TempDir())
 	c.AddResource(row(8, 1, "second"))
@@ -257,10 +257,10 @@ func TestBuildMakesReferencesUnique(t *testing.T) {
 	// Rows equal but for their document keep the order of the documents.
 	c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//same", Platform: "kubernetes", ResourceType: "ConfigMap",
 		ResourceName: "same", File: "chart/templates/cm.yaml", LineStart: 1, Completeness: CompletenessComplete,
-		DocumentID: "loop-1", documentIndex: 1})
+		DocumentID: "loop-1", documentIndex: 1, ownsDocument: true})
 	c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//same", Platform: "kubernetes", ResourceType: "ConfigMap",
 		ResourceName: "same", File: "chart/templates/cm.yaml", LineStart: 1, Completeness: CompletenessComplete,
-		DocumentID: "loop-0", documentIndex: 0})
+		DocumentID: "loop-0", documentIndex: 0, ownsDocument: true})
 	for document, line := range map[string]int{"first": 1, "second": 8, "third": 15, "taken": 20, "loop-0": 1, "loop-1": 1} {
 		c.AddFinding(&Finding{Fingerprint: document, DocumentID: document, Line: line})
 	}

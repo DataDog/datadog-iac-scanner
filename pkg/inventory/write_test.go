@@ -88,7 +88,7 @@ func TestEncodeIsTheJSONOfTheInventory(t *testing.T) {
 	c.AddResource(&Resource{ResourcePath: "aws_s3_bucket.a", Platform: "terraform", ResourceType: "aws_s3_bucket",
 		ResourceName: "a", File: "a.tf", LineStart: 1, LineEnd: 3, Completeness: CompletenessComplete, ModulePath: `[{"name":"x"}]`})
 	c.AddResource(&Resource{ResourcePath: "v1/Service//web", Platform: "kubernetes", ResourceType: "Service",
-		ResourceName: "web", File: "k.yaml", LineStart: 1, Completeness: CompletenessComplete, DocumentID: "doc"})
+		ResourceName: "web", File: "k.yaml", LineStart: 1, Completeness: CompletenessComplete, DocumentID: "doc", ownsDocument: true})
 	c.AddFinding(&Finding{Fingerprint: "f", DocumentID: "doc"})
 	full := c.Build(testMetadata())
 	require.Len(t, full.FindingLinks, 1)

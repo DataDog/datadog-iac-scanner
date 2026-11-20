@@ -144,6 +144,10 @@ type Resource struct {
 	// keyed collection starts, such as Resources.<logical ID> or
 	// services.<name>.
 	searchKeyPrefix string
+	// ownsDocument marks the row that is its whole document, as a
+	// Kubernetes object or a Dockerfile is: every finding on the document
+	// belongs to it, wherever its line.
+	ownsDocument bool
 
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`

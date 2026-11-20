@@ -54,9 +54,12 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 		first := len(rows)
 		switch {
 		case f.Kind == model.KindDOCKER:
-			rows = append(rows, dockerfileResource(f))
+			row := dockerfileResource(f)
+			row.ownsDocument = true
+			rows = append(rows, row)
 		case f.Platform == PlatformKubernetes:
 			if row, ok := e.kubernetesResource(f, index); ok {
+				row.ownsDocument = true
 				rows = append(rows, row)
 			}
 		case f.Platform == PlatformCloudFormation:

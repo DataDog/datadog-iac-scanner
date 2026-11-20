@@ -41,12 +41,13 @@ type terraformScope struct{ file, chain string }
 // linkFindings links each recorded finding to its rows, which must be
 // finished, and counts those that belong to none.
 //
-//   - A finding on a document that holds one row belongs to it, unless the
-//     row is an entry of a keyed collection.
+//   - A finding on a document that is one resource, a Kubernetes object or a
+//     Dockerfile, belongs to its row.
 //   - A finding on an entry of a keyed collection (CloudFormation Resources,
 //     Compose services) belongs to the entry its search key names, else to
 //     the narrowest row whose lines hold the finding. So does a finding on
-//     any other document with several rows.
+//     any other row, such as an Ansible task, however many rows its document
+//     holds: a play-level finding belongs to no task.
 //   - Rows that shared a reference, such as two documents of a file with the
 //     same name, can raise one finding that the scan keeps once, with either
 //     document. The finding belongs to the narrowest of them whose lines hold
@@ -88,7 +89,7 @@ func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links 
 }
 
 func matchDocument(rows []Resource, candidates []int, f *Finding) []int {
-	if len(candidates) == 1 && rows[candidates[0]].searchKeyPrefix == "" {
+	if len(candidates) == 1 && rows[candidates[0]].ownsDocument {
 		return candidates
 	}
 	if j, ok := namedBySearchKey(rows, candidates, f.SearchKey); ok {

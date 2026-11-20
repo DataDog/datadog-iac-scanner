@@ -256,3 +256,25 @@ func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
 		}, refs[fp], "fingerprint %s links to its block", fp)
 	}
 }
+
+func TestInventoryPlayFindingsBelongToNoTask(t *testing.T) {
+	play := syntheticQuery("test-ansible-become", "ansible", "Ansible", `	play := input.document[i].playbooks[_]
+	play.become == true
+	typ := "play"
+	name := play.name
+	key := sprintf("name={{%s}}.become", [play.name])`)
+	task := "    - name: Install nginx\n      ansible.builtin.apt:\n        name: nginx\n"
+	for _, tasks := range []string{task, task + "    - name: Start nginx\n      ansible.builtin.service:\n        name: nginx\n"} {
+		root := writeRepo(t, map[string]string{
+			"site.yml": "- name: Web\n  hosts: all\n  become: true\n  tasks:\n" + tasks,
+		})
+		params := documentParams(root)
+		params.Platform = []string{"Ansible"}
+
+		inv, fingerprints := scanLinks(t, params, play)
+		require.Len(t, fingerprints, 1)
+		require.NotEmpty(t, inv.Resources)
+		require.Empty(t, inv.FindingLinks, "a play-level finding belongs to no task, however many the play has")
+		require.Equal(t, 1, inv.Stats.FindingsUnlinked)
+	}
+}
