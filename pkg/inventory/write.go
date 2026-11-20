@@ -54,7 +54,7 @@ func isInventory(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	head := make([]byte, len(inventoryPrefix))
 	if _, err := io.ReadFull(f, head); err != nil {
 		return false

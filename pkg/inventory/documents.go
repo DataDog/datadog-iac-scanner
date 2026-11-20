@@ -52,27 +52,7 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 			index = 0
 		}
 		first := len(rows)
-		switch {
-		case f.Kind == model.KindDOCKER:
-			row := dockerfileResource(f)
-			row.ownsDocument = true
-			rows = append(rows, row)
-		case f.Platform == PlatformKubernetes:
-			if items, ok := kubernetesListItems(f.Document); ok {
-				rows = append(rows, e.kubernetesListRows(f, index, items)...)
-			} else if row, ok := e.kubernetesResource(f, index); ok {
-				row.ownsDocument = true
-				rows = append(rows, row)
-			}
-		case f.Platform == PlatformCloudFormation:
-			rows = append(rows, e.keyedRows(f, index, "Resources", cloudFormationRow)...)
-		case f.Platform == PlatformDockerCompose:
-			rows = append(rows, e.keyedRows(f, index, "services", composeServiceRow)...)
-		case f.Platform == PlatformCICD:
-			rows = append(rows, e.keyedRows(f, index, "jobs", workflowJobRow)...)
-		case f.Platform == PlatformAnsible:
-			rows = append(rows, e.ansibleRows(f, index)...)
-		}
+		rows = append(rows, e.documentRows(f, index)...)
 		// The findings raised on the document link to its rows.
 		for j := first; j < len(rows); j++ {
 			rows[j].DocumentID = f.ID
@@ -101,6 +81,33 @@ type yamlFile struct {
 }
 
 type chartInfo struct{ name, version string }
+
+// documentRows returns the rows of the index-th document of f's file.
+func (e *documentEnumerator) documentRows(f *model.FileMetadata, index int) []Resource {
+	switch {
+	case f.Kind == model.KindDOCKER:
+		row := dockerfileResource(f)
+		row.ownsDocument = true
+		return []Resource{row}
+	case f.Platform == PlatformKubernetes:
+		if items, ok := kubernetesListItems(f.Document); ok {
+			return e.kubernetesListRows(f, index, items)
+		}
+		if row, ok := e.kubernetesResource(f, index); ok {
+			row.ownsDocument = true
+			return []Resource{row}
+		}
+	case f.Platform == PlatformCloudFormation:
+		return e.keyedRows(f, index, "Resources", cloudFormationRow)
+	case f.Platform == PlatformDockerCompose:
+		return e.keyedRows(f, index, "services", composeServiceRow)
+	case f.Platform == PlatformCICD:
+		return e.keyedRows(f, index, "jobs", workflowJobRow)
+	case f.Platform == PlatformAnsible:
+		return e.ansibleRows(f, index)
+	}
+	return nil
+}
 
 func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int) (Resource, bool) {
 	apiVersion, _ := f.Document["apiVersion"].(string)
