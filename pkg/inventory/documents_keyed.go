@@ -23,7 +23,7 @@ import (
 // spans from its key to the line before the next entry, or to the document's
 // end for the last one.
 func (e *documentEnumerator) keyedRows(
-	f *model.FileMetadata, index int, collection string,
+	f *model.FileMetadata, index int, collection string, parserKey parserKeys,
 	newRow func(key string, value interface{}) (Resource, bool),
 ) []Resource {
 	entries, _ := f.Document[collection].(map[string]interface{})
@@ -52,8 +52,7 @@ func (e *documentEnumerator) keyedRows(
 
 	rows := make([]Resource, 0, len(keys))
 	for _, key := range keys {
-		// A key the file spells is an entry, whatever its name.
-		if _, spelled := spans[key]; !spelled && isScannerKey(key) {
+		if parserKey(key, entries) {
 			continue
 		}
 		row, ok := newRow(key, entries[key])
@@ -141,12 +140,37 @@ func searchKeySegment(key string) string {
 	return key
 }
 
-// isScannerKey reports a key the scanner may add to a document: its line
-// information or the parsed expressions of a workflow. It applies to the keys
-// the file does not spell: a job ID can be _lint, _dd_build or even
+// parserKeys reports a key of a collection that its platform's parser added,
+// rather than an entry the configuration declares. Any other key is an
+// entry, whatever its name and however it got there, a YAML merge included.
+type parserKeys func(key string, entries map[string]interface{}) bool
+
+// lineInfoKey reports the line information every YAML and JSON parser adds.
+func lineInfoKey(key string, _ map[string]interface{}) bool {
+	return key == "_dd_lines"
+}
+
+// parsedExpressionsPrefix names the parsed form of a workflow value's
+// expressions, which the workflow parser stores next to the value.
+const parsedExpressionsPrefix = "_parsed_expressions_"
+
+// workflowParserKey reports the keys the workflow parser adds: line
+// information, and _parsed_expressions_<key> next to a key whose string or
+// list value holds expressions. A job ID can still be _lint, _dd_build or
 // _parsed_expressions_release.
-func isScannerKey(key string) bool {
-	return key == "_dd_lines" || strings.HasPrefix(key, "_parsed_expressions_")
+func workflowParserKey(key string, entries map[string]interface{}) bool {
+	if lineInfoKey(key, entries) {
+		return true
+	}
+	name, ok := strings.CutPrefix(key, parsedExpressionsPrefix)
+	if !ok {
+		return false
+	}
+	switch entries[name].(type) {
+	case string, []interface{}:
+		return true
+	}
+	return false
 }
 
 func cloudFormationRow(key string, value interface{}) (Resource, bool) {

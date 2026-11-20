@@ -88,11 +88,11 @@ func (e *documentEnumerator) documentRows(f *model.FileMetadata, index int) []Re
 	case f.Platform == platforms.Kubernetes:
 		return e.kubernetesRows(f, index)
 	case f.Platform == platforms.CloudFormation:
-		return e.keyedRows(f, index, "Resources", cloudFormationRow)
+		return e.keyedRows(f, index, "Resources", lineInfoKey, cloudFormationRow)
 	case f.Platform == platforms.DockerCompose:
-		return e.keyedRows(f, index, "services", composeServiceRow)
+		return e.keyedRows(f, index, "services", lineInfoKey, composeServiceRow)
 	case f.Platform == platforms.CICD:
-		return e.keyedRows(f, index, "jobs", workflowJobRow)
+		return e.keyedRows(f, index, "jobs", workflowParserKey, workflowJobRow)
 	case f.Platform == platforms.Ansible:
 		return e.ansibleRows(f, index)
 	}

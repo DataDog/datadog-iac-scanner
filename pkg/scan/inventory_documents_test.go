@@ -227,6 +227,9 @@ func TestInventoryKeyedRows(t *testing.T) {
 			// A section after the collection is not part of its last entry.
 			"Parameters:\n  Env:\n    Type: String\n    Default: prod\n",
 		"docker-compose.yml": "services:\n  web:\n    image: nginx:1.27\n  db:\n    image: postgres:16\n",
+		// Services merged in from an anchor, one named like parser metadata.
+		"merged/docker-compose.yml": "x-services: &services\n  _parsed_expressions_web:\n    image: nginx:1.27\n  regular:\n    image: alpine:3\n" +
+			"services:\n  <<: *services\n",
 		".github/workflows/ci.yml": "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n" +
 			"  _lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ github.sha }}\n" +
 			"  _dd_build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n" +
@@ -260,6 +263,9 @@ func TestInventoryKeyedRows(t *testing.T) {
 		{"cfn/stack.yaml|Queue", "AWS::SQS::Queue", "Queue", 8, 9},
 		{"docker-compose.yml|services.web", "docker_compose_service", "web", 2, 3},
 		{"docker-compose.yml|services.db", "docker_compose_service", "db", 4, 5},
+		// The file spells the merge, not the services: they are at the collection.
+		{"merged/docker-compose.yml|services._parsed_expressions_web", "docker_compose_service", "_parsed_expressions_web", 6, 0},
+		{"merged/docker-compose.yml|services.regular", "docker_compose_service", "regular", 6, 0},
 		{".github/workflows/ci.yml|jobs.build", "github_actions_job", "build", 3, 6},
 		{".github/workflows/ci.yml|jobs.test", "github_actions_job", "test", 7, 10},
 		// A job ID can start with an underscore, even like a scanner key.
@@ -280,7 +286,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 	} {
 		require.Equal(t, w, got[w.ref], w.ref)
 	}
-	require.Len(t, inv.Resources, 19)
+	require.Len(t, inv.Resources, 21)
 	require.Contains(t, inv.Files, inventory.File{Path: "data/cities.yml", Platform: "ansible", Status: inventory.FileScanned},
 		"the list is scanned as Ansible, yet gives no row")
 	for _, r := range inv.Resources {
