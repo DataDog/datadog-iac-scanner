@@ -116,7 +116,9 @@ output "value" {
 }
 `,
 			})
-			resources, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+			resources := evaluation.Resources
+			outputs := evaluation.Outputs
 			require.NoError(t, err)
 			require.Len(t, resources, tc.wantCount)
 			requireString(t, findResource(t, resources, "test_resource", "valid").Attributes, "value", "retained")
@@ -140,7 +142,8 @@ resource "aws_s3_bucket" "this" {
 	})
 
 	inputs := map[string]cty.Value{"bucket_name": cty.StringVal("my-bucket")}
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, inputs)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, inputs)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -170,7 +173,8 @@ func TestEvaluateModule_JSONConfigInputPropagated(t *testing.T) {
 	})
 
 	inputs := map[string]cty.Value{"bucket_name": cty.StringVal("my-bucket")}
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, inputs)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, inputs)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -196,7 +200,8 @@ func TestEvaluateModule_JSONNullDefault(t *testing.T) {
 }`,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -224,7 +229,8 @@ func TestEvaluateModule_JSONChildModule(t *testing.T) {
 }`,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -242,7 +248,8 @@ func TestEvaluateModule_TofuJSONShadowsTfJSON(t *testing.T) {
 		"main.tofu.json": `{"resource":{"aws_s3_bucket":{"live":{"bucket":"from-tofu"}}}}`,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -272,7 +279,8 @@ resource "aws_s3_bucket" "other" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -307,7 +315,8 @@ resource "aws_s3_bucket" "tofu" {
 	e.SetMergeAllow(map[string]struct{}{
 		filepath.ToSlash(filepath.Join(dir, "main.tf")): {},
 	})
-	resources, _, _, err := e.EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -332,7 +341,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -355,7 +365,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -386,7 +397,8 @@ resource "aws_s3_bucket" "this" {
 	})
 
 	inputs := map[string]cty.Value{"name": cty.StringVal("data")}
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, inputs)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, inputs)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -418,7 +430,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -467,7 +480,8 @@ module "a" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -510,7 +524,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -541,7 +556,8 @@ module "child" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -567,7 +583,8 @@ output "name_out" {
 `,
 	})
 
-	_, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	outputs := evaluation.Outputs
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -612,7 +629,7 @@ resource "aws_s3_bucket" "b_bucket" {
 	aDir := filepath.Join(root, "a")
 	errCh := make(chan error, 1)
 	go func() {
-		_, _, _, err := New().EvaluateModule(context.Background(), aDir, nil)
+		_, err := New().EvaluateModule(context.Background(), aDir, nil)
 		errCh <- err
 	}()
 
@@ -644,7 +661,8 @@ resource "aws_s3_bucket" "a_bucket" {
 	})
 
 	aDir := filepath.Join(root, "a")
-	resources, _, _, err := New().EvaluateModule(context.Background(), aDir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), aDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -665,7 +683,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -691,7 +710,8 @@ resource "aws_s3_bucket" "local" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -740,7 +760,8 @@ module "escape" {
 	evaluator.SetRemoteResolver(func(_, _, _, _ string) (string, string, bool) {
 		return selected, packageRoot, true
 	})
-	resources, _, _, err := evaluator.EvaluateModule(t.Context(), root, nil)
+	evaluation, err := evaluator.EvaluateModule(t.Context(), root, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -769,7 +790,8 @@ resource "aws_security_group" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -824,7 +846,8 @@ module "bucket" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -844,7 +867,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -887,7 +911,9 @@ resource "aws_s3_bucket" "this" {
 output "size" { value = length(aws_s3_bucket.this) }
 `, meta)
 			dir := writeModule(t, root, "stack", map[string]string{"main.tf": source})
-			rs, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+			rs := evaluation.Resources
+			outputs := evaluation.Outputs
 			require.NoError(t, err)
 			require.Empty(t, rs)
 			require.True(t, outputs["size"].RawEquals(cty.NumberIntVal(0)))
@@ -906,7 +932,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -944,7 +971,8 @@ resource "aws_s3_bucket" "this" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -978,7 +1006,8 @@ module "buckets" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), rootDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1019,7 +1048,8 @@ resource "aws_s3_bucket" "bucket" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1046,7 +1076,8 @@ resource "aws_s3_bucket" "bucket" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1072,7 +1103,8 @@ resource "aws_s3_bucket" "b" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1098,7 +1130,8 @@ resource "aws_s3_bucket" "b" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1161,7 +1194,8 @@ module "child" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1185,7 +1219,8 @@ locals { greeting = "from-override" }
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1226,7 +1261,8 @@ module "c" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1278,7 +1314,8 @@ module "c" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1315,7 +1352,8 @@ module "child" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1356,7 +1394,8 @@ module "b" {
 	})
 
 	ev := New()
-	resources, _, _, err := ev.EvaluateModule(context.Background(), rootDir, nil)
+	evaluation, err := ev.EvaluateModule(context.Background(), rootDir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1416,11 +1455,13 @@ module "m" {
 
 	ev := New()
 
-	resA, _, _, err := ev.EvaluateModule(context.Background(), rootA, nil)
+	evaluation, err := ev.EvaluateModule(context.Background(), rootA, nil)
+	resA := evaluation.Resources
 	if err != nil {
 		t.Fatalf("rootA: %v", err)
 	}
-	resB, _, _, err := ev.EvaluateModule(context.Background(), rootB, nil)
+	evaluation2, err := ev.EvaluateModule(context.Background(), rootB, nil)
+	resB := evaluation2.Resources
 	if err != nil {
 		t.Fatalf("rootB: %v", err)
 	}
@@ -1502,7 +1543,8 @@ resource "google_sql_database_instance" "dynamic" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1608,7 +1650,8 @@ resource "aws_security_group" "unknown" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1681,7 +1724,8 @@ resource "aws_security_group" "sg" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1716,7 +1760,8 @@ resource "aws_security_group" "sg" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1763,7 +1808,8 @@ resource "aws_security_group" "sg" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1808,7 +1854,8 @@ resource "aws_s3_bucket" "b" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1846,7 +1893,8 @@ func TestEvaluateModule_DynamicBlockExpandsPastTheOldLimit(t *testing.T) {
 	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
 		"main.tf": dynamicIngressModule(blocks),
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1888,7 +1936,8 @@ func TestEvaluateModule_NestedDynamicBlocksExpandPastTheOldTotal(t *testing.T) {
 	sb.WriteString("    }\n  }\n}\n")
 	dir := writeModule(t, t.TempDir(), "mod", map[string]string{"main.tf": sb.String()})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -1935,7 +1984,8 @@ resource "aws_s3_bucket" "b" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -2016,7 +2066,8 @@ resource "aws_y" "b" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -2056,9 +2107,10 @@ resource "aws_s3_bucket" "this" {
 	})
 
 	e := New()
-	resources1, _, _, err := e.EvaluateModule(context.Background(), dir, map[string]cty.Value{
+	evaluation, err := e.EvaluateModule(context.Background(), dir, map[string]cty.Value{
 		"name": cty.StringVal("first"),
 	})
+	resources1 := evaluation.Resources
 	if err != nil {
 		t.Fatalf("first EvaluateModule: %v", err)
 	}
@@ -2068,9 +2120,10 @@ resource "aws_s3_bucket" "this" {
 
 	e.ReleaseCaches()
 
-	resources2, _, _, err := e.EvaluateModule(context.Background(), dir, map[string]cty.Value{
+	evaluation2, err := e.EvaluateModule(context.Background(), dir, map[string]cty.Value{
 		"name": cty.StringVal("second"),
 	})
+	resources2 := evaluation2.Resources
 	if err != nil {
 		t.Fatalf("second EvaluateModule after ReleaseCaches: %v", err)
 	}
@@ -2131,7 +2184,8 @@ module "bucket" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -2190,7 +2244,8 @@ resource "aws_y" "b" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -2223,7 +2278,7 @@ dynamic "a" {
 	if diags.HasErrors() {
 		t.Fatal(diags)
 	}
-	out := New().evalBody(context.Background(), file.Body.(*hclsyntax.Body), &hcl.EvalContext{}, nil)
+	out := New().evalBodyWith(context.Background(), file.Body.(*hclsyntax.Body), &hcl.EvalContext{}, nil, nil)
 	if _, expanded := out["a"]; expanded {
 		t.Fatalf("a was expanded: %#v", out["a"])
 	}
@@ -2261,7 +2316,8 @@ module "m" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 
 	byName := make(map[string]ResolvedResource)
@@ -2335,7 +2391,9 @@ output "ids" { value = local.ids }
 `,
 	})
 
-	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
+	outputs := evaluation.Outputs
 	require.NoError(t, err)
 	buckets := map[string]string{}
 	for _, r := range resources {
@@ -2413,7 +2471,9 @@ output "value" { value = var.value }
 					}
 					files["outputs.tf"] = "output \"result\" { value = " + ref(length-1) + " }\n"
 					stack := writeModule(t, root, "stack", files)
-					resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+					evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+					resources := evaluation.Resources
+					outputs := evaluation.Outputs
 					require.NoError(t, err)
 					require.Len(t, resources, length)
 					require.Equal(t, cty.StringVal("seed"), outputs["result"])
@@ -2458,7 +2518,9 @@ output "constant" { value = "seed" }
 				stack := writeModule(t, root, "stack", map[string]string{"main.tf": strings.Join(calls, "\n") + `
 output "result" { value = module.a.value }
 `})
-				resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+				evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+				resources := evaluation.Resources
+				outputs := evaluation.Outputs
 				require.NoError(t, err)
 				require.Len(t, resources, 2)
 				if cycle {
@@ -2527,7 +2589,9 @@ output "via" { value = local.twice }
 `,
 	})
 
-	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
+	outputs := evaluation.Outputs
 	require.NoError(t, err)
 	buckets := map[string]cty.Value{}
 	for _, r := range resources {
@@ -2575,7 +2639,8 @@ module "m1" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	buckets := map[string]cty.Value{}
 	for _, r := range resources {
@@ -2615,7 +2680,8 @@ func TestNestedBlocksMatchesAddNestedBlock(t *testing.T) {
 func evaluateRoot(t *testing.T, ctx context.Context, src string) map[string]ResolvedResource {
 	t.Helper()
 	stack := writeModule(t, t.TempDir(), "stack", map[string]string{"main.tf": src})
-	resources, _, _, err := New().EvaluateModule(ctx, stack, nil)
+	evaluation, err := New().EvaluateModule(ctx, stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	return resourcesByAddress(resources)
 }
@@ -2656,7 +2722,8 @@ output "out" { value = var.in }
 `})
 		stack := writeModule(t, root, "stack", map[string]string{"main.tf": chainSource(length, "module.m.out") +
 			"module \"m\" {\n  source = \"../leaf\"\n  in     = \"m\"\n}\n" + reader})
-		resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+		evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		requireString(t, resourcesByAddress(resources)["/aws_sqs_queue.q"].Attributes, "name", "m"+suffix)
 	})
@@ -2684,7 +2751,8 @@ module "leaf" {
   name     = each.key
 }
 `})
-		resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+		evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		byAddr := resourcesByAddress(resources)
 		for _, key := range []string{"a", "b"} {
@@ -2717,7 +2785,8 @@ module "m1" {
   in     = "${local.l` + strconv.Itoa(length-1) + `}-${local.fixed}"
 }
 `})
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	byAddr := resourcesByAddress(resources)
 	requireString(t, byAddr["module.m1/aws_s3_bucket.b"].Attributes, "bucket", "a"+strings.Repeat("x", length-1)+"-f")
@@ -2791,7 +2860,8 @@ module "leaf" {
 `})
 	e := New()
 	for range 2 {
-		resources, _, _, err := e.EvaluateModule(ctx, stack, nil)
+		evaluation, err := e.EvaluateModule(ctx, stack, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		attrs := resourcesByAddress(resources)[`module.leaf["a"]/aws_sqs_queue.q`].Attributes
 		requireString(t, attrs, "name", "fine-a")
@@ -2822,7 +2892,7 @@ data "aws_iam_policy_document" "p" {
 `})
 	e := New()
 	for range 2 {
-		_, _, _, err := e.EvaluateModule(ctx, stack, nil)
+		_, err := e.EvaluateModule(ctx, stack, nil)
 		require.NoError(t, err)
 	}
 	require.Equal(t, 1, strings.Count(logs.String(), "cycle among locals"), logs.String())
@@ -2939,7 +3009,8 @@ func BenchmarkResolveLocalsChain(b *testing.B) {
 		}
 		b.Run(fmt.Sprintf("locals=%d", length), func(b *testing.B) {
 			for b.Loop() {
-				resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+				evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+				resources := evaluation.Resources
 				if err != nil || len(resources) != 1 {
 					b.Fatalf("resources = %d, err = %v", len(resources), err)
 				}
@@ -2982,7 +3053,8 @@ module "b" {
 }
 `, name, name),
 		})
-		resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+		evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		require.Len(t, resources, 3)
 		for _, r := range resources {
@@ -3032,7 +3104,9 @@ func TestEvaluateModule_BlockDependencies(t *testing.T) {
 					}
 					fmt.Fprintf(&source, "locals { result = %s }\noutput \"result\" { value = local.result }\n", result)
 					dir := writeModule(t, root, fmt.Sprint(reverse), map[string]string{"main.tf": source.String()})
-					rs, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+					evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+					rs := evaluation.Resources
+					outputs := evaluation.Outputs
 					require.NoError(t, err)
 					require.Equal(t, cty.StringVal("resolved"), outputs["result"])
 					for _, r := range rs {
@@ -3060,7 +3134,9 @@ resource "r" "independent" { value = "known" }
 output "result" { value = try(r.a.value,"fallback") }
 `
 			dir := writeModule(t, root, "stack", map[string]string{"main.tf": source})
-			resources, outputs, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+			resources := evaluation.Resources
+			outputs := evaluation.Outputs
 			require.NoError(t, err)
 			require.False(t, outputs["result"].IsKnown())
 			a := findResource(t, resources, "r", "a")
@@ -3165,7 +3241,7 @@ func TestModuleCallResources(t *testing.T) {
 					}
 				}
 				got := []string{}
-				for _, resource := range r.values() {
+				for _, resource := range r.resources {
 					got = append(got, resource.Name)
 				}
 				require.Equal(t, want, got)
@@ -3342,7 +3418,7 @@ output "missing" {value=try(file("${path.module}/missing.txt"),"caught")}`
 					case "reset":
 						evaluator.ReleaseCaches()
 					}
-					_, outputs, _, err := current.EvaluateModule(context.Background(), dir, nil)
+					evaluation, err := current.EvaluateModule(context.Background(), dir, nil)
 					require.NoError(t, err)
 					expected := map[string]cty.Value{
 						"content": cty.StringVal(content), "template": cty.StringVal(template),
@@ -3351,9 +3427,158 @@ output "missing" {value=try(file("${path.module}/missing.txt"),"caught")}`
 						"exists": exists, "missing": cty.StringVal("caught"),
 					}
 					for name, want := range expected {
-						require.True(t, want.RawEquals(outputs[name]), "%s: got %#v want %#v", name, outputs[name], want)
+						require.True(t, want.RawEquals(evaluation.Outputs[name]), "%s: got %#v want %#v", name, evaluation.Outputs[name], want)
 					}
 				})
+			}
+		})
+	}
+}
+func TestEvaluateModule_ExpressionDiagnostics(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{"main.tf": `
+variable "input" {type=string}
+variable "invalid_default" {default=[1][2]}
+data "unresolved_service" "example" {invalid=tonumber("invalid")}
+locals {
+ invalid = tonumber("invalid")
+ independent = "public"
+}
+resource "aws_s3_bucket" "dependency" {}
+resource "aws_s3_bucket" "example" {
+ acl=local.independent
+ invalid=regex("[","value")
+ invalid_default=var.invalid_default
+ nested {invalid=tonumber("invalid")}
+ from_local=local.invalid
+ computed=aws_s3_bucket.dependency.arn
+ unresolved=var.input
+ caught=try(tonumber("invalid"),"public")
+ tested=can(tonumber("invalid"))
+ selected=false ? tonumber("invalid") : 1
+}
+output "invalid" {value=[1][2]}
+`})
+	evaluator := New()
+	var previous ModuleEvaluation
+	for attempt := range 2 {
+		evaluation, err := evaluator.EvaluateModule(context.Background(), dir, nil)
+		resources := evaluation.Resources
+		require.NoError(t, err)
+		resource := findResource(t, resources, "aws_s3_bucket", "example")
+		require.Equal(t, cty.StringVal("public"), resource.Attributes["acl"])
+		require.Equal(t, cty.StringVal("public"), resource.Attributes["caught"])
+		require.True(t, resource.Attributes["tested"].RawEquals(cty.False))
+		require.True(t, resource.Attributes["selected"].RawEquals(cty.NumberIntVal(1)))
+		require.False(t, resource.Attributes["computed"].IsKnown())
+		require.False(t, resource.Attributes["unresolved"].IsKnown())
+		diagnostics := evaluation.Diagnostics()
+		require.Len(t, diagnostics, 6, "attempt %d, including cache hits", attempt)
+		for _, diagnostic := range diagnostics {
+			require.NotEmpty(t, diagnostic.Summary)
+			require.NotEqual(t, "caller modification", diagnostic.Summary)
+			require.NotEmpty(t, diagnostic.Detail)
+			require.Equal(t, filepath.Join(dir, "main.tf"), diagnostic.Subject.Filename)
+			require.Empty(t, diagnostic.ModuleAddress)
+		}
+		if attempt > 0 {
+			require.NotEqual(t, "caller modification", previous.Diagnostics()[0].Summary)
+		}
+		diagnostics[0].Summary = "caller modification"
+		previous = evaluation
+	}
+
+}
+
+func TestEvaluateModule_DiagnosticsFollowModuleContexts(t *testing.T) {
+	root := t.TempDir()
+	child := writeModule(t, root, "child", map[string]string{"main.tf": `
+variable "pattern" {type=string}
+locals {invalid=regex(var.pattern,"value")}
+resource "aws_s3_bucket" "example" {
+ for_each=toset(["a","b"])
+ acl="public"
+ invalid=local.invalid
+}
+output "value" {value=local.invalid}
+`})
+	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
+module "left" {
+ source="../child"
+ pattern="["
+}
+module "right" {
+ source="../child"
+ pattern="["
+}
+module "valid" {
+ source="../child"
+ pattern="v.*"
+}
+module "argument_failure" {
+ for_each=toset(["a","b"])
+ source="../child"
+ pattern=tonumber("invalid")
+}
+`})
+	evaluator := New()
+	for range 2 {
+		evaluation, err := evaluator.EvaluateModule(context.Background(), stack, nil)
+		resources := evaluation.Resources
+		require.NoError(t, err)
+		require.Len(t, resources, 10)
+		diagnostics := evaluation.Diagnostics()
+		require.Len(t, diagnostics, 3, "identical failures in different calls retain their module identity")
+		require.Empty(t, diagnostics[0].ModuleAddress)
+		require.Equal(t, "module.left", diagnostics[1].ModuleAddress)
+		require.Equal(t, "module.right", diagnostics[2].ModuleAddress)
+		require.Equal(t, diagnostics[1].Subject, diagnostics[2].Subject)
+	}
+	for _, test := range []struct {
+		pattern string
+		count   int
+	}{{"[", 1}, {"v.*", 0}, {"[", 1}} {
+		evaluation, err := evaluator.EvaluateModule(context.Background(), child, map[string]cty.Value{"pattern": cty.StringVal(test.pattern)})
+		require.NoError(t, err)
+		require.Len(t, evaluation.Diagnostics(), test.count)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	evaluation, err := evaluator.EvaluateModule(ctx, stack, nil)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, evaluation.Diagnostics())
+}
+
+func TestEvaluateModule_JSONExpressionDiagnostics(t *testing.T) {
+	for _, test := range []struct {
+		name, expression string
+		failures         int
+	}{
+		{"known", `{"locals":{"bad":"${length([])}"}}`, 0},
+		{"unknown", `{"locals":{"bad":"${var.input}"}}`, 0},
+		{"caught failure", `{"locals":{"bad":"${try(length(null),0)}"}}`, 0},
+		{"independent expressions across files", `{"locals":{"bad":"${length(null)}"}}`, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := writeModule(t, t.TempDir(), "root", map[string]string{
+				"expressions.tf.json": test.expression,
+				"independent.tf.json": `{"locals":{"okx":"${length([]  )}"}}`,
+				"main.tf": `variable "input" {type=string}
+resource "aws_s3_bucket" "example" {acl="public"}`,
+			})
+			evaluator := New()
+			for range 2 {
+				evaluation, err := evaluator.EvaluateModule(context.Background(), dir, nil)
+				require.NoError(t, err)
+				require.Len(t, evaluation.Resources, 1)
+				diagnostics := evaluation.Diagnostics()
+				require.Len(t, diagnostics, test.failures)
+				unit := evaluation.PolicyUnit(NewValueReader(nil, true))
+				if test.failures > 0 {
+					require.Equal(t, filepath.Join(dir, "expressions.tf.json"), diagnostics[0].Subject.Filename)
+					require.NotNil(t, unit.Failure())
+				} else {
+					require.Nil(t, unit.Failure())
+				}
 			}
 		})
 	}

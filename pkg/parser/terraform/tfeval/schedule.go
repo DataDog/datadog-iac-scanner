@@ -319,7 +319,7 @@ func (s *resourceSchedule) local(v int, ctx *hcl.EvalContext) {
 	for _, read := range g.reads[v] {
 		s.local(read, ctx)
 	}
-	s.e.resolveLocals(g, ctx, s.localValues, []int{v})
+	s.e.resolveLocals(g, ctx, s.localValues, []int{v}, &s.scope.diagnostics)
 }
 
 func (s *resourceSchedule) evaluate(unit int) {

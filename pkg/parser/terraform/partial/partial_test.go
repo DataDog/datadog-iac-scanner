@@ -165,20 +165,21 @@ func TestRenderWithoutContext(t *testing.T) {
 	require.Equal(t, cty.TupleVal([]cty.Value{cty.StringVal("${aws_s3_bucket.b.arn}"), cty.StringVal("x")}), v)
 }
 
-func TestWithUnknownRefs(t *testing.T) {
+func TestEvaluate(t *testing.T) {
 	expr, diags := hclsyntax.ParseExpression([]byte(`{a = aws_s3_bucket.b.arn, b = var.x}`), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors())
 	ctx := &hcl.EvalContext{Variables: map[string]cty.Value{
 		"var": cty.ObjectVal(map[string]cty.Value{"x": cty.StringVal("y")}),
 	}}
-	v := WithUnknownRefs(expr, ctx)
+	v, diags := Evaluate(expr, ctx)
+	require.False(t, diags.HasErrors())
 	require.False(t, v.GetAttr("a").IsKnown())
 	require.Equal(t, cty.StringVal("y"), v.GetAttr("b"))
 }
 
 // References under one root are gathered into one object, keeping the known
 // attributes of the root and the ones other references set.
-func TestWithUnknownRefsManyAttributesOfOneRoot(t *testing.T) {
+func TestEvaluateManyAttributesOfOneRoot(t *testing.T) {
 	expr, diags := hclsyntax.ParseExpression(
 		[]byte(`[module.a.id, module.b.id, module.b.arn, module.c["k"].id, local.x, local.y.z]`), "main.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors())
@@ -188,7 +189,8 @@ func TestWithUnknownRefsManyAttributesOfOneRoot(t *testing.T) {
 		}),
 		"local": cty.ObjectVal(map[string]cty.Value{"x": cty.StringVal("x")}),
 	}}
-	v := WithUnknownRefs(expr, ctx)
+	v, diags := Evaluate(expr, ctx)
+	require.False(t, diags.HasErrors())
 	require.Equal(t, 6, v.LengthInt())
 	require.Equal(t, cty.StringVal("a-id"), v.Index(cty.NumberIntVal(0)))
 	for i := 1; i <= 3; i++ {
@@ -292,4 +294,35 @@ func TestRendererBindings(t *testing.T) {
 		})
 	}
 	require.Nil(t, (&Renderer{}).WithBindings(map[string]cty.Value{"local": unknown}).Reference)
+}
+
+func TestEvaluateExpressionOutcomes(t *testing.T) {
+	for _, test := range []struct {
+		name, source  string
+		known, failed bool
+	}{
+		{"known scalar", `"public"`, true, false},
+		{"unknown input", `var.value`, false, false},
+		{"unresolved reference", `aws_s3_bucket.example.arn`, false, false},
+		{"invalid function argument", `tonumber("invalid")`, false, true},
+		{"invalid index", `[1][2]`, false, true},
+		{"invalid length", `length(null)`, false, true},
+		{"invalid function beside unresolved reference", `[aws_s3_bucket.example.arn,tonumber("invalid")]`, false, true},
+		{"caught failure", `try(tonumber("invalid"),"public")`, true, false},
+		{"tested failure", `can(tonumber("invalid"))`, true, false},
+		{"inactive failing branch", `false ? tonumber("invalid") : 1`, true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			expr, diagnostics := hclsyntax.ParseExpression([]byte(test.source), "expression.tf", hcl.InitialPos)
+			require.False(t, diagnostics.HasErrors())
+			ctx := &hcl.EvalContext{Functions: functions.TerraformFuncs, Variables: map[string]cty.Value{"var": cty.ObjectVal(map[string]cty.Value{"value": cty.UnknownVal(cty.String)})}}
+			value, diagnostics := Evaluate(expr, ctx)
+			require.Equal(t, test.known, value.IsKnown())
+			require.Equal(t, test.failed, diagnostics.HasErrors())
+			for _, diagnostic := range diagnostics {
+				require.NotNil(t, diagnostic.Subject)
+				require.Equal(t, "expression.tf", diagnostic.Subject.Filename)
+			}
+		})
+	}
 }

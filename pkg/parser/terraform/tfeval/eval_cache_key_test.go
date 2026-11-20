@@ -64,7 +64,8 @@ func TestEvalCache_NestedFanOutEvaluatesEachModuleOnce(t *testing.T) {
 			stack := writeNestedFanOut(t, tc.depth, tc.branch)
 
 			e := New()
-			resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+			evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
+			resources := evaluation.Resources
 			if err != nil {
 				t.Fatalf("EvaluateModule: %v", err)
 			}
@@ -118,7 +119,8 @@ module "beta" {
 	}
 
 	e := New()
-	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -173,8 +175,9 @@ func TestEvaluate_DepthCapReportsNotEvaluated(t *testing.T) {
 	}
 
 	e := New()
-	_, _, visited, err := e.EvaluateModule(context.Background(), filepath.Join(root, "lvl00"),
+	evaluation, err := e.EvaluateModule(context.Background(), filepath.Join(root, "lvl00"),
 		map[string]cty.Value{"in": cty.StringVal("seed")})
+	visited := evaluation.VisitedChildDirs
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
@@ -222,10 +225,11 @@ resource "test_resource" "root" {
 	rootB := writeModule(t, root, "root-b", map[string]string{"main.tf": rootBody})
 
 	e := New()
-	if _, _, _, err := e.EvaluateModule(context.Background(), rootA, nil); err != nil {
+	if _, err := e.EvaluateModule(context.Background(), rootA, nil); err != nil {
 		t.Fatalf("EvaluateModule(root-a): %v", err)
 	}
-	resources, _, _, err := e.EvaluateModule(context.Background(), rootB, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), rootB, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule(root-b): %v", err)
 	}

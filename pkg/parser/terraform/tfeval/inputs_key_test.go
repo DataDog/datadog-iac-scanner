@@ -153,7 +153,8 @@ resource "aws_s3_bucket" "b" {
 	})
 
 	e := New()
-	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	require.Len(t, resources, 40)
 	names := make(map[string]struct{}, len(resources))
@@ -196,7 +197,7 @@ func TestEvalObjectLength(t *testing.T) {
 			name: "null object",
 			src:  `length(var.config)`,
 			vars: map[string]cty.Value{"config": cty.NullVal(objectType)},
-			ok:   true,
+			ok:   false,
 			want: cty.DynamicVal,
 		},
 		{
@@ -237,7 +238,7 @@ func TestEvalObjectLength(t *testing.T) {
 			require.Equal(t, tc.ok, ok)
 			if ok {
 				require.True(t, got.RawEquals(tc.want))
-				got = New().evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				got = New().evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 				require.True(t, got.RawEquals(tc.want), "resource attributes must preserve length semantics")
 			}
 		})
@@ -256,7 +257,7 @@ func TestEvalExprMemo_ObjectLengthDoesNotScale(t *testing.T) {
 		allocs := testing.AllocsPerRun(3, func() {
 			e := New()
 			for range 50 {
-				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 			}
 		})
 		require.True(t, got.RawEquals(cty.NumberIntVal(int64(size))))
@@ -283,7 +284,7 @@ func BenchmarkEvalExprMemo_ObjectLength(b *testing.B) {
 			for b.Loop() {
 				e := New()
 				for range 50 {
-					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 					if !got.RawEquals(want) {
 						b.Fatal("incorrect object length")
 					}
@@ -415,17 +416,17 @@ resource "test_resource" "example" { value = local.result }
 `})
 	e := New()
 	for _, mark := range []string{"sensitive", "other"} {
-		resources, _, _, err := e.EvaluateModule(context.Background(), module, map[string]cty.Value{"value": cty.NumberIntVal(2).Mark(mark)})
+		evaluation, err := e.EvaluateModule(context.Background(), module, map[string]cty.Value{"value": cty.NumberIntVal(2).Mark(mark)})
 		require.NoError(t, err)
-		require.Len(t, resources, 1)
-		value, marks := resources[0].Attributes["value"].Unmark()
+		require.Len(t, evaluation.Resources, 1)
+		value, marks := evaluation.Resources[0].Attributes["value"].Unmark()
 		require.True(t, value.RawEquals(cty.NumberIntVal(3)))
 		require.Contains(t, marks, mark)
 		require.Zero(t, e.EvalCacheSize())
 	}
-	resources, _, _, err := e.EvaluateModule(context.Background(), module, map[string]cty.Value{"value": cty.NumberIntVal(2)})
+	evaluation, err := e.EvaluateModule(context.Background(), module, map[string]cty.Value{"value": cty.NumberIntVal(2)})
 	require.NoError(t, err)
-	require.False(t, resources[0].Attributes["value"].IsMarked())
+	require.False(t, evaluation.Resources[0].Attributes["value"].IsMarked())
 	require.Equal(t, 1, e.EvalCacheSize())
 
 }
@@ -448,15 +449,15 @@ output "text" { value = tostring(var.config.x) }
 	} {
 		t.Run(input.name, func(t *testing.T) {
 			inputs := map[string]cty.Value{"config": cty.ObjectVal(map[string]cty.Value{"x": cty.NumberVal(input.x), "y": cty.NumberVal(input.y)})}
-			_, freshOutputs, _, err := New().EvaluateModule(context.Background(), module, inputs)
+			fresh, err := New().EvaluateModule(context.Background(), module, inputs)
 			require.NoError(t, err)
-			_, outputs, _, err := shared.EvaluateModule(context.Background(), module, inputs)
+			evaluation, err := shared.EvaluateModule(context.Background(), module, inputs)
 			require.NoError(t, err)
-			require.True(t, freshOutputs["quotient"].RawEquals(outputs["quotient"]))
-			require.Equal(t, freshOutputs["quotient"].AsBigFloat().Prec(), outputs["quotient"].AsBigFloat().Prec())
-			require.Equal(t, freshOutputs["text"].AsString(), outputs["text"].AsString())
+			require.True(t, fresh.Outputs["quotient"].RawEquals(evaluation.Outputs["quotient"]))
+			require.Equal(t, fresh.Outputs["quotient"].AsBigFloat().Prec(), evaluation.Outputs["quotient"].AsBigFloat().Prec())
+			require.Equal(t, fresh.Outputs["text"].AsString(), evaluation.Outputs["text"].AsString())
 			entries := shared.EvalCacheSize()
-			_, _, _, err = shared.EvaluateModule(context.Background(), module, inputs)
+			_, err = shared.EvaluateModule(context.Background(), module, inputs)
 			require.NoError(t, err)
 			require.Equal(t, entries, shared.EvalCacheSize())
 		})

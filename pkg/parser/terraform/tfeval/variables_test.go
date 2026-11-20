@@ -61,7 +61,8 @@ module "bucket" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	require.Len(t, resources, 2, "a list passed to a set(string) variable must expand for_each")
 
@@ -96,7 +97,8 @@ resource "aws_ebs_volume" "v" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	v := findResource(t, resources, "aws_ebs_volume", "v")
 	require.True(t, v.Attributes["encrypted"].True())

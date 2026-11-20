@@ -125,7 +125,8 @@ module "b" {
   policy = local.policy
 }
 `})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	doc := AttributesToDocument(ptr(findResource(t, resources, "aws_iam_policy", "p")))
 	require.Contains(t, doc["policy"], `arn:aws:s3:::from-a`)
