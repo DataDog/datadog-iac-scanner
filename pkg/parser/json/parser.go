@@ -12,16 +12,20 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 // Parser defines a parser type
-type Parser struct{}
+type Parser struct {
+	// FS supplies referenced files. Nil uses the real filesystem.
+	FS vfs.FS
+}
 
 // Resolve - replace or modifies in-memory content before parsing
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
 	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile, err error) {
 	// Resolve files passed as arguments with file resolver (e.g. file://)
-	res := file.NewResolver(json.Unmarshal, json.Marshal, p.SupportedExtensions())
+	res := file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
 	resolved = res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
 

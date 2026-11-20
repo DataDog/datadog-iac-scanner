@@ -124,7 +124,7 @@ func documentPaths(doc map[string]interface{}) [][]string {
 func TestGetLineBySearchLineMatchesMarshalLookup(t *testing.T) {
 	type docParser func(ctx context.Context, content []byte, path string) ([]model.Document, error)
 	yamlParse := func(ctx context.Context, content []byte, path string) ([]model.Document, error) {
-		_, docs, _, _, err := yamlParser.Parse(ctx, content, path, false, 15)
+		_, docs, _, _, err := yamlParser.Parse(ctx, nil, content, path, false, 15)
 		return docs, err
 	}
 	cicdParse := func(ctx context.Context, content []byte, path string) ([]model.Document, error) {

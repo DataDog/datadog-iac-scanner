@@ -58,7 +58,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		names.IsDefaultBaseFileName(filePath)
 	if !needsSiblings {
 		resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(
-			ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+			ctx, p.fsys, fileContent, filePath, resolveReferences, maxResolverDepth)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
