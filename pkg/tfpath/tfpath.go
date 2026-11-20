@@ -88,6 +88,21 @@ func IsHCLConfig(path string) bool {
 	return strings.HasSuffix(lower, ExtTF) || strings.HasSuffix(lower, ExtTofu)
 }
 
+// IsOverride reports whether path is a Terraform/OpenTofu override file:
+// override.tf, *_override.tf and their JSON and OpenTofu forms. Terraform
+// applies them after every other configuration file of the directory, in
+// lexical order. The name before the extension matches case-sensitively, like
+// Terraform's IsOverrideFile; the extension matches as IsConfig does, which
+// also accepts upper case.
+func IsOverride(path string) bool {
+	base := filepath.Base(path)
+	if !IsConfig(base) {
+		return false
+	}
+	stem := base[:len(base)-len(Extension(base))]
+	return stem == "override" || strings.HasSuffix(stem, "_override")
+}
+
 // IsConfig reports whether path may declare Terraform/OpenTofu modules.
 func IsConfig(path string) bool {
 	return IsHCLConfig(path) || IsJSONConfig(path)
