@@ -183,6 +183,8 @@ func (s *Service) sinkDocument(
 	}
 
 	file := model.FileMetadata{
+		SourceDocumentIndex: docIdx,
+
 		ID:            uuid.New().String(),
 		ScanID:        scanID,
 		Document:      preparedDocument,
@@ -220,6 +222,8 @@ func (s *Service) sinkSharedParse(
 ) error {
 	for docIdx, sharedDoc := range shared.docs {
 		file := model.FileMetadata{
+			SourceDocumentIndex: docIdx,
+
 			ID:           uuid.New().String(),
 			ScanID:       scanID,
 			Document:     cloneSharedParseDocument(sharedDoc, filename),

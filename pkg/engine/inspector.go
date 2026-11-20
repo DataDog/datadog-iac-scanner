@@ -361,6 +361,10 @@ func (c *Inspector) SetMergeAllow(paths []string) {
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
 // the query compiled and its payload
 type QueryContext struct {
+	// sourceDetector belongs to this sequential decode context. It is created
+	// only for structured findings, sharing kind handlers but not source caches.
+	sourceDetector *detector.DetectLine
+
 	Ctx           context.Context
 	scanID        string
 	Files         map[string]*model.FileMetadata
@@ -1574,7 +1578,10 @@ func advanceLineInfoFile(qCtx *QueryContext, active, nextID string) string {
 // resultDocumentID returns the file id a result item points at.
 func resultDocumentID(item interface{}) string {
 	if m, ok := item.(map[string]interface{}); ok {
-		if id, ok := m["documentId"].(string); ok {
+		if id, ok := m["documentId"].(string); ok && id != "" {
+			return id
+		}
+		if id, ok := m["_dd_id"].(string); ok {
 			return id
 		}
 	}

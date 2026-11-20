@@ -1617,3 +1617,74 @@ func TestIsHeredocTerminatorWithIndexMatchesScan(t *testing.T) {
 			isHeredocTerminator(trimmed, lines, idx, heredocs), "line %d", idx)
 	}
 }
+
+func TestStructuredSourceFormatting(t *testing.T) {
+	ctx := context.Background()
+	prefix := `resource "example" "one" {
+ direct = true
+ tags = {
+  key = false
+  key = true
+ }
+ earlier = {
+  (var.key) = false
+  key = true
+ }
+ later = {
+  key = false
+  (var.key) = true
+ }
+ call = jsonencode({enabled = true})
+`
+	var text strings.Builder
+	text.WriteString(prefix)
+	const repeated = 32
+	for index := range repeated {
+		fmt.Fprintf(&text, " rule {\n  value = %d\n }\n", index)
+	}
+	text.WriteString("}\n")
+	source := text.String()
+	file := &model.FileMetadata{Kind: model.KindTerraform, FilePath: "/source/formatting.tf", OriginalData: source}
+	d := &DetectKindLine{}
+	body, err := d.cachedParseBody(source, file.FilePath)
+	require.NoError(t, err)
+	block := body.Blocks[0]
+	lines := file.Lines()
+	root := model.SourcePath{{Key: "resource"}, {Key: "example"}, {Key: "one"}}
+	assertLocation := func(path model.SourcePath, line int) {
+		t.Helper()
+		got, err := d.DetectPath(ctx, file, path, 2)
+		require.NoError(t, err)
+		require.Equal(t, line, got.Line)
+		expected := vulnerabilityLinesFromBlock(block, line, lines, nil)
+		require.Equal(t, expected.RemediationLocation, got.RemediationLocation)
+		require.Equal(t, expected.BlockLocation, got.BlockLocation)
+		require.Equal(t, expected.ResourceSource, got.ResourceSource)
+	}
+	for _, feature := range []struct {
+		path model.SourcePath
+		line int
+	}{
+		{nil, 1},
+		{model.SourcePath{{Key: "direct"}}, 2},
+		{model.SourcePath{{Key: "tags"}}, 3},
+		{model.SourcePath{{Key: "tags"}, {Key: "key"}}, 5},
+		{model.SourcePath{{Key: "earlier"}, {Key: "key"}}, 9},
+		{model.SourcePath{{Key: "call"}}, 15},
+	} {
+		assertLocation(append(append(model.SourcePath{}, root...), feature.path...), feature.line)
+	}
+	for index := range repeated {
+		path := append(append(model.SourcePath{}, root...), model.PathSegment{Key: "rule"}, model.PathSegment{Index: index, IsIndex: true})
+		start := strings.Count(prefix, "\n") + 1 + 3*index
+		assertLocation(path, start)
+		assertLocation(append(path, model.PathSegment{Key: "value"}), start+1)
+	}
+	// A later uncertain key can replace a known property; an earlier one cannot
+	// replace the final known entry. Source indexing must preserve this ordering.
+	_, err = d.DetectPath(ctx, file, append(append(model.SourcePath{}, root...), model.PathSegment{Key: "later"}, model.PathSegment{Key: "key"}), 2)
+	require.ErrorContains(t, err, "computed object key")
+	indexed := d.indexSourceBody(block.Body)
+	require.Len(t, indexed.groups["rule"].blocks, repeated)
+	require.Same(t, indexed, d.indexSourceBody(block.Body))
+}

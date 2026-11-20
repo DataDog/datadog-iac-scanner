@@ -18,6 +18,7 @@ type kindDetectLine interface {
 
 // DetectLine is a struct that associates a kindDetectLine to its FileKind
 type DetectLine struct {
+	source          sourceDocumentCache
 	detectors       map[model.FileKind]kindDetectLine
 	outputLines     int
 	logWithFields   *zerolog.Logger
@@ -69,4 +70,11 @@ func (d *DetectLine) DetectLine(ctx context.Context, file *model.FileMetadata, s
 		return det.DetectLine(ctx, file, searchKey, d.outputLines)
 	}
 	return d.defaultDetector.DetectLine(ctx, file, searchKey, d.outputLines)
+}
+
+// ForkSourceResolver shares the registered kind handlers and immutable settings,
+// but gives one decode context its own bounded written-source cache. Configure
+// handlers before forking; a fork must not be copied by value.
+func (d *DetectLine) ForkSourceResolver() *DetectLine {
+	return &DetectLine{detectors: d.detectors, outputLines: d.outputLines, logWithFields: d.logWithFields, defaultDetector: d.defaultDetector}
 }
