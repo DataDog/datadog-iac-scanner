@@ -233,7 +233,6 @@ func validateQueriesPaths(paths []string) ([]string, error) {
 	return absolutePaths, nil
 }
 
-// nolint:gocyclo
 // createOutputDirs creates the directories the scan writes to. The
 // inventory's is the exception: when it cannot be created the scan still
 // runs, and its metadata reports the inventory as failed.
@@ -254,6 +253,7 @@ func createOutputDirs(outputPath, payloadPath, inventoryPath string) error {
 	return nil
 }
 
+// nolint:gocyclo
 func runScan(ctx context.Context, c *cli.Command) error {
 	if c.Args().Len() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", c.Args().Slice())
