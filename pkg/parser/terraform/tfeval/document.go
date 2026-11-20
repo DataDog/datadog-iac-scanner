@@ -180,7 +180,7 @@ type documentDataKey struct {
 }
 
 type documentDataSource struct {
-	source    localdata.Source
+	source    *localdata.Source
 	body      hcl.Body
 	iteration map[string]cty.Value
 	filename  string
@@ -209,13 +209,13 @@ func (r *documentReferenceRenderer) render(key documentDataKey, data documentDat
 			return renderDataJSON(rd, expr, r.scope.sources[data.filename])
 		}
 	}
-	attrs := data.source(r.ctx, data.body, eval)
+	result := data.source.Evaluate(r.ctx, localdata.RenderConfiguration{Body: data.body, Eval: eval})
 	if r.ctx.Err() != nil {
 		r.cacheable = false
 		return cty.NilVal, false
 	}
-	values := make(map[string]cty.Value, len(attrs))
-	for name, value := range attrs {
+	values := make(map[string]cty.Value, len(result.DocumentAttributes))
+	for name, value := range result.DocumentAttributes {
 		values[name] = cty.StringVal(value)
 	}
 	v := objectOrEmpty(values)

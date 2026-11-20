@@ -8,36 +8,11 @@ package localdata
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-
-	"github.com/hashicorp/hcl/v2"
 )
 
 // googleIAMPolicyType is the Google data source that renders an IAM policy.
 const googleIAMPolicyType = "google_iam_policy"
-
-var googlePolicySchema = &hcl.BodySchema{
-	Blocks: []hcl.BlockHeaderSchema{{Type: "binding"}, {Type: "audit_config"}, dynamicHeader},
-}
-
-var googleBindingSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{{Name: "role"}, {Name: "members"}},
-	Blocks:     []hcl.BlockHeaderSchema{{Type: "condition"}, dynamicHeader},
-}
-
-var googleConditionSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{{Name: "expression"}, {Name: "title"}, {Name: "description"}},
-}
-
-var googleAuditConfigSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{{Name: "service"}},
-	Blocks:     []hcl.BlockHeaderSchema{{Type: "audit_log_configs"}, dynamicHeader},
-}
-
-var googleAuditLogConfigSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{{Name: "log_type"}, {Name: "exempted_members"}},
-}
 
 type googlePolicy struct {
 	AuditConfigs []googleAuditConfig `json:"auditConfigs,omitempty"`
@@ -68,70 +43,51 @@ type googleAuditLogConfig struct {
 
 // googleIAMPolicyAttributes renders policy_data in the JSON shape of a GCP IAM
 // policy, as Terraform does.
-func googleIAMPolicyAttributes(ctx context.Context, body hcl.Body, eval EvalFunc) map[string]string {
-	content, _, _ := body.PartialContent(googlePolicySchema)
-	if content == nil {
-		return nil
-	}
-	d := newDecoder(ctx, eval)
+func googleIAMPolicyAttributes(d decoder, input Configuration) map[string]string {
 	var policy googlePolicy
-	for _, block := range d.blocks(content, "binding") {
-		policy.Bindings = append(policy.Bindings, block.d.googleBinding(block.body))
+	for _, block := range d.blocks(input, "binding") {
+		policy.Bindings = append(policy.Bindings, d.googleBinding(block))
 	}
-	for _, block := range d.blocks(content, "audit_config") {
-		policy.AuditConfigs = append(policy.AuditConfigs, block.d.googleAuditConfig(block.body))
+	for _, block := range d.blocks(input, "audit_config") {
+		policy.AuditConfigs = append(policy.AuditConfigs, d.googleAuditConfig(block))
 	}
-	if *d.skipped || ctx.Err() != nil {
+	if d.ctx.Err() != nil || d.state.documentIncomplete ||
+		(!d.document && (d.state.unresolved || len(d.state.diagnostics) > 0)) {
 		return nil
 	}
 	buf := &bytes.Buffer{}
 	encoder := json.NewEncoder(buf)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(policy); err != nil {
+		d.invalid(input, "policy_data", "could not be encoded")
 		return nil
 	}
 	return map[string]string{"policy_data": string(bytes.TrimSuffix(buf.Bytes(), []byte("\n")))}
 }
+func (d decoder) googleBinding(input Configuration) googleBinding {
+	binding := googleBinding{Role: d.str(input, "role"), Members: d.list(input, "members")}
+	conditions := d.blocks(input, "condition")
+	if len(conditions) > 1 {
+		d.invalid(input, "condition", "allows at most one block")
+	}
+	for i, block := range conditions {
+		condition := &googleCondition{
+			Description: d.str(block, "description"), Expression: d.str(block, "expression"), Title: d.str(block, "title"),
+		}
+		// Retain legacy first-condition rendering while checking all consumed
+		// known siblings. Failed native configurations never expose this JSON.
+		if i == 0 {
+			binding.Condition = condition
+		}
+	}
 
-func (d decoder) googleBinding(body hcl.Body) googleBinding {
-	content, _, _ := body.PartialContent(googleBindingSchema)
-	if content == nil {
-		return googleBinding{}
-	}
-	binding := googleBinding{
-		Role:    d.str(content.Attributes["role"]),
-		Members: d.list(content.Attributes["members"]),
-	}
-	for _, block := range d.blocks(content, "condition") {
-		// The provider schema allows at most one condition per binding.
-		attrs, _, _ := block.body.PartialContent(googleConditionSchema)
-		if attrs == nil {
-			continue
-		}
-		binding.Condition = &googleCondition{
-			Description: block.d.str(attrs.Attributes["description"]),
-			Expression:  block.d.str(attrs.Attributes["expression"]),
-			Title:       block.d.str(attrs.Attributes["title"]),
-		}
-		break
-	}
 	return binding
 }
-
-func (d decoder) googleAuditConfig(body hcl.Body) googleAuditConfig {
-	content, _, _ := body.PartialContent(googleAuditConfigSchema)
-	if content == nil {
-		return googleAuditConfig{}
-	}
-	config := googleAuditConfig{Service: d.str(content.Attributes["service"])}
-	for _, block := range d.blocks(content, "audit_log_configs") {
-		attrs, _, _ := block.body.PartialContent(googleAuditLogConfigSchema)
-		if attrs == nil {
-			continue
-		}
+func (d decoder) googleAuditConfig(input Configuration) googleAuditConfig {
+	config := googleAuditConfig{Service: d.str(input, "service")}
+	for _, block := range d.blocks(input, "audit_log_configs") {
 		config.AuditLogConfigs = append(config.AuditLogConfigs, googleAuditLogConfig{
-			ExemptedMembers: block.d.list(attrs.Attributes["exempted_members"]),
-			LogType:         block.d.str(attrs.Attributes["log_type"]),
+			ExemptedMembers: d.list(block, "exempted_members"), LogType: d.str(block, "log_type"),
 		})
 	}
 	return config

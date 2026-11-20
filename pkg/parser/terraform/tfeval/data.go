@@ -14,7 +14,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -291,8 +290,8 @@ func (d *moduleData) evalBlock(
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
-		if _, ok := localdata.Lookup(inst.Type); ok {
-			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx)
+		if source, ok := localdata.Lookup(inst.Type); ok {
+			view.Attributes = computedDataAttributes(inst, b, ctx, source)
 		}
 		if d.addr == "" {
 			inst.Iteration = nil
@@ -456,39 +455,32 @@ func sameCtyValues(a, b map[string]cty.Value) bool {
 	return true
 }
 
-// withComputedAttributes adds evaluated data-source outputs to the reference
+// computedDataAttributes adds evaluated data-source outputs to the reference
 // context. Partial text rendering is reserved for rule documents, not Terraform
 // expressions which can transform the string and lose its unresolved parts.
-func (d *moduleData) withComputedAttributes(
-	inst *ResolvedResource, b *hclsyntax.Block, scanCtx context.Context, evalCtx *hcl.EvalContext,
+func computedDataAttributes(
+	inst *ResolvedResource, b *hclsyntax.Block, ctx context.Context, source *localdata.Source,
 ) map[string]cty.Value {
-	ctx := evalCtx
-	if inst.Iteration != nil {
-		ctx = evalCtx.NewChild()
-		ctx.Variables = inst.Iteration
-	}
-	var body hcl.Body = b.Body
-	if json, ok := d.jsonBodies[b]; ok {
-		body = json
-	}
-	computed := localdata.Evaluate(scanCtx, inst.Type, body, func(expr hcl.Expression) (cty.Value, bool) {
-		scoped := ctx
-		for {
-			inner, vars, bound := partial.Unbind(expr)
-			if !bound {
-				break
-			}
-			expr, scoped = inner, partial.Scope(scoped, vars)
-		}
-		v, diags := expr.Value(scoped)
-		return v, !diags.HasErrors()
+	subject := b.Range()
+	result := source.Evaluate(ctx, localdata.ValueConfiguration{
+		Value: objectOrEmpty(inst.Attributes), Subject: &subject, Incomplete: inst.structureIncomplete,
 	})
-	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(computed))
-	for k, v := range inst.Attributes {
-		attrs[k] = v
+	if len(result.Diagnostics) > 0 {
+		if inst.diagnostics == nil {
+			inst.diagnostics = &expressionFailure{}
+		}
+		for _, diagnostic := range result.Diagnostics {
+			inst.diagnostics.diagnostics = append(inst.diagnostics.diagnostics, EvaluationDiagnostic{
+				Summary: diagnostic.Summary, Detail: diagnostic.Detail, Subject: diagnostic.Subject,
+			})
+		}
 	}
-	for k, v := range computed {
-		attrs[k] = v
+	attrs := make(map[string]cty.Value, len(inst.Attributes)+len(result.Attributes))
+	for name, value := range inst.Attributes {
+		attrs[name] = value
+	}
+	for name, value := range result.Attributes {
+		attrs[name] = value
 	}
 	return attrs
 }

@@ -8,12 +8,10 @@ package localdata
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"strconv"
 	"strings"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -44,119 +42,49 @@ type policyDocument struct {
 	ID         string
 	Version    string
 	Statements []policyStatement
-	// Incomplete is set when a dynamic block of the document could not be
-	// expanded, so Statements may lack some it declares.
-	Incomplete bool
-}
-
-var documentSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{
-		{Name: "id"},
-		{Name: "policy_id"},
-		{Name: "version"},
-		{Name: "source_policy_documents"},
-		{Name: "override_policy_documents"},
-		{Name: "source_json"},
-		{Name: "override_json"},
-	},
-	Blocks: []hcl.BlockHeaderSchema{{Type: "statement"}, dynamicHeader},
-}
-
-var statementSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{
-		{Name: "sid"},
-		{Name: "effect"},
-		{Name: "actions"},
-		{Name: "not_actions"},
-		{Name: "resources"},
-		{Name: "not_resources"},
-	},
-	Blocks: []hcl.BlockHeaderSchema{
-		{Type: "principals"},
-		{Type: "not_principals"},
-		{Type: "condition"},
-		dynamicHeader,
-	},
-}
-
-var principalSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{{Name: "type"}, {Name: "identifiers"}},
-}
-
-var conditionSchema = &hcl.BodySchema{
-	Attributes: []hcl.AttributeSchema{{Name: "test"}, {Name: "variable"}, {Name: "values"}},
 }
 
 // policyDocumentAttributes renders the json and minified_json attributes; the
 // two only differ in whitespace, which rules do not read.
-func policyDocumentAttributes(ctx context.Context, body hcl.Body, eval EvalFunc) map[string]string {
-	policy, ok := decodePolicyDocument(ctx, body, eval)
-	// Any unresolved dynamic or source/override leaves the document incomplete,
-	// so emitting a partial policy would mislead rules.
-	if !ok || policy.Incomplete || ctx.Err() != nil {
+func policyDocumentAttributes(d decoder, input Configuration) map[string]string {
+	policy := decodePolicyDocument(d, input)
+	if d.ctx.Err() != nil || d.state.documentIncomplete ||
+		(!d.document && (d.state.unresolved || len(d.state.diagnostics) > 0)) {
 		return nil
 	}
 	out, err := policy.render()
 	if err != nil {
+		d.invalid(input, "json", "could not be encoded")
 		return nil
 	}
 	return map[string]string{"json": out, "minified_json": out}
 }
 
-// decodePolicyDocument reads the policy an aws_iam_policy_document body
-// declares, merging the source and override documents it names the way
-// Terraform does. Arguments the data source does not define, and values eval
-// cannot resolve, are left out rather than discarding the document. ok is
-// false when a named source or override document could not be read.
-func decodePolicyDocument(ctx context.Context, body hcl.Body, eval EvalFunc) (policyDocument, bool) {
-	content, _, _ := body.PartialContent(documentSchema)
-	if content == nil {
-		return policyDocument{}, true
-	}
-	d := newDecoder(ctx, eval)
-	own := policyDocument{
-		ID:      d.str(content.Attributes["policy_id"]),
-		Version: d.str(content.Attributes["version"]),
-	}
+// decodePolicyDocument shares provider semantics across evaluated and rendered inputs.
+func decodePolicyDocument(d decoder, input Configuration) policyDocument {
+	own := policyDocument{ID: d.str(input, "policy_id"), Version: d.str(input, "version")}
 	if own.ID == "" {
-		own.ID = d.str(content.Attributes["id"])
+		own.ID = d.str(input, "id")
 	}
-	// Match the provider schema default so an unset own version upgrades
-	// sources the same way Terraform does.
 	if own.Version == "" {
 		own.Version = defaultPolicyVersion
 	}
-	for _, block := range d.blocks(content, "statement") {
-		own.Statements = append(own.Statements, block.d.statement(block.body))
+	for _, block := range d.blocks(input, "statement") {
+		own.Statements = append(own.Statements, d.statement(block))
 	}
 	var policy policyDocument
-	sourceDocs, ok := d.documents(content.Attributes["source_json"])
-	if !ok {
-		return policyDocument{}, false
-	}
-	more, ok := d.documents(content.Attributes["source_policy_documents"])
-	if !ok {
-		return policyDocument{}, false
-	}
-	for _, src := range append(sourceDocs, more...) {
-		policy.merge(src)
+	for _, name := range []string{"source_json", "source_policy_documents"} {
+		for _, src := range d.documents(input, name) {
+			policy.merge(src)
+		}
 	}
 	policy.merge(own)
-	policy.Incomplete = *d.skipped
-	// Match the provider: override_policy_documents then override_json so the
-	// deprecated singular wins last.
-	overrideDocs, ok := d.documents(content.Attributes["override_policy_documents"])
-	if !ok {
-		return policyDocument{}, false
+	for _, name := range []string{"override_policy_documents", "override_json"} {
+		for _, src := range d.documents(input, name) {
+			policy.merge(src)
+		}
 	}
-	more, ok = d.documents(content.Attributes["override_json"])
-	if !ok {
-		return policyDocument{}, false
-	}
-	for _, override := range append(overrideDocs, more...) {
-		policy.merge(override)
-	}
-	return policy, true
+	return policy
 }
 
 // merge merges other into p as the provider does: a non-empty Id replaces p's,
@@ -193,53 +121,34 @@ func overrideBySid(base, statements []policyStatement) []policyStatement {
 	return base
 }
 
-func (d decoder) statement(body hcl.Body) policyStatement {
-	content, _, _ := body.PartialContent(statementSchema)
-	if content == nil {
-		return policyStatement{}
-	}
+func (d decoder) statement(input Configuration) policyStatement {
 	st := policyStatement{
-		Sid:          d.str(content.Attributes["sid"]),
-		Actions:      d.list(content.Attributes["actions"]),
-		NotActions:   d.list(content.Attributes["not_actions"]),
-		Resources:    d.list(content.Attributes["resources"]),
-		NotResources: d.list(content.Attributes["not_resources"]),
+		Sid:     d.str(input, "sid"),
+		Actions: d.list(input, "actions"), NotActions: d.list(input, "not_actions"),
+		Resources: d.list(input, "resources"), NotResources: d.list(input, "not_resources"),
 	}
-	// The provider defaults effect when it is omitted or null.
-	if attr := content.Attributes["effect"]; attr == nil {
+	value, known := d.value(input, "effect")
+	if value == cty.NilVal {
 		st.Effect = defaultPolicyEffect
-	} else if v, ok := d.eval(attr.Expr); ok {
-		v, _ = v.UnmarkDeep()
-		if v.IsNull() {
-			st.Effect = defaultPolicyEffect
-		} else {
-			st.Effect = toString(v)
-		}
+	} else if known {
+		st.Effect = d.stringValue(input, "effect", value)
 	}
-	for _, block := range d.blocks(content, "principals") {
-		st.Principals = block.d.principal(st.Principals, block.body)
+
+	for _, block := range d.blocks(input, "principals") {
+		st.Principals = d.principal(st.Principals, block)
 	}
-	for _, block := range d.blocks(content, "not_principals") {
-		st.NotPrincipals = block.d.principal(st.NotPrincipals, block.body)
+	for _, block := range d.blocks(input, "not_principals") {
+		st.NotPrincipals = d.principal(st.NotPrincipals, block)
 	}
-	for _, block := range d.blocks(content, "condition") {
-		st.Condition = block.d.condition(st.Condition, block.body)
+	for _, block := range d.blocks(input, "condition") {
+		st.Condition = d.condition(st.Condition, block)
 	}
 	return st
 }
-
-func (d decoder) principal(into map[string][]string, body hcl.Body) map[string][]string {
-	content, _, _ := body.PartialContent(principalSchema)
-	if content == nil {
-		return into
-	}
-	typ := d.str(content.Attributes["type"])
-	if typ == "" {
-		return into
-	}
-	ids := d.list(content.Attributes["identifiers"])
-	if len(ids) == 0 {
-		// An empty identifiers list is not a principal the provider would emit.
+func (d decoder) principal(into map[string][]string, input Configuration) map[string][]string {
+	typ := d.str(input, "type")
+	ids := d.list(input, "identifiers")
+	if typ == "" || len(ids) == 0 {
 		return into
 	}
 	if into == nil {
@@ -248,24 +157,11 @@ func (d decoder) principal(into map[string][]string, body hcl.Body) map[string][
 	into[typ] = append(into[typ], ids...)
 	return into
 }
-
-func (d decoder) condition(into map[string]map[string][]string, body hcl.Body) map[string]map[string][]string {
-	content, _, _ := body.PartialContent(conditionSchema)
-	if content == nil {
-		return into
-	}
-	variable := d.str(content.Attributes["variable"])
-	if variable == "" {
-		return into
-	}
-	test := d.str(content.Attributes["test"])
-	if test == "" {
-		return into
-	}
-	values := d.list(content.Attributes["values"])
-	if len(values) == 0 {
-		// A condition without values is not a constraint; emitting it would
-		// look gated when it is not.
+func (d decoder) condition(into map[string]map[string][]string, input Configuration) map[string]map[string][]string {
+	variable := d.str(input, "variable")
+	test := d.str(input, "test")
+	values := d.list(input, "values")
+	if variable == "" || test == "" || len(values) == 0 {
 		return into
 	}
 	if into == nil {
@@ -278,54 +174,70 @@ func (d decoder) condition(into map[string]map[string][]string, body hcl.Body) m
 	return into
 }
 
-// documents reads a list of policy JSON documents. Null and empty string are
-// treated as unset. ok is false when the attribute is set but an element is
-// missing or not parseable policy JSON, so the caller does not merge a partial
-// document.
-func (d decoder) documents(attr *hcl.Attribute) ([]policyDocument, bool) {
-	if attr == nil {
-		return nil, true
-	}
-	v, ok := d.eval(attr.Expr)
+// documents reads source/override inputs without mistaking unknown members for
+// malformed JSON. Every known sibling is checked even when another is unknown.
+func (d decoder) documents(input Configuration, name string) []policyDocument {
+	v, ok := d.value(input, name)
 	if !ok {
-		return nil, false
+		if v != cty.NilVal {
+			d.state.documentIncomplete = true
+		}
+		return nil
 	}
-	v, _ = v.UnmarkDeep()
-	if v.IsNull() {
-		return nil, true
-	}
-	if !v.IsKnown() {
-		return nil, false
-	}
+	// Historical singular attributes are strings; plural attributes are collections.
+	// The document adapter retains its existing permissive recovered-text forms.
 	ty := v.Type()
-	if ty == cty.String {
-		s := toString(v)
-		if s == "" {
-			return nil, true
+	collection := ty.IsListType() || ty.IsTupleType() || ty.IsSetType()
+	plural := name == "source_policy_documents" || name == "override_policy_documents"
+	if plural != collection {
+		d.invalid(input, name, "has an incompatible policy document input shape")
+		if !d.document {
+			return nil
 		}
-		policy, ok := parsePolicyJSON(s)
-		if !ok {
-			return nil, false
+	}
+	if v.Type() == cty.String {
+		if v.AsString() == "" {
+			return nil
 		}
-		return []policyDocument{policy}, true
+		if document, ok := d.decodeDocument(input, name, v); ok {
+			return []policyDocument{document}
+		}
+		return nil
 	}
-	if !ty.IsListType() && !ty.IsTupleType() && !ty.IsSetType() {
-		return nil, false
+	if !collection {
+		d.state.documentIncomplete = true
+		d.invalid(input, name, "must contain policy JSON strings")
+		return nil
 	}
-	out := make([]policyDocument, 0, v.LengthInt())
+	var out []policyDocument
 	for it := v.ElementIterator(); it.Next(); {
-		_, elem := it.Element()
-		s := toString(elem)
-		if s == "" {
-			return nil, false
+		if d.ctx.Err() != nil {
+			d.state.unresolved = true
+			break
 		}
-		policy, ok := parsePolicyJSON(s)
-		if !ok {
-			return nil, false
+		_, value := it.Element()
+		if document, ok := d.decodeDocument(input, name, value); ok {
+			out = append(out, document)
 		}
-		out = append(out, policy)
 	}
-	return out, true
+	return out
+}
+
+func (d decoder) decodeDocument(input Configuration, name string, value cty.Value) (policyDocument, bool) {
+	value, _ = value.Unmark()
+	if !value.IsKnown() {
+		d.state.unresolved = true
+		d.state.documentIncomplete = true
+		return policyDocument{}, false
+	}
+	if !value.IsNull() && value.Type() == cty.String {
+		if policy, ok := parsePolicyJSON(value.AsString()); ok {
+			return policy, true
+		}
+	}
+	d.state.documentIncomplete = true
+	d.invalid(input, name, "contains invalid policy JSON")
+	return policyDocument{}, false
 }
 
 type renderedStatement struct {
