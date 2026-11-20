@@ -169,7 +169,8 @@ func TestInventoryKeyedRows(t *testing.T) {
 		"docker-compose.yml": "services:\n  web:\n    image: nginx:1.27\n  db:\n    image: postgres:16\n",
 		".github/workflows/ci.yml": "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test\n" +
 			"  _lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${{ github.sha }}\n" +
-			"  _dd_build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n",
+			"  _dd_build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n" +
+			"  _parsed_expressions_release:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make release\n",
 		"site.yml":                 inventoryPlaybook,
 		"roles/web/tasks/main.yml": "- name: Copy config\n  ansible.builtin.copy:\n    src: a\n    dest: b\n" +
 			"- name: Copy by action\n  action: ansible.builtin.copy src=a dest=b\n" +
@@ -201,6 +202,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 		// A job ID can start with an underscore, even like a scanner key.
 		{".github/workflows/ci.yml|jobs._lint", "github_actions_job", "_lint", 11, 14},
 		{".github/workflows/ci.yml|jobs._dd_build", "github_actions_job", "_dd_build", 15, 18},
+		{".github/workflows/ci.yml|jobs._parsed_expressions_release", "github_actions_job", "_parsed_expressions_release", 19, 22},
 		{"site.yml|plays[0].tasks[0]", "ansible.builtin.apt", "Install nginx", 3, 5},
 		{"site.yml|plays[0].tasks[1].block[0]", "ansible.builtin.service", "Start nginx", 7, 9},
 		{"site.yml|plays[0].handlers[0]", "ansible.builtin.service", "restart nginx", 11, 14},
@@ -213,7 +215,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 	} {
 		require.Equal(t, w, got[w.ref], w.ref)
 	}
-	require.Len(t, inv.Resources, 16)
+	require.Len(t, inv.Resources, 17)
 	require.Contains(t, inv.Files, inventory.File{Path: "data/cities.yml", Platform: "ansible", Status: inventory.FileScanned},
 		"the list is scanned as Ansible, yet gives no row")
 	for _, r := range inv.Resources {

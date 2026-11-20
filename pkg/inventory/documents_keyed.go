@@ -58,7 +58,8 @@ func (e *documentEnumerator) keyedRows(
 
 	rows := make([]Resource, 0, len(keys))
 	for _, key := range keys {
-		if isScannerKey(key) {
+		// A key the file spells is an entry, whatever its name.
+		if _, spelled := spans[key]; !spelled && isScannerKey(key) {
 			continue
 		}
 		row, ok := newRow(key, entries[key])
@@ -146,9 +147,10 @@ func searchKeySegment(key string) string {
 	return key
 }
 
-// isScannerKey reports a key the scanner adds to a document: its line
-// information or the parsed expressions of a workflow. Any other key is an
-// entry, whatever it starts with: a job ID can be _lint or _dd_build.
+// isScannerKey reports a key the scanner may add to a document: its line
+// information or the parsed expressions of a workflow. It applies to the keys
+// the file does not spell: a job ID can be _lint, _dd_build or even
+// _parsed_expressions_release.
 func isScannerKey(key string) bool {
 	return key == "_dd_lines" || strings.HasPrefix(key, "_parsed_expressions_")
 }
