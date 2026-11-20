@@ -54,7 +54,7 @@ func (e *documentEnumerator) keyedRows(
 
 	rows := make([]Resource, 0, len(keys))
 	for _, key := range keys {
-		if strings.HasPrefix(key, "_") {
+		if isScannerKey(key) {
 			continue
 		}
 		row, ok := newRow(key, entries[key])
@@ -130,6 +130,18 @@ func trimEnd(start, end int, lines []string) int {
 		end--
 	}
 	return max(end, start)
+}
+
+// isScannerKey reports a key the scanner adds to a document, such as line
+// information or the parsed expressions of a workflow. A job ID can start
+// with an underscore too.
+func isScannerKey(key string) bool {
+	for _, prefix := range []string{"_dd_", "_kics_", "_parsed_expressions_"} {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func cloudFormationRow(key string, value interface{}) (Resource, bool) {
