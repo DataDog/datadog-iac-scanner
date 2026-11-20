@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -490,4 +492,34 @@ func TestFindingSet_RecordsWhereDroppedDuplicatesWereRaised(t *testing.T) {
 		{Line: 11, SearchKey: "aws_s3_bucket[replica].acl"},
 		{FileID: "other", Line: 12, SearchKey: "aws_s3_bucket[replica].acl"},
 	}, got[0].AlsoRaisedOn)
+
+	// The same places whichever order the findings arrive in.
+	for _, order := range [][]model.Vulnerability{
+		{raised[0], raised[1], raised[2]},
+		{raised[2], raised[1], raised[0]},
+	} {
+		set := newFindingSet(true, nil)
+		set.recordDuplicates = true
+		again := decodeAll(set, order)
+		require.Equal(t, got[0].Line, again[0].Line)
+		require.Equal(t, got[0].AlsoRaisedOn, again[0].AlsoRaisedOn)
+	}
+
+	// Many occurrences arriving in reverse order replace the kept finding
+	// each time: the places are gathered once, not replayed on every change.
+	many := instanceFindings(3000, 1)
+	for _, reverse := range []bool{false, true} {
+		in := slices.Clone(many)
+		if reverse {
+			slices.Reverse(in)
+		}
+		set := newFindingSet(true, nil)
+		set.recordDuplicates = true
+		start := time.Now()
+		kept := decodeAll(set, in)
+		require.Len(t, kept, 1)
+		require.Equal(t, 1, kept[0].Line)
+		require.Len(t, kept[0].AlsoRaisedOn, 2999)
+		require.Less(t, time.Since(start), time.Second, "reverse=%v", reverse)
+	}
 }
