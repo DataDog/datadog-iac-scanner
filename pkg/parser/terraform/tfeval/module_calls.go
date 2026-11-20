@@ -528,7 +528,7 @@ func (e *Evaluator) evaluateModuleInputs(
 	observations := &bodyObservations{}
 	values := e.evalBodyWith(ctx, body, evalCtx, reservedModuleAttrs, &bodyState{observations: observations})
 	if observations.failure == nil {
-		return values
+		return values.configured
 	}
 	if scope.inputDiagnostics == nil {
 		scope.inputDiagnostics = map[EvaluationDiagnostic]struct{}{}
@@ -536,5 +536,5 @@ func (e *Evaluator) evaluateModuleInputs(
 	for _, diagnostic := range observations.failure.diagnostics {
 		scope.inputDiagnostics[diagnostic] = struct{}{}
 	}
-	return values
+	return values.configured
 }

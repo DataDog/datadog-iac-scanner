@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -55,6 +56,9 @@ type ResolvedResource struct {
 	// Nil means unexpanded; unknown means the concrete key is unresolved.
 	InstanceKey cty.Value
 	Attributes  map[string]cty.Value
+	// referenceAttrs overrides the configured projection only when dynamic shape
+	// is unresolved in this occurrence or a nested child. Immutable after evaluation.
+	referenceAttrs map[string]cty.Value
 	// Body is the resource's HCL body, used to recover the reference text of
 	// attributes evaluation could not resolve. It is not consulted during
 	// evaluation, so recovered references never feed back into resolved values.
@@ -1034,7 +1038,8 @@ func (e *Evaluator) expandBlock(
 		return ResolvedResource{
 			Type:                typeName,
 			Name:                name,
-			Attributes:          attrs,
+			Attributes:          attrs.configured,
+			referenceAttrs:      attrs.runtime,
 			diagnostics:         state.observations.failure,
 			DynamicCounts:       state.observations.counts,
 			documentScope:       state.document,
@@ -1158,7 +1163,7 @@ func injectResourceRefs(evalCtx *hcl.EvalContext, resources []ResolvedResource, 
 			b.expanded = true
 		}
 		b.keys = append(b.keys, key)
-		attrs := withReferencedResourceAttrs(referenceAttributes(r.Attributes), referenced[r.Type+"."+base])
+		attrs := withReferencedResourceAttrs(r.referenceAttributes(), referenced[r.Type+"."+base])
 		b.attrs = append(b.attrs, attrs)
 	}
 	if len(byType) == 0 {
@@ -1185,12 +1190,17 @@ const (
 	metaArgForEach = "for_each"
 )
 
-// referenceAttributes drops the count and for_each meta-arguments, which
+// referenceAttributes selects the evaluated reference projection, then drops
+// the count and for_each meta-arguments, which
 // Terraform does not expose on a resource instance. Every instance of a block
 // carries the whole for_each collection, so keeping it made the reference value
 // grow with the square of the instance count and comparing it, on every
 // reference pass, sort each copy.
-func referenceAttributes(attrs map[string]cty.Value) map[string]cty.Value {
+func (r *ResolvedResource) referenceAttributes() map[string]cty.Value {
+	attrs := r.Attributes
+	if r.referenceAttrs != nil {
+		attrs = r.referenceAttrs
+	}
 	_, hasCount := attrs[metaArgCount]
 	_, hasForEach := attrs[metaArgForEach]
 	if !hasCount && !hasForEach {
@@ -1361,7 +1371,7 @@ func (e *Evaluator) evalBodyWith(
 	evalCtx *hcl.EvalContext,
 	skip map[string]bool,
 	st *bodyState,
-) map[string]cty.Value {
+) evaluatedBody {
 	out := make(map[string]cty.Value, len(body.Attributes)+len(body.Blocks))
 
 	for name, attr := range body.Attributes {
@@ -1378,7 +1388,7 @@ func (e *Evaluator) evalBodyWith(
 		}
 	}
 
-	blocks := nestedBlocks{out: out}
+	blocks := bodyBlocks{configured: nestedBlocks{out: out}}
 	for _, b := range body.Blocks {
 		if ctx.Err() != nil {
 			break
@@ -1388,9 +1398,71 @@ func (e *Evaluator) evalBodyWith(
 			continue
 		}
 		path := append([]string{b.Type}, b.Labels...)
-		blocks.add(path, objectOrEmpty(e.evalBodyWith(ctx, b.Body, evalCtx, nil, st)))
+		blocks.add(path, e.evalBodyWith(ctx, b.Body, evalCtx, nil, st))
 	}
-	blocks.flushAll()
+	return blocks.finish()
+}
+
+// evaluatedBody retains the configured view for documents and an optional
+// reference projection. A nil runtime map shares the configured projection.
+type evaluatedBody struct {
+	configured map[string]cty.Value
+	runtime    map[string]cty.Value
+}
+
+// bodyBlocks composes both projections in the same evaluation traversal. The
+// runtime accumulator allocates only on a real difference, never on ordinary
+// known dynamic blocks or heterogeneous known child counts.
+type bodyBlocks struct {
+	configured nestedBlocks
+	runtime    *nestedBlocks
+	open       map[string]struct{}
+}
+
+func (b *bodyBlocks) fork() {
+	if b.runtime != nil {
+		return
+	}
+	b.configured.flushAll()
+	b.runtime = &nestedBlocks{out: maps.Clone(b.configured.out)}
+}
+
+func (b *bodyBlocks) add(path []string, child evaluatedBody) {
+	configured := objectOrEmpty(child.configured)
+	if child.runtime != nil {
+		b.fork()
+	}
+	if b.runtime != nil {
+		runtime := configured
+		if child.runtime != nil {
+			runtime = objectOrEmpty(child.runtime)
+		}
+		b.runtime.add(path, runtime)
+	}
+	b.configured.add(path, configured)
+}
+
+func (b *bodyBlocks) unresolved(path []string, generated string, child evaluatedBody) {
+	b.fork()
+	// The as-written dynamic block is presentation, not a runtime member.
+	b.configured.add(path, objectOrEmpty(child.configured))
+	if b.open == nil {
+		b.open = make(map[string]struct{})
+	}
+	b.open[generated] = struct{}{}
+}
+
+func (b *bodyBlocks) finish() evaluatedBody {
+	b.configured.flushAll()
+	out := evaluatedBody{configured: b.configured.out}
+	if b.runtime != nil {
+		b.runtime.flushAll()
+		for name := range b.open {
+			// No fixed tuple type: its known prefix does not prove its total length.
+			b.runtime.out[name] = cty.DynamicVal
+		}
+		out.runtime = b.runtime.out
+	}
 	return out
 }
 
@@ -1625,7 +1697,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			}
 			childChain := append(cloneChain(chain), instanceSite)
 			_, childOuts, err := e.evaluate(
-				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
+				ctx, call.dir, rootDir, call.packageRoot, modInputs.configured, instance.address(addr, call.label), childChain,
 				depth+1, tmpVisiting, map[string]bool{},
 			)
 			if err == nil {

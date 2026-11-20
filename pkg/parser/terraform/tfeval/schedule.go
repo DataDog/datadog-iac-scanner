@@ -371,6 +371,7 @@ func (s *resourceSchedule) cycle(component []int) {
 		rs := s.e.expandBlock(s.ctx, &copyBlock, s.base, s.addr, s.chain, b.Type == blockTypeData, nil)
 		for i := range rs {
 			rs[i].Body = b.Body
+			rs[i].referenceAttrs = nil
 			for name := range rs[i].Attributes {
 				rs[i].Attributes[name] = cty.DynamicVal
 			}
