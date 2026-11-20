@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
@@ -215,4 +216,40 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
 	require.NotNil(t, metadata.Inventory)
 	require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+	// The metadata path reaches the inventory's through symlinks: a link that
+	// points to it before it exists, and a link followed by "..", which the
+	// system resolves before going up.
+	aliases := t.TempDir()
+	elsewhere := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(elsewhere, "sub"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(elsewhere, "sub"), filepath.Join(aliases, "link")))
+	danglingInventory := filepath.Join(aliases, "inventory.json")
+	require.NoError(t, os.Symlink(danglingInventory, filepath.Join(aliases, "metadata.json")))
+	sep := string(filepath.Separator)
+	for _, tt := range []struct{ metadataPath, inventoryPath string }{
+		{filepath.Join(aliases, "metadata.json"), danglingInventory},
+		{aliases + sep + "link" + sep + ".." + sep + "inventory.json", filepath.Join(elsewhere, "inventory.json")},
+	} {
+		err = scanAction.Run(t.Context(), []string{
+			"scan",
+			"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+			"--type", "terraform",
+			"--output-path", t.TempDir(),
+			"--offline-bundle-path", bundleDir,
+			"--metadata-path", tt.metadataPath,
+			"--inventory-path", tt.inventoryPath,
+		})
+		require.ErrorAs(t, err, &exitErr)
+		require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+		metadataBytes, err = os.ReadFile(tt.metadataPath)
+		require.NoError(t, err, "the metadata is written")
+		metadata = scan.ScanMetadata{}
+		require.NoError(t, json.Unmarshal(metadataBytes, &metadata), tt.metadataPath)
+		require.NotNil(t, metadata.Inventory, tt.metadataPath)
+		require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason, tt.metadataPath)
+	}
 }

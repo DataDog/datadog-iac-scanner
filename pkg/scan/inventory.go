@@ -182,7 +182,7 @@ func (c *Client) inventoryPathConflict(path string) string {
 	// A scanned directory can hold the inventory; only the path itself is
 	// taken.
 	for _, input := range c.ScanParams.Path {
-		if input != "" && samePath(path, input) {
+		if input != "" && sameDestination(path, input) {
 			return "a scanned path"
 		}
 	}
@@ -190,65 +190,57 @@ func (c *Client) inventoryPathConflict(path string) string {
 }
 
 // destinationConflict reports whether two file destinations of a scan
-// collide, and how path stands to other: the same file, or one inside the
-// other, which would make a directory where the other file goes, whichever
-// is written first.
+// collide, and how path, the inventory's, stands to other: the same file, or
+// one inside the other, which would make a directory where the other file
+// goes, whichever is written first. Paths are compared as the writes reach
+// them; one that cannot be resolved, such as a symlink loop, is a conflict.
 func destinationConflict(path, other string) (relation string, ok bool) {
-	switch {
-	case other == "":
+	if other == "" {
 		return "", false
-	case samePath(path, other):
+	}
+	inventoryFile, otherFile, err := writtenFiles(path, other)
+	switch {
+	case err != nil || inventoryFile == otherFile || sameExistingFile(path, other):
 		return "", true
-	case isUnder(path, other):
+	case isUnder(inventoryFile, otherFile):
 		return "under ", true
-	case isUnder(other, path):
+	case isUnder(otherFile, inventoryFile):
 		return "above ", true
 	}
 	return "", false
 }
 
-// isUnder reports whether path lies inside dir, through symlinks.
-func isUnder(path, dir string) bool {
-	absPath, errPath := resolvedPath(path)
-	absDir, errDir := resolvedPath(dir)
-	if errPath != nil || errDir != nil {
-		return false
+// sameDestination reports whether the inventory's path reaches other.
+func sameDestination(path, other string) bool {
+	inventoryFile, otherFile, err := writtenFiles(path, other)
+	return err != nil || inventoryFile == otherFile || sameExistingFile(path, other)
+}
+
+// writtenFiles returns the files the inventory's path and other reach. The
+// inventory is renamed into place, which replaces a symlink at its path;
+// other is opened, which follows one, even one that points nowhere yet.
+func writtenFiles(path, other string) (inventoryFile, otherFile string, err error) {
+	if inventoryFile, err = inventory.ResolvePath(path, false); err != nil {
+		return "", "", err
 	}
-	rel, err := filepath.Rel(absDir, absPath)
+	if otherFile, err = inventory.ResolvePath(other, true); err != nil {
+		return "", "", err
+	}
+	return inventoryFile, otherFile, nil
+}
+
+// isUnder reports whether the resolved path lies inside the resolved dir.
+func isUnder(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// resolvedPath returns path made absolute, with the symlinks of the part of
-// it that exists resolved and the rest, not created yet, kept as written.
-func resolvedPath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	existing, rest := abs, ""
-	for {
-		if resolved, err := filepath.EvalSymlinks(existing); err == nil {
-			return filepath.Join(resolved, rest), nil
-		}
-		parent := filepath.Dir(existing)
-		if parent == existing {
-			return abs, nil
-		}
-		rest = filepath.Join(filepath.Base(existing), rest)
-		existing = parent
-	}
-}
-
-// samePath reports whether two paths name the same file, through symlinks.
-func samePath(a, b string) bool {
-	if ai, err := os.Stat(a); err == nil {
-		if bi, err := os.Stat(b); err == nil {
-			return os.SameFile(ai, bi)
-		}
-	}
-	absA, errA := resolvedPath(a)
-	absB, errB := resolvedPath(b)
-	return errA == nil && errB == nil && absA == absB
+// sameExistingFile reports whether two existing paths are one file, as hard
+// links are.
+func sameExistingFile(a, b string) bool {
+	ai, errA := os.Stat(a)
+	bi, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ai, bi)
 }
 
 // finishInventory writes the inventory and reports what happened. A failure
