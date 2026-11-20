@@ -644,13 +644,19 @@ func (f *FileMetadata) retainLineInfo() {
 	}
 }
 
-// dropRetainedLineInfo drops the tree of a file in a retention. It waits for
-// the file's current use of the tree to finish.
+// dropRetainedLineInfo drops the tree of a file displaced from its retention.
+// It waits for the file's current use of the tree to finish, and keeps the
+// tree if the file was used again, and so retained again, in the meantime.
 func (f *FileMetadata) dropRetainedLineInfo() {
 	st := f.lineInfo
 	st.mu.Lock()
-	f.LineInfoDocument = nil
-	st.mu.Unlock()
+	defer st.mu.Unlock()
+	r := st.retention
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !slices.Contains(r.files, f) {
+		f.LineInfoDocument = nil
+	}
 }
 
 // DiscardLineInfoDocument drops a memoized line-info tree while keeping the

@@ -132,6 +132,29 @@ func TestLineInfoRetention_keepsRecentTreesLoaded(t *testing.T) {
 	}
 }
 
+// TestLineInfoRetention_staleEvictionKeepsReusedTree checks that a file
+// displaced from the retention keeps its tree when it is used again before
+// the displacement gets to drop it.
+func TestLineInfoRetention_staleEvictionKeepsReusedTree(t *testing.T) {
+	var loads atomic.Int32
+	r := NewLineInfoRetention(1)
+	a, b := planWithLineInfo("a.json", &loads, r), planWithLineInfo("b.json", &loads, r)
+
+	useLineInfo(t, a)
+	displaced := r.touch(b) // b displaces a; dropping a's tree is still pending
+	require.Equal(t, []*FileMetadata{a}, displaced)
+	useLineInfo(t, a) // a decodes again, and is retained again
+	for _, f := range displaced {
+		f.dropRetainedLineInfo()
+	}
+	require.NotNil(t, a.LineInfoDocument, "a was used again, so it stays loaded")
+	require.Equal(t, int32(1), loads.Load())
+
+	// A file that is still displaced does lose its tree.
+	useLineInfo(t, b)
+	require.Nil(t, a.LineInfoDocument)
+}
+
 // TestLineInfoRetention_parallelDecoders checks that decoders of different
 // files, alternating between them, build each tree once when the retention
 // holds as many trees as there are decoders, and never deadlock or race.
