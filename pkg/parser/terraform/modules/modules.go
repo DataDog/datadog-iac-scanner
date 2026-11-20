@@ -1310,15 +1310,6 @@ func ParseTerraformModulesFromFiles(
 	return parseModulesByDir(ctx, fsys, files, moduleParseOptions{allowedFiles: allowedFiles}, 0)
 }
 
-// LoadTFFilesFromDir returns FileMetadata for top-level Terraform/OpenTofu
-// configuration files (.tf, .tofu, .tf.json, .tofu.json) in dir (no recursion —
-// a Terraform module is a single directory). When packageRoot is non-empty,
-// symlinked config files are included only when their targets stay within the
-// package root.
-func LoadTFFilesFromDir(ctx context.Context, dir, packageRoot string) (model.FileMetadatas, error) {
-	return LoadTFFilesFromDirWithLimit(ctx, dir, packageRoot, 0)
-}
-
 // DefaultMaxConfigFileBytes is the largest Terraform configuration file the
 // scan parses with its default --max-file-size of 5 MB (see MaxConfigFileBytesForScan).
 const DefaultMaxConfigFileBytes int64 = 5 * bytesPerMB
@@ -1336,18 +1327,23 @@ func MaxConfigFileBytesForScan(maxFileSizeMB int) int64 {
 	return max(int64(maxFileSizeMB)*bytesPerMB, 1)
 }
 
-// LoadTFFilesFromDirWithLimit is LoadTFFilesFromDir skipping configuration
-// files larger than a positive maxBytes: the scan would not parse them, so
-// module calls they declare could never be evaluated.
-func LoadTFFilesFromDirWithLimit(
-	ctx context.Context, dir, packageRoot string, maxBytes int64,
+// LoadTFFilesFromDir reads top-level Terraform/OpenTofu configuration
+// (.tf, .tofu, .tf.json, .tofu.json) from the supplied filesystem, without
+// recursion. Files larger than a positive maxBytes are skipped. A nil filesystem
+// uses disk. Symlinked config files must remain within packageRoot (or dir when
+// packageRoot is empty).
+func LoadTFFilesFromDir(
+	ctx context.Context, fsys vfs.FS, dir, packageRoot string, maxBytes int64,
 ) (model.FileMetadatas, error) {
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
 	ctx = WithMaxConfigFileBytes(ctx, maxBytes)
-	absDir, err := filepath.Abs(dir)
+	absDir, err := fsys.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolving module dir %q: %w", dir, err)
 	}
-	entries, err := os.ReadDir(absDir)
+	entries, err := fsys.ReadDir(absDir)
 	if err != nil {
 		return nil, fmt.Errorf("reading module dir %q: %w", absDir, err)
 	}
@@ -1357,12 +1353,12 @@ func LoadTFFilesFromDirWithLimit(
 		if !ok {
 			continue
 		}
-		if ConfigFileTooLarge(path, maxBytes) {
+		if ConfigFileTooLarge(fsys, path, maxBytes) {
 			contextLogger := logger.FromContext(ctx)
 			contextLogger.Debug().Msgf("Skipping module calls in %q: larger than %d bytes", path, maxBytes)
 			continue
 		}
-		data, readErr := ReadConfigFile(ctx, vfs.DiskFS{}, path, packageRoot)
+		data, readErr := ReadConfigFile(ctx, fsys, path, packageRoot)
 		if readErr != nil {
 			if errors.Is(readErr, ErrSkippedLinkPlaceholder) {
 				continue
@@ -1380,7 +1376,7 @@ func LoadTFFilesFromDirWithLimit(
 type maxConfigFileBytesKey struct{}
 
 // WithMaxConfigFileBytes scopes the configuration file cap of
-// LoadTFFilesFromDirWithLimit to ctx, for readers deep in module resolution.
+// LoadTFFilesFromDir to ctx, for readers deep in module resolution.
 func WithMaxConfigFileBytes(ctx context.Context, maxBytes int64) context.Context {
 	return context.WithValue(ctx, maxConfigFileBytesKey{}, maxBytes)
 }
@@ -1393,11 +1389,11 @@ func MaxConfigFileBytesFromContext(ctx context.Context) int64 {
 }
 
 // ConfigFileTooLarge reports whether the file at path exceeds a positive maxBytes.
-func ConfigFileTooLarge(path string, maxBytes int64) bool {
+func ConfigFileTooLarge(fsys vfs.FS, path string, maxBytes int64) bool {
 	if maxBytes <= 0 {
 		return false
 	}
-	info, err := os.Stat(path)
+	info, err := fsys.Stat(path)
 	return err == nil && info.Size() > maxBytes
 }
 

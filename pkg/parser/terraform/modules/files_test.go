@@ -22,7 +22,7 @@ func TestLoadTFFilesFromDirSkipsSymlinks(t *testing.T) {
 	require.NoError(t, os.WriteFile(outside, []byte(`resource "x" "outside" {}`), 0o644))
 	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linked.tf")))
 
-	files, err := LoadTFFilesFromDir(t.Context(), dir, "")
+	files, err := LoadTFFilesFromDir(t.Context(), nil, dir, "", 0)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, mainPath, files[0].FilePath)
@@ -38,7 +38,7 @@ func TestLoadTFFilesFromDirIncludesConfinedPackageSymlinks(t *testing.T) {
 	require.NoError(t, os.WriteFile(sharedMain, []byte(`resource "x" "shared" {}`), 0o644))
 	require.NoError(t, os.Symlink(sharedMain, filepath.Join(selected, "linked.tf")))
 
-	files, err := LoadTFFilesFromDir(t.Context(), selected, packageRoot)
+	files, err := LoadTFFilesFromDir(t.Context(), nil, selected, packageRoot, 0)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, filepath.Join(selected, "linked.tf"), files[0].FilePath)
@@ -52,7 +52,7 @@ func TestLoadTFFilesFromDir_KeepsTofuAndTf(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf.json"), []byte(`{"resource":{}}`), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tofu.json"), []byte(`{"resource":{}}`), 0o644))
 
-	files, err := LoadTFFilesFromDir(t.Context(), dir, "")
+	files, err := LoadTFFilesFromDir(t.Context(), nil, dir, "", 0)
 	require.NoError(t, err)
 	got := make([]string, 0, len(files))
 	for _, f := range files {
@@ -184,4 +184,44 @@ func TestConfigPlaceholdersRespectBoundaryAndSize(t *testing.T) {
 	data, err := ReadConfigFile(t.Context(), vfs.NewMemFS(map[string][]byte{path: []byte("../target.tf")}), path, repo)
 	require.NoError(t, err)
 	require.Equal(t, "../target.tf", string(data), "pushed content must never follow host files")
+}
+
+func TestLoadTFFilesFromDirFilesystemAuthority(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.tf")
+	host := `resource "x" "host" {}`
+	owned := `resource "x" "owned" {}`
+	require.NoError(t, os.WriteFile(path, []byte(host), 0o600))
+	for _, tc := range []struct {
+		name    string
+		fs      vfs.FS
+		dir     string
+		limit   int64
+		want    string
+		count   int
+		wantErr bool
+	}{
+		{name: "owned conflict", fs: vfs.NewMemFS(map[string][]byte{path: []byte(owned)}), dir: dir, want: owned, count: 1},
+		{name: "owned size admits", fs: vfs.NewMemFS(map[string][]byte{path: []byte("{}")}), dir: dir, limit: 2, want: "{}", count: 1},
+		{name: "owned size", fs: vfs.NewMemFS(map[string][]byte{path: []byte(owned)}), dir: dir, limit: 1, count: 0},
+		{name: "missing never host", fs: vfs.NewMemFS(nil), dir: dir, wantErr: true},
+		{name: "relative owned", fs: vfs.NewMemFS(map[string][]byte{"pushed/main.tf": []byte(owned)}), dir: "pushed", want: owned, count: 1},
+		{name: "default disk", dir: dir, want: host, count: 1},
+		{name: "explicit disk", fs: vfs.DiskFS{}, dir: dir, want: host, count: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := LoadTFFilesFromDir(t.Context(), tc.fs, tc.dir, "", tc.limit)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Empty(t, files)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, files, tc.count)
+			if tc.count > 0 {
+				require.Equal(t, tc.want, files[0].OriginalData)
+				require.Equal(t, filepath.Join(tc.dir, "main.tf"), files[0].FilePath)
+			}
+		})
+	}
 }
