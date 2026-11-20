@@ -234,6 +234,26 @@ func validateQueriesPaths(paths []string) ([]string, error) {
 }
 
 // nolint:gocyclo
+// createOutputDirs creates the directories the scan writes to. The
+// inventory's is the exception: when it cannot be created the scan still
+// runs, and its metadata reports the inventory as failed.
+func createOutputDirs(outputPath, payloadPath, inventoryPath string) error {
+	if outputPath != "" {
+		if err := os.MkdirAll(outputPath, dirPerms); err != nil {
+			return err
+		}
+	}
+	if payloadPath != "" {
+		if err := os.MkdirAll(filepath.Dir(payloadPath), dirPerms); err != nil {
+			return err
+		}
+	}
+	if inventoryPath != "" {
+		_ = os.MkdirAll(filepath.Dir(inventoryPath), dirPerms)
+	}
+	return nil
+}
+
 func runScan(ctx context.Context, c *cli.Command) error {
 	if c.Args().Len() > 0 {
 		return fmt.Errorf("unexpected arguments: %v", c.Args().Slice())
@@ -255,18 +275,8 @@ func runScan(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if outputPath != "" {
-		if err := os.MkdirAll(outputPath, dirPerms); err != nil {
-			return err
-		}
-	}
-	for _, filePath := range []string{payloadPath, inventoryPath} {
-		if filePath == "" {
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(filePath), dirPerms); err != nil {
-			return err
-		}
+	if err := createOutputDirs(outputPath, payloadPath, inventoryPath); err != nil {
+		return err
 	}
 
 	repoInfo, repoDir, err := getRepositoryCommitInfo(inputPaths)
