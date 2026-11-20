@@ -158,6 +158,11 @@ type lineInfoState struct {
 	// The file itself stays out of it, because its own tree is edited after
 	// instantiation (instantiated resources are removed from it).
 	copies *lineInfoGroup
+	// sectionLoader builds a section of the tree that the loader leaves out,
+	// for the findings that need it (see UseLineInfoDocumentSections);
+	// sectionsMissing are the sections it could not build, not asked again.
+	sectionLoader   func(ctx context.Context, f *FileMetadata, name string) (interface{}, bool)
+	sectionsMissing map[string]struct{}
 	// retention, when set, keeps the file's tree loaded across decode passes
 	// (see LineInfoRetention) instead of discarding it after each use.
 	retention *LineInfoRetention
@@ -392,6 +397,17 @@ func (f *FileMetadata) SetLineInfoLoader(
 		return
 	}
 	f.lineInfo = &lineInfoState{loader: loader}
+}
+
+// SetLineInfoSectionLoader sets how a top-level section the line-info loader
+// leaves out is built on demand, from the file's OriginalData. Call it after
+// SetLineInfoLoader.
+func (f *FileMetadata) SetLineInfoSectionLoader(
+	loader func(ctx context.Context, fm *FileMetadata, name string) (interface{}, bool),
+) {
+	if f.lineInfo != nil {
+		f.lineInfo.sectionLoader = loader
+	}
 }
 
 // cloneLineInfoState returns a lazy state that shares loader and, with every
@@ -695,6 +711,16 @@ func (f *FileMetadata) EnsureLineInfoDocument(ctx context.Context) error {
 // serialize on the file. The decode loop owns discarding trees between
 // files (see DiscardLineInfoDocument); fn must not retain the map.
 func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[string]interface{}) error) error {
+	return f.UseLineInfoDocumentSections(ctx, nil, fn)
+}
+
+// UseLineInfoDocumentSections is UseLineInfoDocument with the given sections
+// of the tree built first, when its loader leaves them out (see
+// SetLineInfoSectionLoader): a section is built once, the first time a
+// finding needs it, and stays with the tree until it is dropped.
+func (f *FileMetadata) UseLineInfoDocumentSections(
+	ctx context.Context, sections []string, fn func(map[string]interface{}) error,
+) error {
 	st := f.lineInfo
 	if st == nil {
 		// No lazy loader configured: the document (if any) was populated at
@@ -708,6 +734,7 @@ func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[stri
 		if err := f.ensureLineInfoDocumentLocked(ctx); err != nil {
 			return err
 		}
+		f.ensureLineInfoSectionsLocked(ctx, sections)
 		if st.group != nil {
 			// The group owns the shared tree; this copy only holds it while in use,
 			// so discarding the group releases it.
@@ -717,6 +744,32 @@ func (f *FileMetadata) UseLineInfoDocument(ctx context.Context, fn func(map[stri
 	}()
 	f.retainLineInfo()
 	return err
+}
+
+// ensureLineInfoSectionsLocked builds the sections of the tree that are not
+// there yet. A tree shared by copies of a file is read-only, so none is added
+// to it.
+func (f *FileMetadata) ensureLineInfoSectionsLocked(ctx context.Context, sections []string) {
+	st := f.lineInfo
+	if st.sectionLoader == nil || st.group != nil || f.LineInfoDocument == nil {
+		return
+	}
+	for _, name := range sections {
+		if _, built := f.LineInfoDocument[name]; built {
+			continue
+		}
+		if _, missing := st.sectionsMissing[name]; missing {
+			continue
+		}
+		if section, ok := st.sectionLoader(ctx, f, name); ok {
+			f.LineInfoDocument[name] = section
+			continue
+		}
+		if st.sectionsMissing == nil {
+			st.sectionsMissing = make(map[string]struct{})
+		}
+		st.sectionsMissing[name] = struct{}{}
+	}
 }
 
 func (f *FileMetadata) ensureLineInfoDocumentLocked(ctx context.Context) error {

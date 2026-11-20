@@ -209,6 +209,9 @@ func (s *Service) sinkDocument(
 		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
 	if documents.Kind == model.KindTerraformPlan {
 		file.SetLineInfoRetention(s.planLineInfoRetention())
+		if !s.LineInfoPayload {
+			file.SetLineInfoSectionLoader(newLineInfoSectionLoader(s.Parser, filename))
+		}
 	}
 	// Lazy lines, as in sinkContent.
 	file.SetLazyLines()

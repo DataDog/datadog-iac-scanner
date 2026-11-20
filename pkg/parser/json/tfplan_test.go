@@ -2362,11 +2362,22 @@ func TestParseLineInfo_tfplanMatchesParseResourceSection(t *testing.T) {
 	docs, ok := (&Parser{}).ParseLineInfo(content, "plan.json")
 	require.True(t, ok)
 	require.Len(t, docs, 1)
-	require.ElementsMatch(t, []string{"resource", "configuration", "resource_changes"}, keysOf(docs[0]))
+	require.ElementsMatch(t, []string{"resource", "configuration"}, keysOf(docs[0]))
 	whole := wholePlanParse(t, content)
-	for _, section := range []string{"resource", "configuration", "resource_changes"} {
+	for _, section := range []string{"resource", "configuration"} {
 		require.JSONEq(t, mustJSON(t, whole[section]), mustJSON(t, docs[0][section]), section)
 	}
+
+	// The change list is built on demand, annotated as a whole parse is.
+	changes, ok := (&Parser{}).ParseLineInfoSection(content, "plan.json", "resource_changes")
+	require.True(t, ok)
+	require.JSONEq(t, mustJSON(t, whole["resource_changes"]), mustJSON(t, changes))
+	for _, name := range []string{"resource", "configuration", "missing"} {
+		_, ok = (&Parser{}).ParseLineInfoSection(content, "plan.json", name)
+		require.False(t, ok, "%s is not a lazy section", name)
+	}
+	_, ok = (&Parser{}).ParseLineInfoSection([]byte(`{"Resources": {}}`), "plan.json", "resource_changes")
+	require.False(t, ok, "other JSON has none")
 
 	_, ok = (&Parser{}).ParseLineInfo([]byte(`{"Resources": {}}`), "plan.json")
 	require.False(t, ok, "other JSON is parsed whole")
@@ -2377,6 +2388,8 @@ func TestParseLineInfo_tfplanMatchesParseResourceSection(t *testing.T) {
 	withFile := strings.Replace(sectionsPlan, `"logs-planned"`, `"policy.json"`, 1)
 	_, ok = p.ParseLineInfo([]byte(withFile), plan)
 	require.False(t, ok, "a plan referencing a file is parsed whole")
+	_, ok = p.ParseLineInfoSection([]byte(withFile), plan, "resource_changes")
+	require.False(t, ok, "its whole parse already holds every section")
 }
 
 // TestParse_tfplanHeaderLinesFollowTheirSection checks that a resource that

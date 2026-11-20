@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	iniHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
@@ -606,4 +607,46 @@ func TestSink_planLineInfoRetention(t *testing.T) {
 	exported := sinkFileWith(t, add, "plan.json", plan, func(s *Service) { s.LineInfoPayload = true })
 	use(exported)
 	require.Nil(t, exported.LineInfoDocument)
+}
+
+// TestSink_planChangeSectionBuiltForAnchoredKeys checks that a scan's plan
+// line-info holds the change list only for a finding whose search key reads
+// it, and that the finding then gets its exact line.
+func TestSink_planChangeSectionBuiltForAnchoredKeys(t *testing.T) {
+	plan := []byte(`{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {}
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.main",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ]
+      }
+    }
+  ]
+}`)
+	p := &jsonParser.Parser{}
+	file := sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(p) }, "plan.json", plan)
+	ctx := context.Background()
+	detect := func(searchKey string) (line int, hasChanges bool) {
+		require.NoError(t, file.UseLineInfoDocumentSections(ctx, detector.LineInfoSections(file.Kind, searchKey),
+			func(doc map[string]interface{}) error {
+				line = detector.NewDetectLine(0).DetectLine(ctx, file, searchKey).Line
+				_, hasChanges = doc["resource_changes"]
+				return nil
+			}))
+		return line, hasChanges
+	}
+
+	_, hasChanges := detect("aws_s3_bucket[main].acl")
+	require.False(t, hasChanges, "not built for a key that does not read it")
+
+	line, hasChanges := detect("address={{aws_s3_bucket.main}}.change.actions[1]")
+	require.True(t, hasChanges)
+	require.Equal(t, 12, line)
 }

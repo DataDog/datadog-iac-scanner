@@ -519,6 +519,15 @@ func newLineInfoLoader(
 		})
 }
 
+// newLineInfoSectionLoader builds a line-info section the loader leaves out,
+// from the file's OriginalData, as the loader reads it.
+func newLineInfoSectionLoader(p *parser.Parser, filename string,
+) func(ctx context.Context, f *model.FileMetadata, name string) (interface{}, bool) {
+	return func(_ context.Context, f *model.FileMetadata, name string) (interface{}, bool) {
+		return p.ParseLineInfoSection(filename, []byte(f.OriginalData), name)
+	}
+}
+
 func newLineInfoLoaderWithReparser(
 	filename string,
 	docIdx int,

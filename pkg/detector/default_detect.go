@@ -173,6 +173,24 @@ func detectTerraformPlanLine(
 	}
 }
 
+// LineInfoSections returns the sections of a file's line-info document, beyond
+// the ones it always holds, that line detection reads to locate searchKey:
+// for a Terraform plan, the change list under a key rooted at it or an
+// anchored key selecting one of its changes.
+func LineInfoSections(kind model.FileKind, searchKey string) []string {
+	if kind != model.KindTerraformPlan {
+		return nil
+	}
+	if comps := expandSearchKeyPath(searchKey); len(comps) > 0 && comps[0] == "resource_changes" {
+		return []string{"resource_changes"}
+	}
+	segments, extracted := splitSearchKeySegments(searchKey)
+	if _, _, anchored := parseAnchoredPrefix(segments, extracted); anchored {
+		return []string{"resource_changes"}
+	}
+	return nil
+}
+
 // terraformPlanDeclarationPath returns the plan path of a searchKey on a
 // declaration that only the plan's configuration holds: a path rooted at
 // "configuration" as it is, and an HCL-style "output[name]" or

@@ -30,6 +30,13 @@ type lineInfoParser interface {
 	ParseLineInfo(content []byte, filePath string) (documents []model.Document, ok bool)
 }
 
+// lineInfoSectionParser is an optional parser capability to build a section
+// of the line-info document that ParseLineInfo leaves out, when a finding
+// needs it. ok is false when the parser has no such section for the content.
+type lineInfoSectionParser interface {
+	ParseLineInfoSection(content []byte, filePath, name string) (section interface{}, ok bool)
+}
+
 // unannotatedParser is an optional parser capability to build documents
 // without line markers, for parses marked WithLazyLineInfo. ok is false when
 // the content needs a full parse.
@@ -288,6 +295,15 @@ func (c *Parser) parseContent(
 		IsMinified:         isMinified,
 		DirectoryDependent: directoryDependent,
 	}, nil
+}
+
+// ParseLineInfoSection builds a line-info section of content that a
+// line-info reparse leaves out, when the parser can.
+func (c *Parser) ParseLineInfoSection(filePath string, content []byte, name string) (section interface{}, ok bool) {
+	if sp, isSectionParser := c.Parsers.(lineInfoSectionParser); isSectionParser {
+		return sp.ParseLineInfoSection(content, filePath, name)
+	}
+	return nil, false
 }
 
 // parseDocuments parses fileContent with the parser, without line markers

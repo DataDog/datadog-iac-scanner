@@ -176,6 +176,43 @@ func TestLineInfoRetention_overcommittedDecodersStayCorrect(t *testing.T) {
 	wg.Wait()
 }
 
+// TestUseLineInfoDocumentSections_buildsSectionsOnDemand checks that a section
+// the loader leaves out is built the first time a finding asks for it, again
+// after its tree is dropped, and not asked for again when it cannot be built.
+func TestUseLineInfoDocumentSections_buildsSectionsOnDemand(t *testing.T) {
+	ctx := context.Background()
+	var loads, sectionLoads atomic.Int32
+	r := NewLineInfoRetention(1)
+	fm := planWithLineInfo("a.json", &loads, r)
+	fm.SetLineInfoSectionLoader(func(_ context.Context, _ *FileMetadata, name string) (interface{}, bool) {
+		sectionLoads.Add(1)
+		return []interface{}{name}, name == "resource_changes"
+	})
+	has := func(doc map[string]interface{}, name string) bool { _, ok := doc[name]; return ok }
+	use := func(sections ...string) (built bool) {
+		require.NoError(t, fm.UseLineInfoDocumentSections(ctx, sections, func(doc map[string]interface{}) error {
+			built = has(doc, "resource_changes")
+			return nil
+		}))
+		return built
+	}
+
+	require.False(t, use(), "not built for a finding that does not need it")
+	require.Equal(t, int32(0), sectionLoads.Load())
+	require.True(t, use("resource_changes"))
+	require.True(t, use("resource_changes"))
+	require.Equal(t, int32(1), sectionLoads.Load(), "built once")
+
+	other := planWithLineInfo("b.json", &loads, r)
+	useLineInfo(t, other) // displaces a's tree, and its section with it
+	require.True(t, use("resource_changes"))
+	require.Equal(t, int32(2), sectionLoads.Load(), "rebuilt with the tree it belongs to")
+
+	use("unbuildable")
+	use("unbuildable")
+	require.Equal(t, int32(3), sectionLoads.Load(), "a section that cannot be built is asked for once")
+}
+
 // TestLineInfoRetention_noneKeepsExportedTrees checks that without a
 // retention, as in a scan exporting line-info documents, loading other plans
 // never drops a tree.

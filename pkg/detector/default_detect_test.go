@@ -602,6 +602,13 @@ func Test_detectLineTerraformPlanAnchoredChange(t *testing.T) {
 	lineInfo, ok := p.ParseLineInfo([]byte(plan), "plan.json")
 	require.True(t, ok)
 
+	// The scan's line-info document gets the change list when a key needs it.
+	changes, ok := p.ParseLineInfoSection([]byte(plan), "plan.json", "resource_changes")
+	require.True(t, ok)
+	require.Equal(t, []string{"resource_changes"},
+		LineInfoSections(model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions[1]"))
+	lineInfo[0]["resource_changes"] = changes
+
 	for name, doc := range map[string]model.Document{"whole parse": whole[0], "line-info reparse": lineInfo[0]} {
 		file := &model.FileMetadata{
 			Kind:              model.KindTerraformPlan,
@@ -802,6 +809,26 @@ func Test_defaultDetectLine_prepareResolvedFiles(t *testing.T) {
 			if got := d.prepareResolvedFiles(tt.args.resFiles); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("prepareResolvedFiles() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func Test_LineInfoSections(t *testing.T) {
+	for name, tt := range map[string]struct {
+		kind      model.FileKind
+		searchKey string
+		want      []string
+	}{
+		"anchored change key":     {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions[0]", []string{"resource_changes"}},
+		"key rooted at changes":   {model.KindTerraformPlan, "resource_changes[0].change.actions", []string{"resource_changes"}},
+		"resource key":            {model.KindTerraformPlan, "aws_s3_bucket[main].acl", nil},
+		"declaration key":         {model.KindTerraformPlan, "configuration.root_module.outputs.name", nil},
+		"encoded attribute key":   {model.KindTerraformPlan, "aws_iam_role[deploy].assume_role_policy.Statement[0]", nil},
+		"anchored key, not plan":  {model.KindYAML, "name={{task}}.{{module}}.policy.Statement[0]", nil},
+		"changes key, not a plan": {model.KindJSON, "resource_changes[0]", nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tt.want, LineInfoSections(tt.kind, tt.searchKey))
 		})
 	}
 }

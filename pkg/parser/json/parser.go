@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
@@ -94,6 +95,27 @@ func (p *Parser) ParseLineInfo(fileContent []byte, filePath string) (documents [
 // the plan was most of its parse. ok is false as for ParseLineInfo.
 func (p *Parser) ParseUnannotated(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
 	return p.planDocuments(fileContent, filePath, parseTFPlanContent)
+}
+
+// ParseLineInfoSection returns a line-info section that ParseLineInfo leaves
+// out (see lazyLineInfoSections), annotated as a whole parse annotates it.
+// ok is false for any other section or content, and for a plan referencing
+// files, whose line-info document comes from a whole parse that holds every
+// section.
+func (p *Parser) ParseLineInfoSection(fileContent []byte, filePath, name string) (annotated interface{}, ok bool) {
+	if !slices.Contains(lazyLineInfoSections, name) ||
+		!looksLikeTerraformPlan(fileContent) || p.mayResolve(fileContent, filePath) {
+		return nil, false
+	}
+	sections, ok := topLevelSections(fileContent)
+	if !ok {
+		return nil, false
+	}
+	section, ok := sections[name]
+	if !ok {
+		return nil, false
+	}
+	return annotatedSection(fileContent, name, &section)
 }
 
 // planDocuments parses fileContent with parse when it is a Terraform plan

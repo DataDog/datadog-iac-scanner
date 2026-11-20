@@ -585,9 +585,15 @@ func detachedValue(r *gjson.Result) any {
 
 // lineInfoSections are the sections of a plan other than its resources that
 // the line-info document holds, annotated: line detection resolves paths
-// under "resource" (see the detector's terraformPlanPath), "configuration"
-// (outputs, variables) and "resource_changes" (anchored search keys).
-var lineInfoSections = []string{"configuration", "resource_changes"}
+// under "resource" (see the detector's terraformPlanPath) and
+// "configuration" (outputs, variables). The change list, which only anchored
+// search keys read, is a lazy section (see lazyLineInfoSections).
+var lineInfoSections = []string{"configuration"}
+
+// lazyLineInfoSections are the sections built only for the findings that need
+// them: annotating resource_changes is a third of a large plan's line-info
+// cost, for search keys that few rules use.
+var lazyLineInfoSections = []string{"resource_changes"}
 
 // parseTFPlanLineInfo builds the line-info document of a plan for line
 // detection: the "resource" section of the parseTFPlan document, read from
