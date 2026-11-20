@@ -241,7 +241,7 @@ func NewWithFS(fsys vfs.FS) *Evaluator {
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		parseMu:          &sync.Mutex{},
 		dirCache:         make(map[string]dirParse),
-		funcFS:           tffunctions.NewScanFS(vfs.DiskFS{}),
+		funcFS:           tffunctions.NewScanFS(fsys),
 		notEvaluatedDirs: make(map[string]bool),
 		fsys:             fsys,
 	}
@@ -380,7 +380,7 @@ func (e *Evaluator) ReleaseCaches() {
 	e.parseMu.Lock()
 	e.dirCache = make(map[string]dirParse)
 	e.parseMu.Unlock()
-	e.funcFS = tffunctions.NewScanFS(vfs.DiskFS{})
+	e.funcFS = tffunctions.NewScanFS(e.fsys)
 }
 
 // ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL

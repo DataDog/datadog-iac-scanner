@@ -499,16 +499,33 @@ resource "aws_s3_bucket" "b%d" {
 }
 
 func TestParser_EvaluatesFileFunction(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("hello"), 0o644))
-	src := []byte(`resource "t" "x" { n = file("note.txt") }`)
-	tf := filepath.Join(dir, "main.tf")
-	parser := NewDefault()
-	_, docs, _, _, err := parser.Parse(context.Background(), src, tf, false, 0)
-	require.NoError(t, err)
-	require.Len(t, docs, 1)
-	n := docs[0]["resource"].(model.Document)["t"].(model.Document)["x"].(model.Document)["n"].(ctyjson.SimpleJSONValue)
-	require.True(t, n.Value.RawEquals(cty.StringVal("hello")))
+	for _, backend := range []string{"disk", "memory"} {
+		t.Run(backend, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "note.txt"), []byte("host"), 0600))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "host-only.txt"), []byte("host-only"), 0600))
+			src := []byte(`resource "t" "x" {
+ n=file("note.txt")
+ absent=try(file("host-only.txt"),"caught")
+}`)
+			tf := filepath.Join(dir, "main.tf")
+			var fsys vfs.FS = vfs.DiskFS{}
+			want, absent := "host", "host-only"
+			if backend == "memory" {
+				fsys = vfs.NewMemFS(map[string][]byte{tf: src, filepath.Join(dir, "note.txt"): []byte("owned")})
+				want, absent = "owned", "caught"
+			}
+			parser := NewDefaultWithParams(fsys, "", model.SCIInfo{})
+			_, docs, _, _, err := parser.Parse(context.Background(), src, tf, false, 0)
+			require.NoError(t, err)
+			require.Len(t, docs, 1)
+			values := docs[0]["resource"].(model.Document)["t"].(model.Document)["x"].(model.Document)
+			for name, expected := range map[string]string{"n": want, "absent": absent} {
+				actual := values[name].(ctyjson.SimpleJSONValue)
+				require.True(t, actual.Value.RawEquals(cty.StringVal(expected)))
+			}
+		})
+	}
 }
 
 func TestParser_WrapsEscapingFileFunction(t *testing.T) {
