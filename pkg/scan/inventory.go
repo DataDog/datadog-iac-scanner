@@ -71,6 +71,11 @@ func (run *inventoryRun) noteTooLarge(tooLarge map[string]string) {
 	}
 }
 
+// writes reports whether the scan will write an inventory at its path.
+func (run *inventoryRun) writes() bool {
+	return run != nil && run.failure == nil
+}
+
 // sink is where the engine reports resources, nil without an inventory.
 func (run *inventoryRun) sink() engine.InventorySink {
 	if run == nil {

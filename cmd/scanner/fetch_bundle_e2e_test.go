@@ -170,4 +170,28 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 		require.Equal(t, scan.InventoryFailed, metadata.Inventory.Status)
 		require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
 	}
+
+	// An inventory directory is created after the reports, so it cannot take
+	// the place of one: here it would be named as the SARIF report is.
+	freshOutput := filepath.Join(t.TempDir(), "out")
+	err = scanAction.Run(t.Context(), []string{
+		"scan",
+		"--path", filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"),
+		"--type", "terraform",
+		"--output-path", freshOutput,
+		"--offline-bundle-path", bundleDir,
+		"--metadata-path", metadataPath,
+		"--inventory-path", filepath.Join(freshOutput, "datadog-iac-scanner-result.sarif", "inventory.json"),
+	})
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+	report, err := os.ReadFile(filepath.Join(freshOutput, "datadog-iac-scanner-result.sarif"))
+	require.NoError(t, err, "the report is a file")
+	require.Contains(t, string(report), "terraform-s3-bucket-versioning-disabled")
+	metadataBytes, err = os.ReadFile(filepath.Clean(metadataPath))
+	require.NoError(t, err)
+	metadata = scan.ScanMetadata{}
+	require.NoError(t, json.Unmarshal(metadataBytes, &metadata))
+	require.NotNil(t, metadata.Inventory)
+	require.Equal(t, scan.InventoryFailed, metadata.Inventory.Status)
 }

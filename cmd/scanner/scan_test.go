@@ -274,13 +274,11 @@ func TestCreateOutputDirs(t *testing.T) {
 	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
 
 	out := filepath.Join(root, "out")
-	inventory := filepath.Join(root, "inv", "inventory.json")
-	require.NoError(t, createOutputDirs(out, "", inventory))
+	payload := filepath.Join(root, "payload", "payload.json")
+	require.NoError(t, createOutputDirs(out, payload))
 	require.DirExists(t, out)
-	require.DirExists(t, filepath.Dir(inventory))
+	require.DirExists(t, filepath.Dir(payload))
 
-	require.NoError(t, createOutputDirs(out, "", filepath.Join(blocker, "sub", "inventory.json")),
-		"an inventory directory that cannot be created does not stop the scan")
-	require.Error(t, createOutputDirs(out, filepath.Join(blocker, "sub", "payload.json"), ""),
-		"a payload directory that cannot be created still does")
+	require.Error(t, createOutputDirs(out, filepath.Join(blocker, "sub", "payload.json")),
+		"a payload directory that cannot be created stops the scan")
 }

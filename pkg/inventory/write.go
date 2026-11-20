@@ -18,7 +18,10 @@ import (
 	"time"
 )
 
-const filePerms = 0o644
+const (
+	filePerms = 0o644
+	dirPerms  = 0o755
+)
 
 // ErrNotInventory reports something at the inventory path that no scan wrote
 // as an inventory, such as a report or a scanned file: it must be neither
@@ -66,6 +69,11 @@ func isInventory(path string) bool {
 // in the same directory and renamed into place, so a reader finds either no
 // file or a complete one.
 func WriteFile(path string, inv *Inventory) error {
+	// Created only now, after the reports: an inventory directory must never
+	// take the place of a report.
+	if err := os.MkdirAll(filepath.Dir(path), dirPerms); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return err

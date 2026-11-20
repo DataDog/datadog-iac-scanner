@@ -447,7 +447,9 @@ func (c *Client) getFileSystemSourceProvider(
 	if c.ScanParams.PayloadPath != "" {
 		excludePaths = append(excludePaths, c.ScanParams.PayloadPath)
 	}
-	if c.ScanParams.InventoryPath != "" {
+	// The inventory's own file is not scanned. A path the inventory refused,
+	// such as a source file, stays a scanned file.
+	if c.ScanParams.InventoryPath != "" && c.inventory.writes() {
 		excludePaths = append(excludePaths, c.ScanParams.InventoryPath)
 	}
 

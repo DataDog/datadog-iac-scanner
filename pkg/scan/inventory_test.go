@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -296,6 +297,21 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 		})
 	}
 
+	t.Run("a scanned file stays scanned", func(t *testing.T) {
+		withoutSARIF, _ := performInventoryScan(t, t.TempDir(), "")
+		source, err := filepath.Abs(filepath.Join("test", "sample.tf"))
+		require.NoError(t, err)
+		original, err := os.ReadFile(source)
+		require.NoError(t, err)
+
+		withSARIF, metadata := performInventoryScan(t, t.TempDir(), source)
+		require.Equal(t, string(withoutSARIF), string(withSARIF), "the refused path is still scanned")
+		require.Equal(t, InventoryReasonPathConflict, metadata.Inventory.Reason)
+		data, err := os.ReadFile(source)
+		require.NoError(t, err)
+		require.Equal(t, string(original), string(data))
+	})
+
 	t.Run("the metadata path before it is written", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "out", "..", "metadata.json")
 		c := &Client{ScanParams: &Parameters{InventoryPath: filepath.Clean(path), MetadataPath: path}}
@@ -317,7 +333,13 @@ func TestInventoryFailuresDoNotFailTheScan(t *testing.T) {
 	})
 
 	t.Run("the file cannot be written", func(t *testing.T) {
-		inventoryPath := filepath.Join(t.TempDir(), "missing", "inventory.json")
+		if runtime.GOOS == "windows" {
+			t.Skip("a read-only directory does not stop writes on Windows")
+		}
+		readOnly := t.TempDir()
+		require.NoError(t, os.Chmod(readOnly, 0o500))
+		t.Cleanup(func() { _ = os.Chmod(readOnly, 0o700) })
+		inventoryPath := filepath.Join(readOnly, "missing", "inventory.json")
 
 		_, metadata := performInventoryScan(t, t.TempDir(), inventoryPath)
 		require.Equal(t, InventoryFailed, metadata.Inventory.Status)

@@ -234,9 +234,9 @@ func validateQueriesPaths(paths []string) ([]string, error) {
 }
 
 // createOutputDirs creates the directories the scan writes to. The
-// inventory's is the exception: when it cannot be created the scan still
-// runs, and its metadata reports the inventory as failed.
-func createOutputDirs(outputPath, payloadPath, inventoryPath string) error {
+// inventory creates its own when it is written, after the reports, so that it
+// can neither take a report's place nor stop the scan.
+func createOutputDirs(outputPath, payloadPath string) error {
 	if outputPath != "" {
 		if err := os.MkdirAll(outputPath, dirPerms); err != nil {
 			return err
@@ -246,9 +246,6 @@ func createOutputDirs(outputPath, payloadPath, inventoryPath string) error {
 		if err := os.MkdirAll(filepath.Dir(payloadPath), dirPerms); err != nil {
 			return err
 		}
-	}
-	if inventoryPath != "" {
-		_ = os.MkdirAll(filepath.Dir(inventoryPath), dirPerms)
 	}
 	return nil
 }
@@ -276,7 +273,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		return err
 	}
 	metadataPath := c.String("metadata-path")
-	if err := createOutputDirs(outputPath, payloadPath, inventoryPath); err != nil {
+	if err := createOutputDirs(outputPath, payloadPath); err != nil {
 		return err
 	}
 

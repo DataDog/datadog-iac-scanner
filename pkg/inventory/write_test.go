@@ -17,6 +17,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestWriteFileCreatesItsDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out", "inventory.json")
+	require.NoError(t, WriteFile(path, NewCollector(t.TempDir()).Build(testMetadata())))
+	require.FileExists(t, path)
+
+	// A directory cannot be made where a file is, such as a report.
+	report := filepath.Join(t.TempDir(), "result.sarif")
+	require.NoError(t, os.WriteFile(report, []byte("{}"), 0o600))
+	require.Error(t, WriteFile(filepath.Join(report, "inventory.json"), NewCollector(t.TempDir()).Build(testMetadata())))
+	data, err := os.ReadFile(report)
+	require.NoError(t, err)
+	require.Equal(t, "{}", string(data), "the report stays as it was")
+}
+
 func TestWriteFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "inventory.json")
@@ -53,8 +67,6 @@ func TestWriteFileFailureLeavesNoFile(t *testing.T) {
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "only the directory that blocked the write remains")
-
-	require.Error(t, WriteFile(filepath.Join(dir, "missing", "inventory.json"), &Inventory{}))
 }
 
 func TestRemoveStale(t *testing.T) {
