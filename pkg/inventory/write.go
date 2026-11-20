@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -38,22 +39,96 @@ const inventoryHeadLimit = 64 << 10
 
 // RemoveStale deletes an inventory left at path by an earlier scan, so that a
 // scan which ends without writing one leaves no file behind. Anything else at
-// path is left as it is, and reported as ErrNotInventory.
+// path is left as it is, and reported as ErrNotInventory. The file checked is
+// the one removed: path is resolved once, as the system resolves it.
 func RemoveStale(path string) error {
-	info, err := os.Lstat(path)
+	target, err := ResolvePath(path, false)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(target)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() || !isInventory(path) {
+	if !info.Mode().IsRegular() || !isInventory(target) {
 		return ErrNotInventory
 	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil
+}
+
+// maxLinkHops bounds the symlinks ResolvePath follows, as the system does.
+const maxLinkHops = 255
+
+// errLinkLoop reports a path whose symlinks do not resolve within
+// maxLinkHops.
+var errLinkLoop = errors.New("too many levels of symbolic links")
+
+// ResolvePath returns the absolute file a write to path reaches, as the
+// system resolves it: each symlink is followed where it stands, and ".."
+// applies to what came before it once resolved, not to the path as written.
+// The last component is followed too when followLast is set, a dangling
+// symlink included, as a file opened for writing is; a rename or a removal
+// acts on the link itself. From the first component that does not exist, the
+// rest is kept as written.
+func ResolvePath(path string, followLast bool) (string, error) {
+	if !filepath.IsAbs(path) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		path = wd + string(filepath.Separator) + path
+	}
+	volume := filepath.VolumeName(path)
+	resolved := volume + string(filepath.Separator)
+	rest := pathComponents(path[len(volume):])
+	for hops := 0; len(rest) > 0; {
+		component := rest[0]
+		rest = rest[1:]
+		switch component {
+		case ".":
+			continue
+		case "..":
+			resolved = filepath.Dir(resolved)
+			continue
+		}
+		next := filepath.Join(resolved, component)
+		info, err := os.Lstat(next)
+		if errors.Is(err, fs.ErrNotExist) {
+			return filepath.Join(append([]string{next}, rest...)...), nil
+		}
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&fs.ModeSymlink == 0 || (len(rest) == 0 && !followLast) {
+			resolved = next
+			continue
+		}
+		if hops++; hops > maxLinkHops {
+			return "", errLinkLoop
+		}
+		target, err := os.Readlink(next)
+		if err != nil {
+			return "", err
+		}
+		if filepath.IsAbs(target) {
+			targetVolume := filepath.VolumeName(target)
+			resolved = targetVolume + string(filepath.Separator)
+			target = target[len(targetVolume):]
+		}
+		rest = append(pathComponents(target), rest...)
+	}
+	return resolved, nil
+}
+
+// pathComponents splits a path into its names, "." and ".." included.
+func pathComponents(path string) []string {
+	return strings.FieldsFunc(filepath.ToSlash(path), func(r rune) bool { return r == '/' })
 }
 
 // isInventory reports whether the file at path starts as an inventory does.

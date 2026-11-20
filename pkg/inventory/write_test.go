@@ -103,6 +103,59 @@ func TestRemoveStale(t *testing.T) {
 	other := filepath.Join(dir, "dir")
 	require.NoError(t, os.MkdirAll(filepath.Join(other, "child"), 0o755))
 	require.ErrorIs(t, RemoveStale(other), ErrNotInventory)
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+	// Through a symlink then "..", the file checked is the file removed: the
+	// system resolves the link before "..", the cleaned path does not.
+	base, elsewhere := t.TempDir(), t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(elsewhere, "sub"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(elsewhere, "sub"), filepath.Join(base, "link")))
+	genuine := filepath.Join(base, "inventory.json")
+	require.NoError(t, WriteFile(genuine, NewCollector(base).Build(testMetadata())))
+	settings := filepath.Join(elsewhere, "inventory.json")
+	require.NoError(t, os.WriteFile(settings, []byte(`{"keep":"these settings"}`), 0o600))
+	aliased := base + string(filepath.Separator) + "link" + string(filepath.Separator) + ".." + string(filepath.Separator) + "inventory.json"
+
+	require.ErrorIs(t, RemoveStale(aliased), ErrNotInventory)
+	data, err = os.ReadFile(settings)
+	require.NoError(t, err)
+	require.Equal(t, `{"keep":"these settings"}`, string(data), "the file the path reaches is not an inventory")
+	require.FileExists(t, genuine, "nor is the one its cleaned spelling names removed")
+}
+
+func TestResolvePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	sep := string(filepath.Separator)
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "out", "sub"), 0o755))
+	require.NoError(t, os.Symlink(filepath.Join(root, "out", "sub"), filepath.Join(root, "link")))
+	require.NoError(t, os.Symlink("inventory.json", filepath.Join(root, "out", "dangling")))
+
+	for path, want := range map[string]string{
+		root + sep + "link" + sep + ".." + sep + "inventory.json": filepath.Join(root, "out", "inventory.json"),
+		root + sep + "link" + sep + "new" + sep + "file.json":     filepath.Join(root, "out", "sub", "new", "file.json"),
+		root + sep + "missing" + sep + ".." + sep + "x.json":      filepath.Join(root, "x.json"),
+	} {
+		got, err := ResolvePath(path, false)
+		require.NoError(t, err)
+		require.Equal(t, want, got, path)
+	}
+	dangling := filepath.Join(root, "out", "dangling")
+	got, err := ResolvePath(dangling, false)
+	require.NoError(t, err)
+	require.Equal(t, dangling, got, "a rename or a removal acts on the link itself")
+	got, err = ResolvePath(dangling, true)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(root, "out", "inventory.json"), got, "a write follows it, though it points nowhere yet")
+
+	require.NoError(t, os.Symlink("loop", filepath.Join(root, "loop")))
+	_, err = ResolvePath(filepath.Join(root, "loop", "x"), true)
+	require.Error(t, err)
 }
 
 func TestEncodeIsTheJSONOfTheInventory(t *testing.T) {
