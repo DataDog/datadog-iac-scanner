@@ -28,8 +28,13 @@ const (
 // removed nor replaced.
 var ErrNotInventory = errors.New("the path holds something other than an inventory")
 
-// inventoryPrefix starts every inventory encode writes.
-const inventoryPrefix = `{"schema_version":`
+// inventoryHeadKeys are the fields every inventory starts with, in the
+// order encode writes them, all strings. Reading them takes the start of the
+// file only, never the lists that follow.
+var inventoryHeadKeys = []string{"schema_version", "scan_id", "scanner_version", "scanned_at"}
+
+// inventoryHeadLimit bounds how much of a file is read to recognise it.
+const inventoryHeadLimit = 64 << 10
 
 // RemoveStale deletes an inventory left at path by an earlier scan, so that a
 // scan which ends without writing one leaves no file behind. Anything else at
@@ -58,11 +63,21 @@ func isInventory(path string) bool {
 		return false
 	}
 	defer func() { _ = f.Close() }()
-	head := make([]byte, len(inventoryPrefix))
-	if _, err := io.ReadFull(f, head); err != nil {
+	dec := json.NewDecoder(io.LimitReader(f, inventoryHeadLimit))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return false
 	}
-	return string(head) == inventoryPrefix
+	for _, key := range inventoryHeadKeys {
+		if tok, err := dec.Token(); err != nil || tok != any(key) {
+			return false
+		}
+		value, err := dec.Token()
+		text, ok := value.(string)
+		if err != nil || !ok || (key == "schema_version" && text != SchemaVersion) {
+			return false
+		}
+	}
+	return true
 }
 
 // WriteFile writes inv to path atomically: it is written to a temporary file
