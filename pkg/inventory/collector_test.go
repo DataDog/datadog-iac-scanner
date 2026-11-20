@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/stretchr/testify/require"
 	"github.com/xeipuuv/gojsonschema"
 )
@@ -127,7 +129,7 @@ func TestBuildIsFinal(t *testing.T) {
 		line     int
 		document string
 	}{{1, "first"}, {8, "second"}} {
-		c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//cm", Platform: PlatformKubernetes, ResourceType: "ConfigMap",
+		c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//cm", Platform: platforms.Kubernetes, ResourceType: "ConfigMap",
 			ResourceName: "cm", File: "k8s/dup.yaml", LineStart: row.line, Completeness: CompletenessComplete,
 			DocumentID: row.document, ownsDocument: true})
 	}
@@ -137,7 +139,7 @@ func TestBuildIsFinal(t *testing.T) {
 	first := c.Build(testMetadata())
 	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"}}, first.FindingLinks)
 
-	c.AddResource(&Resource{ResourcePath: "v1/Secret//late", Platform: PlatformKubernetes, File: "k8s/late.yaml",
+	c.AddResource(&Resource{ResourcePath: "v1/Secret//late", Platform: platforms.Kubernetes, File: "k8s/late.yaml",
 		LineStart: 1, Completeness: CompletenessComplete})
 	again := c.Build(testMetadata())
 	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm"}}, again.FindingLinks,

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -297,7 +299,7 @@ func TestInventoryTerraformUnresolvedModule(t *testing.T) {
 	require.Equal(t, inventory.StatusPartial, inv.Status)
 	require.Len(t, inv.UnresolvedSources, 1)
 	got := inv.UnresolvedSources[0]
-	require.Equal(t, inventory.PlatformTerraform, got.Platform)
+	require.Equal(t, platforms.Terraform, got.Platform)
 	require.Equal(t, "terraform-aws-modules/missing/aws@1.0.0", got.Source)
 	require.NotEmpty(t, got.Reason)
 	t.Logf("reason: %s", got.Reason)

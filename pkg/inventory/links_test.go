@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,7 +63,7 @@ func TestLinkListItemsByTheirLines(t *testing.T) {
 		path       string
 		start, end int
 	}{{"v1/ConfigMap//settings", 4, 9}, {"v1/Service/shop/api", 10, 14}} {
-		c.AddResource(&Resource{ResourcePath: item.path, Platform: PlatformKubernetes, ResourceType: "kind",
+		c.AddResource(&Resource{ResourcePath: item.path, Platform: platforms.Kubernetes, ResourceType: "kind",
 			ResourceName: "name", File: "k8s/list.yaml", LineStart: item.start, LineEnd: item.end,
 			Completeness: CompletenessComplete, DocumentID: "list"})
 	}
@@ -78,11 +80,16 @@ func TestLinkRenderedListItemsByTheirKey(t *testing.T) {
 	c := NewCollector(t.TempDir())
 	// The objects of a list rendered from a Helm template share its line.
 	for i, path := range []string{"v1/ConfigMap//settings", "v1/Service//api"} {
-		c.AddResource(&Resource{ResourcePath: path, Platform: PlatformKubernetes, ResourceType: "kind",
+		c.AddResource(&Resource{ResourcePath: path, Platform: platforms.Kubernetes, ResourceType: "kind",
 			ResourceName: "name", File: "chart/templates/list.yaml", LineStart: 3, Completeness: CompletenessComplete,
 			DocumentID: "list", searchKeyPrefix: "items." + strconv.Itoa(i), sharedLines: true})
 	}
+	// An object of a list inside the list.
+	c.AddResource(&Resource{ResourcePath: "v1/Secret//token", Platform: platforms.Kubernetes, ResourceType: "kind",
+		ResourceName: "name", File: "chart/templates/list.yaml", LineStart: 3, Completeness: CompletenessComplete,
+		DocumentID: "list", searchKeyPrefix: "items.2.items.1", sharedLines: true})
 	c.AddFinding(&Finding{Fingerprint: "on-api", DocumentID: "list", SearchKey: "items.1.spec.ports", Line: 3})
+	c.AddFinding(&Finding{Fingerprint: "on-token", DocumentID: "list", SearchKey: "items[2].items[1].data.foo", Line: 3})
 	c.AddFinding(&Finding{Fingerprint: "on-settings", DocumentID: "list", SearchKey: "items[0].data.a", Line: 3})
 	// At the template's line, but naming no object: the first one is not it.
 	c.AddFinding(&Finding{Fingerprint: "on-list", DocumentID: "list", SearchKey: "kind", Line: 3})
@@ -92,6 +99,7 @@ func TestLinkRenderedListItemsByTheirKey(t *testing.T) {
 	require.Equal(t, []FindingLink{
 		{FindingFingerprint: "on-api", ResourceRef: "chart/templates/list.yaml|v1/Service//api"},
 		{FindingFingerprint: "on-settings", ResourceRef: "chart/templates/list.yaml|v1/ConfigMap//settings"},
+		{FindingFingerprint: "on-token", ResourceRef: "chart/templates/list.yaml|v1/Secret//token"},
 	}, inv.FindingLinks)
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 }

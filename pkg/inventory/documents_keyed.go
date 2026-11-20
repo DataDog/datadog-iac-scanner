@@ -13,17 +13,11 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"gopkg.in/yaml.v3"
 )
 
 // Platform values of the keyed rows, the values findings carry.
-const (
-	PlatformCloudFormation = "cloudformation"
-	PlatformDockerCompose  = "dockercompose"
-	PlatformCICD           = "cicd"
-	PlatformAnsible        = "ansible"
-)
-
 // keyedRows returns one row per entry of a top-level collection of a
 // document, such as CloudFormation Resources or Compose services. An entry
 // spans from its key to the line before the next entry, or to the document's
@@ -167,7 +161,7 @@ func cloudFormationRow(key string, value interface{}) (Resource, bool) {
 	}
 	return Resource{
 		ResourcePath: key,
-		Platform:     PlatformCloudFormation,
+		Platform:     platforms.CloudFormation,
 		ResourceType: typ,
 		ResourceName: cloudFormationName(key, typ, resource),
 		Provider:     "aws",
@@ -190,7 +184,7 @@ func cloudFormationName(logicalID, typ string, resource map[string]interface{}) 
 func composeServiceRow(key string, _ interface{}) (Resource, bool) {
 	return Resource{
 		ResourcePath: "services." + key,
-		Platform:     PlatformDockerCompose,
+		Platform:     platforms.DockerCompose,
 		ResourceType: "docker_compose_service",
 		ResourceName: key,
 	}, true
@@ -199,7 +193,7 @@ func composeServiceRow(key string, _ interface{}) (Resource, bool) {
 func workflowJobRow(key string, _ interface{}) (Resource, bool) {
 	return Resource{
 		ResourcePath: "jobs." + key,
-		Platform:     PlatformCICD,
+		Platform:     platforms.CICD,
 		ResourceType: "github_actions_job",
 		ResourceName: key,
 	}, true
@@ -328,7 +322,7 @@ func (e *documentEnumerator) addAnsibleTasks(
 		name, _ := task["name"].(string)
 		*rows = append(*rows, Resource{
 			ResourcePath: path,
-			Platform:     PlatformAnsible,
+			Platform:     platforms.Ansible,
 			ResourceType: module,
 			ResourceName: firstNonEmpty(name, module),
 			File:         f.FilePath,

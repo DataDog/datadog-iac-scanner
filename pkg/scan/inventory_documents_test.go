@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/stretchr/testify/require"
@@ -181,7 +183,7 @@ func TestInventoryKeepsAFailedChartRender(t *testing.T) {
 	require.Contains(t, names, "dep-config", "the dependency rendered on its own")
 	require.Equal(t, inventory.StatusPartial, inv.Status, "the parent's render failed")
 	require.Contains(t, inv.UnresolvedSources, inventory.UnresolvedSource{
-		Platform: inventory.PlatformKubernetes, Source: "charts/parent", Reason: inventory.ReasonHelmRenderFailed,
+		Platform: platforms.Kubernetes, Source: "charts/parent", Reason: inventory.ReasonHelmRenderFailed,
 	})
 	for _, u := range inv.UnresolvedSources {
 		require.NotEqual(t, "charts/parent/charts/dep", u.Source, "the dependency rendered on its own")
@@ -282,7 +284,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 	require.Contains(t, inv.Files, inventory.File{Path: "data/cities.yml", Platform: "ansible", Status: inventory.FileScanned},
 		"the list is scanned as Ansible, yet gives no row")
 	for _, r := range inv.Resources {
-		if r.Platform == inventory.PlatformCloudFormation {
+		if r.Platform == platforms.CloudFormation {
 			require.Equal(t, "aws", r.Provider)
 		}
 	}

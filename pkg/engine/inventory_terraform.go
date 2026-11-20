@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -169,7 +171,7 @@ func (inv *terraformInventory) row(
 	row := inventory.Resource{
 		RootModule:   root,
 		ResourcePath: path,
-		Platform:     inventory.PlatformTerraform,
+		Platform:     platforms.Terraform,
 		ResourceType: r.Type,
 		ResourceName: tfeval.ResourceBaseName(r.Name),
 		Provider:     terraformProvider(r),

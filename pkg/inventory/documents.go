@@ -19,16 +19,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"gopkg.in/yaml.v3"
 )
 
 // Platform values of the document rows, the values findings carry.
-const (
-	PlatformKubernetes = "kubernetes"
-	PlatformDockerfile = "dockerfile"
-)
-
-// DocumentResources gives add the rows of the parsed documents of every
+// DocumentResources gives the rows of the parsed documents of every
 // platform but Terraform, whose rows come from module evaluation, document by
 // document, so that they are never all held twice. The files of one path must
 // be in the order their parser returned them, as a scan stores them.
@@ -89,15 +85,15 @@ func (e *documentEnumerator) documentRows(f *model.FileMetadata, index int) []Re
 		row := dockerfileResource(f)
 		row.ownsDocument = true
 		return []Resource{row}
-	case f.Platform == PlatformKubernetes:
+	case f.Platform == platforms.Kubernetes:
 		return e.kubernetesRows(f, index)
-	case f.Platform == PlatformCloudFormation:
+	case f.Platform == platforms.CloudFormation:
 		return e.keyedRows(f, index, "Resources", cloudFormationRow)
-	case f.Platform == PlatformDockerCompose:
+	case f.Platform == platforms.DockerCompose:
 		return e.keyedRows(f, index, "services", composeServiceRow)
-	case f.Platform == PlatformCICD:
+	case f.Platform == platforms.CICD:
 		return e.keyedRows(f, index, "jobs", workflowJobRow)
-	case f.Platform == PlatformAnsible:
+	case f.Platform == platforms.Ansible:
 		return e.ansibleRows(f, index)
 	}
 	return nil
@@ -196,7 +192,7 @@ func (e *documentEnumerator) kubernetesObjectRow(
 	namespace := e.metadataField(f, object, metadata, "namespace")
 	row := Resource{
 		ResourcePath: apiVersion + "/" + kind + "/" + namespace + "/" + name,
-		Platform:     PlatformKubernetes,
+		Platform:     platforms.Kubernetes,
 		ResourceType: kind,
 		ResourceName: name,
 		File:         f.FilePath,
@@ -513,7 +509,7 @@ func dockerfileResource(f *model.FileMetadata) Resource {
 	}
 	return Resource{
 		ResourcePath: "Dockerfile",
-		Platform:     PlatformDockerfile,
+		Platform:     platforms.Dockerfile,
 		ResourceType: "dockerfile",
 		ResourceName: filepath.Base(f.FilePath),
 		File:         f.FilePath,

@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
@@ -98,7 +100,7 @@ func (run *inventoryRun) noteModuleFailures(failures []modulegraph.ResolutionFai
 			source += "@" + f.Version
 		}
 		run.collector.AddUnresolvedSource(inventory.UnresolvedSource{
-			Platform: inventory.PlatformTerraform,
+			Platform: platforms.Terraform,
 			Source:   source,
 			Reason:   cmp.Or(f.Code, inventory.ReasonUnknown),
 		})
@@ -130,13 +132,13 @@ func (c *Client) startInventory(ctx context.Context) {
 	if path == "" {
 		return
 	}
-	platforms := c.ScanParams.GetEffectivePlatforms()
+	effective := c.ScanParams.GetEffectivePlatforms()
 	run := &inventoryRun{
 		collector: inventory.NewCollector(c.ScanParams.RepoPath),
 		scanID:    uuid.NewString(),
-		platforms: make([]string, 0, len(platforms)),
+		platforms: make([]string, 0, len(effective)),
 	}
-	for _, p := range platforms {
+	for _, p := range effective {
 		run.platforms = append(run.platforms, strings.ToLower(p))
 	}
 	contextLogger := logger.FromContext(ctx)
@@ -388,7 +390,7 @@ func recordFailedRenders(run *inventoryRun, charts map[string]bool) {
 			continue
 		}
 		run.collector.AddUnresolvedSource(inventory.UnresolvedSource{
-			Platform: inventory.PlatformKubernetes,
+			Platform: platforms.Kubernetes,
 			Source:   rel,
 			Reason:   inventory.ReasonHelmRenderFailed,
 		})

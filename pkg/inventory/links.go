@@ -9,6 +9,8 @@ package inventory
 import (
 	"math"
 	"strings"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 )
 
 // Finding is what links a finding to the rows it belongs to.
@@ -75,7 +77,7 @@ func (c *Collector) linkFindings(rows []Resource, repeats map[int][]int) (links 
 		if r.DocumentID != "" {
 			byDocument[r.DocumentID] = append(byDocument[r.DocumentID], i)
 		}
-		if r.Platform == PlatformTerraform {
+		if r.Platform == platforms.Terraform {
 			key := terraformScope{r.File, r.ModuleCallChain}
 			byScope[key] = append(byScope[key], i)
 			start := terraformStart{key, r.LineStart}
@@ -137,10 +139,16 @@ func matchDocument(rows []Resource, candidates []int, f *Finding) []int {
 // object of a list, that the search key starts with, whole segments only. A
 // list index is read as written either way: items.0 or items[0].
 func namedBySearchKey(rows []Resource, candidates []int, searchKey string) (int, bool) {
-	if rest, ok := strings.CutPrefix(searchKey, "items["); ok {
-		if index, after, found := strings.Cut(rest, "]"); found {
-			searchKey = "items." + index + after
+	if strings.Contains(searchKey, "items[") {
+		parts := strings.Split(searchKey, ".")
+		for i, part := range parts {
+			if rest, ok := strings.CutPrefix(part, "items["); ok {
+				if index, after, found := strings.Cut(rest, "]"); found {
+					parts[i] = "items." + index + after
+				}
+			}
 		}
+		searchKey = strings.Join(parts, ".")
 	}
 	for _, j := range candidates {
 		prefix := rows[j].searchKeyPrefix

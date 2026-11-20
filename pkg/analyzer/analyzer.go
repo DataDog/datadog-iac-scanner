@@ -23,6 +23,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -146,16 +147,16 @@ const (
 	sh                    = ".sh"
 	arm                   = "azureresourcemanager"
 	bicep                 = "bicep"
-	kubernetes            = "kubernetes"
-	terraform             = "terraform"
+	kubernetes            = platforms.Kubernetes
+	terraform             = platforms.Terraform
 	gdm                   = "googledeploymentmanager"
-	ansible               = "ansible"
+	ansible               = platforms.Ansible
 	grpc                  = "grpc"
-	dockercompose         = "dockercompose"
-	dockerfile            = "dockerfile"
+	dockercompose         = platforms.DockerCompose
+	dockerfile            = platforms.Dockerfile
 	crossplane            = "crossplane"
 	knative               = "knative"
-	cicd                  = "cicd"
+	cicd                  = platforms.CICD
 	dependabot            = "dependabot"
 	githubAction          = "githubAction"
 	sizeMb                = 1048576
@@ -976,11 +977,11 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 // scan, "crossplane" only when Crossplane is enabled). fsys is forwarded for
 // extension detection so the server's in-memory pushed content (not on disk) is
 // classified correctly.
-func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, platforms []string, kind model.FileKind, path string, content []byte) string {
+func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, enabled []string, kind model.FileKind, path string, content []byte) string {
 	if platform, ok := PlatformForKind(kind); ok {
 		return platform
 	}
-	return ClassifyFile(ctx, fsys, path, content, platforms)
+	return ClassifyFile(ctx, fsys, path, content, enabled)
 }
 
 // ExcludedByContent reports a file whose content rules out every platform, so

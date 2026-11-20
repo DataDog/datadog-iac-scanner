@@ -40,9 +40,6 @@ const (
 	FileFailed  = "failed"
 )
 
-// PlatformTerraform is the platform of Terraform rows, the value findings carry.
-const PlatformTerraform = "terraform"
-
 // Reasons an inventory is unusable, because some of its resources may be
 // missing.
 const (

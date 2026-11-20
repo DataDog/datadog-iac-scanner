@@ -10,6 +10,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +70,7 @@ func TestDocumentResourcesInterleavedFiles(t *testing.T) {
 	a := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: a0\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: a1\n"
 	b := "apiVersion: v1\nkind: Service\nmetadata:\n  name: b0\n---\n\napiVersion: v1\nkind: Pod\nmetadata:\n  name: b1\n"
 	doc := func(path, content, id, kind, name string) *model.FileMetadata {
-		return &model.FileMetadata{ID: id, FilePath: path, OriginalData: content, Platform: PlatformKubernetes,
+		return &model.FileMetadata{ID: id, FilePath: path, OriginalData: content, Platform: platforms.Kubernetes,
 			Document: model.Document{"apiVersion": "v1", "kind": kind, "metadata": map[string]interface{}{"name": name}}}
 	}
 	// Concurrent parsers store the documents of two files mixed.
@@ -94,10 +96,10 @@ func TestKeyedRowsSearchKeyPrefix(t *testing.T) {
 	compose := "services:\n  web:\n    image: nginx\n  web.api:\n    image: api\n"
 	stack := "Resources:\n  Queue:\n    Type: AWS::SQS::Queue\n"
 	files := model.FileMetadatas{
-		{ID: "compose", FilePath: "compose.yaml", OriginalData: compose, Platform: PlatformDockerCompose,
+		{ID: "compose", FilePath: "compose.yaml", OriginalData: compose, Platform: platforms.DockerCompose,
 			Document: model.Document{"services": map[string]interface{}{
 				"web": map[string]interface{}{"image": "nginx"}, "web.api": map[string]interface{}{"image": "api"}}}},
-		{ID: "stack", FilePath: "stack.yaml", OriginalData: stack, Platform: PlatformCloudFormation,
+		{ID: "stack", FilePath: "stack.yaml", OriginalData: stack, Platform: platforms.CloudFormation,
 			Document: model.Document{"Resources": map[string]interface{}{
 				"Queue": map[string]interface{}{"Type": "AWS::SQS::Queue"}}}},
 	}
@@ -119,20 +121,20 @@ func TestKubernetesListDocuments(t *testing.T) {
 		return map[string]interface{}{"apiVersion": "v1", "kind": kind, "metadata": map[string]interface{}{"name": name}}
 	}
 	files := model.FileMetadatas{
-		{ID: "list", FilePath: "k8s/list.yaml", OriginalData: list, Platform: PlatformKubernetes,
+		{ID: "list", FilePath: "k8s/list.yaml", OriginalData: list, Platform: platforms.Kubernetes,
 			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "settings")}}},
-		{ID: "rendered", FilePath: "chart/templates/list.yaml", OriginalData: list, Platform: PlatformKubernetes, Kind: model.KindHELM,
+		{ID: "rendered", FilePath: "chart/templates/list.yaml", OriginalData: list, Platform: platforms.Kubernetes, Kind: model.KindHELM,
 			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "a"), object("Service", "b")}}},
 		// A typed list's members take its kind and version; a list in a list
 		// holds objects too.
-		{ID: "pods", FilePath: "k8s/pods.yaml", OriginalData: list, Platform: PlatformKubernetes,
+		{ID: "pods", FilePath: "k8s/pods.yaml", OriginalData: list, Platform: platforms.Kubernetes,
 			Document: model.Document{"apiVersion": "v1", "kind": "PodList", "items": []interface{}{
 				map[string]interface{}{"metadata": map[string]interface{}{"name": "web"}}}}},
-		{ID: "nested", FilePath: "k8s/nested.yaml", OriginalData: list, Platform: PlatformKubernetes,
+		{ID: "nested", FilePath: "k8s/nested.yaml", OriginalData: list, Platform: platforms.Kubernetes,
 			Document: model.Document{"apiVersion": "v1", "kind": "List", "items": []interface{}{
 				map[string]interface{}{"apiVersion": "v1", "kind": "List", "items": []interface{}{object("ConfigMap", "inner")}}}}},
 		// A named object whose kind ends in List is one object.
-		{ID: "allow", FilePath: "k8s/allow.yaml", OriginalData: allow, Platform: PlatformKubernetes,
+		{ID: "allow", FilePath: "k8s/allow.yaml", OriginalData: allow, Platform: platforms.Kubernetes,
 			Document: model.Document{"apiVersion": "acme.io/v1", "kind": "AllowList",
 				"metadata": map[string]interface{}{"name": "trusted"}, "items": []interface{}{"foo"}}},
 	}
