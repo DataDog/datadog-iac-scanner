@@ -20,7 +20,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-// EvaluationDiagnostic is an unrecovered expression error in a completed module
+// EvaluationDiagnostic is an unrecovered producer error in a completed module
 // evaluation. It retains source and module identity, never an evaluation context
 // or AST. It is separate from unknown values and from security findings.
 type EvaluationDiagnostic struct {
@@ -45,6 +45,16 @@ func evaluateExpression(expr hclsyntax.Expression, ctx *hcl.EvalContext) express
 
 func expressionOutcome(value cty.Value, diagnostics hcl.Diagnostics, fallback hcl.Range) expressionValue {
 	result := expressionValue{value: value}
+	if failures := evaluationDiagnostics(diagnostics, fallback); len(failures) > 0 {
+		result.failure = &expressionFailure{diagnostics: failures}
+	}
+	return result
+}
+
+// evaluationDiagnostics freezes errors at the producer boundary, without keeping
+// HCL evaluation contexts or expressions alive through the shared outcome.
+func evaluationDiagnostics(diagnostics hcl.Diagnostics, fallback hcl.Range) []EvaluationDiagnostic {
+	var failures []EvaluationDiagnostic
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Severity != hcl.DiagError {
 			continue
@@ -53,14 +63,11 @@ func expressionOutcome(value cty.Value, diagnostics hcl.Diagnostics, fallback hc
 		if diagnostic.Subject != nil {
 			subject = *diagnostic.Subject
 		}
-		if result.failure == nil {
-			result.failure = &expressionFailure{}
-		}
-		result.failure.diagnostics = append(result.failure.diagnostics, EvaluationDiagnostic{
+		failures = append(failures, EvaluationDiagnostic{
 			Summary: diagnostic.Summary, Detail: diagnostic.Detail, Subject: subject,
 		})
 	}
-	return result
+	return failures
 }
 
 // expressionDiagnostics replaces failures when a changing local is re-evaluated

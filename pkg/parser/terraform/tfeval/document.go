@@ -230,7 +230,9 @@ func renderDataJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.
 		scoped := rd.WithBindings(vars)
 		return renderDataJSON(scoped, inner, src)
 	}
-	return rd.Render(jsonExprToHCL(expr, src))
+	// The authoritative parse already retains failures; rendering only projects values.
+	var diagnostics hcl.Diagnostics
+	return rd.Render(jsonExprToHCL(expr, src, &diagnostics))
 }
 
 // attrSource locates the HCL that produced a value so unresolved values can fall
@@ -671,11 +673,11 @@ type RemoteResolver func(
 ) (dir, packageRoot string, ok bool)
 
 func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string {
-	bodies, _, err := parseDir(context.Background(), dir, "", nil, fsys)
-	if err != nil {
+	parsed := parseDir(context.Background(), dir, "", nil, fsys)
+	if parsed.err != nil {
 		return nil
 	}
-	return calledModuleDirs(context.Background(), dir, bodies, resolver, fsys)
+	return calledModuleDirs(context.Background(), dir, parsed.bodies, resolver, fsys)
 }
 
 func (e *Evaluator) CalledModuleDirs(dir string) []string {
