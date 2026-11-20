@@ -28,8 +28,5 @@ func (c *Inspector) inventoryDocuments(ctx context.Context, files model.FileMeta
 			c.inventory.Fail(inventory.FailureDocumentsPanic)
 		}
 	}()
-	rows := inventory.DocumentResources(ctx, files)
-	for i := range rows {
-		c.inventory.AddResource(&rows[i])
-	}
+	inventory.DocumentResources(ctx, files, c.inventory.AddResource)
 }

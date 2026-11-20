@@ -80,7 +80,7 @@ func TestDocumentResourcesInterleavedFiles(t *testing.T) {
 		doc("b.yaml", b, "b1", "Pod", "b1"),
 	}
 	lines := make(map[string]lineRange)
-	for _, r := range DocumentResources(context.Background(), files) {
+	for _, r := range collectDocumentResources(files) {
 		require.Equal(t, r.DocumentID, r.ResourceName)
 		lines[r.DocumentID] = lineRange{r.LineStart, r.LineEnd}
 	}
@@ -102,7 +102,7 @@ func TestKeyedRowsSearchKeyPrefix(t *testing.T) {
 				"Queue": map[string]interface{}{"Type": "AWS::SQS::Queue"}}}},
 	}
 	prefixes := make(map[string]string)
-	for _, r := range DocumentResources(context.Background(), files) {
+	for _, r := range collectDocumentResources(files) {
 		prefixes[r.ResourcePath] = r.searchKeyPrefix
 	}
 	require.Equal(t, map[string]string{
@@ -141,7 +141,7 @@ func TestKubernetesListDocuments(t *testing.T) {
 		owns, share bool
 	}
 	got := make(map[string]row)
-	for _, r := range DocumentResources(context.Background(), files) {
+	for _, r := range collectDocumentResources(files) {
 		got[r.File+"|"+r.ResourcePath] = row{r.searchKeyPrefix, r.ownsDocument, r.sharedLines}
 	}
 	require.Equal(t, map[string]row{
@@ -178,4 +178,11 @@ func TestAnsibleSearchKeyPath(t *testing.T) {
 	} {
 		require.Equal(t, want, ansibleSearchKeyPath(path), path)
 	}
+}
+
+// collectDocumentResources returns the rows DocumentResources gives.
+func collectDocumentResources(files model.FileMetadatas) []Resource {
+	var rows []Resource
+	DocumentResources(context.Background(), files, func(r *Resource) { rows = append(rows, *r) })
+	return rows
 }

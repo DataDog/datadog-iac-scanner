@@ -28,11 +28,11 @@ const (
 	PlatformDockerfile = "dockerfile"
 )
 
-// DocumentResources returns the rows of the parsed documents of every
-// platform but Terraform, whose rows come from module evaluation. The files
-// of one path must be in the order their parser returned them, as a scan
-// stores them.
-func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resource {
+// DocumentResources gives add the rows of the parsed documents of every
+// platform but Terraform, whose rows come from module evaluation, document by
+// document, so that they are never all held twice. The files of one path must
+// be in the order their parser returned them, as a scan stores them.
+func DocumentResources(ctx context.Context, files model.FileMetadatas, add func(*Resource)) {
 	e := documentEnumerator{ctx: ctx, charts: make(map[string]chartInfo)}
 	// One path at a time, so that only one decoded file is held at once. The
 	// documents of a path need not be next to each other in files, as
@@ -45,7 +45,6 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 	}
 	slices.SortStableFunc(byPath, func(a, b *model.FileMetadata) int { return strings.Compare(a.FilePath, b.FilePath) })
 
-	var rows []Resource
 	index := 0
 	for i, f := range byPath {
 		if i > 0 && f.FilePath == byPath[i-1].FilePath {
@@ -53,15 +52,14 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 		} else {
 			index = 0
 		}
-		first := len(rows)
-		rows = append(rows, e.documentRows(f, index)...)
-		// The findings raised on the document link to its rows.
-		for j := first; j < len(rows); j++ {
+		rows := e.documentRows(f, index)
+		for j := range rows {
+			// The findings raised on the document link to its rows.
 			rows[j].DocumentID = f.ID
 			rows[j].documentIndex = index
+			add(&rows[j])
 		}
 	}
-	return rows
 }
 
 type documentEnumerator struct {
