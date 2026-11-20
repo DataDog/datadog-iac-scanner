@@ -16,11 +16,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
-	"github.com/zclconf/go-cty/cty"
 )
 
 // InventorySink receives the resources a scan's inventory lists.
@@ -166,7 +164,8 @@ func (inv *terraformInventory) addRoot(dir string, resources []tfeval.ResolvedRe
 func (inv *terraformInventory) row(
 	root string, r *tfeval.ResolvedResource, attributions *moduleAttributionCache,
 ) inventory.Resource {
-	moduleCall, path, complete := inventoryAddress(r)
+	// The address findings use when complete, else as much of it as is known.
+	moduleCall, path, complete := r.PartialAddress()
 	row := inventory.Resource{
 		RootModule:   root,
 		ResourcePath: path,
@@ -252,48 +251,6 @@ func (inv *terraformInventory) intern(s string) string {
 	}
 	inv.modulePaths[s] = s
 	return s
-}
-
-// inventoryAddress returns the Terraform address of r and of its module call.
-// An instance key that could not be evaluated is left out rather than
-// invented, and complete reports whether any was.
-func inventoryAddress(r *tfeval.ResolvedResource) (moduleCall, path string, complete bool) {
-	complete = true
-	for i := range r.CallChain {
-		call := &r.CallChain[i]
-		segment := "module." + call.ModuleName
-		if call.InstanceKey != cty.NilVal {
-			if key, ok := address.FormatIndexKey(call.InstanceKey); ok {
-				segment += key
-			} else {
-				complete = false
-			}
-		}
-		if moduleCall != "" {
-			moduleCall += "."
-		}
-		moduleCall += segment
-	}
-	if r.ModuleAddress != "" && len(r.CallChain) == 0 {
-		moduleCall, complete = r.ModuleAddress, false
-	}
-	var suffix string
-	if r.InstanceKey != cty.NilVal {
-		key, ok := address.FormatIndexKey(r.InstanceKey)
-		if ok {
-			suffix = key
-		} else {
-			complete = false
-		}
-	} else if r.Body != nil && (r.Body.Attributes["count"] != nil || r.Body.Attributes["for_each"] != nil) {
-		complete = false
-	}
-	kind := address.KindResource
-	if r.Data {
-		kind = address.KindData
-	}
-	block := address.Block{Kind: kind, Type: r.Type, Name: tfeval.ResourceBaseName(r.Name)}
-	return moduleCall, address.Instance(moduleCall, block, suffix), complete
 }
 
 // terraformBlock names the block r is an instance of: its type and name,

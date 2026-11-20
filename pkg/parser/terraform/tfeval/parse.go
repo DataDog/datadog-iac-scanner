@@ -370,43 +370,52 @@ func ResourceBaseName(name string) string {
 // inferred from the resource's source file. A resource with unresolved count
 // or for_each has no verified instance key and returns false.
 func (r *ResolvedResource) TerraformAddress() (string, bool) {
-	baseName := ResourceBaseName(r.Name)
-	var suffix string
-	if r.InstanceKey != cty.NilVal {
-		var ok bool
-		suffix, ok = address.FormatIndexKey(r.InstanceKey)
-		if !ok {
-			return "", false
-		}
-	} else if r.Body != nil {
-		if _, hasCount := r.Body.Attributes["count"]; hasCount {
-			return "", false
-		}
-		if _, hasForEach := r.Body.Attributes["for_each"]; hasForEach {
-			return "", false
-		}
+	_, addr, complete := r.PartialAddress()
+	if !complete {
+		return "", false
 	}
-	moduleAddress := ""
+	return addr, true
+}
+
+// PartialAddress returns the Terraform address of a resolved resource and of
+// its module call, as TerraformAddress builds it, together with whether it is
+// complete. An instance key that could not be evaluated, of the resource or
+// of a module call, is left out rather than invented, and so is the instance
+// of a count or for_each block whose key is unknown; complete is then false.
+// Like TerraformAddress, it leaves the root module to the caller.
+func (r *ResolvedResource) PartialAddress() (moduleCall, addr string, complete bool) {
+	complete = true
 	for i := range r.CallChain {
 		call := &r.CallChain[i]
 		segment := "module." + call.ModuleName
 		if call.InstanceKey != cty.NilVal {
-			keySuffix, ok := address.FormatIndexKey(call.InstanceKey)
-			if !ok {
-				return "", false
+			if key, ok := address.FormatIndexKey(call.InstanceKey); ok {
+				segment += key
+			} else {
+				complete = false
 			}
-			segment += keySuffix
 		}
-		moduleAddress = joinAddr(moduleAddress, segment)
+		moduleCall = joinAddr(moduleCall, segment)
 	}
 	if r.ModuleAddress != "" && len(r.CallChain) == 0 {
-		return "", false
+		moduleCall, complete = r.ModuleAddress, false
+	}
+	var suffix string
+	if r.InstanceKey != cty.NilVal {
+		if key, ok := address.FormatIndexKey(r.InstanceKey); ok {
+			suffix = key
+		} else {
+			complete = false
+		}
+	} else if r.Body != nil && (r.Body.Attributes["count"] != nil || r.Body.Attributes["for_each"] != nil) {
+		complete = false
 	}
 	kind := address.KindResource
 	if r.Data {
 		kind = address.KindData
 	}
-	return address.Instance(moduleAddress, address.Block{Kind: kind, Type: r.Type, Name: baseName}, suffix), true
+	block := address.Block{Kind: kind, Type: r.Type, Name: ResourceBaseName(r.Name)}
+	return moduleCall, address.Instance(moduleCall, block, suffix), complete
 }
 
 func blockLabel(b *hclsyntax.Block) string {
