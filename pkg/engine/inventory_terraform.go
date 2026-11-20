@@ -180,6 +180,7 @@ func (inv *terraformInventory) row(
 		Completeness: inventory.CompletenessComplete,
 		// As findings name the module calls, to link them to the row.
 		ModuleCallChain: callChainKey(r, inv.repoPath),
+		Block:           terraformBlock(r),
 	}
 	if !complete {
 		row.Completeness = inventory.CompletenessInstanceUnresolved
@@ -293,6 +294,16 @@ func inventoryAddress(r *tfeval.ResolvedResource) (moduleCall, path string, comp
 	}
 	block := address.Block{Kind: kind, Type: r.Type, Name: tfeval.ResourceBaseName(r.Name)}
 	return moduleCall, address.Instance(moduleCall, block, suffix), complete
+}
+
+// terraformBlock names the block r is an instance of: its type and name,
+// after data. for a data source.
+func terraformBlock(r *tfeval.ResolvedResource) string {
+	block := r.Type + "." + tfeval.ResourceBaseName(r.Name)
+	if r.Data {
+		block = "data." + block
+	}
+	return block
 }
 
 // terraformProvider returns the provider a resource declares with its

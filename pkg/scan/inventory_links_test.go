@@ -228,11 +228,16 @@ func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
   }
 }
 `
-	root := writeRepo(t, map[string]string{"infra/main.tf.json": tfjson})
+	// Compact JSON puts every block on one line; only the bad bucket is public.
+	compact := `{"resource":{"aws_s3_bucket":{"bad":{"bucket":"bad","acl":"public-read"},"good":{"bucket":"good"}}}}` + "\n"
+	root := writeRepo(t, map[string]string{"infra/main.tf.json": tfjson, "infra/compact.tf.json": compact})
 	bucket := syntheticQuery("test-tf-bucket", "terraform", "Terraform", `	input.document[i].resource.aws_s3_bucket[name].bucket
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket[%s].bucket", [name])`)
-	inv, fingerprints := scanLinks(t, terraformParams(root), inventoryTestQuery, bucket)
+	public := syntheticQuery("test-tf-public", "terraform", "Terraform", `	input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s].acl", [name])`)
+	inv, fingerprints := scanLinks(t, terraformParams(root), inventoryTestQuery, bucket, public)
 	require.NotEmpty(t, fingerprints)
 	require.Zero(t, inv.Stats.FindingsUnlinked, "every bucket finding belongs to a row")
 
@@ -246,15 +251,25 @@ func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
 		"infra|aws_s3_bucket.logs":    {lineOf(t, tfjson, `"logs"`), lineOf(t, tfjson, `"bucket": "logs"`)},
 		"infra|aws_s3_bucket.pair[0]": {lineOf(t, tfjson, `"pair"`), lineOf(t, tfjson, `"team"`) + 1},
 		"infra|aws_s3_bucket.pair[1]": {lineOf(t, tfjson, `"pair"`), lineOf(t, tfjson, `"team"`) + 1},
+		"infra|aws_s3_bucket.bad":     {1, 1},
+		"infra|aws_s3_bucket.good":    {1, 1},
 	}, lines)
 
 	refs := linkedRefs(inv)
+	perRow := make(map[string]int)
 	for _, fp := range fingerprints {
 		require.Contains(t, [][]string{
 			{"infra|aws_s3_bucket.logs"},
 			{"infra|aws_s3_bucket.pair[0]", "infra|aws_s3_bucket.pair[1]"},
-		}, refs[fp], "fingerprint %s links to its block", fp)
+			{"infra|aws_s3_bucket.bad"},
+			{"infra|aws_s3_bucket.good"},
+		}, refs[fp], "fingerprint %s links to its block only", fp)
+		for _, ref := range refs[fp] {
+			perRow[ref]++
+		}
 	}
+	require.Equal(t, 3, perRow["infra|aws_s3_bucket.bad"], "the bad bucket has its three findings")
+	require.Equal(t, 2, perRow["infra|aws_s3_bucket.good"], "the clean sibling on the same line gets no public-bucket finding")
 }
 
 func TestInventoryPlayFindingsBelongToNoTask(t *testing.T) {

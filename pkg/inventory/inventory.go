@@ -137,6 +137,10 @@ type Resource struct {
 	// findings to rows and are not written.
 	DocumentID      string `json:"-"`
 	ModuleCallChain string `json:"-"`
+	// Block is the Terraform block a row is an instance of, such as
+	// aws_s3_bucket.logs or data.aws_iam_policy_document.read. It tells
+	// apart blocks that start on one line, as in compact JSON configuration.
+	Block string `json:"-"`
 	// documentIndex is the document's position in its file. It orders rows
 	// that are otherwise equal, such as those a Helm loop renders.
 	documentIndex int

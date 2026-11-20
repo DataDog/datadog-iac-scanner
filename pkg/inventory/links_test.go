@@ -72,3 +72,19 @@ func TestLinkListItemsByTheirLines(t *testing.T) {
 	require.Equal(t, []FindingLink{{FindingFingerprint: "on-api", ResourceRef: "k8s/list.yaml|v1/Service/shop/api"}}, inv.FindingLinks)
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked, "the list itself is no resource")
 }
+
+func TestSearchKeyBlock(t *testing.T) {
+	for key, want := range map[string]string{
+		"aws_s3_bucket[logs].acl":                                      "aws_s3_bucket.logs",
+		"aws_s3_bucket[{{logs}}]":                                      "aws_s3_bucket.logs",
+		"resource.aws_cloudfront_distribution[cdn].viewer_certificate": "aws_cloudfront_distribution.cdn",
+		"data.aws_iam_policy_document[read].statement":                 "data.aws_iam_policy_document.read",
+		"module[network].source":                                       "",
+		"variable[env]":                                                "variable.env",
+		"aws_s3_bucket":                                                "",
+		"%s[%s]":                                                       "",
+		"name={{Run}}.shell":                                           "",
+	} {
+		require.Equal(t, want, searchKeyBlock(key), key)
+	}
+}
