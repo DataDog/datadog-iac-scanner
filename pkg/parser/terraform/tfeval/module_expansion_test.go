@@ -58,7 +58,8 @@ module "logs" {
 
 	e := New()
 	e.SetTrackModuleInstances(true)
-	resources, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 
 	byAddr := resourcesByAddress(resources)
@@ -89,7 +90,7 @@ module "logs" {
 	requireString(t, byAddr["module.logs/aws_s3_bucket.this"].Attributes, "bucket", "bucket-prod-logs")
 
 	addresses := make([]string, 0)
-	for _, instance := range e.TakeModuleInstances() {
+	for _, instance := range evaluation.ModuleInstances {
 		addresses = append(addresses, instance.ModuleAddress)
 	}
 	sort.Strings(addresses)
@@ -120,7 +121,9 @@ output "replica_count" { value = length(module.replicas) }
 `,
 	})
 
-	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
+	outputs := evaluation.Outputs
 	require.NoError(t, err)
 
 	byAddr := resourcesByAddress(resources)
@@ -157,7 +160,8 @@ module "child" {
   count = 2
 }
 `})
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	addresses := make(map[string]bool, len(resources))
 	for _, resource := range resources {
@@ -224,7 +228,8 @@ module "bucket" {
   for_each = { "$${literal}" = "same" }
 }
 `})
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	require.Len(t, resources, 1)
 	resource := resources[0]
@@ -253,7 +258,9 @@ output "names" { value = module.buckets }
 `,
 	})
 
-	resources, outputs, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
+	outputs := evaluation.Outputs
 	require.NoError(t, err)
 
 	require.Len(t, resources, 1)
@@ -317,7 +324,8 @@ resource "aws_s3_bucket" "c" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	require.Len(t, resources, 6)
 	byName := map[string]ResolvedResource{}
@@ -418,7 +426,8 @@ resource "aws_s3_bucket" "b" {
 			var before, after runtime.MemStats
 			runtime.GC()
 			runtime.ReadMemStats(&before)
-			resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+			evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+			resources := evaluation.Resources
 			runtime.ReadMemStats(&after)
 			require.NoError(t, err)
 			require.Len(t, resources, 1)

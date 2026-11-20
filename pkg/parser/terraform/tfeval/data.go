@@ -43,12 +43,13 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
-	e       *Evaluator
-	blocks  []*hclsyntax.Block
-	sources map[string][]byte
-	locals  *localGraph
-	addr    string
-	chain   []CallSite
+	diagnostics *expressionDiagnostics
+	e           *Evaluator
+	blocks      []*hclsyntax.Block
+	sources     map[string][]byte
+	locals      *localGraph
+	addr        string
+	chain       []CallSite
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -81,20 +82,14 @@ type moduleData struct {
 	instances []ResolvedResource
 }
 
-func newModuleData(
-	e *Evaluator,
-	sources map[string][]byte,
-	locals *localGraph,
-	static *dirStatic,
-	addr string,
-	chain []CallSite,
-) *moduleData {
+func newModuleData(e *Evaluator, scope *ModuleScope, addr string, chain []CallSite) *moduleData {
+	locals, static, sources := scope.localGraph, scope.static, scope.sources
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
+		diagnostics: &scope.diagnostics, e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
 		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
 		readsData:          static.dataReadsData,
 		readsLocals:        static.dataReadsLocals,
@@ -234,7 +229,7 @@ func (d *moduleData) refreshDataLocals(evalCtx *hcl.EvalContext) {
 		}
 		members = d.locals.dataOrder
 	}
-	d.e.resolveLocals(d.locals, evalCtx, values, members)
+	d.e.resolveLocals(d.locals, evalCtx, values, members, d.diagnostics)
 	evalCtx.Variables["local"] = objectOrEmpty(values)
 }
 

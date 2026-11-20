@@ -91,7 +91,7 @@ func TestReleaseEvalCache_RetentionDoesNotGrowWithRootCount(t *testing.T) {
 		e := New()
 		peak := 0
 		for _, dir := range dirs {
-			if _, _, _, err := e.EvaluateModule(context.Background(), dir, nil); err != nil {
+			if _, err := e.EvaluateModule(context.Background(), dir, nil); err != nil {
 				t.Fatalf("roots=%d: EvaluateModule(%s): %v", roots, dir, err)
 			}
 			if got := cachedResources(e); got > peak {
@@ -120,7 +120,8 @@ func TestReleaseEvalCache_PreservesResolvedResources(t *testing.T) {
 	kept := New()
 	var withCache []int
 	for _, dir := range dirs {
-		res, _, _, err := kept.EvaluateModule(context.Background(), dir, nil)
+		evaluation, err := kept.EvaluateModule(context.Background(), dir, nil)
+		res := evaluation.Resources
 		if err != nil {
 			t.Fatalf("EvaluateModule(%s): %v", dir, err)
 		}
@@ -129,7 +130,8 @@ func TestReleaseEvalCache_PreservesResolvedResources(t *testing.T) {
 
 	released := New()
 	for i, dir := range dirs {
-		res, _, _, err := released.EvaluateModule(context.Background(), dir, nil)
+		evaluation, err := released.EvaluateModule(context.Background(), dir, nil)
+		res := evaluation.Resources
 		if err != nil {
 			t.Fatalf("EvaluateModule(%s): %v", dir, err)
 		}
@@ -147,7 +149,7 @@ func TestReleaseEvalCache_KeepsParsedDirectories(t *testing.T) {
 	dirs := writeSharedModuleFanout(t, t.TempDir(), 2, 4, 2)
 
 	e := New()
-	if _, _, _, err := e.EvaluateModule(context.Background(), dirs[0], nil); err != nil {
+	if _, err := e.EvaluateModule(context.Background(), dirs[0], nil); err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
 	parsedBefore := len(e.dirCache)

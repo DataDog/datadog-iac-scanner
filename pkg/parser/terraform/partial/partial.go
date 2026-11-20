@@ -794,11 +794,16 @@ func (r *Renderer) StringPart(part hclsyntax.Expression) string {
 	return UnknownPlaceholder
 }
 
-// WithUnknownRefs evaluates expr with every reference that fails to resolve
-// standing as unknown, as Terraform has an attribute only known after apply.
-// A reference to a computed attribute thus leaves the rest of the value known
-// rather than turning it unknown as a whole.
-func WithUnknownRefs(expr hcl.Expression, ctx *hcl.EvalContext) cty.Value {
+// Evaluate evaluates an expression and retries failed reference traversals as
+// unknowns, preserving known siblings. Remaining expression errors are returned
+// separately; callers must not infer a successful evaluation from an unknown
+// fallback value. Reference recovery remains permissive and does not validate
+// declarations or provider schemas.
+func Evaluate(expr hcl.Expression, ctx *hcl.EvalContext) (cty.Value, hcl.Diagnostics) {
+	value, diagnostics := expr.Value(ctx)
+	if !diagnostics.HasErrors() {
+		return value, diagnostics
+	}
 	o := newOverlay(ctx)
 	for _, traversal := range longestFirst(expr.Variables()) {
 		if _, diags := traversal.TraverseAbs(ctx); diags.HasErrors() {
@@ -806,13 +811,13 @@ func WithUnknownRefs(expr hcl.Expression, ctx *hcl.EvalContext) cty.Value {
 		}
 	}
 	if o.empty() {
-		return cty.DynamicVal
+		return cty.DynamicVal, diagnostics
 	}
-	v, diags := expr.Value(o.context())
-	if diags.HasErrors() {
-		return cty.DynamicVal
+	value, diagnostics = expr.Value(o.context())
+	if diagnostics.HasErrors() {
+		return cty.DynamicVal, diagnostics
 	}
-	return v
+	return value, diagnostics
 }
 
 // longestFirst orders traversals so one reading a prefix of another is set

@@ -59,9 +59,9 @@ module "b" {
 
 	e := New()
 	e.SetTrackModuleInstances(true)
-	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
-	instances := e.TakeModuleInstances()
+	instances := evaluation.ModuleInstances
 
 	require.Equal(t, map[string]string{
 		"module.a":               wrapper,
@@ -82,7 +82,6 @@ module "b" {
 	require.Equal(t, "helper", chain[1].ModuleName)
 	require.NotNil(t, chain[0].Body)
 
-	require.Empty(t, e.TakeModuleInstances())
 }
 
 // A call whose evaluation fails is not an instance, nor is anything below it.
@@ -104,11 +103,11 @@ module "loop" { source = "../loop" }
 
 	e := New()
 	e.SetTrackModuleInstances(true)
-	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
 
 	addresses := make([]string, 0)
-	for _, instance := range e.TakeModuleInstances() {
+	for _, instance := range evaluation.ModuleInstances {
 		addresses = append(addresses, instance.ModuleAddress)
 	}
 	sort.Strings(addresses)
@@ -127,14 +126,14 @@ module "b" { source = "../leaf" }
 	})
 
 	e := New()
-	_, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
-	require.Empty(t, e.TakeModuleInstances())
-	require.Empty(t, e.Fork().TakeModuleInstances())
+	require.Empty(t, evaluation.ModuleInstances)
 
 	e.SetTrackModuleInstances(true)
 	fork := e.Fork()
-	_, _, _, err = fork.EvaluateModule(context.Background(), stack, nil)
+	evaluation2, evaluation2Err := fork.EvaluateModule(context.Background(), stack, nil)
+	err = evaluation2Err
 	require.NoError(t, err)
-	require.Len(t, fork.TakeModuleInstances(), 2, "forks inherit the setting")
+	require.Len(t, evaluation2.ModuleInstances, 2, "forks inherit the setting")
 }

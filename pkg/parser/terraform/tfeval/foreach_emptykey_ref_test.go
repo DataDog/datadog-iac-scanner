@@ -20,7 +20,8 @@ resource "aws_iam_policy" "p" {
 }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), dir, nil)
+	resources := evaluation.Resources
 	if err != nil {
 		t.Fatalf("EvaluateModule: %v", err)
 	}

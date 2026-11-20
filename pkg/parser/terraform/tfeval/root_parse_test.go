@@ -31,7 +31,8 @@ module "bucket" {
 	})
 
 	e := New()
-	first, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := e.EvaluateModule(context.Background(), stack, nil)
+	first := evaluation.Resources
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,8 @@ module "bucket" {
 	}
 
 	e.ReleaseEvalCache()
-	again, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	evaluation2, err := e.EvaluateModule(context.Background(), stack, nil)
+	again := evaluation2.Resources
 	if err != nil {
 		t.Fatal(err)
 	}

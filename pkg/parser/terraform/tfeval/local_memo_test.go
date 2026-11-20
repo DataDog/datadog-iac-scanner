@@ -59,7 +59,8 @@ module "acl" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	byAddr := resourcesByAddress(resources)
 
@@ -101,7 +102,8 @@ module "child" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	byAddr := resourcesByAddress(resources)
 	x := byAddr[`module.child["x"]/aws_sqs_queue.this`]
@@ -130,7 +132,8 @@ module "child" {
 `,
 	})
 
-	resources, _, _, err := New().EvaluateModule(context.Background(), stack, nil)
+	evaluation, err := New().EvaluateModule(context.Background(), stack, nil)
+	resources := evaluation.Resources
 	require.NoError(t, err)
 	byAddr := resourcesByAddress(resources)
 	requireString(t, byAddr[`module.child["x"]/aws_s3_bucket.logs`].Attributes, "bucket", "x-logs")
@@ -158,7 +161,8 @@ resource "aws_sqs_queue" "this" { name = local.version }
 
 	e := New()
 	for i, v := range []string{"one", "two"} {
-		resources, _, _, err := e.EvaluateModule(context.Background(), stacks[i], nil)
+		evaluation, err := e.EvaluateModule(context.Background(), stacks[i], nil)
+		resources := evaluation.Resources
 		require.NoError(t, err)
 		requireString(t, resourcesByAddress(resources)["module.child/aws_sqs_queue.this"].Attributes, "name", v)
 	}
@@ -222,10 +226,10 @@ func TestLocalValue_DoesNotReuseARefinedUnknown(t *testing.T) {
 		}
 		return &hcl.EvalContext{Variables: vars}
 	}
-	plain := e.localValue(expr, ctxFor(cty.UnknownVal(cty.String)))
-	refined := e.localValue(expr, ctxFor(
+	plain := e.memoizedValue(expr, ctxFor(cty.UnknownVal(cty.String)), evaluateExpression).value
+	refined := e.memoizedValue(expr, ctxFor(
 		cty.UnknownVal(cty.String).Refine().NotNull().StringPrefix("arn:").NewValue(),
-	))
+	), evaluateExpression).value
 
 	require.False(t, plain.IsKnown(), "a plain unknown string may be null")
 	require.True(t, refined.RawEquals(cty.False), "a string known to start with a prefix is not null")
@@ -262,9 +266,9 @@ func TestMemoizedValue_DirectReferencesPreserveInputs(t *testing.T) {
 				})
 				vars["local"] = cty.ObjectVal(map[string]cty.Value{"tags": want})
 				ctx := &hcl.EvalContext{Variables: vars}
-				got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 				require.True(t, want.RawEquals(got), "resource reference must preserve its input")
-				require.True(t, want.RawEquals(e.localValue(expr, ctx)), "local reference must preserve its input")
+				require.True(t, want.RawEquals(e.memoizedValue(expr, ctx, evaluateExpression).value), "local reference must preserve its input")
 				if want.IsKnown() && !want.IsNull() && !want.IsMarked() {
 					require.True(t, sharesStorage(want, got), "resource reference must reuse its input's storage")
 				}
@@ -291,7 +295,7 @@ func TestMemoizedValue_DynamicLookupDoesNotScale(t *testing.T) {
 		allocs := testing.AllocsPerRun(3, func() {
 			e := New()
 			for range 50 {
-				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+				got = e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 			}
 		})
 		require.True(t, got.RawEquals(cty.StringVal("value")))
@@ -313,7 +317,7 @@ func BenchmarkEvalExprMemo_DynamicLookup(b *testing.B) {
 			for b.Loop() {
 				e := New()
 				for range 50 {
-					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+					got := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 					if !got.RawEquals(want) {
 						b.Fatal("incorrect lookup result")
 					}
@@ -343,7 +347,7 @@ func BenchmarkEvalExprMemo_DirectReference(b *testing.B) {
 			for b.Loop() {
 				e := New()
 				for range 50 {
-					value := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()})
+					value := e.evalExprMemo(expr, ctx, &bodyState{memo: newInvariantMemo()}).value
 					if !sharesStorage(shared, value) {
 						b.Fatal("direct reference copied its input")
 					}

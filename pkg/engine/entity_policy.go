@@ -55,10 +55,10 @@ type EntityEvaluation struct {
 }
 
 // EntityEvaluationRequest separates engine budgets and output handling from
-// ordinary rule arguments. The reader is the full immutable evaluation-unit
-// view; changing BatchSize must never change what relations a rule can read.
+// ordinary rule arguments. Unit carries producer failures with its full immutable
+// reader; changing BatchSize must never change what relations a rule can read.
 type EntityEvaluationRequest struct {
-	Reader    policy.Reader
+	Unit      policy.Unit
 	Arguments map[string]any
 	BatchSize int
 	Emit      func(EntityFinding) error
@@ -200,8 +200,12 @@ func validateEntityModule(module *ast.Module) error {
 // Evaluate selects every primary target and streams confirmed findings in
 // bounded batches. A batch restricts execution, never global reads or absence
 // proofs. Prepared code is reused; no scan state is retained by the program.
-func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRequest) (EntityEvaluation, error) {
-	result := EntityEvaluation{}
+func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRequest) (result EntityEvaluation, err error) {
+	if request.Unit != nil {
+		if failure := request.Unit.Failure(); failure != nil {
+			defer func() { err = errors.Join(failure, err) }()
+		}
+	}
 	size, err := request.validate()
 	if err != nil {
 		return result, err
@@ -213,7 +217,7 @@ func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRe
 	if err != nil {
 		return result, err
 	}
-	selection, err := p.selectTargets(ctx, request.Reader)
+	selection, err := p.selectTargets(ctx, request.Unit.Reader())
 	if err != nil {
 		return result, err
 	}
@@ -222,7 +226,7 @@ func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRe
 			return result, err
 		}
 		count := min(size, len(selection.ids)-from)
-		batch, err := p.evaluateBatch(ctx, request.Reader, input, selection.batch(selection.ids[from+count-1]))
+		batch, err := p.evaluateBatch(ctx, request.Unit.Reader(), input, selection.batch(selection.ids[from+count-1]))
 		if err != nil {
 			return result, err
 		}
@@ -243,7 +247,7 @@ func (p *EntityProgram) Evaluate(ctx context.Context, request EntityEvaluationRe
 }
 
 func (r EntityEvaluationRequest) validate() (int, error) {
-	if r.Reader == nil || r.Emit == nil {
+	if r.Unit == nil || r.Unit.Reader() == nil || r.Emit == nil {
 		return 0, errors.New("entity reader and finding emitter are required")
 	}
 	if r.BatchSize < 0 {

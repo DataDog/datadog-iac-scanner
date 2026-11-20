@@ -389,7 +389,7 @@ func (s *siblingOutputs) localsObject(
 	if len(members) == 0 {
 		values = s.scope.localCache
 	} else {
-		s.e.resolveLocals(s.scope.localGraph, ctx, values, members)
+		s.e.resolveLocals(s.scope.localGraph, ctx, values, members, nil)
 		for _, name := range names {
 			if _, ok := values[name]; !ok {
 				values[name] = s.scope.localCache[name]
@@ -494,6 +494,21 @@ func (r *moduleCallResources) finish(call int) {
 	}
 }
 
-func (r *moduleCallResources) values() []ResolvedResource {
-	return r.resources
+// evaluateModuleInputs publishes failures in the caller only for authoritative
+// call evaluation. Preliminary output discovery uses an isolated body state.
+func (e *Evaluator) evaluateModuleInputs(
+	ctx context.Context, body *hclsyntax.Body, evalCtx *hcl.EvalContext, scope *ModuleScope,
+) map[string]cty.Value {
+	observations := &bodyObservations{}
+	values := e.evalBodyWith(ctx, body, evalCtx, reservedModuleAttrs, &bodyState{observations: observations})
+	if observations.failure == nil {
+		return values
+	}
+	if scope.inputDiagnostics == nil {
+		scope.inputDiagnostics = map[EvaluationDiagnostic]struct{}{}
+	}
+	for _, diagnostic := range observations.failure.diagnostics {
+		scope.inputDiagnostics[diagnostic] = struct{}{}
+	}
+	return values
 }
