@@ -1998,10 +1998,13 @@ DatadogPolicy contains iac.finding(e,["encrypted"],{}) if {some e in iac.targets
 		require.Equal(t, 1, emitted)
 	})
 	t.Run("open inventory", func(t *testing.T) {
-		_, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: tfeval.NewValueReader(nil, false)}, Emit: func(f EntityFinding) error {
+		result, err := program.Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: tfeval.NewValueReader(nil, false)}, Emit: func(f EntityFinding) error {
+			t.Fatal("empty open inventory emitted a finding")
 			return nil
 		}})
-		require.ErrorContains(t, err, "open Terraform inventory")
+		require.NoError(t, err)
+		require.True(t, result.Indeterminate)
+		require.Zero(t, result.Confirmed)
 	})
 }
 
@@ -2510,11 +2513,11 @@ type entityReaderFixture struct {
 	symbol string
 }
 
-func (r entityReaderFixture) Entities(kind, typ string) ([]string, error) {
+func (r entityReaderFixture) Inventory(kind, typ string) (policy.Inventory, error) {
 	if r.ids == nil {
-		return r.Reader.Entities(kind, typ)
+		return r.Reader.Inventory(kind, typ)
 	}
-	return slices.Clone(r.ids), nil
+	return policy.Inventory{CertainSubjects: slices.Clone(r.ids), Complete: true}, nil
 }
 
 func (r entityReaderFixture) Read(subject string, path policy.Path) (policy.Read, error) {
@@ -2530,6 +2533,7 @@ func TestEntityPolicyFocusDomain(t *testing.T) {
 		{"global owner", ``, `some e in iac.targets("resource","bucket");some other in iac.entities("resource","bucket")`, `other`},
 		{"target index selection", ``, `e:=iac.targets("resource","bucket")[0]`, `e`},
 		{"target position observation", ``, `some i,e in iac.targets("resource","bucket");i==0`, `e`},
+		{"global inventory cardinality", ``, `some e in iac.targets("resource","bucket");count(iac.entities("resource","peer"))==0`, `e`},
 		{"target inventory observation", ``, `xs:=iac.targets("resource","bucket");some e in xs;count(xs)>0`, `e`},
 		{"multiple target iterators", ``, `some e in iac.targets("resource","bucket");some other in iac.targets("resource","bucket");iac.present(other,[])`, `e`},
 		{"helper target inventory", `chosen:=iac.targets("resource","bucket")`, `some e in chosen`, `e`},
@@ -2826,4 +2830,166 @@ func (f directoryFailureFS) ReadDir(dir string) ([]fs.DirEntry, error) {
 		return nil, fs.ErrPermission
 	}
 	return f.FS.ReadDir(dir)
+}
+
+func TestEntityPolicyInventoryCoverage(t *testing.T) {
+	const source = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,["flag"],{}) if {some e in iac.targets("task","shell");iac.raw(e,["flag"])==true}`
+	programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": source}, nil)
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name                string
+		values              map[string]policy.Read
+		complete            bool
+		count               int
+		uncertain, symbolic bool
+	}{
+		{"closed empty", nil, true, 0, false, false},
+		{"open empty", nil, false, 0, true, false},
+		{"open known violation", map[string]policy.Read{"a": {State: policy.Known, Value: true}}, false, 1, true, false},
+		{"open known safe", map[string]policy.Read{"a": {State: policy.Known, Value: false}}, false, 0, true, false},
+		{"open mixed values", map[string]policy.Read{"a": {State: policy.Known, Value: true}, "b": {State: policy.Unknown, NonNull: true}}, false, 1, true, true},
+		{"closed known violation", map[string]policy.Read{"a": {State: policy.Known, Value: true}}, true, 1, false, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			ids := make([]string, 0, len(test.values))
+			for id := range test.values {
+				ids = append(ids, id)
+			}
+			reader := inventoryReaderFixture{values: test.values, inventories: map[entitySelector]policy.Inventory{{"task", "shell"}: {CertainSubjects: ids, Complete: test.complete}, {"task", "unused"}: {Complete: false}}}
+			for _, size := range []int{1, 2, 0} {
+				var findings []EntityFinding
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: size, Emit: func(f EntityFinding) error { findings = append(findings, f); return nil }})
+				require.NoError(t, err)
+				require.Equal(t, test.count, result.Confirmed)
+				require.Len(t, findings, test.count)
+				require.Equal(t, test.uncertain, result.Indeterminate)
+				require.Equal(t, test.symbolic, result.Symbolic)
+			}
+		})
+	}
+	t.Run("open selector union preserves set semantics", func(t *testing.T) {
+		const query = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("task","left")}
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("task","right")}`
+		programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": query}, nil)
+		require.NoError(t, err)
+		reader := inventoryReaderFixture{values: map[string]policy.Read{"a": {State: policy.Known, Value: true}, "b": {State: policy.Known, Value: true}, "c": {State: policy.Known, Value: true}}, inventories: map[entitySelector]policy.Inventory{{"task", "left"}: {CertainSubjects: []string{"b", "a"}, Complete: false}, {"task", "right"}: {CertainSubjects: []string{"c", "b"}, Complete: true}}}
+		for _, size := range []int{1, 2, 0} {
+			var emitted []string
+			result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: size, Emit: func(f EntityFinding) error { emitted = append(emitted, f.Subject); return nil }})
+			require.NoError(t, err)
+			require.Equal(t, 3, result.Confirmed)
+			require.True(t, result.Indeterminate)
+			require.ElementsMatch(t, []string{"a", "b", "c"}, emitted)
+			require.Equal(t, []string{"b", "a"}, reader.inventories[entitySelector{"task", "left"}].CertainSubjects)
+		}
+	})
+	t.Run("open coverage survives canceled emission", func(t *testing.T) {
+		reader := inventoryReaderFixture{values: map[string]policy.Read{"a": {State: policy.Known, Value: true}, "b": {State: policy.Known, Value: true}}, inventories: map[entitySelector]policy.Inventory{{"task", "shell"}: {CertainSubjects: []string{"a", "b"}, Complete: false}}}
+		for _, size := range []int{1, 0} {
+			ctx, cancel := context.WithCancel(context.Background())
+			result, err := programs["policy"].Evaluate(ctx, EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, BatchSize: size, Emit: func(EntityFinding) error { cancel(); return nil }})
+			cancel()
+			require.ErrorIs(t, err, context.Canceled)
+			require.True(t, result.Indeterminate)
+			require.Equal(t, 1, result.Confirmed)
+		}
+	})
+
+	t.Run("coverage survives later inventory failure", func(t *testing.T) {
+		const query = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("task","left")}
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("task","right")}`
+		programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": query}, nil)
+		require.NoError(t, err)
+		failure := errors.New("inventory producer failed")
+		reader := inventoryReaderFixture{inventories: map[entitySelector]policy.Inventory{{"task", "left"}: {Complete: false}}, inventoryErrors: map[entitySelector]error{{"task", "right"}: failure}}
+		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(EntityFinding) error { t.Fatal("unexpected finding"); return nil }})
+		require.ErrorIs(t, err, failure)
+		require.True(t, result.Indeterminate)
+		require.Zero(t, result.Confirmed)
+	})
+
+	t.Run("global membership requires closure", func(t *testing.T) {
+		for expected, body := range []string{
+			`some other in iac.entities("task","peer");iac.raw(other,["flag"])==true`,
+			`not protected(e)`,
+		} {
+			query := `package datadog
+import rego.v1
+import data.iac
+protected(e) if {some other in iac.entities("task","peer");iac.raw(other,["flag"])==true}
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("task","shell");` + body + `}`
+			programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": query}, nil)
+			require.NoError(t, err)
+			for _, complete := range []bool{true, false} {
+				reader := inventoryReaderFixture{values: map[string]policy.Read{"a": {State: policy.Known, Value: true}}, inventories: map[entitySelector]policy.Inventory{{"task", "shell"}: {CertainSubjects: []string{"a"}, Complete: true}, {"task", "peer"}: {Complete: complete}}}
+				result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(EntityFinding) error { return nil }})
+				if complete {
+					require.NoError(t, err)
+					require.Equal(t, expected, result.Confirmed)
+					require.False(t, result.Indeterminate)
+				} else {
+					var unsupported *policy.Unsupported
+					require.ErrorAs(t, err, &unsupported)
+					require.Zero(t, result.Confirmed)
+				}
+			}
+		}
+		const query = `package datadog
+import rego.v1
+import data.iac
+DatadogPolicy contains iac.finding(e,[],{}) if {some e in iac.targets("task","shell");some other in iac.entities("task","peer");not other==e}`
+		programs, err := PrepareEntityPolicies(context.Background(), map[string]string{"policy": query}, nil)
+		require.NoError(t, err)
+		reader := inventoryReaderFixture{values: map[string]policy.Read{"a": {State: policy.Known, Value: true}}, inventories: map[entitySelector]policy.Inventory{{"task", "shell"}: {CertainSubjects: []string{"a"}, Complete: true}, {"task", "peer"}: {CertainSubjects: []string{"missing"}, Complete: true}}}
+		result, err := programs["policy"].Evaluate(context.Background(), EntityEvaluationRequest{Unit: entityUnitFixture{reader: reader}, Emit: func(EntityFinding) error { t.Fatal("unregistered relation emitted"); return nil }})
+		require.ErrorContains(t, err, "unregistered test subject")
+		require.Zero(t, result.Confirmed)
+	})
+}
+
+// This adapter exercises the common contract without Terraform values or scopes.
+// Its registered values denote certain subjects; inventory closure is independent.
+type inventoryReaderFixture struct {
+	values          map[string]policy.Read
+	inventories     map[entitySelector]policy.Inventory
+	inventoryErrors map[entitySelector]error
+}
+
+func (r inventoryReaderFixture) CheckSubject(subject string) error {
+	if _, ok := r.values[subject]; !ok {
+		return fmt.Errorf("unregistered test subject %q", subject)
+	}
+	return nil
+}
+func (r inventoryReaderFixture) Inventory(kind, typ string) (policy.Inventory, error) {
+	if err := r.inventoryErrors[entitySelector{kind, typ}]; err != nil {
+		return policy.Inventory{}, err
+	}
+	inventory, ok := r.inventories[entitySelector{kind, typ}]
+	if !ok {
+		return policy.Inventory{Complete: true}, nil
+	}
+	inventory.CertainSubjects = slices.Clone(inventory.CertainSubjects)
+	return inventory, nil
+}
+func (r inventoryReaderFixture) Read(subject string, path policy.Path) (policy.Read, error) {
+	if err := r.CheckSubject(subject); err != nil {
+		return policy.Read{}, err
+	}
+	if len(path) == 1 {
+		if key, ok := path[0].Property(); ok && key == "flag" {
+			return r.values[subject], nil
+		}
+	}
+	return policy.Read{State: policy.Absent}, nil
 }

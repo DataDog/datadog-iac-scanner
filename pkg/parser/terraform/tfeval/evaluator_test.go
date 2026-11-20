@@ -3352,8 +3352,10 @@ func TestNativePolicyValueReads(t *testing.T) {
 		}
 		reader := NewValueReader(subjects, true)
 		delete(subjects, "b")
-		ids, err := reader.Entities("resource", "bucket")
+		inventory, err := reader.Inventory("resource", "bucket")
 		require.NoError(t, err)
+		require.True(t, inventory.Complete)
+		ids := inventory.CertainSubjects
 		require.Equal(t, []string{"a", "b"}, ids)
 		// Returned inventories are owned by the caller, independently of the snapshot.
 		ids[0] = "local-change"
@@ -3361,17 +3363,18 @@ func TestNativePolicyValueReads(t *testing.T) {
 		ids = ids[:0]
 		ids = append(ids, "local-filter")
 		require.Equal(t, []string{"local-filter"}, ids)
-		fresh, err := reader.Entities("resource", "bucket")
+		fresh, err := reader.Inventory("resource", "bucket")
 		require.NoError(t, err)
-		require.Equal(t, []string{"a", "b"}, fresh)
+		require.True(t, fresh.Complete)
+		require.Equal(t, []string{"a", "b"}, fresh.CertainSubjects)
 		for _, name := range []string{"left", "right"} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
-				owned, err := reader.Entities("resource", "bucket")
+				owned, err := reader.Inventory("resource", "bucket")
 				require.NoError(t, err)
-				owned[0] = name
-				owned = append(owned, name)
-				require.Len(t, owned, 3)
+				owned.CertainSubjects[0] = name
+				owned.CertainSubjects = append(owned.CertainSubjects, name)
+				require.Len(t, owned.CertainSubjects, 3)
 			})
 		}
 		require.NoError(t, reader.CheckSubject("b"))
@@ -3383,9 +3386,10 @@ func TestNativePolicyValueReads(t *testing.T) {
 		_, err = reader.Read("unregistered", nil)
 		require.Error(t, err)
 		require.Error(t, reader.CheckSubject("unregistered"))
-		_, err = NewValueReader(nil, false).Entities("resource", "bucket")
-		var unsupported *policy.Unsupported
-		require.ErrorAs(t, err, &unsupported)
+		open, err := NewValueReader(nil, false).Inventory("resource", "bucket")
+		require.NoError(t, err)
+		require.False(t, open.Complete)
+		require.Empty(t, open.CertainSubjects)
 		otherRoot := NewValueReader(map[string]ValueSubject{"b": {Kind: "resource", Type: "bucket", Value: cty.False}}, true)
 		got, err = otherRoot.Read("b", nil)
 		require.NoError(t, err)

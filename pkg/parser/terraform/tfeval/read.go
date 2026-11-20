@@ -161,7 +161,8 @@ type ValueReader struct {
 
 // NewValueReader snapshots the subject registry, sharing immutable cty values.
 // A caller may assert completeness only for an authoritative native inventory.
-// Open inventories are diagnosed by this initial scalar API, not truncated.
+// Registered subjects must have certain presence. Completeness describes whether
+// additional matching subjects may exist; it is never inferred from the registry.
 func NewValueReader(subjects map[string]ValueSubject, complete bool) *ValueReader {
 	reader := &ValueReader{subjects: make(map[string]ValueSubject, len(subjects)), complete: complete, indexes: map[[2]string][]string{}}
 	for id, subject := range subjects {
@@ -180,12 +181,10 @@ func (r *ValueReader) CheckSubject(id string) error {
 	}
 	return nil
 }
-func (r *ValueReader) Entities(kind, typ string) ([]string, error) {
-	if !r.complete {
-		return nil, &policy.Unsupported{Operation: "enumerating an open Terraform inventory"}
-	}
-	return slices.Clone(r.indexes[[2]string{kind, typ}]), nil
+func (r *ValueReader) Inventory(kind, typ string) (policy.Inventory, error) {
+	return policy.Inventory{CertainSubjects: slices.Clone(r.indexes[[2]string{kind, typ}]), Complete: r.complete}, nil
 }
+
 func (r *ValueReader) Read(id string, path policy.Path) (policy.Read, error) {
 	subject, ok := r.subjects[id]
 	if !ok {

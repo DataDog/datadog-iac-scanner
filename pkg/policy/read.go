@@ -61,15 +61,26 @@ type Read struct {
 	Symbol      string
 }
 
-// Reader is immutable for an evaluation and safe for concurrent use. Entities
-// must reject inventories whose membership is not authoritative for this API;
-// an incomplete inventory cannot silently look empty. Read must reject unknown
-// subjects and unsupported operations rather than interpret either as absence.
-// Entities returns a caller-owned slice; retaining, reordering or appending to
-// it must not mutate the reader. Adapters must not retain or mutate read paths.
+// Inventory contains the subjects whose presence and selector membership are
+// established in this evaluation unit for the requested kind/type selector.
+// Complete proves there are no additional matching subjects; false
+// permits an unknown tail, including when CertainSubjects is empty. Possible
+// members must never be registered here as certain subjects. Errors describe
+// producer failure, not legitimate uncertainty about additional membership.
+// The subject slice is caller-owned and may be retained or reordered.
+type Inventory struct {
+	CertainSubjects []string
+	Complete        bool
+}
+
+// Reader is immutable for an evaluation and safe for concurrent use. Inventory
+// returns certain membership and its closure together, never a silently closed
+// partial list. CheckSubject and Read must reject unregistered subjects and
+// unsupported operations rather than interpret either as absence. Adapters must
+// not retain or mutate read paths.
 type Reader interface {
 	CheckSubject(subject string) error
-	Entities(kind, typ string) ([]string, error)
+	Inventory(kind, typ string) (Inventory, error)
 	Read(subject string, path Path) (Read, error)
 }
 

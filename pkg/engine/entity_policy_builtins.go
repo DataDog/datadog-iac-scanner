@@ -125,6 +125,43 @@ func (s *entitySession) fact(subjectTerm, pathTerm *ast.Term) (*entityReadFact, 
 // read validates the adapter boundary and preserves real failures independently
 // from the sentinel used to request symbolic execution. Native reads retain no
 // per-value facts; the symbolic path alone caches repeated observations.
+// globalInventory builds only closed policy-visible membership. Primary focus
+// consumes the same reader observation separately and may traverse certain
+// members of an open inventory without exposing that prefix to policy negation.
+func (s *entitySession) globalInventory(ctx context.Context, kind, typ string) (result *ast.Term, err error) {
+	// OPA can interpret a builtin error as undefined under negation. Retain the
+	// error independently so evaluation cannot turn a failed relation into true.
+	defer func() {
+		if err != nil {
+			s.failure = err
+		}
+	}()
+	inventory, err := s.reader.Inventory(kind, typ)
+	if err != nil {
+		return nil, err
+	}
+	// Global relation reads cannot interpret an unknown tail as absent.
+	if !inventory.Complete {
+		err := &policy.Unsupported{Operation: "enumerating open policy-visible inventory"}
+		return nil, err
+	}
+	ids := inventory.CertainSubjects
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	terms := make([]*ast.Term, len(ids))
+	for i, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := s.reader.CheckSubject(id); err != nil {
+			return nil, err
+		}
+		terms[i] = ast.StringTerm(id)
+	}
+	return ast.ArrayTerm(terms...), nil
+}
+
 func (s *entitySession) read(subject string, path policy.Path) (policy.Read, error) {
 	read, err := s.reader.Read(subject, path)
 	if err == nil {
@@ -262,16 +299,7 @@ func entityFunctions() []entityFunction {
 			if err != nil {
 				return nil, err
 			}
-			ids, err := s.reader.Entities(string(kind.Value.(ast.String)), string(typ.Value.(ast.String)))
-			if err != nil {
-				s.failure = err
-				return nil, err
-			}
-			terms := make([]*ast.Term, len(ids))
-			for i, id := range ids {
-				terms[i] = ast.StringTerm(id)
-			}
-			return ast.ArrayTerm(terms...), nil
+			return s.globalInventory(b.Context, string(kind.Value.(ast.String)), string(typ.Value.(ast.String)))
 		})},
 		{describe, rego.Function2(describe, func(b rego.BuiltinContext, id, path *ast.Term) (*ast.Term, error) {
 			s, err := entitySessionFrom(b.Context)
