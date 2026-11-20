@@ -97,7 +97,7 @@ func TestInventoryAddress(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			moduleCall, path, complete := inventoryAddress(&tt.resource)
+			moduleCall, path, complete := tt.resource.PartialAddress()
 			require.Equal(t, tt.wantModuleCall, moduleCall)
 			require.Equal(t, tt.wantPath, path)
 			require.Equal(t, tt.wantComplete, complete)

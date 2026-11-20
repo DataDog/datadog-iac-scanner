@@ -87,6 +87,19 @@ func TestRemoveStale(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `{"version":"2.1.0","runs":[]}`, string(data))
 
+	// Nor is a file that only starts like one: the whole header is checked.
+	for _, content := range []string{
+		`{"schema_version":2,"settings":{"keep":"this is not scanner inventory"}}`,
+		`{"schema_version":"1","settings":{"keep":"no scan id"}}`,
+		`{"schema_version":"1","scan_id":"s","scanner_version":"v","scanned_at":3}`,
+	} {
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+		require.ErrorIs(t, RemoveStale(path), ErrNotInventory, content)
+		data, err = os.ReadFile(path)
+		require.NoError(t, err)
+		require.Equal(t, content, string(data))
+	}
+
 	other := filepath.Join(dir, "dir")
 	require.NoError(t, os.MkdirAll(filepath.Join(other, "child"), 0o755))
 	require.ErrorIs(t, RemoveStale(other), ErrNotInventory)

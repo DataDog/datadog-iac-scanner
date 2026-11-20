@@ -13,7 +13,11 @@
 // absent field as null.
 package inventory
 
-import "time"
+import (
+	"time"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+)
 
 // SchemaVersion is the version of the inventory format.
 const SchemaVersion = "1"
@@ -48,15 +52,15 @@ const (
 	FailureDocumentsPanic = "documents_panic"
 )
 
-// Reasons a file failed.
+// Reasons a file failed: the scan's parse outcomes (see model.ParseFailure*).
 const (
-	ReasonParseError       = "parse_error"
-	ReasonHelmRenderFailed = "helm_render_failed"
-	ReasonTestFixture      = "test_fixture"
-	ReasonTemplateSyntax   = "template_syntax"
-	ReasonTooLarge         = "too_large"
+	ReasonParseError       = model.ParseFailureParseError
+	ReasonHelmRenderFailed = model.ParseFailureHelmRenderFailed
+	ReasonTestFixture      = model.ParseFailureTestFixture
+	ReasonTemplateSyntax   = model.ParseFailureTemplateSyntax
+	ReasonTooLarge         = model.ParseFailureTooLarge
 	// ReasonUnknown marks a file that gave no documents for no recorded reason.
-	ReasonUnknown = "unknown"
+	ReasonUnknown = model.ParseFailureUnknown
 )
 
 // Resource completeness values.

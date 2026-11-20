@@ -6,6 +6,7 @@
 package model
 
 import (
+	"cmp"
 	"context"
 	"index/suffixarray"
 	"regexp"
@@ -790,21 +791,34 @@ func (v *Vulnerability) raisedOn() RaisedOn {
 	return RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
 }
 
-// RecordDuplicate adds where dropped was raised, and where it stood for, to
-// the places kept stands for, once each: kept is the finding of their
-// identity the scan reports, dropped one it does not.
-func RecordDuplicate(kept, dropped *Vulnerability) {
+// Places gathers where the findings of one identity were raised, once each,
+// whichever of them the scan keeps: the set grows with every finding of the
+// identity, and Assign gives the result to the kept one once, at the end.
+type Places map[RaisedOn]struct{}
+
+// Add adds where v was raised, and the places v already stood for.
+func (p Places) Add(v *Vulnerability) {
+	p[v.raisedOn()] = struct{}{}
+	for _, place := range v.AlsoRaisedOn {
+		p[place] = struct{}{}
+	}
+}
+
+// Assign sets on kept, the finding of the identity the scan reports, the
+// other places of the set, in a stable order.
+func (p Places) Assign(kept *Vulnerability) {
 	here := kept.raisedOn()
-	add := func(place RaisedOn) {
-		if place == here || slices.Contains(kept.AlsoRaisedOn, place) {
-			return
+	var also []RaisedOn
+	for place := range p {
+		if place != here {
+			also = append(also, place)
 		}
-		kept.AlsoRaisedOn = append(kept.AlsoRaisedOn, place)
 	}
-	add(dropped.raisedOn())
-	for _, place := range dropped.AlsoRaisedOn {
-		add(place)
-	}
+	slices.SortFunc(also, func(a, b RaisedOn) int {
+		return cmp.Or(strings.Compare(a.FileID, b.FileID), cmp.Compare(a.Line, b.Line),
+			strings.Compare(a.SearchKey, b.SearchKey), cmp.Compare(a.BlockStart, b.BlockStart))
+	})
+	kept.AlsoRaisedOn = also
 }
 
 // Identity returns the file and line text that tell v apart from other

@@ -54,7 +54,7 @@ type inventoryRun struct {
 // noteFiles keeps what the scan learnt about its files before parsing them.
 // A nil run, a scan without inventory, ignores it.
 func (run *inventoryRun) noteFiles(filePlatform map[string]string, remoteModulePaths []string) {
-	if run == nil {
+	if !run.writes() {
 		return
 	}
 	run.filePlatform = filePlatform
@@ -66,7 +66,7 @@ func (run *inventoryRun) noteFiles(filePlatform map[string]string, remoteModuleP
 
 // noteTooLarge keeps the files the analyzer skipped for their size.
 func (run *inventoryRun) noteTooLarge(tooLarge map[string]string) {
-	if run != nil {
+	if run.writes() {
 		run.tooLarge = tooLarge
 	}
 }
@@ -78,7 +78,9 @@ func (run *inventoryRun) writes() bool {
 
 // sink is where the engine reports resources, nil without an inventory.
 func (run *inventoryRun) sink() engine.InventorySink {
-	if run == nil {
+	// An inventory that already failed is not written: nothing is evaluated
+	// or listed for it.
+	if !run.writes() {
 		return nil
 	}
 	return run.collector
@@ -86,7 +88,7 @@ func (run *inventoryRun) sink() engine.InventorySink {
 
 // noteModuleFailures records the remote modules the scan could not resolve.
 func (run *inventoryRun) noteModuleFailures(failures []modulegraph.ResolutionFailure) {
-	if run == nil {
+	if !run.writes() {
 		return
 	}
 	for i := range failures {
@@ -167,33 +169,40 @@ func (c *Client) startInventory(ctx context.Context) {
 // inventory path, "" when there is none. A report is checked when the
 // inventory is written, since only the report writers know their names.
 func (c *Client) inventoryPathConflict(path string) string {
-	// The metadata and the payload are written after the inventory: a path
-	// under one of them would make a directory where it goes.
-	others := []struct {
-		name, path string
-		laterFile  bool
-	}{
-		{"the metadata path", c.ScanParams.MetadataPath, true},
-		{"the payload path", c.ScanParams.PayloadPath, true},
+	for _, destination := range []struct{ name, path string }{
+		{"the metadata path", c.ScanParams.MetadataPath},
+		{"the payload path", c.ScanParams.PayloadPath},
+	} {
+		if relation, ok := destinationConflict(path, destination.path); ok {
+			return relation + destination.name
+		}
 	}
+	// A scanned directory can hold the inventory; only the path itself is
+	// taken.
 	for _, input := range c.ScanParams.Path {
-		others = append(others, struct {
-			name, path string
-			laterFile  bool
-		}{"a scanned path", input, false})
-	}
-	for _, other := range others {
-		if other.path == "" {
-			continue
-		}
-		if samePath(path, other.path) {
-			return other.name
-		}
-		if other.laterFile && isUnder(path, other.path) {
-			return "under " + other.name
+		if input != "" && samePath(path, input) {
+			return "a scanned path"
 		}
 	}
 	return ""
+}
+
+// destinationConflict reports whether two file destinations of a scan
+// collide, and how path stands to other: the same file, or one inside the
+// other, which would make a directory where the other file goes, whichever
+// is written first.
+func destinationConflict(path, other string) (relation string, ok bool) {
+	switch {
+	case other == "":
+		return "", false
+	case samePath(path, other):
+		return "", true
+	case isUnder(path, other):
+		return "under ", true
+	case isUnder(other, path):
+		return "above ", true
+	}
+	return "", false
 }
 
 // isUnder reports whether path lies inside dir, through symlinks.
@@ -359,9 +368,30 @@ func (c *Client) recordManifest(run *inventoryRun, files model.FileMetadatas) {
 				record(path, "", inventory.FileFailed, inventory.ReasonUnknown)
 			}
 		}
+		recordFailedRenders(run, t.FailedRenders)
 	}
 	for path, platform := range run.tooLarge {
 		record(path, platform, inventory.FileFailed, inventory.ReasonTooLarge)
+	}
+}
+
+// recordFailedRenders lists each chart whose render failed as a source the
+// scan could not resolve, even when its files parsed in another render, such
+// as a dependency rendered on its own.
+func recordFailedRenders(run *inventoryRun, charts map[string]bool) {
+	for chart := range charts {
+		if run.isExternal(chart) {
+			continue
+		}
+		rel, ok := run.collector.RelPath(chart)
+		if !ok {
+			continue
+		}
+		run.collector.AddUnresolvedSource(inventory.UnresolvedSource{
+			Platform: inventory.PlatformKubernetes,
+			Source:   rel,
+			Reason:   inventory.ReasonHelmRenderFailed,
+		})
 	}
 }
 

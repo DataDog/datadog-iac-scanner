@@ -179,10 +179,12 @@ func TestTrackFileOutcomes(t *testing.T) {
 	c.TrackFileFailed("a.yaml", "parse_error")
 	c.TrackFileFailed("a.yaml", "template_syntax")
 	c.TrackFileEmpty("empty.yaml")
+	c.TrackRenderFailed("charts/parent")
 
 	require.Equal(t, map[string]string{"a.yaml": "parse_error"}, c.FailedFiles,
 		"the first reason in sort order is kept")
 	require.Equal(t, map[string]bool{"empty.yaml": true}, c.EmptyFiles)
+	require.Equal(t, map[string]bool{"charts/parent": true}, c.FailedRenders)
 	require.Zero(t, c.FoundFiles)
 	require.Zero(t, c.ParsedFiles)
 }

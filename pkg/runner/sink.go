@@ -13,7 +13,6 @@ import (
 	"sort"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
-	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
@@ -58,10 +57,10 @@ func redactErrorForLog(err error) string {
 func (s *Service) logParseFailure(ctx context.Context, filename, reason string, err error) {
 	contextLogger := logger.FromContext(ctx)
 	switch reason {
-	case inventory.ReasonHelmRenderFailed:
+	case model.ParseFailureHelmRenderFailed:
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable raw Helm template: %s", filename)
-	case inventory.ReasonTestFixture, inventory.ReasonTemplateSyntax:
+	case model.ParseFailureTestFixture, model.ParseFailureTemplateSyntax:
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable templated or fixture file: %s", filename)
 	default:
@@ -71,17 +70,17 @@ func (s *Service) logParseFailure(ctx context.Context, filename, reason string, 
 }
 
 // parseFailureReason classifies a parse failure, for its log level and for
-// the inventory.
+// the exporters, such as the inventory.
 func (s *Service) parseFailureReason(filename string, content []byte) string {
 	switch {
 	case s.isUnderFailedHelmChart(filename):
-		return inventory.ReasonHelmRenderFailed
+		return model.ParseFailureHelmRenderFailed
 	case utils.IsTestFixturePath(filename):
-		return inventory.ReasonTestFixture
+		return model.ParseFailureTestFixture
 	case utils.HasYAMLBreakingTemplate(content):
-		return inventory.ReasonTemplateSyntax
+		return model.ParseFailureTemplateSyntax
 	default:
-		return inventory.ReasonParseError
+		return model.ParseFailureParseError
 	}
 }
 

@@ -213,17 +213,31 @@ func FirstFindingPerIdentityRecording(findings []Vulnerability) []Vulnerability 
 func firstFindingPerIdentity(findings []Vulnerability, record bool) []Vulnerability {
 	SortFindings(findings)
 	seen := make(map[[sha256.Size]byte]int, len(findings))
+	// The places of each identity with duplicates, by kept finding.
+	var places map[int]Places
 	kept := findings[:0]
 	for i := range findings {
 		digest := sha256.Sum256([]byte(FindingIdentity(&findings[i])))
 		if k, duplicate := seen[digest]; duplicate {
 			if record {
-				RecordDuplicate(&kept[k], &findings[i])
+				if places == nil {
+					places = make(map[int]Places)
+				}
+				p := places[k]
+				if p == nil {
+					p = Places{}
+					p.Add(&kept[k])
+					places[k] = p
+				}
+				p.Add(&findings[i])
 			}
 			continue
 		}
 		seen[digest] = len(kept)
 		kept = append(kept, findings[i])
+	}
+	for k, p := range places {
+		p.Assign(&kept[k])
 	}
 	clear(findings[len(kept):])
 	return kept

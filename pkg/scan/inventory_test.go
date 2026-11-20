@@ -292,6 +292,7 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 
 			require.NotNil(t, c.inventory.failure)
 			require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason)
+			require.Nil(t, c.inventory.sink(), "nothing is evaluated or listed for an inventory that is not written")
 			data, err := os.ReadFile(path)
 			require.NoError(t, err)
 			require.Equal(t, "resource \"aws_s3_bucket\" \"b\" {}\n", string(data), "the file is not removed")
@@ -345,6 +346,23 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 		c.startInventory(context.Background())
 		require.NotNil(t, c.inventory.failure)
 		require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason)
+		// Nor may the inventory be written where the metadata needs a
+		// directory, or the reverse.
+		for _, paths := range [][2]string{
+			{filepath.Join(filepath.Dir(path), "result.json"), filepath.Join(filepath.Dir(path), "result.json", "metadata.json")},
+			{filepath.Join(filepath.Dir(path), "payload.json"), ""},
+		} {
+			params := Parameters{InventoryPath: paths[0], MetadataPath: paths[1]}
+			if paths[1] == "" {
+				params.PayloadPath = filepath.Join(paths[0], "payload", "payload.json")
+			}
+			c = &Client{ScanParams: &params}
+			c.startInventory(context.Background())
+			require.NotNil(t, c.inventory.failure, paths[0])
+			require.Equal(t, InventoryReasonPathConflict, c.inventory.failure.Reason, paths[0])
+			require.Equal(t, InventoryFailed, c.finishInventory(context.Background(), nil, nil).Status)
+			require.NoFileExists(t, paths[0])
+		}
 		// Nor may the inventory make a directory where the metadata goes.
 		under := filepath.Join(path, "inventory.json")
 		c = &Client{ScanParams: &Parameters{InventoryPath: under, MetadataPath: path}}
