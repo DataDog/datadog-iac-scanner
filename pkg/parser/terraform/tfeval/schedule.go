@@ -326,7 +326,7 @@ func (s *resourceSchedule) evaluate(unit int) {
 	b := s.graph.blocks[unit]
 	ctx := s.context(s.graph.edges[unit], s.graph.locals[unit])
 	if b.Type == scheduledResource {
-		s.resources[unit] = s.e.expandBlock(s.ctx, b, ctx, s.addr, s.chain, false)
+		s.resources[unit] = s.e.expandBlock(s.ctx, b, ctx, s.addr, s.chain, false, &s.scope.diagnostics)
 		s.exposed[unit] = s.resources[unit]
 		return
 	}
@@ -360,7 +360,7 @@ func (s *resourceSchedule) cycle(component []int) {
 			copyBody.Attributes[name] = &copyAttr
 		}
 		copyBlock.Body = &copyBody
-		rs := s.e.expandBlock(s.ctx, &copyBlock, s.base, s.addr, s.chain, b.Type == blockTypeData)
+		rs := s.e.expandBlock(s.ctx, &copyBlock, s.base, s.addr, s.chain, b.Type == blockTypeData, nil)
 		for i := range rs {
 			rs[i].Body = b.Body
 			for name := range rs[i].Attributes {

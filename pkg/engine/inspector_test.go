@@ -2708,6 +2708,19 @@ DatadogPolicy contains iac.finding(e,["flag"],{}) if {some e in iac.targets("res
 		{"failed child without resource inventory", `module "child" {source="./child"}`, "", "", true, 0},
 		{"failed child preserves independent witness", `module "child" {source="./child"}
 resource "aws_s3_bucket" "example" {acl="public"}`, "", "", true, 1},
+		{"invalid resource expansion without inventory", `resource "aws_s3_bucket" "invalid" {
+count=-1
+acl="public"
+}`, "", "", false, 0},
+		{"invalid expansion preserves independent witness", `resource "aws_s3_bucket" "invalid" {
+count=null
+acl="public"
+}
+resource "aws_s3_bucket" "known" {acl="public"}`, "", "", false, 1},
+		{"invalid module expansion without inventory", `module "invalid" {
+source="./"
+count=-1
+}`, "", "", false, 0},
 		{"invalid HCL without resource inventory", "", "invalid.tf", `resource "aws_s3_bucket" "broken" {`, false, 0},
 		{"invalid JSON without resource inventory", "", "invalid.tf.json", `{"resource":`, false, 0},
 		{"invalid HCL preserves independent witness", `resource "aws_s3_bucket" "example" {acl="public"}`, "invalid.tf", `resource "aws_s3_bucket" "broken" {`, false, 1},

@@ -27,40 +27,42 @@ func resolve(t *testing.T, src string, ctx *hcl.EvalContext) Plan {
 
 func TestResolveCount(t *testing.T) {
 	for _, tt := range []struct {
-		expr       string
-		instances  int
-		unresolved bool
+		expr      string
+		instances int
+		state     State
 	}{
-		{"3", 3, false},
-		{`"2"`, 2, false},
-		{"0", 0, false},
-		{"-2", 0, false},
-		{"50", 50, false},
-		{"600", 600, false},
-		{"1.5", 0, true},
-		{`"1.5"`, 0, true},
-		{`"invalid"`, 0, true},
-		{"true", 0, true},
-		{"null", 0, true},
-		{"9223372036854775808", 0, true},
-		{"input", 0, true},
-		{"missing", 0, true},
+		{"3", 3, Known},
+		{`"2"`, 2, Known},
+		{"0", 0, Known},
+		{"-2", 0, Invalid},
+		{"50", 50, Known},
+		{"600", 600, Known},
+		{"1.5", 0, Invalid},
+		{`"1.5"`, 0, Invalid},
+		{`"invalid"`, 0, Invalid},
+		{"true", 0, Invalid},
+		{"null", 0, Invalid},
+		{"9223372036854775808", 0, Invalid},
+		{"input", 0, Unknown},
+		{"missing", 0, Unknown},
 	} {
 		t.Run(tt.expr, func(t *testing.T) {
 			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": cty.UnknownVal(cty.Number)}}
 			plan := resolve(t, "count = "+tt.expr, ctx)
 			require.Equal(t, KindCount, plan.Kind)
-			require.Equal(t, tt.unresolved, plan.Unresolved)
-			require.Empty(t, plan.Items)
+			require.Equal(t, tt.state, plan.State)
+			require.Equal(t, tt.state == Invalid, len(plan.Diagnostics) > 0)
+			require.Equal(t, cty.NilVal, plan.collection)
 			require.Equal(t, tt.instances, plan.Len())
-			for i := range plan.Len() {
-				item := plan.At(i)
+			i := 0
+			for item := range plan.Instances() {
 				name, value := plan.Variable(item)
 				require.Equal(t, KindCount, name)
 				require.True(t, cty.NumberIntVal(int64(i)).RawEquals(item.Key))
 				require.True(t, item.Key.RawEquals(value.GetAttr("index")))
+				i++
 			}
-			if tt.unresolved {
+			if tt.state != Known {
 				name, value := plan.Variable(Item{})
 				require.Equal(t, KindCount, name)
 				require.True(t, cty.UnknownVal(cty.Number).RawEquals(value.GetAttr("index")))
@@ -73,36 +75,38 @@ func TestResolveForEach(t *testing.T) {
 	unknown := cty.UnknownVal(cty.String)
 	marked := cty.StringVal("secret").Mark("sensitive")
 	for _, tt := range []struct {
-		name       string
-		input      cty.Value
-		unresolved bool
-		keys       []string
+		name  string
+		input cty.Value
+		state State
+		keys  []string
 	}{
-		{"object", cty.ObjectVal(map[string]cty.Value{"b": cty.NumberIntVal(2), "a": cty.NumberIntVal(1)}), false, []string{"a", "b"}},
-		{"map with unknown value", cty.MapVal(map[string]cty.Value{"a": unknown}), false, []string{"a"}},
-		{"map with marked value", cty.MapVal(map[string]cty.Value{"a": marked}), false, []string{"a"}},
-		{"string set", cty.SetVal([]cty.Value{cty.StringVal("b"), cty.StringVal("a")}), false, []string{"a", "b"}},
-		{"empty object", cty.EmptyObjectVal, false, nil},
-		{"empty map", cty.MapValEmpty(cty.String), false, nil},
-		{"empty string set", cty.SetValEmpty(cty.String), false, nil},
+		{"object", cty.ObjectVal(map[string]cty.Value{"b": cty.NumberIntVal(2), "a": cty.NumberIntVal(1)}), Known, []string{"a", "b"}},
+		{"map with unknown value", cty.MapVal(map[string]cty.Value{"a": unknown}), Known, []string{"a"}},
+		{"map with marked value", cty.MapVal(map[string]cty.Value{"a": marked}), Known, []string{"a"}},
+		{"string set", cty.SetVal([]cty.Value{cty.StringVal("b"), cty.StringVal("a")}), Known, []string{"a", "b"}},
+		{"empty object", cty.EmptyObjectVal, Known, nil},
+		{"empty map", cty.MapValEmpty(cty.String), Known, nil},
+		{"empty string set", cty.SetValEmpty(cty.String), Known, nil},
 		// The evaluator accepts empty sets before validating element keys.
-		{"empty numeric set", cty.SetValEmpty(cty.Number), false, nil},
-		{"numeric set", cty.SetVal([]cty.Value{cty.NumberIntVal(1)}), true, nil},
-		{"set with unknown key", cty.SetVal([]cty.Value{unknown}), true, nil},
-		{"set with null key", cty.SetVal([]cty.Value{cty.NullVal(cty.String)}), true, nil},
-		{"tuple", cty.TupleVal([]cty.Value{cty.StringVal("a")}), true, nil},
-		{"list", cty.ListVal([]cty.Value{cty.StringVal("a")}), true, nil},
-		{"null", cty.NullVal(cty.Map(cty.String)), true, nil},
-		{"unknown", cty.UnknownVal(cty.Map(cty.String)), true, nil},
-		{"dynamic", cty.DynamicVal, true, nil},
+		{"empty numeric set", cty.SetValEmpty(cty.Number), Known, nil},
+		{"numeric set", cty.SetVal([]cty.Value{cty.NumberIntVal(1)}), Invalid, nil},
+		{"set with unknown key", cty.SetVal([]cty.Value{unknown}), Unknown, nil},
+		{"set with null key", cty.SetVal([]cty.Value{cty.NullVal(cty.String)}), Invalid, nil},
+		{"tuple", cty.TupleVal([]cty.Value{cty.StringVal("a")}), Invalid, nil},
+		{"list", cty.ListVal([]cty.Value{cty.StringVal("a")}), Invalid, nil},
+		{"null", cty.NullVal(cty.Map(cty.String)), Invalid, nil},
+		{"unknown", cty.UnknownVal(cty.Map(cty.String)), Unknown, nil},
+		{"dynamic", cty.DynamicVal, Unknown, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": tt.input}}
 			plan := resolve(t, "for_each = input", ctx)
 			require.Equal(t, KindForEach, plan.Kind)
-			require.Equal(t, tt.unresolved, plan.Unresolved)
-			require.Len(t, plan.Items, len(tt.keys))
-			for i, item := range plan.Items {
+			require.Equal(t, tt.state, plan.State)
+			require.Equal(t, tt.state == Invalid, len(plan.Diagnostics) > 0)
+			require.Equal(t, len(tt.keys), plan.Len())
+			i := 0
+			for item := range plan.Instances() {
 				require.Equal(t, cty.StringVal(tt.keys[i]), item.Key)
 				name, value := plan.Variable(item)
 				require.Equal(t, "each", name)
@@ -117,8 +121,9 @@ func TestResolveForEach(t *testing.T) {
 					want = tt.input.Index(item.Key)
 				}
 				require.True(t, want.RawEquals(value.GetAttr("value")), "%#v", value)
+				i++
 			}
-			if tt.unresolved {
+			if tt.state != Known {
 				name, value := plan.Variable(Item{})
 				require.Equal(t, "each", name)
 				require.True(t, cty.UnknownVal(cty.String).RawEquals(value.GetAttr("key")))
@@ -127,8 +132,8 @@ func TestResolveForEach(t *testing.T) {
 		})
 	}
 	plan := resolve(t, "for_each = missing", nil)
-	require.True(t, plan.Unresolved)
-	require.Empty(t, plan.Items)
+	require.NotEqual(t, Known, plan.State)
+	require.Equal(t, cty.NilVal, plan.collection)
 }
 
 // Every instance of a collection is expanded, however large.
@@ -141,10 +146,12 @@ func TestResolveForEachExpandsEveryInstance(t *testing.T) {
 			}
 			ctx := &hcl.EvalContext{Variables: map[string]cty.Value{"input": cty.MapVal(values)}}
 			plan := resolve(t, "for_each = input", ctx)
-			require.False(t, plan.Unresolved)
-			require.Len(t, plan.Items, n)
-			for i, item := range plan.Items {
+			require.Equal(t, Known, plan.State)
+			require.Equal(t, n, plan.Len())
+			i := 0
+			for item := range plan.Instances() {
 				require.Equal(t, cty.StringVal(fmt.Sprintf("k%04d", i)), item.Key)
+				i++
 			}
 		})
 	}
@@ -165,21 +172,39 @@ func TestResolveForEach_CanceledContextDoesNotAllocate(t *testing.T) {
 	cancel()
 	plan := Resolve(canceled, count, forEach, evalCtx)
 	require.Equal(t, KindForEach, plan.Kind)
-	require.True(t, plan.Unresolved)
-	require.Empty(t, plan.Items)
+	require.NotEqual(t, Known, plan.State)
+	require.Equal(t, cty.NilVal, plan.collection)
 }
 
-func TestResolveCountPrecedenceAndNoExpansion(t *testing.T) {
+func TestResolveConflictingAndAbsentExpansion(t *testing.T) {
 	for _, expr := range []string{"0", "missing"} {
 		plan := resolve(t, "count = "+expr+"\nfor_each = { a = 1 }", nil)
 		require.Equal(t, KindCount, plan.Kind)
-		require.Empty(t, plan.Items)
-		require.Equal(t, expr == "missing", plan.Unresolved)
+		require.Equal(t, cty.NilVal, plan.collection)
+		require.Equal(t, Invalid, plan.State)
+		require.NotEmpty(t, plan.Diagnostics)
 	}
 	plan := resolve(t, `name = "single"`, nil)
 	require.Empty(t, plan.Kind)
-	require.False(t, plan.Unresolved)
+	require.Equal(t, Known, plan.State)
 	name, value := plan.Variable(Item{})
 	require.Empty(t, name)
 	require.Equal(t, cty.NilVal, value)
+}
+
+// Planning and early termination never materialize an uncapped count inventory.
+func TestResolveCountLazyIteration(t *testing.T) {
+	plan := resolve(t, "count = 1000000000000000", nil)
+	require.Equal(t, Known, plan.State)
+	require.Equal(t, 1_000_000_000_000_000, plan.Len())
+	visited := 0
+	for item := range plan.Instances() {
+		require.True(t, cty.NumberIntVal(int64(visited)).RawEquals(item.Key))
+		visited++
+		if visited == 3 {
+			break
+		}
+	}
+	require.Equal(t, 3, visited)
+	require.Equal(t, 1_000_000_000_000_000, plan.Len())
 }
