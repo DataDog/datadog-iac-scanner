@@ -217,8 +217,7 @@ func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digest
 		return true
 	}
 	if !v.IsKnown() {
-		w.WriteString("?")
-		return writeType(w, v.Type())
+		return m.writeUnknown(ctx, w, v)
 	}
 	// Walk collections instead of cty/json: JSON collapses list/set and map/object
 	// to the same shape, including nested wholly-known values inside partial keys.
@@ -263,6 +262,52 @@ func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digest
 		// retaining different native semantics. They are not safe cache keys.
 		return false
 	}
+	return true
+}
+
+// writeUnknown preserves the observable refinements exposed by cty.ValueRange
+// in the pinned cty version. Review these fields when upgrading cty: a type-only
+// key can reuse a result computed with incompatible nullability, shape or bounds.
+func (m *keyMemo) writeUnknown(ctx context.Context, w keySink, value cty.Value) bool {
+	w.WriteString("unknown(")
+	if !writeType(w, value.Type()) {
+		return false
+	}
+	bounds := value.Range()
+	w.WriteString(",nullable=")
+	w.WriteString(strconv.FormatBool(bounds.CouldBeNull()))
+	switch {
+	case value.Type() == cty.String:
+		w.WriteString(",prefix=")
+		w.WriteString(strconv.Quote(bounds.StringPrefix()))
+	case value.Type() == cty.Number:
+		lower, lowerInclusive := bounds.NumberLowerBound()
+		upper, upperInclusive := bounds.NumberUpperBound()
+		// Current cty uses infinities for unbounded endpoints. A future
+		// unrepresentable bound must bypass caching rather than recurse into
+		// another unknown bound or discard its constraints.
+		if !lower.IsKnown() || !upper.IsKnown() {
+			return false
+		}
+		w.WriteString(",min=")
+		if !m.writeValue(ctx, w, lower, false) {
+			return false
+		}
+		w.WriteString(",minInclusive=")
+		w.WriteString(strconv.FormatBool(lowerInclusive))
+		w.WriteString(",max=")
+		if !m.writeValue(ctx, w, upper, false) {
+			return false
+		}
+		w.WriteString(",maxInclusive=")
+		w.WriteString(strconv.FormatBool(upperInclusive))
+	case value.Type().IsCollectionType():
+		w.WriteString(",minLength=")
+		w.WriteString(strconv.Itoa(bounds.LengthLowerBound()))
+		w.WriteString(",maxLength=")
+		w.WriteString(strconv.Itoa(bounds.LengthUpperBound()))
+	}
+	w.WriteString(")")
 	return true
 }
 

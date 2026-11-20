@@ -206,9 +206,9 @@ func TestEqualValues_AgreesWithRawEquals(t *testing.T) {
 	require.True(t, sharesStorage(wrap(shared).GetAttr("v"), shared))
 }
 
-// A plain unknown string may be null. An unknown string known to start with a
-// prefix may not, so the two must not share one memoized comparison.
-func TestLocalValue_DoesNotReuseARefinedUnknown(t *testing.T) {
+// Each abstract input context retains its own result, and repeated compatible
+// unknown constraints reuse that result without re-evaluating the expression.
+func TestLocalValue_UnknownContextReuse(t *testing.T) {
 	expr, diags := hclsyntax.ParseExpression([]byte("var.x == null"), "t.hcl", hcl.InitialPos)
 	require.False(t, diags.HasErrors())
 
@@ -222,13 +222,22 @@ func TestLocalValue_DoesNotReuseARefinedUnknown(t *testing.T) {
 		}
 		return &hcl.EvalContext{Variables: vars}
 	}
-	plain := e.localValue(expr, ctxFor(cty.UnknownVal(cty.String)))
-	refined := e.localValue(expr, ctxFor(
-		cty.UnknownVal(cty.String).Refine().NotNull().StringPrefix("arn:").NewValue(),
-	))
+	evaluations := 0
+	evaluate := func(expr hclsyntax.Expression, ctx *hcl.EvalContext) cty.Value {
+		evaluations++
+		return evalLocal(expr, ctx)
+	}
+	plainInput := cty.UnknownVal(cty.String)
+	refinedInput := cty.UnknownVal(cty.String).Refine().NotNull().StringPrefix("arn:").NewValue()
+	plain := e.memoizedValue(expr, ctxFor(plainInput), evaluate)
+	refined := e.memoizedValue(expr, ctxFor(refinedInput), evaluate)
 
 	require.False(t, plain.IsKnown(), "a plain unknown string may be null")
 	require.True(t, refined.RawEquals(cty.False), "a string known to start with a prefix is not null")
+	require.Equal(t, 2, e.LocalMemoSize())
+	e.memoizedValue(expr, ctxFor(plainInput), evaluate)
+	e.memoizedValue(expr, ctxFor(refinedInput), evaluate)
+	require.Equal(t, 2, evaluations, "each compatible unknown context is evaluated once")
 }
 
 func TestMemoizedValue_DirectReferencesPreserveInputs(t *testing.T) {
