@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/zclconf/go-cty/cty"
-	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 // evalCacheKey identifies a module evaluation by its filesystem context and inputs.
@@ -145,7 +144,9 @@ type keyMemoEntry struct {
 // retained: the key of every evaluation is kept until the root is merged, and
 // a module input can be a decoded configuration passed to every instance.
 // A canceled ctx stops the encoding and ok comes back false: the caller then
-// skips the cache, since the evaluation is about to stop anyway.
+// skips the cache. Marked values are also ineligible: their metadata must not
+// be erased or treated as equivalent to an unmarked input. Values unsupported
+// by the encoding are likewise evaluated without cache reuse.
 func (m *keyMemo) inputsKey(ctx context.Context, inputs map[string]cty.Value) (key inputsDigest, ok bool) {
 	if ctx.Err() != nil {
 		return inputsDigest{}, false
@@ -171,17 +172,6 @@ func (m *keyMemo) inputsKey(ctx context.Context, inputs map[string]cty.Value) (k
 		w.WriteString("\n")
 	}
 	return w.digest(), true
-}
-
-// inputsKeyUninterruptible computes the input digest without cancellation
-// checks, for callers that hold no scan context.
-func (m *keyMemo) inputsKeyUninterruptible(inputs map[string]cty.Value) inputsDigest {
-	key, ok := m.inputsKey(context.Background(), inputs)
-	if !ok {
-		// Only a canceled context stops the encoding; Background never is.
-		panic("tfeval: input key encoding stopped without a canceled context")
-	}
-	return key
 }
 
 // keySink receives a key encoding.
@@ -213,21 +203,22 @@ func (w *keyWriter) digest() inputsDigest { return inputsDigest{a: w.a.Sum64(), 
 // values are unknown (IsKnown()==false), so they are handled by the unknown
 // branch and the DynamicPseudoType case never needs a special guard.
 func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digestCollection bool) bool {
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || v.IsMarked() {
 		return false
 	}
 	if v.IsNull() {
 		// Include the type so cty.NullVal(cty.String) and cty.NullVal(cty.Number)
 		// do not collide.
 		w.WriteString("null(")
-		writeType(w, v.Type())
+		if !writeType(w, v.Type()) {
+			return false
+		}
 		w.WriteString(")")
 		return true
 	}
 	if !v.IsKnown() {
 		w.WriteString("?")
-		writeType(w, v.Type())
-		return true
+		return writeType(w, v.Type())
 	}
 	// Walk collections instead of cty/json: JSON collapses list/set and map/object
 	// to the same shape, including nested wholly-known values inside partial keys.
@@ -246,26 +237,40 @@ func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digest
 		}
 		return m.writeCollection(ctx, w, v)
 	}
-	data, err := ctyjson.Marshal(v, v.Type())
-	if err != nil {
-		if v.Type() == cty.Number {
-			w.WriteString("number(")
-			w.WriteString(v.AsBigFloat().Text('g', -1))
-			w.WriteString(")")
-			return true
+	if v.Type() == cty.Number {
+		// Decimal formatting can scale with the exponent rather than the
+		// stored value. The binary encoding also preserves precision and
+		// signed zero: those affect arithmetic and formatting even when
+		// cty considers two numbers equal. AsBigFloat returns an owned copy.
+		encoded, err := v.AsBigFloat().GobEncode()
+		if err != nil {
+			return false
 		}
-		w.WriteString("marshal-error(")
-		writeType(w, v.Type())
+		w.WriteString("number(")
+		w.WriteString(strconv.Itoa(len(encoded)))
+		w.WriteString(":")
+		w.WriteString(string(encoded))
 		w.WriteString(")")
 		return true
 	}
-	w.WriteString(string(data))
+	switch v.Type() {
+	case cty.Bool:
+		w.WriteString(strconv.FormatBool(v.True()))
+	case cty.String:
+		w.WriteString(strconv.Quote(v.AsString()))
+	default:
+		// Capsule values may JSON-marshal like an ordinary primitive while
+		// retaining different native semantics. They are not safe cache keys.
+		return false
+	}
 	return true
 }
 
 func (m *keyMemo) writeCollection(ctx context.Context, w keySink, v cty.Value) bool {
 	t := v.Type()
-	writeType(w, t)
+	if !writeType(w, t) {
+		return false
+	}
 	open, closing := "[", "]"
 	if t.IsObjectType() || t.IsMapType() {
 		open, closing = "{", "}"
@@ -344,7 +349,11 @@ func collectionIdentity(v cty.Value) (collectionID, bool) {
 
 // writeType encodes a type without collapsing every object to "object" or
 // every tuple to "tuple". Attribute and element order is stable.
-func writeType(w keySink, t cty.Type) {
+func writeType(w keySink, t cty.Type) bool {
+	// A capsule's friendly name does not establish its native type identity.
+	if t.IsCapsuleType() {
+		return false
+	}
 	switch {
 	case t.IsObjectType():
 		attrs := t.AttributeTypes()
@@ -358,7 +367,9 @@ func writeType(w keySink, t cty.Type) {
 		for _, name := range names {
 			w.WriteString(strconv.Quote(name))
 			w.WriteString(":")
-			writeType(w, attrs[name])
+			if !writeType(w, attrs[name]) {
+				return false
+			}
 			if _, ok := optional[name]; ok {
 				w.WriteString("?")
 			}
@@ -368,22 +379,25 @@ func writeType(w keySink, t cty.Type) {
 	case t.IsTupleType():
 		w.WriteString("tuple[")
 		for _, elem := range t.TupleElementTypes() {
-			writeType(w, elem)
+			if !writeType(w, elem) {
+				return false
+			}
 			w.WriteString(",")
 		}
 		w.WriteString("]")
 	case t.IsListType():
 		w.WriteString("list of ")
-		writeType(w, t.ElementType())
+		return writeType(w, t.ElementType())
 	case t.IsSetType():
 		w.WriteString("set of ")
-		writeType(w, t.ElementType())
+		return writeType(w, t.ElementType())
 	case t.IsMapType():
 		w.WriteString("map of ")
-		writeType(w, t.ElementType())
+		return writeType(w, t.ElementType())
 	default:
 		w.WriteString(t.FriendlyName())
 	}
+	return true
 }
 
 func isCollectionOrStructural(t cty.Type) bool {
