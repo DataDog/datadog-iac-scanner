@@ -14,6 +14,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	tfinstances "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/instances"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/zclconf/go-cty/cty"
@@ -24,29 +26,47 @@ type moduleCall struct {
 	block                  *hclsyntax.Block
 	label, source, version string
 	dir, packageRoot       string
+	unavailable            InventoryGapReason
+	detail                 string
 }
 
 func (e *Evaluator) resolveModuleCall(
 	ctx context.Context, mb *hclsyntax.Block, evalCtx *hcl.EvalContext, callerDir, packageRoot string,
-) (moduleCall, bool) {
-	label := blockLabel(mb)
-	if label == "" {
-		return moduleCall{}, false
+) moduleCall {
+	call := moduleCall{block: mb, label: blockLabel(mb)}
+	if call.label == "" {
+		call.unavailable = InventoryDeclarationUnavailable
+		return call
 	}
-	source := ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
-	if source == "" {
-		return moduleCall{}, false
+	call.source = ctyutil.StringFromAttribute(mb.Body.Attributes["source"], evalCtx)
+	if call.source == "" {
+		call.unavailable = InventoryModuleSourceUnavailable
+		return call
 	}
-	version := ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
-	dir, childPackageRoot, ok := e.resolveModuleDir(
-		ctx, callerDir, packageRoot, source, version, mb.TypeRange.Filename, label,
-	)
-	if !ok {
-		return moduleCall{}, false
+	call.version = ctyutil.StringFromAttribute(mb.Body.Attributes["version"], evalCtx)
+	if tfmodules.LooksLikeLocalModuleSource(call.source) {
+		var err error
+		if packageRoot == "" {
+			call.dir, _, err = tfmodules.LocalModuleDirWithContext(ctx, e.fsys, callerDir, call.source)
+		} else {
+			call.dir, err = resolver.ResolvePathWithinRoot(ctx, packageRoot, resolveLocalDir(callerDir, call.source))
+			call.packageRoot = packageRoot
+		}
+		if err != nil {
+			call.unavailable = InventoryModuleDirectoryUnavailable
+			call.detail = err.Error()
+		}
+		return call
 	}
-	return moduleCall{
-		block: mb, label: label, source: source, version: version, dir: dir, packageRoot: childPackageRoot,
-	}, true
+	if e.remoteResolver != nil {
+		var ok bool
+		call.dir, call.packageRoot, ok = e.remoteResolver(call.source, call.version, mb.TypeRange.Filename, call.label)
+		if ok {
+			return call
+		}
+	}
+	call.unavailable = InventoryRemoteModuleUnavailable
+	return call
 }
 
 func (c *moduleCall) site(scope *ModuleScope) CallSite {

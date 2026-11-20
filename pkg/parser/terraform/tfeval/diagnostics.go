@@ -71,22 +71,26 @@ func evaluationDiagnostics(diagnostics hcl.Diagnostics, fallback hcl.Range) []Ev
 	return failures
 }
 
-// expressionDiagnostics replaces failures when a changing local is re-evaluated
-// successfully. A speculative context must not publish into this recorder.
-type expressionDiagnostics map[hclsyntax.Expression]*expressionFailure
+// evaluationObservations keeps authoritative expression failures and sparse
+// inventory gaps in the same scope. Re-evaluation replaces the observation;
+// speculative scopes must never publish these facts into a final result.
+type evaluationObservations struct {
+	failures map[hclsyntax.Expression]*expressionFailure
+	gaps     map[*hclsyntax.Block]*InventoryGap
+}
 
-func (d *expressionDiagnostics) update(expr hclsyntax.Expression, result expressionValue) {
+func (d *evaluationObservations) update(expr hclsyntax.Expression, result expressionValue) {
 	if d == nil {
 		return
 	}
 	if result.failure == nil {
-		delete(*d, expr)
+		delete(d.failures, expr)
 		return
 	}
-	if *d == nil {
-		*d = expressionDiagnostics{}
+	if d.failures == nil {
+		d.failures = map[hclsyntax.Expression]*expressionFailure{}
 	}
-	(*d)[expr] = result.failure
+	d.failures[expr] = result.failure
 }
 
 // Diagnostics returns a caller-owned inspection snapshot. Discarding or
@@ -144,7 +148,7 @@ func (e *Evaluator) collectDiagnostics(addr string, scope *ModuleScope, resource
 	for diagnostic := range scope.inputDiagnostics {
 		add([]EvaluationDiagnostic{diagnostic})
 	}
-	for _, failure := range scope.diagnostics {
+	for _, failure := range scope.observations.failures {
 		add(failure.diagnostics)
 	}
 	for _, group := range [][]ResolvedResource{resources, data} {
@@ -187,12 +191,21 @@ func (e *Evaluator) recordModuleFailure(err error, address string, anchor hcl.Ra
 	})
 }
 
-// recordExpansionDiagnostics replaces a block's authoritative planning failure,
+// recordExpansion replaces a block's authoritative planning observations,
 // including zero-instance plans which cannot attach errors to a resource.
-func recordExpansionDiagnostics(body *hclsyntax.Body, plan *tfinstances.Plan, recorder *expressionDiagnostics) {
+func recordExpansion(block *hclsyntax.Block, plan *tfinstances.Plan, recorder *evaluationObservations) {
+	body := block.Body
 	if recorder == nil {
 		return
 	}
+	reason := inventoryNoGap
+	switch plan.State {
+	case tfinstances.Unknown:
+		reason = InventoryExpansionUnknown
+	case tfinstances.Invalid:
+		reason = InventoryExpansionInvalid
+	}
+	recorder.inventoryGap(block, reason, "")
 	attr := body.Attributes[tfinstances.KindCount]
 	if attr == nil {
 		attr = body.Attributes[tfinstances.KindForEach]

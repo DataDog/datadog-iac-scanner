@@ -41,8 +41,9 @@ type evalCacheKey struct {
 // address and chain onto the result. Outputs need no rewrite because rootDir is
 // part of the cache key.
 type evalCacheEntry struct {
-	resources   []ResolvedResource
-	diagnostics []EvaluationDiagnostic
+	resources     []ResolvedResource
+	diagnostics   []EvaluationDiagnostic
+	inventoryGaps []InventoryGap
 	// instances are the module calls evaluated inside this evaluation.
 	instances    []ModuleInstance
 	outputs      map[string]cty.Value
