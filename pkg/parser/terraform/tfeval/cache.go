@@ -33,8 +33,8 @@ type evalCacheKey struct {
 }
 
 // evalCacheEntry holds the result of a completed module evaluation.
-// visitedDirs is the set of child dirs that were added to allVisited *inside* this
-// evaluation (not including the module dir itself, which is tracked by the caller).
+// visitedDirs is the complete set of directories evaluated below this module,
+// independent of previously visited siblings. The caller tracks the module itself.
 //
 // baseAddr and baseChainLen record the position the entry was first evaluated at,
 // so a caller reaching the same module by another path can rewrite the recorded
