@@ -53,3 +53,22 @@ func TestLinkKeyedEntriesBySearchKey(t *testing.T) {
 	}, inv.FindingLinks)
 	require.Equal(t, 2, inv.Stats.FindingsUnlinked, "a parameter outside every entry belongs to none")
 }
+
+func TestLinkListItemsByTheirLines(t *testing.T) {
+	c := NewCollector(t.TempDir())
+	for _, item := range []struct {
+		path       string
+		start, end int
+	}{{"v1/ConfigMap//settings", 4, 9}, {"v1/Service/shop/api", 10, 14}} {
+		c.AddResource(&Resource{ResourcePath: item.path, Platform: PlatformKubernetes, ResourceType: "kind",
+			ResourceName: "name", File: "k8s/list.yaml", LineStart: item.start, LineEnd: item.end,
+			Completeness: CompletenessComplete, DocumentID: "list"})
+	}
+	c.AddFinding(&Finding{Fingerprint: "on-api", DocumentID: "list", Line: 12})
+	c.AddFinding(&Finding{Fingerprint: "on-list", DocumentID: "list", Line: 2})
+
+	inv := c.Build(testMetadata())
+
+	require.Equal(t, []FindingLink{{FindingFingerprint: "on-api", ResourceRef: "k8s/list.yaml|v1/Service/shop/api"}}, inv.FindingLinks)
+	require.Equal(t, 1, inv.Stats.FindingsUnlinked, "the list itself is no resource")
+}

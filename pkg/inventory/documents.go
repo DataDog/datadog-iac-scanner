@@ -58,7 +58,9 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas) []Resourc
 			row.ownsDocument = true
 			rows = append(rows, row)
 		case f.Platform == PlatformKubernetes:
-			if row, ok := e.kubernetesResource(f, index); ok {
+			if items, ok := kubernetesListItems(f.Document); ok {
+				rows = append(rows, e.kubernetesListRows(f, index, items)...)
+			} else if row, ok := e.kubernetesResource(f, index); ok {
 				row.ownsDocument = true
 				rows = append(rows, row)
 			}
@@ -133,6 +135,61 @@ func (e *documentEnumerator) kubernetesResource(f *model.FileMetadata, index int
 		row.LineStart = e.firstKeyLine(f)
 	}
 	return row, true
+}
+
+// kubernetesListItems returns the objects of a list document, such as a
+// kind: List, which holds separate objects rather than being one.
+func kubernetesListItems(document model.Document) ([]interface{}, bool) {
+	kind, _ := document["kind"].(string)
+	items, ok := document["items"].([]interface{})
+	return items, ok && strings.HasSuffix(kind, "List")
+}
+
+// kubernetesListRows returns one row per object of a list document, each at
+// the lines of its item. An object nested in an object, such as a pod
+// template, stays part of it.
+func (e *documentEnumerator) kubernetesListRows(f *model.FileMetadata, index int, items []interface{}) []Resource {
+	var spans []lineRange
+	if node, doc, found := e.documentNode(f, index); found && f.Kind != model.KindHELM {
+		lines := e.yamlFile(f).lines
+		bound := sectionEnd(childSpans(node, doc.end, lines), "items", doc.end)
+		_, itemsNode := mappingEntry(node, "items")
+		spans = itemSpans(itemsNode, bound, lines)
+	}
+	var rows []Resource
+	for i, item := range items {
+		object, _ := item.(map[string]interface{})
+		apiVersion, _ := object["apiVersion"].(string)
+		kind, _ := object["kind"].(string)
+		metadata, _ := object["metadata"].(map[string]interface{})
+		name, _ := metadata["name"].(string)
+		if name == "" {
+			name, _ = metadata["generateName"].(string)
+		}
+		if apiVersion == "" || kind == "" || name == "" {
+			continue
+		}
+		namespace, _ := metadata["namespace"].(string)
+		row := Resource{
+			ResourcePath: apiVersion + "/" + kind + "/" + namespace + "/" + name,
+			Platform:     PlatformKubernetes,
+			ResourceType: kind,
+			ResourceName: name,
+			File:         f.FilePath,
+			Completeness: CompletenessComplete,
+		}
+		switch {
+		case f.Kind == model.KindHELM:
+			row.LineStart = helmDocumentStart(f)
+			e.addHelmOrigin(&row, f)
+		case i < len(spans):
+			row.LineStart, row.LineEnd = spans[i].start, spans[i].end
+		default:
+			row.LineStart = e.firstKeyLine(f)
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // scalarValue returns the value of key in a mapping node, "" when it is not a

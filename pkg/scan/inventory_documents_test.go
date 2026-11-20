@@ -71,6 +71,9 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 		"dev/manifest.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: {{ .ServiceName }}\nspec:\n  replicas: 1\n",
 		// A resource created with a generated name.
 		"k8s/migrate.yaml": "apiVersion: batch/v1\nkind: Job\nmetadata:\n  generateName: migrate-\n  namespace: shop\nspec:\n  template:\n    spec:\n      restartPolicy: Never\n",
+		// A list holds separate objects, each its own resource.
+		"k8s/list.yaml": "apiVersion: v1\nkind: List\nitems:\n  - apiVersion: v1\n    kind: ConfigMap\n    metadata:\n      name: settings\n" +
+			"    data:\n      a: \"1\"\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: api\n      namespace: shop\n",
 	})
 	inv := scanInventory(t, documentParams(root))
 	rows := rowsByPath(inv)
@@ -127,7 +130,11 @@ func TestInventoryKubernetesAndDockerfileRows(t *testing.T) {
 	require.True(t, ok, "a generated name gives its prefix: %v", rows)
 	require.Equal(t, "migrate-", generated.ResourceName)
 	require.Equal(t, 1, generated.LineStart)
-	require.Len(t, inv.Resources, 6)
+	settings, api := rows["v1/ConfigMap//settings"], rows["v1/Service/shop/api"]
+	require.Equal(t, "k8s/list.yaml", settings.File)
+	require.Equal(t, [2]int{4, 9}, [2]int{settings.LineStart, settings.LineEnd})
+	require.Equal(t, [2]int{10, 14}, [2]int{api.LineStart, api.LineEnd})
+	require.Len(t, inv.Resources, 8)
 }
 
 func TestInventoryDoesNotChangeDocumentFindings(t *testing.T) {
