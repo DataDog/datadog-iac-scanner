@@ -221,17 +221,22 @@ var ansiblePlayKeys = append([]string{"hosts", "import_playbook", "roles"}, ansi
 // ansibleBlockSections are the lists of tasks of a block.
 var ansibleBlockSections = []string{"block", "rescue", "always"}
 
-// ansibleKeywords are the task keys that are not its module.
+// ansibleKeywords are the task keys that are not its module: the Task
+// keywords of the Ansible playbook keywords reference
+// (https://docs.ansible.com/projects/ansible/latest/reference_appendices/playbooks_keywords.html#task),
+// which also lists with_<lookup_plugin>, and listen, which handlers add.
+// Keep it in step with that page.
 var ansibleKeywords = map[string]bool{
-	"name": true, "when": true, "become": true, "become_user": true, "become_method": true,
-	"become_flags": true, "register": true, "loop": true, "loop_control": true, "tags": true,
-	"vars": true, "notify": true, "listen": true, "ignore_errors": true, "ignore_unreachable": true,
-	"changed_when": true, "failed_when": true, "delegate_to": true, "delegate_facts": true,
-	"environment": true, "args": true, "until": true, "retries": true, "delay": true,
-	"no_log": true, "run_once": true, "check_mode": true, "diff": true, "any_errors_fatal": true,
-	"connection": true, "collections": true, "module_defaults": true, "throttle": true,
-	"timeout": true, "debugger": true, "async": true, "poll": true, "remote_user": true,
-	"port": true, "action": true, "local_action": true,
+	"action": true, "any_errors_fatal": true, "args": true, "async": true,
+	"become": true, "become_exe": true, "become_flags": true, "become_method": true, "become_user": true,
+	"changed_when": true, "check_mode": true, "collections": true, "connection": true,
+	"debugger": true, "delay": true, "delegate_facts": true, "delegate_to": true, "diff": true,
+	"environment": true, "failed_when": true, "ignore_errors": true, "ignore_unreachable": true,
+	"local_action": true, "loop": true, "loop_control": true, "module_defaults": true,
+	"name": true, "no_log": true, "notify": true, "poll": true, "port": true,
+	"register": true, "remote_user": true, "retries": true, "run_once": true,
+	"tags": true, "throttle": true, "timeout": true, "until": true, "vars": true, "when": true,
+	"listen": true,
 }
 
 // ansibleRows returns one row per task of a playbook or task file, across

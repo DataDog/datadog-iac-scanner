@@ -204,7 +204,10 @@ func TestInventoryKeyedRows(t *testing.T) {
 		"roles/web/tasks/main.yml": "- name: Copy config\n  ansible.builtin.copy:\n    src: a\n    dest: b\n" +
 			"- name: Copy by action\n  action: ansible.builtin.copy src=a dest=b\n" +
 			"- name: Echo locally\n  local_action: ansible.builtin.command echo hello\n" +
-			"- name: Copy by mapping\n  action:\n    module: ansible.builtin.copy\n    src: a\n",
+			"- name: Copy by mapping\n  action:\n    module: ansible.builtin.copy\n    src: a\n" +
+			// become_exe is a keyword, sorted before the module.
+			"- name: Escalate\n  become_exe: /usr/bin/sudo\n  shell: echo example\n" +
+			"- name: Escalate fully\n  become_exe: /usr/bin/sudo\n  ansible.builtin.shell: echo example\n",
 		// A list the scanner reads as Ansible tasks, outside any tasks
 		// directory: not a task file.
 		"data/cities.yml": "- name: Paris\n  country: FR\n- name: Madrid\n  country: ES\n",
@@ -241,10 +244,12 @@ func TestInventoryKeyedRows(t *testing.T) {
 		{"roles/web/tasks/main.yml|tasks[1]", "ansible.builtin.copy", "Copy by action", 5, 6},
 		{"roles/web/tasks/main.yml|tasks[2]", "ansible.builtin.command", "Echo locally", 7, 8},
 		{"roles/web/tasks/main.yml|tasks[3]", "ansible.builtin.copy", "Copy by mapping", 9, 12},
+		{"roles/web/tasks/main.yml|tasks[4]", "shell", "Escalate", 13, 15},
+		{"roles/web/tasks/main.yml|tasks[5]", "ansible.builtin.shell", "Escalate fully", 16, 18},
 	} {
 		require.Equal(t, w, got[w.ref], w.ref)
 	}
-	require.Len(t, inv.Resources, 17)
+	require.Len(t, inv.Resources, 19)
 	require.Contains(t, inv.Files, inventory.File{Path: "data/cities.yml", Platform: "ansible", Status: inventory.FileScanned},
 		"the list is scanned as Ansible, yet gives no row")
 	for _, r := range inv.Resources {
