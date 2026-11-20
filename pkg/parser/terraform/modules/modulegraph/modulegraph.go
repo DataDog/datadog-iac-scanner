@@ -45,7 +45,8 @@ type Request struct {
 	// not parse (see tfmodules.MaxConfigFileBytesForScan). Zero or negative
 	// reads every file.
 	MaxConfigFileBytes int64
-	FS                 vfs.FS
+	// FS owns repository inputs. Resolver-acquired packages are explicitly disk-backed.
+	FS vfs.FS
 }
 
 type ResolvedModule struct {
@@ -268,6 +269,10 @@ func Resolve(ctx context.Context, request *Request) Result {
 	ctx = resolver.WithResourceBudget(ctx, budget)
 	moduleMaximum, baselineBytes, enforceAdmission := moduleAdmissionLimit(request)
 
+	fsys := request.FS
+	if fsys == nil {
+		fsys = vfs.DiskFS{}
+	}
 	w := &walker{
 		visited: visitedSet{
 			paths: make(map[string]bool),
@@ -292,7 +297,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 		admissionBytes:   moduleMaximum,
 		acquisitionBytes: acquisitionAllowance(moduleMaximum),
 		maxDepth:         request.MaxDepth,
-		fsys:             request.FS,
+		fsys:             fsys,
 	}
 	if enforceAdmission {
 		w.acquisitionBase = budget.TotalUsage().Bytes
@@ -465,8 +470,13 @@ func (w *walker) parseModulesInDir(
 		return nil
 	}
 
-	files, err := tfmodules.LoadTFFilesFromDirWithLimit(
-		ctx, dir, packageRoot, tfmodules.MaxConfigFileBytesFromContext(ctx),
+	fsys := w.fsys
+	if packageRoot != "" {
+		// Acquired packages are materialized by the disk resolver.
+		fsys = vfs.DiskFS{}
+	}
+	files, err := tfmodules.LoadTFFilesFromDir(
+		ctx, fsys, dir, packageRoot, tfmodules.MaxConfigFileBytesFromContext(ctx),
 	)
 	if err != nil {
 		return nil
@@ -509,7 +519,7 @@ func (w *walker) parseModulesInDir(
 	var parsed map[string]tfmodules.ParsedModule
 	parseErr := w.withParseSlot(ctx, func() error {
 		var slotErr error
-		parsed, slotErr = tfmodules.ParseTerraformModulesFromFiles(ctx, w.fsys, files, parseAllowed)
+		parsed, slotErr = tfmodules.ParseTerraformModulesFromFiles(ctx, fsys, files, parseAllowed)
 		return slotErr
 	})
 	if parseErr != nil || ctx.Err() != nil {
@@ -823,26 +833,25 @@ func (w *walker) withParseSlot(ctx context.Context, fn func() error) error {
 func (w *walker) seedGroups(
 	ctx context.Context, paths, discoveryPaths []string,
 ) (seedGroups, repositoryGroups map[string]map[string]bool) {
-	allowedByDir := make(map[string]map[string]bool)
-	for _, path := range discoveryPaths {
-		if !tfpath.IsConfig(path) {
-			continue
-		}
-		path = filepath.Clean(path)
-		dir := filepath.Dir(path)
-		if allowedByDir[dir] == nil {
-			allowedByDir[dir] = make(map[string]bool)
-		}
-		allowedByDir[dir][path] = true
-	}
+	fsys := w.fsys
+	allowedByDir := discoveryFilesByDirectory(fsys, discoveryPaths)
 
 	groups := make(map[string]map[string]bool)
 	for _, path := range paths {
-		info, err := os.Stat(path)
+		path, err := fsys.Abs(path)
 		if err != nil {
 			continue
 		}
-		if !info.IsDir() {
+		info, err := fsys.Stat(path)
+		isDir := err == nil && info.IsDir()
+		if err != nil {
+			// Some input filesystems synthesize directories through ReadDir.
+			if _, err := fsys.ReadDir(path); err != nil {
+				continue
+			}
+			isDir = true
+		}
+		if !isDir {
 			if !tfpath.IsConfig(path) {
 				continue
 			}
@@ -871,6 +880,29 @@ func (w *walker) seedGroups(
 		delete(seeds, child)
 	}
 	return seeds, groups
+}
+
+// discoveryFilesByDirectory keeps repository input paths in their owning filesystem namespace.
+func discoveryFilesByDirectory(fsys vfs.FS, discoveryPaths []string) map[string]map[string]bool {
+	allowedByDir := make(map[string]map[string]bool)
+	for _, path := range discoveryPaths {
+		if !tfpath.IsConfig(path) {
+			continue
+		}
+		var err error
+		path, err = fsys.Abs(path)
+		if err != nil {
+			continue
+		}
+		path = filepath.Clean(path)
+		dir := filepath.Dir(path)
+		if allowedByDir[dir] == nil {
+			allowedByDir[dir] = make(map[string]bool)
+		}
+		allowedByDir[dir][path] = true
+	}
+
+	return allowedByDir
 }
 
 func pathContainsDir(root, dir string) bool {

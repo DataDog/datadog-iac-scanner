@@ -1418,7 +1418,7 @@ func (a *sparseArchive) localModuleArchiveSubdirs(ctx context.Context, moduleDir
 	maxConfigBytes := tfmodules.MaxConfigFileBytesFromContext(ctx)
 	for _, name := range tfpath.Select(names, tfpath.IsConfig) {
 		path := filepath.Join(moduleDir, name)
-		if tfmodules.ConfigFileTooLarge(path, maxConfigBytes) {
+		if tfmodules.ConfigFileTooLarge(vfs.DiskFS{}, path, maxConfigBytes) {
 			continue
 		}
 		src, readErr := tfmodules.ReadConfigFileWithMaterializer(ctx, vfs.DiskFS{}, path, a.dest, a.materializeMissingPath)

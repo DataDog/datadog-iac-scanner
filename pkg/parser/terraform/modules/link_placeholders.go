@@ -299,7 +299,7 @@ func resolveConfigContent(
 	if err != nil {
 		return nil, skippedPlaceholder(ctx, path, err)
 	}
-	if ConfigFileTooLarge(resolved, MaxConfigFileBytesFromContext(ctx)) {
+	if ConfigFileTooLarge(vfs.DiskFS{}, resolved, MaxConfigFileBytesFromContext(ctx)) {
 		return nil, skippedPlaceholder(ctx, path, errors.New("target exceeds configuration size limit"))
 	}
 	data, err = fsys.ReadFile(resolved)
