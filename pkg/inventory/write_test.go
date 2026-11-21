@@ -158,6 +158,33 @@ func TestResolvePath(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestResolvePathWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows path forms")
+	}
+	t.Chdir(t.TempDir())
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	volume := filepath.VolumeName(wd)
+	file := filepath.Join(wd, "file.json")
+	// A UNC share root exercises volume parsing without accessing a network share.
+	const uncRoot = `\\server\share\`
+	for _, tt := range []struct{ name, path, want string }{
+		{"rooted", file[len(volume):], file},
+		{"rooted with a forward slash", filepath.ToSlash(file[len(volume):]), file},
+		{"drive-relative", volume + "file.json", file},
+		{"absolute", file, file},
+		{"UNC", uncRoot, uncRoot},
+		{"relative", "file.json", file},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolvePath(tt.path, true)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestEncodeIsTheJSONOfTheInventory(t *testing.T) {
 	c := NewCollector(t.TempDir())
 	c.RecordFile("a.tf", "terraform", FileScanned, "")

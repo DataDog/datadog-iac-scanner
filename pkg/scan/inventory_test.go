@@ -374,6 +374,36 @@ func TestInventoryNeverReplacesAnotherFile(t *testing.T) {
 	})
 }
 
+func TestInventoryWindowsRootedPathConflict(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows rooted paths")
+	}
+	out := t.TempDir()
+	t.Chdir(out)
+	parent := filepath.Join(out, "result.json")
+	metadata := filepath.Join(parent, "metadata.json")
+	inv := filepath.Join(parent, "inventory.json")
+	volume := filepath.VolumeName(out)
+	for _, tt := range []struct{ name, metadata, inventory, relation string }{
+		{"under rooted metadata", parent[len(volume):], inv, "under"},
+		{"rooted inventory under metadata", parent, inv[len(volume):], "under"},
+		{"above rooted metadata", metadata[len(volume):], parent, "above"},
+		{"rooted inventory above metadata", metadata, parent[len(volume):], "above"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Client{ScanParams: &Parameters{InventoryPath: tt.inventory, MetadataPath: tt.metadata}}
+			c.startInventory(t.Context())
+			status := c.finishInventory(t.Context(), nil, nil)
+			require.NotNil(t, status)
+			require.Equal(t, InventoryFailed, status.Status)
+			require.Equal(t, InventoryReasonPathConflict, status.Reason)
+			require.Equal(t, "the inventory path is also "+tt.relation+" the metadata path", status.Error)
+			require.NoDirExists(t, parent)
+			require.NoFileExists(t, parent)
+		})
+	}
+}
+
 func TestInventoryFailuresDoNotFailTheScan(t *testing.T) {
 	t.Run("a directory is at the path", func(t *testing.T) {
 		inventoryPath := filepath.Join(t.TempDir(), "inventory.json")
