@@ -44,6 +44,31 @@ func Lookup(typ string) (Source, bool) {
 	return s.render, ok
 }
 
+// ConfigBlocks describes the nested blocks of the locally computed data
+// sources. A JSON configuration needs the schema to distinguish these blocks
+// from object-valued arguments.
+func ConfigBlocks(typ, parent string) []hcl.BlockHeaderSchema {
+	switch typ {
+	case awsIAMPolicyDocumentType:
+		switch parent {
+		case "":
+			return documentSchema.Blocks
+		case "statement":
+			return statementSchema.Blocks
+		}
+	case googleIAMPolicyType:
+		switch parent {
+		case "":
+			return googlePolicySchema.Blocks
+		case "binding":
+			return googleBindingSchema.Blocks
+		case "audit_config":
+			return googleAuditConfigSchema.Blocks
+		}
+	}
+	return nil
+}
+
 // Evaluate computes the source's attributes without rendering unresolved values
 // as text. A computed string is known only when every input consumed by the
 // source was known; otherwise string operations on it must remain uncertain.

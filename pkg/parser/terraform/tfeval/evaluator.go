@@ -62,6 +62,8 @@ type ResolvedResource struct {
 	// attributes evaluation could not resolve. It is not consulted during
 	// evaluation, so recovered references never feed back into resolved values.
 	Body *hclsyntax.Body
+	// DeclarationBody is the written body when overrides changed Body.
+	DeclarationBody *hclsyntax.Body
 	// Scope is the module declaring the resource as it was evaluated.
 	Scope *ModuleScope
 	// Iteration holds the each or count value of an expanded instance, nil
@@ -209,6 +211,8 @@ type Evaluator struct {
 type dirParse struct {
 	bodies        []*hclsyntax.Body
 	sources       map[string][]byte
+	overrides     []ResourceOverride
+	declarations  map[*hclsyntax.Body]*hclsyntax.Body
 	varDecls      map[string]variableDecl
 	localExprs    map[string]hclsyntax.Expression
 	modules       []*hclsyntax.Block
@@ -281,6 +285,16 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
 	dp := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
+		dp.bodies, dp.overrides = resolveResourceOverrides(ctx, bodies, sources)
+		for _, override := range dp.overrides {
+			if override.Declaration != nil {
+				if dp.declarations == nil {
+					dp.declarations = make(map[*hclsyntax.Body]*hclsyntax.Body)
+				}
+				dp.declarations[override.Effective.Body] = override.Declaration.Body
+			}
+		}
+		bodies = dp.bodies
 		dp.varDecls, dp.localExprs, dp.modules, dp.resources, dp.outputs = collectBlocks(bodies)
 		dp.resourceTypes = declaredResourceTypes(dp.resources)
 		dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, collectDataBlocks(bodies))
@@ -514,7 +528,7 @@ func (e *Evaluator) evaluate(
 	}
 	e.noteCycles(ctx, dir, parsed.locals)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
-	data := newModuleData(e, sources, parsed.locals, parsed.static, addr, chain)
+	data := newModuleData(e, sources, parsed.locals, parsed.static, addr, chain, parsed.declarations)
 	// Module-call preparation retains its existing data view. Without calls,
 	// resources and data are resolved together by the dependency schedule.
 	if len(moduleBlocks) > 0 {
@@ -546,6 +560,11 @@ func (e *Evaluator) evaluate(
 	resources := make([]ResolvedResource, 0, len(rootResources)+len(dataInstances)+len(childResources))
 	resources = append(resources, rootResources...)
 	resources = append(resources, dataInstances...)
+	if len(parsed.declarations) > 0 {
+		for i := range resources {
+			resources[i].DeclarationBody = parsed.declarations[resources[i].Body]
+		}
+	}
 	resources = append(resources, childResources...)
 
 	outputs := make(map[string]cty.Value, len(parsed.outputs))

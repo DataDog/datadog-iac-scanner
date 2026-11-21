@@ -1629,6 +1629,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if !ok || file == nil {
 		return nil, false
 	}
+	file = qCtx.findingSourceFile(file, vulnerability.TerraformOverride)
 
 	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID, vulnerability.LegacyQueryIDs); found {
 		if rc.Severity != nil {

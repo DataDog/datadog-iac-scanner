@@ -88,6 +88,7 @@ func newModuleData(
 	static *dirStatic,
 	addr string,
 	chain []CallSite,
+	declarations map[*hclsyntax.Body]*hclsyntax.Body,
 ) *moduleData {
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
@@ -101,7 +102,7 @@ func newModuleData(
 		readsResources:     static.dataReadsResources,
 		readsModuleOutputs: static.dataReadsModules,
 	}
-	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
+	d.jsonBodies = jsonLocalDataBodies(blocks, sources, declarations)
 	return d
 }
 
@@ -130,12 +131,16 @@ func cyclicDataBlocks(blocks []*hclsyntax.Block, localExprs map[string]hclsyntax
 	return cyclic
 }
 
-func jsonLocalDataBodies(blocks []*hclsyntax.Block, sources map[string][]byte) map[*hclsyntax.Block]hcl.Body {
+func jsonLocalDataBodies(
+	blocks []*hclsyntax.Block, sources map[string][]byte, declarations map[*hclsyntax.Body]*hclsyntax.Body,
+) map[*hclsyntax.Block]hcl.Body {
 	var out map[*hclsyntax.Block]hcl.Body
 	parsed := map[string][]*hcl.Block{}
 	for _, b := range blocks {
 		filename := b.TypeRange.Filename
-		if _, ok := localdata.Lookup(b.Labels[0]); !ok || !tfpath.IsJSONConfig(filename) {
+		// An overridden JSON block already has its schema-aware, effective
+		// body. Reopening the original would discard its overrides.
+		if _, ok := localdata.Lookup(b.Labels[0]); !ok || !tfpath.IsJSONConfig(filename) || declarations[b.Body] != nil {
 			continue
 		}
 		native, ok := parsed[filename]

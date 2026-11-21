@@ -50,6 +50,7 @@ type moduleResolutionResult struct {
 	extras               map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
 	moduleFiles   map[string]*moduleFileCalls
+	overrides     *terraformOverrides
 	resourceCount int
 	rootCount     int
 	ok            bool
@@ -113,6 +114,7 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
+	res.overrides.apply(files, res.syntheticFiles)
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 
@@ -407,6 +409,7 @@ func evaluateRootModules(
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
 	inv *terraformInventory,
+	overrides *terraformOverrides,
 ) {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
@@ -414,6 +417,7 @@ func evaluateRootModules(
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
+		overrides: overrides,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -460,6 +464,7 @@ type rootMerge struct {
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
 	inventory            *terraformInventory
+	overrides            *terraformOverrides
 }
 
 func (m *rootMerge) merge(
@@ -487,6 +492,7 @@ func (m *rootMerge) merge(
 	// Every resource and data source of the root, before instantiation keeps
 	// only what rules can match.
 	m.inventory.addRoot(dir, resources)
+	m.overrides.record(m.ctx, m.evaluator, resources)
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
 	for d := range childDirs {
@@ -698,6 +704,7 @@ func resolveModuleDocuments(
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
+	overrides := scanTerraformOverrides(ctx, evaluator, byAbsPath, filesByDir, repoPath)
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
@@ -738,7 +745,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv, overrides,
 	)
 	if ctx.Err() != nil {
 		// The scan is stopping: report no resolution rather than one whose
@@ -784,7 +791,7 @@ func resolveModuleDocuments(
 
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
 
-	return moduleResolutionResult{
+	result := moduleResolutionResult{
 		docs:                 extra,
 		syntheticFiles:       syntheticFiles,
 		suppressed:           instantiated,
@@ -794,10 +801,13 @@ func resolveModuleDocuments(
 		unresolvedModuleDirs: unresolvedModuleDirs,
 		extras:               extras,
 		moduleFiles:          moduleCalls.fileCalls(),
+		overrides:            overrides,
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
 	}
+	overrides.prepare(ctx, evaluator, &result, actualCalledDirs)
+	return result
 }
 
 // discoverStaticCalls returns the directories some scanned directory calls,

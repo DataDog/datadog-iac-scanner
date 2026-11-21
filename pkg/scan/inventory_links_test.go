@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	reportmodel "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,6 +121,201 @@ func TestInventoryLinksTerraformFindings(t *testing.T) {
 		{`infra|module.logging["staging"].aws_s3_bucket.this`},
 		{"infra|module.dyn.aws_s3_bucket.this"},
 	}, linked, "a count block's instances share their finding; module instances each have theirs")
+	t.Run("override", func(t *testing.T) {
+		root := writeRepo(t, map[string]string{
+			"infra/main.tf": `resource "aws_s3_bucket" "example" {
+  bucket = "example"
+  acl = "private"
+}
+`,
+			"infra/override.tf": `resource "aws_s3_bucket" "example" {
+  acl = "public-read"
+}
+`,
+		})
+		inv, fingerprints := scanLinks(t, terraformParams(root), terraformPublicACLRule)
+		require.Len(t, inv.Resources, 1)
+		require.Equal(t, "infra/main.tf", inv.Resources[0].File)
+		require.Equal(t, 1, inv.Resources[0].LineStart)
+		require.Zero(t, inv.Stats.FindingsUnlinked)
+		require.Len(t, fingerprints, 1)
+		require.Equal(t, []string{"infra|aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
+	})
+}
+
+var terraformPublicACLRule = syntheticQuery("test-public-acl", "terraform", "Terraform", `	input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
+
+func TestTerraformOverrideFindings(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf": `resource "aws_s3_bucket" "example" {
+  bucket = "example"
+  acl = "private"
+}
+resource "aws_s3_bucket" "sibling" {
+  bucket = "sibling"
+}
+resource "aws_s3_bucket" "absent" {
+  count = 2
+  bucket = "absent"
+}
+`,
+		"override.tf": `resource "aws_s3_bucket" "example" {
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "absent" {
+  count = 0
+}
+`,
+	})
+	privateOrMissing := syntheticQuery("test-partial", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	name == "example"
+	bucket.acl != "public-read"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s].acl", [name])`)
+	missing := syntheticQuery("test-missing-bucket", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	not bucket.bucket
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s].bucket", [name])`)
+	siblings := syntheticQuery("test-same-file", "terraform", "Terraform", `	doc := input.document[i]
+	name := "example"
+	doc.resource.aws_s3_bucket[name].bucket == "example"
+	doc.resource.aws_s3_bucket[name].acl == "public-read"
+	doc.resource.aws_s3_bucket.sibling.bucket == "sibling"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s].bucket", [name])`)
+	absent := syntheticQuery("test-absent", "terraform", "Terraform", `	name := "absent"
+	input.document[i].resource.aws_s3_bucket[name]
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s]", [name])`)
+	sarif := sarifResults(t, terraformParams(root), terraformPublicACLRule, privateOrMissing, missing, siblings, absent)
+	var report struct{ Runs []reportmodel.SarifRun }
+	require.NoError(t, json.Unmarshal([]byte(sarif), &report))
+	require.Len(t, report.Runs, 1)
+	require.Len(t, report.Runs[0].Results, 2)
+	for _, result := range report.Runs[0].Results {
+		require.NotEmpty(t, result.ResultLocations)
+		loc := result.ResultLocations[0].PhysicalLocation
+		switch result.ResultRuleID {
+		case "test-public-acl":
+			require.Equal(t, "override.tf", loc.ArtifactLocation.ArtifactURI)
+			require.Equal(t, 2, loc.Region.StartLine)
+		case "test-same-file":
+			require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
+			require.Equal(t, 2, loc.Region.StartLine)
+		default:
+			t.Fatalf("unexpected finding %s", result.ResultRuleID)
+		}
+	}
+}
+
+func TestTerraformJSONOverrideFinding(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf": `resource "aws_s3_bucket" "example" {
+  bucket = "example"
+  acl = "private"
+}
+`,
+		"override.tf.json": `{
+  "resource": {
+    "aws_s3_bucket": {
+      "example": {
+        "acl": "public-read"
+      }
+    }
+  }
+}
+`,
+	})
+	rule := terraformPublicACLRule
+	rule.Content = `package datadog
+
+DatadogPolicy contains {
+	"_dd_id": doc.id,
+	"path": ["resource", "aws_s3_bucket", name, "acl"],
+	"resourceType": "aws_s3_bucket",
+	"resourceName": name,
+} if {
+	doc := input.document[_]
+	doc.resource.aws_s3_bucket[name].acl == "public-read"
+}
+`
+	inv, fingerprints := scanLinks(t, terraformParams(root), rule)
+	require.Len(t, fingerprints, 1)
+	require.Equal(t, []string{".|aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
+	require.Zero(t, inv.Stats.FindingsUnlinked)
+	sarif := sarifResults(t, terraformParams(root), rule)
+	var report struct{ Runs []reportmodel.SarifRun }
+	require.NoError(t, json.Unmarshal([]byte(sarif), &report))
+	require.Len(t, report.Runs, 1)
+	require.Len(t, report.Runs[0].Results, 1)
+	loc := report.Runs[0].Results[0].ResultLocations[0].PhysicalLocation
+	require.Equal(t, "override.tf.json", loc.ArtifactLocation.ArtifactURI)
+	require.Equal(t, 5, loc.Region.StartLine)
+}
+
+func TestTerraformOverrideFindingInCalledModule(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf": `module "child" {
+  source        = "./child"
+  base_name     = "example"
+  effective_acl = "public-read"
+}
+`,
+		"child/main.tf": `resource "aws_s3_bucket" "example" {
+  bucket = var.base_name
+  acl    = "private"
+}
+variable "base_name" {}
+variable "effective_acl" {}
+`,
+		"child/override.tf": `resource "aws_s3_bucket" "example" {
+  acl = var.effective_acl
+}
+`,
+	})
+	inv, fingerprints := scanLinks(t, terraformParams(root), terraformPublicACLRule)
+	require.Len(t, inv.Resources, 1)
+	require.Len(t, fingerprints, 1)
+	require.Equal(t, "child/main.tf", inv.Resources[0].File)
+	require.Equal(t, []string{".|module.child.aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
+
+	sarif := sarifResults(t, terraformParams(root), terraformPublicACLRule)
+	var report struct{ Runs []reportmodel.SarifRun }
+	require.NoError(t, json.Unmarshal([]byte(sarif), &report))
+	require.Len(t, report.Runs, 1)
+	require.Len(t, report.Runs[0].Results, 1)
+	result := report.Runs[0].Results[0]
+	primary := result.ResultLocations[0].PhysicalLocation
+	require.Equal(t, "main.tf", primary.ArtifactLocation.ArtifactURI)
+	require.Equal(t, 4, primary.Region.StartLine, "the caller argument controls the override")
+	module, err := json.Marshal(result.ResultProperties["module"])
+	require.NoError(t, err)
+	var attribution model.ModuleAttributionSARIF
+	require.NoError(t, json.Unmarshal(module, &attribution))
+	require.Equal(t, "child/override.tf", attribution.ModuleCodeLocation.Filename)
+	require.Equal(t, 2, attribution.ModuleCodeLocation.LineStart)
+}
+
+func TestTerraformZeroInstancesWithoutOverrides(t *testing.T) {
+	for _, tc := range []struct {
+		name, expansion string
+		wantFindings    int
+	}{
+		{"literal count", "count = 0", 0},
+		{"empty for_each", "for_each = {}", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeRepo(t, map[string]string{
+				"main.tf": "resource \"aws_s3_bucket\" \"example\" {\n  " + tc.expansion + "\n  bucket = \"example\"\n}\n",
+			})
+			inv, fingerprints := scanLinks(t, terraformParams(root), inventoryTestQuery)
+			require.Empty(t, inv.Resources)
+			require.Len(t, fingerprints, tc.wantFindings)
+			require.EqualValues(t, tc.wantFindings, inv.Stats.FindingsUnlinked)
+		})
+	}
 }
 
 func TestInventoryLinksDocumentFindings(t *testing.T) {

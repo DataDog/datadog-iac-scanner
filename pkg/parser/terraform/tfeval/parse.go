@@ -34,12 +34,12 @@ const blockTypeModule = "module"
 
 // reservedModuleAttrs are module-block keys that are not passed as inputs.
 var reservedModuleAttrs = map[string]bool{
-	"source":     true,
-	"version":    true,
-	"providers":  true,
-	"count":      true,
-	"for_each":   true,
-	"depends_on": true,
+	"source":         true,
+	"version":        true,
+	"providers":      true,
+	"count":          true,
+	"for_each":       true,
+	metaArgDependsOn: true,
 }
 
 // parseDir parses HCL and JSON config in dir (non-recursively) and returns

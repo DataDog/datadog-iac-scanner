@@ -154,7 +154,8 @@ func (inv *terraformInventory) addRoot(dir string, resources []tfeval.ResolvedRe
 	seen := make(map[string]bool, len(resources))
 	for i := range resources {
 		row := inv.row(dir, &resources[i], attributions)
-		// An override file restates a block of the same module.
+		// Guard against duplicate addresses in invalid configurations, such
+		// as two ordinary files declaring the same resource.
 		if seen[row.ResourcePath] {
 			continue
 		}
@@ -205,15 +206,19 @@ func (inv *terraformInventory) row(
 // the brace of its own object, which its body's range gives, and ends at its
 // last attribute.
 func jsonBlockLines(r *tfeval.ResolvedResource) (start, end int) {
-	if r.Body == nil || r.Body.SrcRange.Start.Line < 1 {
+	body := r.Body
+	if r.DeclarationBody != nil {
+		body = r.DeclarationBody
+	}
+	if body == nil || body.SrcRange.Start.Line < 1 {
 		return r.DefLine, 0
 	}
-	start = r.Body.SrcRange.Start.Line
+	start = body.SrcRange.Start.Line
 	end = start
-	for _, attr := range r.Body.Attributes {
+	for _, attr := range body.Attributes {
 		end = max(end, attr.SrcRange.End.Line)
 	}
-	for _, block := range r.Body.Blocks {
+	for _, block := range body.Blocks {
 		end = max(end, block.Range().End.Line)
 	}
 	return start, end
