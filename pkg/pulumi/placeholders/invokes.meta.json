@@ -1,0 +1,27 @@
+{
+  "generator": "pkg/pulumi/placeholders/gen",
+  "providers": [
+    {
+      "provider": "aws",
+      "version": "7.52.0",
+      "sha256": "9d73008a5db4cc94400effbbe3ad6b8aef871aff9f8429d7d32f8ebbc25fa1a5",
+      "url": "https://raw.githubusercontent.com/pulumi/pulumi-aws/v7.52.0/provider/cmd/pulumi-resource-aws/schema.json",
+      "functions": 692
+    },
+    {
+      "provider": "azure",
+      "version": "6.40.1",
+      "sha256": "9a7c94a2e0cc952a9a7f92ce3884c6bcd60d99d3f410d65d62326e627ebc4060",
+      "url": "https://raw.githubusercontent.com/pulumi/pulumi-azure/v6.40.1/provider/cmd/pulumi-resource-azure/schema.json",
+      "functions": 407
+    },
+    {
+      "provider": "gcp",
+      "version": "10.2.0",
+      "sha256": "78da42ff88fd694f81890cead9b0f21dbafe015a94090e8b983b9e953b237b10",
+      "url": "https://raw.githubusercontent.com/pulumi/pulumi-gcp/v10.2.0/provider/cmd/pulumi-resource-gcp/schema.json",
+      "functions": 508
+    }
+  ],
+  "functions": 1607
+}

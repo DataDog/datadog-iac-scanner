@@ -525,7 +525,6 @@ core,github.com/klauspost/compress/internal/regmask,BSD-3-Clause,Copyright (c) 2
 core,github.com/klauspost/compress/internal/snapref,BSD-3-Clause,Copyright (c) 2011 The Snappy-Go Authors. All rights reserved | Copyright (c) 2012 The Go Authors. All rights reserved | Copyright (c) 2015 Klaus Post | Copyright (c) 2019 Klaus Post. All rights reserved | Copyright 2016 The filepathx Authors | Copyright 2016-2017 The New York Times Company
 core,github.com/klauspost/compress/zstd,BSD-3-Clause,Copyright (c) 2011 The Snappy-Go Authors. All rights reserved | Copyright (c) 2012 The Go Authors. All rights reserved | Copyright (c) 2015 Klaus Post | Copyright (c) 2016 Caleb Spare | Copyright (c) 2019 Klaus Post. All rights reserved | Copyright 2016 The filepathx Authors | Copyright 2016-2017 The New York Times Company
 core,github.com/klauspost/compress/zstd/internal/xxhash,MIT,Copyright (c) 2011 The Snappy-Go Authors. All rights reserved | Copyright (c) 2012 The Go Authors. All rights reserved | Copyright (c) 2015 Klaus Post | Copyright (c) 2016 Caleb Spare | Copyright (c) 2019 Klaus Post. All rights reserved | Copyright 2016 The filepathx Authors | Copyright 2016-2017 The New York Times Company
-core,github.com/klauspost/cpuid/v2,MIT,Copyright (c) 2015 Klaus Post
 core,github.com/lann/builder,MIT,Copyright (c) 2014-2015 Lann Martin
 core,github.com/lann/ps,MIT,Copyright (c) 2013 Michael Hendricks
 core,github.com/lestrrat-go/blackmagic,MIT,Copyright (c) 2021 lestrrat-go
@@ -709,6 +708,7 @@ core,github.com/pelletier/go-toml/v2/unstable,MIT,Copyright (c) 2021 - 2023 Thom
 core,github.com/peterbourgon/diskv,MIT,Copyright (c) 2011-2012 Peter Bourgon
 core,github.com/pjbgf/sha1cd,Apache-2.0,"Copyright 2009 The Go Authors. All rights reserved. | Copyright 2017 Marc Stevens <marc@marc-stevens.nl>, Dan Shumow <danshu@microsoft.com> | Copyright 2022 Paulo Gomes <pjbgf@linux.com>"
 core,github.com/pjbgf/sha1cd/internal,Apache-2.0,"Copyright 2009 The Go Authors. All rights reserved. | Copyright 2017 Marc Stevens <marc@marc-stevens.nl>, Dan Shumow <danshu@microsoft.com> | Copyright 2022 Paulo Gomes <pjbgf@linux.com>"
+core,github.com/pjbgf/sha1cd/internal/cpu,Apache-2.0,"Copyright 2009 The Go Authors. All rights reserved. | Copyright 2017 Marc Stevens <marc@marc-stevens.nl>, Dan Shumow <danshu@microsoft.com> | Copyright 2022 Paulo Gomes <pjbgf@linux.com>"
 core,github.com/pjbgf/sha1cd/ubc,Apache-2.0,"Copyright 2009 The Go Authors. All rights reserved. | Copyright 2017 Marc Stevens <marc@marc-stevens.nl>, Dan Shumow <danshu@microsoft.com> | Copyright 2022 Paulo Gomes <pjbgf@linux.com>"
 core,github.com/pkg/errors,BSD-2-Clause,"Copyright (c) 2015, Dave Cheney <dave@cheney.net>"
 core,github.com/planetscale/vtprotobuf/protohelpers,BSD-3-Clause,"Copyright (c) 2013, The GoGo Authors. All rights reserved | Copyright (c) 2018 The Go Authors. All rights reserved | Copyright (c) 2021, PlanetScale Inc. All rights reserved"
@@ -727,6 +727,8 @@ core,github.com/prometheus/common/model,Apache-2.0,Copyright 2012-2015 The Prome
 core,github.com/prometheus/procfs,Apache-2.0,Copyright 2012-2015 The Prometheus Authors
 core,github.com/prometheus/procfs/internal/fs,Apache-2.0,Copyright 2012-2015 The Prometheus Authors
 core,github.com/prometheus/procfs/internal/parsers,Apache-2.0,Copyright 2012-2015 The Prometheus Authors
+core,github.com/pulumi/pulumi/sdk/v3/proto/go,Apache-2.0,"Copyright 2016, Pulumi Corporation."
+core,github.com/pulumi/pulumi/sdk/v3/proto/go/codegen,Apache-2.0,"Copyright 2016, Pulumi Corporation."
 core,github.com/rcrowley/go-metrics,BSD-2-Clause-Views,Copyright 2012 Richard Crowley. All rights reserved
 core,github.com/relex/aini,MIT,Copyright (c) 2020 RELEX Oy
 core,github.com/rmuir/tree-sitter-ghactions/bindings/go,MIT,Copyright (c) 2025 Robert Muir
