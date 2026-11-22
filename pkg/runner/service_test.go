@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sync"
 	"testing"
 
@@ -263,4 +264,26 @@ func storageOrder(t *testing.T, findings []model.Vulnerability) []model.Vulnerab
 	saved, err := mem.GetVulnerabilities(context.Background(), "")
 	require.NoError(t, err)
 	return saved
+}
+
+// TestGetCountTerraformResourcesMatchesRegexp checks the count against the
+// non-overlapping matches of the expression it implements.
+func TestGetCountTerraformResourcesMatchesRegexp(t *testing.T) {
+	oracle := regexp.MustCompile(`\bresource[\s]+"[^"]+"[\s]+"[^"]+"[\s]*\{`)
+	inputs := []string{
+		"",
+		`resource "aws_s3_bucket" "b" {}`,
+		"resource\t\"a\"\n\"b\"\n{\nresource \"c\" \"d\"{}",
+		`xresource "a" "b" {} _resource "a" "b" {} 9resource "a" "b" {} .resource "a" "b" {}`,
+		`resource "a" "b" resource "c" "d" {`,
+		`resource "a" "resource "b" "c" {`,
+		`resource "a"  "b"  {resource "c" "d" {`,
+		`resourceresource "a" "b" {`,
+		`resource "" "b" {} resource "a" "" {} resource "a" "b"`,
+		`{"resource_changes":[{"type":"aws_s3_bucket"}],"resource":{"x":1}}`,
+		"# resource \"a\" \"b\" {\nresource \"a\" \"b\" {\n  x = \"resource \\\"c\\\" \\\"d\\\" {\"\n}",
+	}
+	for _, in := range inputs {
+		require.Equal(t, len(oracle.FindAll([]byte(in), -1)), GetCountTerraformResources([]byte(in)), in)
+	}
 }

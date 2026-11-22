@@ -278,6 +278,10 @@ func (s *Service) classifyPlatform(ctx context.Context, kind model.FileKind, fil
 }
 
 func resolveCRLFFile(fileContent []byte) []byte {
+	// bytes.ReplaceAll copies even when there is nothing to replace.
+	if !bytes.Contains(fileContent, []byte("\r\n")) {
+		return fileContent
+	}
 	return bytes.ReplaceAll(fileContent, []byte("\r\n"), []byte("\n"))
 }
 
