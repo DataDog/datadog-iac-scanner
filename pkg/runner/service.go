@@ -96,6 +96,13 @@ type Service struct {
 	// parsed file's platform consistently with the analyzer so the engine can
 	// scope queries to their own platform's documents.
 	Platforms []string
+	// LineInfoPayload exports line-info documents whole as the scan payload
+	// (see model.FileMetadatas.Combine).
+	LineInfoPayload bool
+	// planLineInfo keeps the line-info trees of the scan's Terraform plans
+	// loaded across decode passes (see model.LineInfoRetention).
+	planLineInfoOnce sync.Once
+	planLineInfo     *model.LineInfoRetention
 	// FilePlatform is the analyzer path → platform map, reused in the sink.
 	FilePlatform map[string]string
 	// PathExtractionMap names each fetched or extracted directory after where
@@ -126,6 +133,24 @@ type Service struct {
 	treeCons   *treeHashCons
 }
 
+// planLineInfoRetention returns the scan's retention of plan line-info trees,
+// sized for the scan's concurrent decoders. A scan exporting line-info
+// documents has none: the export reads every plan's tree, so none may be
+// dropped.
+func (s *Service) planLineInfoRetention() *model.LineInfoRetention {
+	if s.LineInfoPayload {
+		return nil
+	}
+	s.planLineInfoOnce.Do(func() {
+		capacity := 1
+		if s.Inspector != nil {
+			capacity = s.Inspector.QueryConcurrency()
+		}
+		s.planLineInfo = model.NewLineInfoRetention(capacity)
+	})
+	return s.planLineInfo
+}
+
 // consTreeChildren canonicalizes a sanitized shareable document's subtrees
 // through the service-wide tree interner.
 func (s *Service) consTreeChildren(doc map[string]interface{}) map[string]interface{} {
@@ -141,6 +166,8 @@ func (s *Service) consTreeChildren(doc map[string]interface{}) map[string]interf
 // (children shared), kind, ignore lines and counts. Callers shallow-copy the
 // top-level maps, which Combine augments with per-file id/file entries.
 type sharedParse struct {
+	// content is the interned content, the files' OriginalData.
+	content     string
 	docs        []model.Document
 	kind        model.FileKind
 	ignoreLines []int
@@ -167,6 +194,25 @@ func (s *Service) internContent(content string) string {
 	return content
 }
 
+// internContentBytes is internContent for content not yet copied to a
+// string: the copy is only made when content is not interned yet.
+func (s *Service) internContentBytes(content []byte) string {
+	if len(content) == 0 {
+		return ""
+	}
+	s.contentInternerMu.Lock()
+	defer s.contentInternerMu.Unlock()
+	if existing, ok := s.contentInterner[string(content)]; ok {
+		return existing
+	}
+	if s.contentInterner == nil {
+		s.contentInterner = make(map[string]string)
+	}
+	key := string(content)
+	s.contentInterner[key] = key
+	return key
+}
+
 // ClearContentInterner drops the interner after the prepare phase; the shared
 // strings stay alive via FileMetadata.OriginalData.
 func (s *Service) ClearContentInterner() {
@@ -175,18 +221,18 @@ func (s *Service) ClearContentInterner() {
 	s.contentInternerMu.Unlock()
 }
 
-// lookupSharedParse interns the content and returns its key plus the cached
-// shared parse, if any. A hit is exact (parses are pure functions of content);
-// the result is read-only — copy top-level maps before per-file use.
-func (s *Service) lookupSharedParse(content []byte) (string, *sharedParse) {
+// lookupSharedParse returns the cached shared parse of content, if any. A hit
+// is exact (parses are pure functions of content); the result is read-only —
+// copy top-level maps before per-file use. The lookup does not copy content:
+// interning every file before parsing kept a copy of each file that is never
+// shared, such as a Terraform plan, through the whole prepare phase.
+func (s *Service) lookupSharedParse(content []byte) *sharedParse {
 	if len(content) == 0 {
-		return "", nil
+		return nil
 	}
-	key := s.internContent(string(content))
 	s.parsedShareMu.Lock()
-	shared := s.parsedShares[key]
-	s.parsedShareMu.Unlock()
-	return key, shared
+	defer s.parsedShareMu.Unlock()
+	return s.parsedShares[string(content)]
 }
 
 // storeSharedParse caches a sanitized parse result for later files with the
@@ -202,6 +248,7 @@ func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument,
 		s.parsedShares = make(map[string]*sharedParse)
 	}
 	s.parsedShares[key] = &sharedParse{
+		content:     key,
 		docs:        cached,
 		kind:        documents.Kind,
 		ignoreLines: documents.IgnoreLines,
@@ -461,7 +508,8 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 }
 
 // newLineInfoLoader builds a lazy loader that reconstructs a file's line-info
-// document by re-parsing OriginalData on demand.
+// document by re-parsing OriginalData on demand. exported marks documents
+// that are also exported whole as the line-info payload.
 func newLineInfoLoader(
 	p *parser.Parser,
 	filename string,
@@ -469,12 +517,25 @@ func newLineInfoLoader(
 	openAPIResolveReferences bool,
 	isMinified bool,
 	maxResolverDepth int,
+	exported bool,
 ) func(ctx context.Context, f *model.FileMetadata) (map[string]interface{}, error) {
 	return newLineInfoLoaderWithReparser(filename, docIdx,
 		func(ctx context.Context, f *model.FileMetadata) (parser.ParsedDocument, error) {
-			return p.Parse(parser.WithLineInfoOnly(ctx),
-				filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
+			ctx = parser.WithLineInfoOnly(ctx)
+			if exported {
+				ctx = parser.WithLineInfoExport(ctx)
+			}
+			return p.Parse(ctx, filename, []byte(f.OriginalData), openAPIResolveReferences, isMinified, maxResolverDepth)
 		})
+}
+
+// newLineInfoSectionLoader builds a line-info section the loader leaves out,
+// from the file's OriginalData, as the loader reads it.
+func newLineInfoSectionLoader(p *parser.Parser, filename string,
+) func(ctx context.Context, f *model.FileMetadata, name string) (interface{}, bool) {
+	return func(_ context.Context, f *model.FileMetadata, name string) (interface{}, bool) {
+		return p.ParseLineInfoSection(filename, []byte(f.OriginalData), name)
+	}
 }
 
 func newLineInfoLoaderWithReparser(

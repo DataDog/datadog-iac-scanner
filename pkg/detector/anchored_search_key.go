@@ -273,5 +273,5 @@ func mapKeys(node interface{}) ([]string, bool) {
 
 // skipMarkerKey hides the line-info bookkeeping keys from the anchor search.
 func skipMarkerKey(k string) bool {
-	return k == "_dd_lines" || k == "_path" || k == "id" || strings.HasPrefix(k, "_dd_")
+	return k == lineInfoKey || k == "_path" || k == "id" || strings.HasPrefix(k, "_dd_")
 }

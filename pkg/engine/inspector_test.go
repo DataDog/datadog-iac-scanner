@@ -1926,3 +1926,10 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 	// Non-canizable nodes never validate.
 	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
 }
+
+func TestInspectorQueryConcurrency(t *testing.T) {
+	for _, workers := range []int{1, 2, utils.AvailableCPUs() + 1} {
+		inspector := &Inspector{numWorkers: workers}
+		require.Equal(t, min(workers, utils.AvailableCPUs()), inspector.QueryConcurrency())
+	}
+}

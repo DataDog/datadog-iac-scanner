@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/file"
@@ -24,6 +25,11 @@ type Parser struct {
 // Resolve - replace or modifies in-memory content before parsing
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
 	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile, err error) {
+	if !p.mayResolve(fileContent, filename) {
+		// The resolution would decode, walk and re-encode the whole file to
+		// return fileContent unchanged.
+		return fileContent, make(map[string]model.ResolvedFile), nil
+	}
 	// Resolve files passed as arguments with file resolver (e.g. file://)
 	res := file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
@@ -73,6 +79,64 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	}
 
 	return resolved, []model.Document{tfPlan}, nil, resolvedFiles, nil
+}
+
+// ParseLineInfo returns the line-info documents of a Terraform plan. Line
+// detection only reads a plan's resource and configuration lines, so they
+// are rebuilt alone instead of the whole plan for every rule with findings.
+// ok is false for other content, and for a plan referencing files, whose
+// resolved values only a full parse holds; those are parsed whole.
+func (p *Parser) ParseLineInfo(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
+	return p.planDocuments(fileContent, filePath, parseTFPlanLineInfo)
+}
+
+// ParseUnannotated returns the documents of a Terraform plan without line
+// markers, for a scan that rebuilds line info with ParseLineInfo: annotating
+// the plan was most of its parse. ok is false as for ParseLineInfo.
+func (p *Parser) ParseUnannotated(fileContent []byte, filePath string) (documents []model.Document, ok bool) {
+	return p.planDocuments(fileContent, filePath, parseTFPlanContent)
+}
+
+// ParseLineInfoSection returns a line-info section that ParseLineInfo leaves
+// out (see lazyLineInfoSections), annotated as a whole parse annotates it.
+// ok is false for any other section or content, and for a plan referencing
+// files, whose line-info document comes from a whole parse that holds every
+// section.
+func (p *Parser) ParseLineInfoSection(fileContent []byte, filePath, name string) (annotated interface{}, ok bool) {
+	if !slices.Contains(lazyLineInfoSections, name) ||
+		!looksLikeTerraformPlan(fileContent) || p.mayResolve(fileContent, filePath) {
+		return nil, false
+	}
+	sections, ok := topLevelSections(fileContent)
+	if !ok {
+		return nil, false
+	}
+	section, ok := sections[name]
+	if !ok {
+		return nil, false
+	}
+	return annotatedSection(fileContent, name, &section)
+}
+
+// planDocuments parses fileContent with parse when it is a Terraform plan
+// that references no file.
+func (p *Parser) planDocuments(fileContent []byte, filePath string,
+	parse func([]byte) (model.Document, bool)) ([]model.Document, bool) {
+	if !looksLikeTerraformPlan(fileContent) || p.mayResolve(fileContent, filePath) {
+		return nil, false
+	}
+	doc, ok := parse(fileContent)
+	if !ok {
+		return nil, false
+	}
+	return []model.Document{doc}, true
+}
+
+// mayResolve reports whether resolving fileContent can change it (see
+// file.Resolver.MayResolve).
+func (p *Parser) mayResolve(fileContent []byte, filename string) bool {
+	root := jsonView(fileContent)
+	return file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions()).MayResolve(&root, filename)
 }
 
 // SupportedExtensions returns extensions supported by this parser, which is json extension

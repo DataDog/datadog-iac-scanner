@@ -23,6 +23,27 @@ type contentKindParser interface {
 	KindForContent(content []byte) (model.FileKind, bool)
 }
 
+// lineInfoParser is an optional parser capability to build the documents of
+// a line-info reparse (see WithLineInfoOnly) for less than a full parse. ok
+// is false when the content needs a full parse.
+type lineInfoParser interface {
+	ParseLineInfo(content []byte, filePath string) (documents []model.Document, ok bool)
+}
+
+// lineInfoSectionParser is an optional parser capability to build a section
+// of the line-info document that ParseLineInfo leaves out, when a finding
+// needs it. ok is false when the parser has no such section for the content.
+type lineInfoSectionParser interface {
+	ParseLineInfoSection(content []byte, filePath, name string) (section interface{}, ok bool)
+}
+
+// unannotatedParser is an optional parser capability to build documents
+// without line markers, for parses marked WithLazyLineInfo. ok is false when
+// the content needs a full parse.
+type unannotatedParser interface {
+	ParseUnannotated(content []byte, filePath string) (documents []model.Document, ok bool)
+}
+
 // directoryDependentParser is an optional parser capability declaring that the
 // parser's output can depend on files other than the one being parsed (e.g.
 // Docker Compose resolves .env, override and extends targets from the file's
@@ -229,29 +250,35 @@ func (c *Parser) parseContent(
 	contextLogger := logger.FromContext(ctx)
 	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
-	resolved, obj, igLines, resolvedFiles, err := c.Parsers.Parse(
+	if lp, ok := c.Parsers.(lineInfoParser); ok && IsLineInfoOnly(ctx) && !IsLineInfoExport(ctx) {
+		// A line-info reparse only reads the documents.
+		if docs, ok := lp.ParseLineInfo(fileContent, filePath); ok {
+			return ParsedDocument{Docs: docs, Kind: c.contentKind(fileContent), IsMinified: isMinified}, nil
+		}
+	}
+
+	resolved, obj, igLines, resolvedFiles, err := c.parseDocuments(
 		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
 	if err != nil {
 		return ParsedDocument{}, err
 	}
 
-	kind := c.Parsers.GetKind()
 	// Terraform resolves checkout symlink placeholders to source bytes while
 	// retaining the logical filename. Keep that source for detection and snippets.
-	if kind == model.KindTerraform {
+	if c.Parsers.GetKind() == model.KindTerraform {
 		fileContent = resolved
 	}
-	cont, err := c.Parsers.StringifyContent(fileContent)
-	if err != nil {
-		contextLogger.Error().Msgf("failed to stringify original content: %s", err)
-		cont = string(fileContent)
-	}
-
-	if ck, ok := c.Parsers.(contentKindParser); ok {
-		if refined, override := ck.KindForContent(resolved); override {
-			kind = refined
+	// A line-info reparse only reads the documents; the stringified content
+	// would be a discarded copy of the whole file.
+	cont := ""
+	if !IsLineInfoOnly(ctx) {
+		cont, err = c.Parsers.StringifyContent(fileContent)
+		if err != nil {
+			contextLogger.Error().Msgf("failed to stringify original content: %s", err)
+			cont = string(fileContent)
 		}
 	}
+	kind := c.contentKind(resolved)
 
 	directoryDependent := false
 	if dd, ok := c.Parsers.(directoryDependentParser); ok && dd.DirectoryDependent() {
@@ -268,6 +295,43 @@ func (c *Parser) parseContent(
 		IsMinified:         isMinified,
 		DirectoryDependent: directoryDependent,
 	}, nil
+}
+
+// ParseLineInfoSection builds a line-info section of content that a
+// line-info reparse leaves out, when the parser can.
+func (c *Parser) ParseLineInfoSection(filePath string, content []byte, name string) (section interface{}, ok bool) {
+	if sp, isSectionParser := c.Parsers.(lineInfoSectionParser); isSectionParser {
+		return sp.ParseLineInfoSection(content, filePath, name)
+	}
+	return nil, false
+}
+
+// parseDocuments parses fileContent with the parser, without line markers
+// when the parse is marked WithLazyLineInfo and the parser can.
+func (c *Parser) parseDocuments(
+	ctx context.Context,
+	fileContent []byte,
+	filePath string,
+	openAPIResolveReferences bool,
+	maxResolverDepth int,
+) (resolved []byte, docs []model.Document, ignoreLines []int, resolvedFiles map[string]model.ResolvedFile, err error) {
+	if up, ok := c.Parsers.(unannotatedParser); ok && IsLazyLineInfo(ctx) {
+		if docs, ok := up.ParseUnannotated(fileContent, filePath); ok {
+			return fileContent, docs, nil, map[string]model.ResolvedFile{}, nil
+		}
+	}
+	return c.Parsers.Parse(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+}
+
+// contentKind returns the parser's kind, refined for content when the
+// parser can.
+func (c *Parser) contentKind(content []byte) model.FileKind {
+	if ck, ok := c.Parsers.(contentKindParser); ok {
+		if refined, override := ck.KindForContent(content); override {
+			return refined
+		}
+	}
+	return c.Parsers.GetKind()
 }
 
 func unsupportedDocument() ParsedDocument {
