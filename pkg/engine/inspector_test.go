@@ -8,6 +8,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -1925,6 +1926,42 @@ func TestPayloadHashConsPointerMemoValidation(t *testing.T) {
 
 	// Non-canizable nodes never validate.
 	assert.False(t, cons.pointerMemoMatches(memo, map[string]interface{}{"k": struct{ X int }{}}))
+}
+
+func TestIdenticalOrEqualTerms(t *testing.T) {
+	doc := ast.MustParseTerm(`{"resource": {"a": [1, {"b": true}]}}`)
+	require.True(t, identicalOrEqualTerms(doc, doc))
+	require.True(t, identicalOrEqualTerms(doc, &ast.Term{Value: doc.Value}))
+	require.True(t, identicalOrEqualTerms(doc, ast.MustParseTerm(`{"resource": {"a": [1, {"b": true}]}}`)))
+	require.False(t, identicalOrEqualTerms(doc, ast.MustParseTerm(`{"resource": {"a": [1, {"b": false}]}}`)))
+	// Values backed by slices are compared by value without panicking.
+	require.True(t, identicalOrEqualTerms(ast.MustParseTerm(`data.x.y`), ast.MustParseTerm(`data.x.y`)))
+	require.False(t, identicalOrEqualTerms(ast.MustParseTerm(`"x"`), ast.MustParseTerm(`{"x": 1}`)))
+}
+
+// TestIdentityVirtualCacheMatchesOPA checks that memoized function calls
+// taking whole documents give the results of OPA's own virtual cache.
+func TestIdentityVirtualCacheMatchesOPA(t *testing.T) {
+	ctx := context.Background()
+	query, err := rego.New(
+		rego.Query("data.p.out"),
+		rego.Module("p.rego", `package p
+
+f(doc, name) := doc.resource[name].v
+
+out := {name: f(doc, name) | some doc in input.document; some name, _ in doc.resource}
+`),
+	).PrepareForEval(ctx)
+	require.NoError(t, err)
+	input := ast.MustParseTerm(`{"document": [{"resource": {"a": {"v": 1}, "b": {"v": 2}}}, {"resource": {"c": {"v": 3}}}]}`).Value
+
+	want, err := query.Eval(ctx, rego.EvalParsedInput(input))
+	require.NoError(t, err)
+	got, err := query.Eval(ctx, rego.EvalParsedInput(input), rego.EvalVirtualCache(newIdentityVirtualCache()))
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+	require.Equal(t, map[string]interface{}{"a": json.Number("1"), "b": json.Number("2"), "c": json.Number("3")},
+		got[0].Expressions[0].Value)
 }
 
 func TestInspectorQueryConcurrency(t *testing.T) {
