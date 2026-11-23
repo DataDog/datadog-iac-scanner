@@ -152,6 +152,8 @@ type Evaluator struct {
 	// fsys serves the evaluator's directory reads (module and tfvars files).
 	// Defaults to the real disk; content-push scans inject an in-memory FS.
 	fsys vfs.FS
+	// Root inputs from the scan's explicitly selected variable definitions file.
+	explicitRootVars map[string]cty.Value
 	// cache memoizes completed module evaluations keyed by (dir, packageRoot,
 	// input digest). A single Evaluator is used for an entire scan, so entries
 	// with the same key represent the same module reached with the same resolved
@@ -306,6 +308,7 @@ func (e *Evaluator) Fork() *Evaluator {
 	return &Evaluator{
 		funcs:            e.funcs,
 		fsys:             e.fsys,
+		explicitRootVars: e.explicitRootVars,
 		cache:            make(map[evalCacheKey]*evalCacheEntry),
 		remoteResolver:   e.remoteResolver,
 		notEvaluatedDirs: make(map[string]bool),
@@ -315,6 +318,12 @@ func (e *Evaluator) Fork() *Evaluator {
 		mergeAllow:       e.mergeAllow,
 		trackInstances:   e.trackInstances,
 	}
+}
+
+// SetExplicitRootVars supplies the scan's highest-precedence root inputs.
+// The map is read-only and shared by evaluator forks.
+func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
+	e.explicitRootVars = inputs
 }
 
 // SetTrackModuleInstances makes evaluations record the module calls they

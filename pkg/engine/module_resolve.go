@@ -28,6 +28,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
 	"github.com/rs/zerolog"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // extraCallerInfo records a deduplicated module caller so its findings can be
@@ -373,7 +374,7 @@ func (c *Inspector) resolveModulesSafely(
 	inv = c.newTerraformInventory(lookup, externalModuleFile)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
-		externalModuleFile, inv,
+		externalModuleFile, inv, c.terraformRootVars,
 	)
 }
 
@@ -677,6 +678,7 @@ func resolveModuleDocuments(
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
 	inv *terraformInventory,
+	rootVars map[string]cty.Value,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -698,6 +700,7 @@ func resolveModuleDocuments(
 
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
+	evaluator.SetExplicitRootVars(rootVars)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)

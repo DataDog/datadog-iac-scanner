@@ -155,6 +155,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	}
 	inspector.SetExternalModulePaths(remoteModulePaths)
 	inspector.SetInventory(c.inventory.sink())
+	inspector.SetTerraformRootVars(terraformParser.ReadExplicitVariables(ctx, c.fsys, c.ScanParams.TerraformVarsPath))
 	if c.inMemory {
 		inspector.SetMergeAllow(append(append([]string{}, c.inMemoryPaths...), remoteModulePaths...))
 	} else {

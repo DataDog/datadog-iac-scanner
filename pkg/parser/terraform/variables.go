@@ -517,22 +517,7 @@ func getInputVariables(
 		}
 	}
 
-	if terraformVarsPath != "" {
-		if _, err := fsys.Stat(terraformVarsPath); err == nil {
-			vars, errInput := getInputVariablesFromFile(ctx, fsys, terraformVarsPath)
-			if errInput != nil {
-				event := contextLogger.Error()
-				if errors.Is(errInput, tfmodules.ErrSkippedLinkPlaceholder) {
-					event = contextLogger.Debug()
-				}
-				event.Err(errInput).Msgf("Error getting values from %s", terraformVarsPath)
-			} else {
-				mergeMaps(variablesMap, vars)
-			}
-		} else {
-			contextLogger.Trace().Msgf("%s file not found", terraformVarsPath)
-		}
-	}
+	mergeMaps(variablesMap, ReadExplicitVariables(ctx, fsys, terraformVarsPath))
 
 	// Final sanitized maps
 	cleanVars := sanitizeCtyMap(variablesMap)
@@ -542,6 +527,28 @@ func getInputVariables(
 	result["var"] = cty.ObjectVal(cleanVars)
 	result["local"] = cty.ObjectVal(cleanLocals)
 	return result
+}
+
+// ReadExplicitVariables loads a selected variable definitions file through the scan filesystem.
+func ReadExplicitVariables(ctx context.Context, fsys vfs.FS, path string) converter.VariableMap {
+	if path == "" {
+		return nil
+	}
+	contextLogger := logger.FromContext(ctx)
+	if _, err := fsys.Stat(path); err != nil {
+		contextLogger.Trace().Msgf("%s file not found", path)
+		return nil
+	}
+	vars, err := getInputVariablesFromFile(ctx, fsys, path)
+	if err != nil {
+		event := contextLogger.Error()
+		if errors.Is(err, tfmodules.ErrSkippedLinkPlaceholder) {
+			event = contextLogger.Debug()
+		}
+		event.Err(err).Msgf("Error getting values from %s", path)
+		return nil
+	}
+	return vars
 }
 
 // autoloadedVarFiles lists the variable definitions files Terraform loads from

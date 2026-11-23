@@ -227,6 +227,41 @@ resource "aws_s3_bucket" "disabled_each" {
 	}
 }
 
+func TestTerraformOverrideUsesSelectedRootVariables(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf": `variable "acl" { default = "private" }
+variable "replicas" { default = 1 }
+resource "aws_s3_bucket" "example" {
+  count  = var.replicas
+  bucket = "example"
+  acl    = var.acl
+}
+`,
+		"override.tf": `resource "aws_s3_bucket" "example" { force_destroy = true }`,
+		"terraform.tfvars": `acl = "private"
+replicas = 1
+`,
+		"selected.tfvars": `acl = "public-read"
+replicas = 2
+`,
+	})
+	rule := syntheticQuery("test-public-acl-with-override", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	bucket.acl == "public-read"
+	bucket.force_destroy == true
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
+	params := terraformParams(root)
+	params.TerraformVarsPath = filepath.Join(root, "selected.tfvars")
+	inv, fingerprints := scanLinks(t, params, rule)
+	require.Len(t, fingerprints, 1)
+	require.ElementsMatch(t, []string{
+		".|aws_s3_bucket.example[0]", ".|aws_s3_bucket.example[1]",
+	}, linkedRefs(inv)[fingerprints[0]])
+	loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
+	require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
+	require.Equal(t, 6, loc.Region.StartLine)
+}
+
 func TestTerraformJSONOverrideFinding(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"main.tf": `resource "aws_s3_bucket" "example" {

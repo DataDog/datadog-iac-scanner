@@ -21,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // InventorySink receives the resources a scan's inventory lists.
@@ -41,6 +42,7 @@ type terraformInventory struct {
 	sink     InventorySink
 	repoPath string
 	lookup   moduleProvenanceLookup
+	rootVars map[string]cty.Value
 	// external reports a fetched module, which is not a root of the
 	// repository even when nothing in the scan calls it.
 	external func(string) bool
@@ -54,7 +56,9 @@ func (c *Inspector) newTerraformInventory(lookup moduleProvenanceLookup, externa
 	if c.inventory == nil {
 		return nil
 	}
-	return &terraformInventory{sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external}
+	return &terraformInventory{
+		sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external, rootVars: c.terraformRootVars,
+	}
 }
 
 // fail marks the inventory as unusable.
@@ -116,6 +120,7 @@ func (inv *terraformInventory) withEvaluator(
 	}()
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
+	evaluator.SetExplicitRootVars(inv.rootVars)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
