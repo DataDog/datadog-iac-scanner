@@ -346,6 +346,52 @@ func TestTerraformOverridePreservesCertificateMetadata(t *testing.T) {
 	}
 }
 
+func TestTerraformVariableOverrideAppliesToPlainAndOverriddenResources(t *testing.T) {
+	for _, tc := range []struct{ file, body string }{
+		{"override.tf", `variable "acl" { description = "Bucket ACL" }
+resource "aws_s3_bucket" "over" { tags = { fixture = "test" } }
+`},
+		{"override.tf.json", `{
+  "variable": {"acl": {"description": "Bucket ACL"}},
+  "resource": {"aws_s3_bucket": {"over": {"tags": {"fixture": "test"}}}}
+}
+`},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			root := writeRepo(t, map[string]string{
+				"main.tf": `variable "acl" { default = "public-read" }
+resource "aws_s3_bucket" "over" {
+  bucket = "over"
+  acl    = var.acl
+}
+resource "aws_s3_bucket" "plain" {
+  bucket = "plain"
+  acl    = var.acl
+}
+`,
+				tc.file: tc.body,
+			})
+			params := terraformParams(root)
+			inv, fingerprints := scanLinks(t, params, terraformPublicACLRule)
+			require.Len(t, inv.Resources, 2)
+			require.Len(t, fingerprints, 2)
+			refs := linkedRefs(inv)
+			for _, name := range []string{"over", "plain"} {
+				fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, "main.tf", "Terraform",
+					"aws_s3_bucket", name, terraformPublicACLRule.Query, "", "")
+				require.Equal(t, []string{".|aws_s3_bucket." + name}, refs[fingerprint])
+			}
+			var lines []int
+			for _, result := range readSARIFRun(t, params).Results {
+				loc := result.ResultLocations[0].PhysicalLocation
+				require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
+				lines = append(lines, loc.Region.StartLine)
+			}
+			require.ElementsMatch(t, []int{4, 8}, lines)
+		})
+	}
+}
+
 func TestTerraformJSONOverrideFinding(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"main.tf": `resource "aws_s3_bucket" "example" {

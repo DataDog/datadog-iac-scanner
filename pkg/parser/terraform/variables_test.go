@@ -191,7 +191,7 @@ func TestExtractInputVariablesUnsetRequiredIsUnknown(t *testing.T) {
 	src := []byte(`variable "required" { type = string }`)
 	file, diags := hclsyntax.ParseConfig(src, "variables.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), diags)
-	got := extractInputVariables(file.Body.(*hclsyntax.Body), "variables.tf")
+	got := extractInputVariables(file.Body.(*hclsyntax.Body), "variables.tf", variableDefaultMerge{})
 	require.True(t, got["required"].RawEquals(cty.UnknownVal(cty.DynamicPseudoType)))
 }
 
@@ -301,6 +301,34 @@ variable "bucket" { default = "from-tofu" }
 	require.Equal(t, "from-tf", fromTF["var"].AsValueMap()["bucket"].AsString())
 	fromTofu := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tofu)
 	require.Equal(t, "from-tofu", fromTofu["var"].AsValueMap()["bucket"].AsString())
+}
+
+func TestGetInputVariablesMergesOverrideDefaults(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string][]byte{
+		filepath.Join(dir, "zz_primary.tf"): []byte(`
+variable "chain" { default = "base" }
+variable "unset" { default = "base" }
+variable "ambiguous" { default = "base" }
+locals { precedence = "primary" }
+`),
+		filepath.Join(dir, "other.tf"):           []byte(`variable "ambiguous" { default = "other" }`),
+		filepath.Join(dir, "a_override.tf.json"): []byte(`{"variable":{"chain":{"default":"first"},"orphan":{"default":"orphan"}}}`),
+		filepath.Join(dir, "override.tf"): []byte(`
+variable "chain" { description = "keep the prior default" }
+variable "unset" { default = null }
+variable "ambiguous" { description = "no unique base" }
+variable "orphan" { description = "no base" }
+locals { precedence = "override" }
+`),
+	}
+	got := getInputVariables(t.Context(), vfs.NewMemFS(files), dir, "", "", nil, "")
+	vars := got["var"].AsValueMap()
+	require.Equal(t, "first", vars["chain"].AsString())
+	require.True(t, vars["unset"].IsNull())
+	require.False(t, vars["ambiguous"].IsKnown())
+	require.False(t, vars["orphan"].IsKnown())
+	require.Equal(t, "primary", got["local"].GetAttr("precedence").AsString())
 }
 
 func TestGetInputVariables_AllowMissFallsBackToDir(t *testing.T) {

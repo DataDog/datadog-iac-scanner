@@ -10,6 +10,7 @@ import (
 	"errors"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -63,7 +64,7 @@ func getInputVariablesFromFile(ctx context.Context, fsys vfs.FS, filename string
 	if err != nil {
 		return nil, err
 	}
-	return extractInputVariables(body, filename), nil
+	return extractInputVariables(body, filename, variableDefaultMerge{}), nil
 }
 
 func getInputVariablesFromJSONFile(ctx context.Context, fsys vfs.FS, filename string) (converter.VariableMap, error) {
@@ -88,20 +89,38 @@ func getInputVariablesFromJSONFile(ctx context.Context, fsys vfs.FS, filename st
 
 // getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
 func getInputVariablesAndLocalsFromFile(
-	ctx context.Context, fsys vfs.FS, filename string,
+	ctx context.Context, fsys vfs.FS, filename string, merge variableDefaultMerge,
 ) (vars, locals converter.VariableMap, err error) {
 	if tfpath.IsJSONConfig(filename) {
-		return extractVarsAndLocalsFromJSON(ctx, fsys, filename)
+		return extractVarsAndLocalsFromJSON(ctx, fsys, filename, merge)
 	}
 	body, err := parseHCLBody(ctx, fsys, filename)
 	if err != nil {
 		return nil, nil, err
 	}
-	return extractInputVariables(body, filename), extractLocals(body), nil
+	return extractInputVariables(body, filename, merge), extractLocals(body), nil
+}
+
+// variableDefaultMerge tracks primary declarations in a directory with overrides.
+// A default-less override keeps the earlier value only for a unique base.
+type variableDefaultMerge struct {
+	baseCounts map[string]int
+	override   bool
+}
+
+func (m variableDefaultMerge) inheritDefault(name string, hasDefault bool) bool {
+	if m.baseCounts == nil {
+		return false
+	}
+	if m.override {
+		return !hasDefault && m.baseCounts[name] == 1
+	}
+	m.baseCounts[name]++
+	return false
 }
 
 // nolint:gocyclo
-func extractInputVariables(body *hclsyntax.Body, filename string) converter.VariableMap {
+func extractInputVariables(body *hclsyntax.Body, filename string, merge variableDefaultMerge) converter.VariableMap {
 	variables := make(converter.VariableMap)
 	if body == nil {
 		return variables
@@ -121,19 +140,24 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	// Case 2: .tf variable "x" { default = ... }
 	hasVariableBlock := false
 	for _, block := range body.Blocks {
-		if block.Type == blockTypeVariable && len(block.Labels) == 1 && block.Labels[0] != "" {
-			hasVariableBlock = true
-			varName := block.Labels[0]
-			if defaultAttr, exists := block.Body.Attributes["default"]; exists {
-				val, diags := defaultAttr.Expr.Value(&hcl.EvalContext{})
-				if !diags.HasErrors() && val.IsKnown() {
-					variables[varName] = val
-					continue
-				}
-			}
-			// Declared but unset: keep the attribute so try/can see unknown, not a missing key.
-			variables[varName] = cty.UnknownVal(cty.DynamicPseudoType)
+		if block.Type != blockTypeVariable || len(block.Labels) != 1 || block.Labels[0] == "" {
+			continue
 		}
+		hasVariableBlock = true
+		varName := block.Labels[0]
+		defaultAttr := block.Body.Attributes["default"]
+		if merge.inheritDefault(varName, defaultAttr != nil) {
+			continue
+		}
+		if defaultAttr != nil {
+			val, diags := defaultAttr.Expr.Value(&hcl.EvalContext{})
+			if !diags.HasErrors() && val.IsKnown() {
+				variables[varName] = val
+				continue
+			}
+		}
+		// Declared but unset: keep the attribute so try/can see unknown, not a missing key.
+		variables[varName] = cty.UnknownVal(cty.DynamicPseudoType)
 	}
 
 	// If no variable blocks found but has attributes, treat as .tfvars-style
@@ -149,7 +173,9 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	return variables
 }
 
-func extractVarsAndLocalsFromJSON(ctx context.Context, fsys vfs.FS, filename string) (vars, locals converter.VariableMap, err error) {
+func extractVarsAndLocalsFromJSON(
+	ctx context.Context, fsys vfs.FS, filename string, merge variableDefaultMerge,
+) (vars, locals converter.VariableMap, err error) {
 	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
 	if err != nil {
 		return nil, nil, err
@@ -163,11 +189,11 @@ func extractVarsAndLocalsFromJSON(ctx context.Context, fsys vfs.FS, filename str
 		return nil, nil, diags
 	}
 
-	vars, locals = varsAndLocalsFromJSONBlocks(content.Blocks)
+	vars, locals = varsAndLocalsFromJSONBlocks(content.Blocks, merge)
 	return vars, locals, nil
 }
 
-func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars, locals converter.VariableMap) {
+func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks, merge variableDefaultMerge) (vars, locals converter.VariableMap) {
 	vars = make(converter.VariableMap)
 	locals = make(converter.VariableMap)
 	evalCtx := &hcl.EvalContext{}
@@ -177,7 +203,12 @@ func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars, locals converter.Vari
 			if len(block.Labels) != 1 || block.Labels[0] == "" {
 				continue
 			}
-			vars[block.Labels[0]] = knownAttrOrUnknown(block.Body, "default", evalCtx)
+			name := block.Labels[0]
+			attrs, _ := block.Body.JustAttributes()
+			def := attrs["default"]
+			if !merge.inheritDefault(name, def != nil) {
+				vars[name] = knownDefaultOrUnknown(def, evalCtx)
+			}
 		case blockTypeLocals:
 			mergeKnownAttributes(locals, block.Body)
 		}
@@ -185,9 +216,8 @@ func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars, locals converter.Vari
 	return vars, locals
 }
 
-func knownAttrOrUnknown(body hcl.Body, name string, evalCtx *hcl.EvalContext) cty.Value {
-	attrs, _ := body.JustAttributes()
-	if def, ok := attrs[name]; ok {
+func knownDefaultOrUnknown(def *hcl.Attribute, evalCtx *hcl.EvalContext) cty.Value {
+	if def != nil {
 		val, diags := def.Expr.Value(evalCtx)
 		if !diags.HasErrors() && val.IsKnown() {
 			return val
@@ -480,10 +510,19 @@ func getInputVariables(
 	localsMap := make(converter.VariableMap)
 
 	tfFiles := hclConfigFiles(ctx, fsys, currentPath, allow, keep)
+	ordered := tfFiles
+	var merge variableDefaultMerge
+	var localsByFile map[string]converter.VariableMap
+	if slices.ContainsFunc(tfFiles, tfpath.IsOverrideFile) {
+		ordered = tfpath.OrderOverrideLast(tfFiles, func(path string) string { return path })
+		merge.baseCounts = make(map[string]int)
+		localsByFile = make(map[string]converter.VariableMap)
+	}
 
 	// Parse all .tf/.tofu files for variables and locals
-	for _, tfFile := range tfFiles {
-		vars, locals, err := getInputVariablesAndLocalsFromFile(ctx, fsys, tfFile)
+	for _, tfFile := range ordered {
+		merge.override = merge.baseCounts != nil && tfpath.IsOverrideFile(tfFile)
+		vars, locals, err := getInputVariablesAndLocalsFromFile(ctx, fsys, tfFile, merge)
 		if err != nil {
 			// Non-fatal: a sibling may be unreadable (broken symlink, partial
 			// MemFS push) or invalid HCL (testdata). Match getDataSourcePolicy.
@@ -491,7 +530,17 @@ func getInputVariables(
 			continue
 		}
 		mergeMaps(variablesMap, vars)
-		mergeMaps(localsMap, locals)
+		if localsByFile != nil {
+			localsByFile[tfFile] = locals
+		} else {
+			mergeMaps(localsMap, locals)
+		}
+	}
+	// The variable default merge leaves the parser's local precedence intact.
+	if localsByFile != nil {
+		for _, tfFile := range tfFiles {
+			mergeMaps(localsMap, localsByFile[tfFile])
+		}
 	}
 
 	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
