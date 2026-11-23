@@ -54,17 +54,30 @@ func (e *Evaluator) ResourceOverrides(ctx context.Context, dir string) []Resourc
 	return e.parseDir(ctx, dir, "").overrides
 }
 
-// OverrideDocument renders an effective declaration at block granularity. A
-// representative supplies the evaluated module scope, without binding it to
-// that particular count or for_each iteration.
+// StandaloneOverrideScope prepares the block-level context of a module for
+// which the scan has no instance. It does not follow calls or expand resources.
+func (e *Evaluator) StandaloneOverrideScope(ctx context.Context, dir string) *ModuleScope {
+	parsed := e.parseDir(ctx, dir, "")
+	if parsed.err != nil || ctx.Err() != nil {
+		return nil
+	}
+	scope := e.newModuleScope(ctx, dir, dir, &parsed, e.LoadRootVarsWithContext(ctx, dir))
+	data := newModuleData(e, parsed.sources, parsed.locals, parsed.static, "", nil, parsed.declarations)
+	data.refresh(ctx, scope.evalCtx)
+	data.resolved(scope)
+	scope.Local = scope.evalCtx.Variables["local"]
+	return scope
+}
+
+// OverrideDocument renders an effective declaration at block granularity.
+// The module scope has no resource-specific count or for_each iteration.
 func (e *Evaluator) OverrideDocument(
-	ctx context.Context, override *ResourceOverride, representative *ResolvedResource,
+	ctx context.Context, override *ResourceOverride, scope *ModuleScope,
 ) map[string]interface{} {
-	r := ResolvedResource{Body: override.Effective.Body}
+	r := ResolvedResource{Body: override.Effective.Body, Scope: scope}
 	evalCtx := &hcl.EvalContext{}
-	if representative != nil && representative.Scope != nil {
-		r.Scope = representative.Scope
-		evalCtx = r.Scope.evalCtx
+	if scope != nil {
+		evalCtx = scope.evalCtx
 	}
 	state := &bodyState{dynamic: &dynamicRecorder{}}
 	r.Attributes = e.evalBodyWith(ctx, r.Body, evalCtx, nil, state)

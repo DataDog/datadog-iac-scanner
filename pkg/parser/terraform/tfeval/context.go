@@ -7,10 +7,32 @@
 package tfeval
 
 import (
+	"context"
+	"sync"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 )
+
+func (e *Evaluator) newModuleScope(
+	ctx context.Context, dir, rootDir string, parsed *dirParse, inputs map[string]cty.Value,
+) *ModuleScope {
+	vars := objectOrEmpty(e.resolveVariables(parsed.varDecls, inputs))
+	shared := e.moduleContext(dir, rootDir)
+	evalCtx := &hcl.EvalContext{Variables: map[string]cty.Value{"var": vars}, Functions: shared.functions}
+	for name, value := range shared.variables {
+		evalCtx.Variables[name] = value
+	}
+	scope := &ModuleScope{
+		Locals: parsed.localExprs, Bodies: parsed.bodies, Var: vars, evalCtx: evalCtx, sources: parsed.sources,
+		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{},
+	}
+	e.noteCycles(ctx, dir, parsed.locals)
+	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
+	return scope
+}
 
 type moduleContextKey struct{ dir, root string }
 

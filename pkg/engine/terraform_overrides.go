@@ -117,7 +117,7 @@ func (o *terraformOverrides) record(
 		}
 		p.live = true
 		if r.ModuleAddress == "" && p.document == nil {
-			p.document = evaluator.OverrideDocument(ctx, &p.config, r)
+			p.document = evaluator.OverrideDocument(ctx, &p.config, r.Scope)
 		}
 	}
 }
@@ -130,6 +130,7 @@ func (o *terraformOverrides) prepare(
 	if o == nil {
 		return
 	}
+	fallbackScopes := make(map[string]*tfeval.ModuleScope)
 	for def, projection := range o.definitions {
 		dir := filepath.Dir(def.path)
 		evaluated := res.successfulRoots[dir] || evaluatedChildren[dir]
@@ -139,7 +140,12 @@ func (o *terraformOverrides) prepare(
 		if projection.remove || replaced {
 			projection.document = nil
 		} else if projection.document == nil {
-			projection.document = evaluator.OverrideDocument(ctx, &projection.config, nil)
+			scope, ok := fallbackScopes[dir]
+			if !ok {
+				scope = evaluator.StandaloneOverrideScope(ctx, dir)
+				fallbackScopes[dir] = scope
+			}
+			projection.document = evaluator.OverrideDocument(ctx, &projection.config, scope)
 		}
 	}
 }

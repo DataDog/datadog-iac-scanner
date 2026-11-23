@@ -262,6 +262,45 @@ replicas = 2
 	require.Equal(t, 6, loc.Region.StartLine)
 }
 
+func TestTerraformStandaloneOverrideUsesModuleScope(t *testing.T) {
+	rule := syntheticQuery("test-standalone-override", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	bucket.acl == "public-read"
+	bucket.tags.fixture == "test"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
+	for _, tc := range []struct {
+		name, declaration, acl string
+	}{
+		{"variable default", `variable "acl" { default = "public-read" }`, "var.acl"},
+		{"local and function", `locals { acl = "PUBLIC-READ" }`, "lower(local.acl)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeRepo(t, map[string]string{
+				"main.tf": `module "child" {
+  source = "./child"
+  count  = 0
+}
+`,
+				"child/main.tf": tc.declaration + "\n" + `resource "aws_s3_bucket" "example" {
+  bucket = "example"
+  acl = ` + tc.acl + "\n}\n",
+				"child/override.tf": `resource "aws_s3_bucket" "example" { tags = { fixture = "test" } }`,
+			})
+			params := terraformParams(root)
+			inv, fingerprints := scanLinks(t, params, rule)
+			require.Empty(t, inv.Resources)
+			require.Empty(t, inv.FindingLinks)
+			const file = "child/main.tf"
+			fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, filepath.FromSlash(file), "Terraform",
+				"aws_s3_bucket", "example", rule.Query, "", "")
+			require.Equal(t, []string{fingerprint}, fingerprints)
+			loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
+			require.Equal(t, file, loc.ArtifactLocation.ArtifactURI)
+			require.Equal(t, 4, loc.Region.StartLine)
+		})
+	}
+}
+
 func TestTerraformOverridePreservesCertificateMetadata(t *testing.T) {
 	pem, err := os.ReadFile(filepath.Join("..", "..", "test", "fixtures", "test_certificate", "certificate.pem"))
 	require.NoError(t, err)

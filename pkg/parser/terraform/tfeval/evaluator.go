@@ -529,28 +529,10 @@ func (e *Evaluator) evaluate(
 	if parsed.err != nil {
 		return nil, nil, parsed.err
 	}
-	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
-
-	varVals := e.resolveVariables(parsed.varDecls, inputs)
-	shared := e.moduleContext(dir, rootDir)
-
-	evalCtx := &hcl.EvalContext{
-		Variables: map[string]cty.Value{
-			"var": objectOrEmpty(varVals),
-		},
-		Functions: shared.functions,
-	}
-	for name, value := range shared.variables {
-		evalCtx.Variables[name] = value
-	}
-
-	scope := &ModuleScope{
-		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
-		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{},
-	}
-	e.noteCycles(ctx, dir, parsed.locals)
-	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
-	data := newModuleData(e, sources, parsed.locals, parsed.static, addr, chain, parsed.declarations)
+	moduleBlocks, resourceBlocks := parsed.modules, parsed.resources
+	scope := e.newModuleScope(ctx, dir, rootDir, &parsed, inputs)
+	evalCtx := scope.evalCtx
+	data := newModuleData(e, parsed.sources, parsed.locals, parsed.static, addr, chain, parsed.declarations)
 	// Module-call preparation retains its existing data view. Without calls,
 	// resources and data are resolved together by the dependency schedule.
 	if len(moduleBlocks) > 0 {
