@@ -326,7 +326,7 @@ locals { precedence = "override" }
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "first", vars["chain"].AsString())
 	require.True(t, vars["unset"].IsNull())
-	require.False(t, vars["ambiguous"].IsKnown())
+	require.Equal(t, "base", vars["ambiguous"].AsString())
 	require.False(t, vars["orphan"].IsKnown())
 	require.Equal(t, "primary", got["local"].GetAttr("precedence").AsString())
 }

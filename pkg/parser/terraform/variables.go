@@ -108,6 +108,10 @@ type variableDefaultMerge struct {
 	override   bool
 }
 
+type fileVariableContext struct {
+	vars, locals converter.VariableMap
+}
+
 func (m variableDefaultMerge) inheritDefault(name string, hasDefault bool) bool {
 	if m.baseCounts == nil {
 		return false
@@ -512,11 +516,11 @@ func getInputVariables(
 	tfFiles := hclConfigFiles(ctx, fsys, currentPath, allow, keep)
 	ordered := tfFiles
 	var merge variableDefaultMerge
-	var localsByFile map[string]converter.VariableMap
+	var parsedFiles map[string]fileVariableContext
 	if slices.ContainsFunc(tfFiles, tfpath.IsOverrideFile) {
 		ordered = tfpath.OrderOverrideLast(tfFiles, func(path string) string { return path })
 		merge.baseCounts = make(map[string]int)
-		localsByFile = make(map[string]converter.VariableMap)
+		parsedFiles = make(map[string]fileVariableContext)
 	}
 
 	// Parse all .tf/.tofu files for variables and locals
@@ -530,17 +534,14 @@ func getInputVariables(
 			continue
 		}
 		mergeMaps(variablesMap, vars)
-		if localsByFile != nil {
-			localsByFile[tfFile] = locals
+		if parsedFiles != nil {
+			parsedFiles[tfFile] = fileVariableContext{vars: vars, locals: locals}
 		} else {
 			mergeMaps(localsMap, locals)
 		}
 	}
-	// The variable default merge leaves the parser's local precedence intact.
-	if localsByFile != nil {
-		for _, tfFile := range tfFiles {
-			mergeMaps(localsMap, localsByFile[tfFile])
-		}
+	if parsedFiles != nil {
+		mergeStandaloneValues(tfFiles, parsedFiles, merge.baseCounts, variablesMap, localsMap)
 	}
 
 	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
@@ -576,6 +577,21 @@ func getInputVariables(
 	result["var"] = cty.ObjectVal(cleanVars)
 	result["local"] = cty.ObjectVal(cleanLocals)
 	return result
+}
+
+// Keep the parser's file order for locals and variables without a unique base.
+func mergeStandaloneValues(
+	files []string, parsed map[string]fileVariableContext, baseCounts map[string]int, vars, locals converter.VariableMap,
+) {
+	for _, path := range files {
+		file := parsed[path]
+		for name, value := range file.vars {
+			if baseCounts[name] != 1 {
+				vars[name] = value
+			}
+		}
+		mergeMaps(locals, file.locals)
+	}
 }
 
 // ReadExplicitVariables loads a selected variable definitions file through the scan filesystem.
