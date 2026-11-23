@@ -8,6 +8,7 @@ package tfeval
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -712,5 +713,67 @@ func TestEvalCache_SpeculativeCycleDependencies(t *testing.T) {
 				require.True(t, hit)
 			}
 		})
+	}
+}
+
+// Exercise every active-ancestor subset on a graph with overlapping cycles.
+// Reused partial results must match an independently evaluated traversal.
+func TestEvalCache_PartialResultsMatchFreshTraversals(t *testing.T) {
+	root := t.TempDir()
+	const nodes = 5
+	for i := range nodes {
+		writeModule(t, root, fmt.Sprintf("n%d", i), map[string]string{"main.tf": fmt.Sprintf(`variable "value" {}
+module "next" {
+ source="../n%d"
+ value=var.value
+}
+module "other" {
+ source="../n%d"
+ value=var.value
+}
+resource "terraform_data" "r" {input=var.value}
+output "value" {value=try(module.next.value,var.value)}
+`, (i+1)%nodes, (i+2)%nodes)})
+	}
+	cached := New()
+	cached.evaluation = &evaluationRun{}
+	ids := make([]string, nodes)
+	for i := range nodes {
+		var err error
+		ids[i], err = cached.moduleDirectoryIdentity(t.Context(), filepath.Join(root, fmt.Sprintf("n%d", i)))
+		require.NoError(t, err)
+	}
+	for _, reverse := range []bool{false, true} {
+		for iteration := range 1 << (nodes - 1) {
+			mask := iteration
+			if reverse {
+				mask = (1 << (nodes - 1)) - 1 - iteration
+			}
+			for _, value := range []cty.Value{cty.StringVal("one"), cty.StringVal("two"), cty.UnknownVal(cty.String)} {
+				visiting := map[string]bool{}
+				for i := 1; i < nodes; i++ {
+					if mask&(1<<(i-1)) != 0 {
+						visiting[ids[i]] = true
+					}
+				}
+				inputs := map[string]cty.Value{"value": value}
+				cached.notEvaluatedDirs = map[string]bool{}
+				fresh := New()
+				freshVisited, cachedVisited := map[string]bool{}, map[string]bool{}
+				want, wantOut, err := fresh.evaluate(t.Context(), filepath.Join(root, "n0"), root, "", inputs, "module.test", nil, visiting, freshVisited)
+				require.NoError(t, err)
+				got, gotOut, err := cached.evaluate(t.Context(), filepath.Join(root, "n0"), root, "", inputs, "module.test", nil, visiting, cachedVisited)
+				require.NoError(t, err)
+				require.True(t, maps.EqualFunc(wantOut, gotOut, cty.Value.RawEquals), "mask=%d reverse=%t", mask, reverse)
+				require.Equal(t, freshVisited, cachedVisited)
+				require.Equal(t, fresh.notEvaluatedDirs, cached.notEvaluatedDirs)
+				require.Len(t, got, len(want))
+				for i := range want {
+					require.Equal(t, want[i].ModuleAddress, got[i].ModuleAddress)
+					require.Equal(t, len(want[i].CallChain), len(got[i].CallChain))
+					require.True(t, maps.EqualFunc(want[i].Attributes, got[i].Attributes, cty.Value.RawEquals))
+				}
+			}
+		}
 	}
 }
