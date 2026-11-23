@@ -480,3 +480,125 @@ func BenchmarkInputsKeyNumbers(b *testing.B) {
 		})
 	}
 }
+
+func TestEvalCacheUnknownContext(t *testing.T) {
+	collection := func(ty cty.Type, lower, upper int) cty.Value {
+		return cty.UnknownVal(ty).Refine().NotNull().CollectionLengthLowerBound(lower).CollectionLengthUpperBound(upper).NewValue()
+	}
+	for _, test := range []struct {
+		name, expression string
+		values           []cty.Value
+	}{
+		{"map membership", `length(local.wrapped.value)`, []cty.Value{collection(cty.Map(cty.String), 1, 1), collection(cty.Map(cty.String), 2, 2), cty.UnknownVal(cty.Map(cty.String))}},
+		{"list shape", `length(local.wrapped.value)`, []cty.Value{collection(cty.List(cty.String), 1, 3), collection(cty.List(cty.String), 2, 4), cty.UnknownVal(cty.List(cty.String))}},
+		{"set shape", `length(local.wrapped.value)`, []cty.Value{collection(cty.Set(cty.String), 2, 2), collection(cty.Set(cty.String), 3, 3), cty.UnknownVal(cty.Set(cty.String))}},
+		{"boolean nullability", `local.wrapped.value == null`, []cty.Value{cty.UnknownVal(cty.Bool), cty.UnknownVal(cty.Bool).RefineNotNull(), cty.True}},
+		{"string prefix", `local.wrapped.value == "public"`, []cty.Value{cty.UnknownVal(cty.String).Refine().NotNull().StringPrefixFull("pub").NewValue(), cty.UnknownVal(cty.String).Refine().NotNull().StringPrefixFull("private").NewValue(), cty.UnknownVal(cty.String)}},
+		{"numeric bounds", `local.wrapped.value > 0`, []cty.Value{cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(cty.NumberIntVal(10), true).NewValue(), cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeUpperBound(cty.NumberIntVal(-10), true).NewValue(), cty.UnknownVal(cty.Number)}},
+		{"numeric endpoints", `local.wrapped.value == 0`, []cty.Value{cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(cty.Zero, true).NewValue(), cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(cty.Zero, false).NewValue(), cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeUpperBound(cty.Zero, false).NewValue()}},
+		{"object nullability", `local.wrapped.value == null`, []cty.Value{cty.UnknownVal(cty.Object(map[string]cty.Type{"enabled": cty.Bool})), cty.UnknownVal(cty.Object(map[string]cty.Type{"enabled": cty.Bool})).RefineNotNull(), cty.ObjectVal(map[string]cty.Value{"enabled": cty.UnknownVal(cty.Bool)})}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			module := writeModule(t, t.TempDir(), "module", map[string]string{"main.tf": `variable "input" {}
+locals { wrapped = { value = var.input.value } }
+output "input" { value = local.wrapped.value }
+output "predicate" { value = ` + test.expression + ` }
+`})
+			for _, layer := range []string{"module cache", "local memo"} {
+				t.Run(layer, func(t *testing.T) {
+					shared := New()
+					for _, value := range test.values {
+						before := value.GoString()
+						inputs := map[string]cty.Value{"input": cty.ObjectVal(map[string]cty.Value{"value": value})}
+						_, freshOutputs, _, err := New().EvaluateModule(context.Background(), module, inputs)
+						require.NoError(t, err)
+						if layer == "local memo" {
+							clear(shared.cache)
+						}
+						_, outputs, _, err := shared.EvaluateModule(context.Background(), module, inputs)
+						require.NoError(t, err)
+						for name, want := range freshOutputs {
+							require.True(t, want.RawEquals(outputs[name]), "output %s differs from fresh evaluation", name)
+						}
+						entries, memoEntries := shared.EvalCacheSize(), shared.LocalMemoSize()
+						require.Positive(t, memoEntries, "unknown contexts must exercise local memoization")
+						if layer == "local memo" {
+							clear(shared.cache)
+						}
+						// Reconstruct the outer object: equality of the abstract context,
+						// rather than storage identity, permits reuse.
+						_, againOutputs, _, err := shared.EvaluateModule(context.Background(), module, map[string]cty.Value{"input": cty.ObjectVal(map[string]cty.Value{"value": value})})
+						require.NoError(t, err)
+						for name, want := range freshOutputs {
+							require.True(t, want.RawEquals(againOutputs[name]), "repeated output %s differs", name)
+						}
+						require.Equal(t, entries, shared.EvalCacheSize())
+						require.Equal(t, memoEntries, shared.LocalMemoSize())
+						require.Equal(t, before, value.GoString())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestInputsKeyRefinedNumericBounds(t *testing.T) {
+	for _, exponent := range []int{-1 << 28, 0, 1 << 28} {
+		bound := cty.NumberVal(new(big.Float).SetMantExp(new(big.Float).SetInt64(3), exponent))
+		inclusive := cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(bound, true).NewValue()
+		exclusive := cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(bound, false).NewValue()
+		encoded := encodeCtyForKey(inclusive)
+		require.Less(t, len(encoded), 256)
+		require.NotEqual(t, encoded, encodeCtyForKey(exclusive))
+		require.Equal(t, encoded, encodeCtyForKey(cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(bound, true).NewValue()))
+	}
+}
+
+func BenchmarkInputsKeyUnknownValues(b *testing.B) {
+	for _, test := range []struct {
+		name  string
+		value cty.Value
+	}{
+		{"unrefined string", cty.UnknownVal(cty.String)},
+		{"unrefined map", cty.UnknownVal(cty.Map(cty.String))},
+		{"refined map", cty.UnknownVal(cty.Map(cty.String)).Refine().NotNull().CollectionLength(3).NewValue()},
+		{"refined number", cty.UnknownVal(cty.Number).Refine().NotNull().NumberRangeLowerBound(cty.Zero, true).NewValue()},
+	} {
+		b.Run(test.name, func(b *testing.B) {
+			inputs := map[string]cty.Value{"v": test.value}
+			var memo keyMemo
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, ok := memo.inputsKey(context.Background(), inputs); !ok {
+					b.Fatal("unknown context unexpectedly ineligible")
+				}
+			}
+		})
+	}
+}
+
+func TestEvalCacheUnknownInputsShareAcrossCalls(t *testing.T) {
+	root := t.TempDir()
+	caller := writeModule(t, root, "caller", map[string]string{"main.tf": `variable "input" {}
+module "copies" {
+ source="../child"
+ count=64
+ input=var.input
+}`})
+	writeModule(t, root, "child", map[string]string{"main.tf": `variable "input" {}
+resource "test_resource" "example" { value=length(var.input) }`})
+	for _, input := range []cty.Value{cty.UnknownVal(cty.Map(cty.String)), cty.UnknownVal(cty.Map(cty.String)).Refine().NotNull().CollectionLength(3).NewValue()} {
+		e := New()
+		resources, _, _, err := e.EvaluateModule(context.Background(), caller, map[string]cty.Value{"input": input})
+		require.NoError(t, err)
+		require.Len(t, resources, 64)
+		require.Equal(t, 2, e.EvalCacheSize(), "one caller and one shared child evaluation")
+		addresses := map[string]bool{}
+		for _, resource := range resources {
+			addresses[resource.ModuleAddress] = true
+			require.True(t, input.Length().RawEquals(resource.Attributes["value"]))
+		}
+		require.Len(t, addresses, 64)
+	}
+}
