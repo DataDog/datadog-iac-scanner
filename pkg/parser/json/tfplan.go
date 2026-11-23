@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"unsafe"
@@ -66,27 +67,33 @@ type resourceChangeCorrelation struct {
 	provisionersByAddress map[string]any
 }
 
-func buildResourceChangeCorrelation(rawPlan []byte) resourceChangeCorrelation {
+// buildResourceChangeCorrelation uses the sections already decoded for the
+// emitted document. Looking them up again in raw JSON would give gjson's first
+// duplicate key instead of encoding/json's last value. Decoded values also own
+// their strings, so sharing them here cannot retain the input buffer.
+func buildResourceChangeCorrelation(resourceChanges, configuration any) resourceChangeCorrelation {
 	c := resourceChangeCorrelation{
 		afterUnknownByAddress: make(map[string]any),
 		expressionsByAddress:  make(map[string]any),
 		provisionersByAddress: make(map[string]any),
 	}
 
-	plan := jsonView(rawPlan)
-	plan.Get("resource_changes").ForEach(func(_, change gjson.Result) bool {
-		address := change.Get("address").String()
+	changes, _ := resourceChanges.([]any)
+	for _, value := range changes {
+		resource, _ := value.(map[string]any)
+		address, _ := resource["address"].(string)
 		if address == "" {
-			return true
+			continue
 		}
-		if afterUnknown := change.Get("change.after_unknown"); afterUnknown.Exists() {
-			c.afterUnknownByAddress[address] = detachedValue(&afterUnknown)
+		change, _ := resource["change"].(map[string]any)
+		if afterUnknown, ok := change["after_unknown"]; ok {
+			c.afterUnknownByAddress[address] = afterUnknown
 		}
-		return true
-	})
+	}
 
-	rootConfigModule := plan.Get("configuration.root_module")
-	walkConfigModule(&rootConfigModule, "", nil, &c)
+	config, _ := configuration.(map[string]any)
+	rootConfigModule, _ := config["root_module"].(map[string]any)
+	walkConfigModule(rootConfigModule, "", nil, &c)
 
 	return c
 }
@@ -109,102 +116,100 @@ type callSiteRecord struct {
 // value (Terraform serializes var.x and base64encode(var.x) alike).
 type callArgument struct {
 	callSiteIdentity
-	raw   gjson.Result
-	chain []callSiteRecord
+	expression any
+	chain      []callSiteRecord
 }
 
 // record returns arg's own call site as a callSiteRecord.
 func (arg *callArgument) record() callSiteRecord {
-	return callSiteRecord{callSiteIdentity: arg.callSiteIdentity, expression: detachedValue(&arg.raw)}
+	return callSiteRecord{callSiteIdentity: arg.callSiteIdentity, expression: arg.expression}
 }
 
 // walkConfigModule indexes each resource's expressions/provisioners by
 // absolute address, using callArgs to attach call-site provenance.
-func walkConfigModule(module *gjson.Result, modulePath string, callArgs map[string]callArgument, c *resourceChangeCorrelation) {
-	module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
-		relativeAddress := resource.Get("address").String()
+func walkConfigModule(module map[string]any, modulePath string, callArgs map[string]callArgument, c *resourceChangeCorrelation) {
+	resources, _ := module["resources"].([]any)
+	for _, value := range resources {
+		resource, _ := value.(map[string]any)
+		relativeAddress, _ := resource["address"].(string)
 		if relativeAddress == "" {
-			return true
+			continue
 		}
 		absoluteAddress := relativeAddress
 		if modulePath != "" {
 			absoluteAddress = modulePath + "." + relativeAddress
 		}
-		if expressions := resource.Get("expressions"); expressions.Exists() {
-			c.expressionsByAddress[absoluteAddress] = qualifyExpressionTree(&expressions, callArgs)
+		if expressions, ok := resource["expressions"]; ok {
+			c.expressionsByAddress[absoluteAddress] = qualifyExpressionTree(expressions, callArgs)
 		}
-		if provisioners := resource.Get("provisioners"); provisioners.Exists() {
-			c.provisionersByAddress[absoluteAddress] = qualifyExpressionTree(&provisioners, callArgs)
+		if provisioners, ok := resource["provisioners"]; ok {
+			c.provisionersByAddress[absoluteAddress] = qualifyExpressionTree(provisioners, callArgs)
 		}
-		return true
-	})
+	}
 
-	module.Get("module_calls").ForEach(func(callName, call gjson.Result) bool {
-		childModule := call.Get("module")
-		if !childModule.Exists() {
-			return true
+	calls, _ := module["module_calls"].(map[string]any)
+	for callName, value := range calls {
+		call, _ := value.(map[string]any)
+		childModule, _ := call["module"].(map[string]any)
+		if childModule == nil {
+			continue
 		}
-		childPath := "module." + callName.String()
+		childPath := "module." + callName
 		if modulePath != "" {
 			childPath = modulePath + "." + childPath
 		}
 		childArgs := make(map[string]callArgument)
-		call.Get("expressions").ForEach(func(argName, argExpr gjson.Result) bool {
+		expressions, _ := call["expressions"].(map[string]any)
+		for argName, argExpr := range expressions {
 			// Resolve this call's own args against the parent so a chain of
 			// var.x indirections resolves transitively, not just one hop.
-			childArgs[argName.String()] = callArgument{
-				callSiteIdentity: callSiteIdentity{moduleAddress: modulePath, argumentName: argName.String()},
-				raw:              argExpr,
-				chain:            callArgumentChain(&argExpr, callArgs),
+			childArgs[argName] = callArgument{
+				callSiteIdentity: callSiteIdentity{moduleAddress: modulePath, argumentName: argName},
+				expression:       argExpr,
+				chain:            callArgumentChain(argExpr, callArgs),
 			}
-			return true
-		})
-		walkConfigModule(&childModule, childPath, childArgs, c)
-		return true
-	})
+		}
+		walkConfigModule(childModule, childPath, childArgs, c)
+	}
 }
 
 // qualifyExpressionTree walks an expressions/provisioners tree, attaching
 // call-site provenance to reference leaves without modifying any field.
-func qualifyExpressionTree(value *gjson.Result, callArgs map[string]callArgument) any {
-	if len(callArgs) == 0 || !value.IsObject() && !value.IsArray() {
-		return detachedValue(value)
+func qualifyExpressionTree(value any, callArgs map[string]callArgument) any {
+	if len(callArgs) == 0 {
+		return value
 	}
 
-	if value.Get("references").Exists() {
-		return attachCallSiteExpressions(value, callArgs)
-	}
-
-	if value.IsArray() {
-		items := value.Array()
-		resolved := make([]any, len(items))
-		for i, item := range items {
-			resolved[i] = qualifyExpressionTree(&item, callArgs)
+	switch value := value.(type) {
+	case []any:
+		resolved := make([]any, len(value))
+		for i, item := range value {
+			resolved[i] = qualifyExpressionTree(item, callArgs)
 		}
 		return resolved
+	case map[string]any:
+		if _, ok := value["references"]; ok {
+			return attachCallSiteExpressions(value, callArgs)
+		}
+		resolved := make(map[string]any, len(value))
+		for key, item := range value {
+			resolved[key] = qualifyExpressionTree(item, callArgs)
+		}
+		return resolved
+	default:
+		return value
 	}
-
-	resolved := make(map[string]any)
-	value.ForEach(func(key, item gjson.Result) bool {
-		// Cloned: the key references the plan JSON (see detachedValue).
-		resolved[strings.Clone(key.String())] = qualifyExpressionTree(&item, callArgs)
-		return true
-	})
-	return resolved
 }
 
 // attachCallSiteExpressions adds a "call_site_expressions" sidecar listing
 // each matched var.<name> reference's call-site chain, never modifying expr.
-func attachCallSiteExpressions(expr *gjson.Result, callArgs map[string]callArgument) any {
+func attachCallSiteExpressions(expr map[string]any, callArgs map[string]callArgument) any {
 	chain := referencedArgumentChain(expr, callArgs)
 	if len(chain) == 0 {
-		return detachedValue(expr)
+		return expr
 	}
 
-	value, ok := detachedValue(expr).(map[string]any)
-	if !ok {
-		return detachedValue(expr)
-	}
+	value := maps.Clone(expr)
 	expressions := make([]any, len(chain))
 	for i, rec := range chain {
 		expressions[i] = rec.expression
@@ -215,7 +220,7 @@ func attachCallSiteExpressions(expr *gjson.Result, callArgs map[string]callArgum
 
 // callArgumentChain builds expr's own provenance for a child call to use.
 // Returns nil when callArgs is empty (see referencedArgumentChain).
-func callArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
+func callArgumentChain(expr any, callArgs map[string]callArgument) []callSiteRecord {
 	if len(callArgs) == 0 {
 		return nil
 	}
@@ -224,21 +229,22 @@ func callArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []c
 
 // referencedArgumentChain flattens every ancestor call site a var.<name>
 // reference resolves to, deduplicated by (module, argument) identity.
-func referencedArgumentChain(expr *gjson.Result, callArgs map[string]callArgument) []callSiteRecord {
-	refs := expr.Get("references")
-	if !refs.IsArray() || len(refs.Array()) == 0 {
+func referencedArgumentChain(expr any, callArgs map[string]callArgument) []callSiteRecord {
+	value, _ := expr.(map[string]any)
+	refs, _ := value["references"].([]any)
+	if len(refs) == 0 {
 		return nil
 	}
 
-	rawRefs := make([]string, len(refs.Array()))
-	for i, ref := range refs.Array() {
-		rawRefs[i] = ref.String()
+	rawRefs := make([]string, len(refs))
+	for i, ref := range refs {
+		rawRefs[i], _ = ref.(string)
 	}
 
 	seen := make(map[callSiteIdentity]bool)
 	var chain []callSiteRecord
-	for i, ref := range refs.Array() {
-		name, ok := varReferenceName(ref.String())
+	for i, ref := range rawRefs {
+		name, ok := varReferenceName(ref)
 		if !ok {
 			continue
 		}
@@ -548,13 +554,12 @@ func readPlanJSON(states, changes []byte) (model.Document, error) {
 	// planView is typed and drops the injected _dd_lines keys, so read
 	// them back from the raw bytes before that information is lost.
 	lines := extractResourceHeaderLines(states)
-	correlation := buildResourceChangeCorrelation(changes)
-
 	configuration, err := decodeSection(changes, "configuration")
 	if err != nil {
 		return model.Document{}, err
 	}
 
+	correlation := buildResourceChangeCorrelation(resourceChanges, configuration)
 	parsedPlan := readPlan(plan, priorStateRoot, resourceChanges, configuration, lines, &correlation)
 	return parsedPlan, nil
 }
@@ -581,16 +586,6 @@ func decodeSectionInto(rawPlan []byte, key string, v any) error {
 		return nil
 	}
 	return json.Unmarshal(rawPlan[section.Index:section.Index+len(section.Raw)], v)
-}
-
-// detachedValue decodes r into values that do not reference the JSON r was
-// found in: the parsed plan would otherwise keep that JSON alive.
-func detachedValue(r *gjson.Result) any {
-	var v any
-	if err := json.Unmarshal([]byte(r.Raw), &v); err != nil {
-		return r.Value()
-	}
-	return v
 }
 
 // lineInfoSections are the sections of a plan other than its resources that

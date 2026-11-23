@@ -2359,6 +2359,101 @@ func TestParse_tfplanKeepsEverySectionMarker(t *testing.T) {
 	}
 }
 
+// The full parse collapses duplicate object keys before remapping the plan.
+// The scan's optimized path must expose the same values in both its document
+// sections and metadata, including configuration call-site provenance.
+func TestParseUnannotated_tfplanDuplicateMetadataKeys(t *testing.T) {
+	const change = `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true}}}`
+	const configuration = `{"root_module":{"module_calls":{"app":{"expressions":{"name":{"constant_value":"selected"}},"module":{"resources":[{"address":"aws_s3_bucket.logs","expressions":{"bucket":{"references":["var.name"]}}}]}}}}}`
+	for _, tt := range []struct {
+		name, changes, config string
+	}{
+		{
+			name:    "after_unknown known last",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true},"after_unknown":{"arn":false}}}`,
+		},
+		{
+			name:    "after_unknown unknown last",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":false},"after_unknown":{"arn":true}}}`,
+		},
+		{
+			name:    "after_unknown null last",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true},"after_unknown":null}}`,
+		},
+		{
+			name:    "after_unknown object replaced",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"old":true},"after_unknown":{"arn":false}}}`,
+		},
+		{
+			name:    "nested unknown attribute",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true,"arn":false}}}`,
+		},
+		{
+			name:    "change replaced",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":false}},"change":{"after_unknown":{"arn":true}}}`,
+		},
+		{
+			name:    "change address replaced",
+			changes: `{"address":"aws_s3_bucket.wrong","address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true}}}`,
+		},
+		{
+			name:   "configuration root replaced",
+			config: `{"root_module":{},"root_module":{"resources":[{"address":"aws_s3_bucket.logs","expressions":{"bucket":{"constant_value":"selected"}}}]}}`,
+		},
+		{
+			name:   "configuration address replaced",
+			config: `{"root_module":{"resources":[{"address":"aws_s3_bucket.wrong","address":"aws_s3_bucket.logs","expressions":{"bucket":{"constant_value":"selected"}}}]}}`,
+		},
+		{
+			name:   "configuration expressions replaced",
+			config: `{"root_module":{"resources":[{"address":"aws_s3_bucket.logs","expressions":{"wrong":{"constant_value":"ignored"}},"expressions":{"bucket":{"constant_value":"selected"}}}]}}`,
+		},
+		{
+			name:   "configuration provisioners replaced",
+			config: `{"root_module":{"resources":[{"address":"aws_s3_bucket.logs","provisioners":[{"type":"wrong"}],"provisioners":[{"type":"selected"}]}]}}`,
+		},
+		{
+			name:   "module argument replaced",
+			config: strings.Replace(configuration, `"name":{"constant_value":"selected"}`, `"name":{"constant_value":"ignored"},"name":{"constant_value":"selected"}`, 1),
+		},
+		{
+			name:   "module argument references replaced",
+			config: strings.Replace(configuration, `"references":["var.name"]`, `"references":["var.wrong"],"references":["var.name"]`, 1),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			changes, config := tt.changes, tt.config
+			if changes == "" {
+				changes = change
+			}
+			if config == "" {
+				config = configuration
+			}
+			content := []byte(fmt.Sprintf(`{
+  "format_version":"1.2",
+  "planned_values":{"root_module":{
+    "resources":[{"address":"aws_s3_bucket.logs","mode":"managed","type":"aws_s3_bucket","name":"logs","values":{"bucket":"root"}}],
+    "child_modules":[{"address":"module.app","resources":[{"address":"module.app.aws_s3_bucket.logs","mode":"managed","type":"aws_s3_bucket","name":"logs","values":{"bucket":"child"}}]}]
+  }},
+  "resource_changes":[%s],
+  "configuration":%s
+}`, changes, config))
+			whole := annotatedPlanParse(t, content)
+			got, ok := (&Parser{}).ParseUnannotated(content, "plan.json")
+			require.True(t, ok)
+			require.Len(t, got, 1)
+			require.JSONEq(t, withoutLineMarkers(t, whole), mustJSON(t, got[0]))
+
+			// Adding provenance must not mutate either source section.
+			var decoded model.Document
+			require.NoError(t, json.Unmarshal(content, &decoded))
+			for _, section := range []string{"resource_changes", "configuration"} {
+				require.Equal(t, decoded[section], got[0][section], section)
+			}
+		})
+	}
+}
+
 func TestParseLineInfo_tfplanMatchesParseResourceSection(t *testing.T) {
 	content := []byte(sectionsPlan)
 	docs, ok := (&Parser{}).ParseLineInfo(content, "plan.json")
