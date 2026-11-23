@@ -556,19 +556,7 @@ func (e *Evaluator) evaluateChain(
 	}
 	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
 
-	varVals := e.resolveVariables(parsed.varDecls, inputs)
-	shared := e.moduleContext(dir, rootDir)
-
-	evalCtx := &hcl.EvalContext{
-		Variables: map[string]cty.Value{
-			"var": objectOrEmpty(varVals),
-		},
-		Functions: shared.functions,
-	}
-	for name, value := range shared.variables {
-		evalCtx.Variables[name] = value
-	}
-
+	evalCtx := buildModuleEvalContext(e.resolveVariables(parsed.varDecls, inputs), e.moduleContext(dir, rootDir))
 	scope := &ModuleScope{
 		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
 		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{},
@@ -594,13 +582,58 @@ func (e *Evaluator) evaluateChain(
 	)
 
 	if addr == "" && e.skipRootResources {
-		if err := ctx.Err(); err != nil {
-			e.instances = e.instances[:instancesBefore]
-			return nil, nil, err
-		}
-		return moduleResourceTree(nil, childResources), nil, nil
+		return e.finishSkippedRootEvaluation(ctx, instancesBefore, childResources)
 	}
 
+	return e.finalizeChainEvaluation(
+		ctx, &parsed, resourceBlocks, childResources, moduleOutputs, scope, evalCtx, data,
+		&cacheKey, inputsKeyOK, inputs, effects, subtreeVisited, instancesBefore, addr, chain,
+	)
+}
+
+func buildModuleEvalContext(varVals map[string]cty.Value, shared moduleContext) *hcl.EvalContext {
+	evalCtx := &hcl.EvalContext{
+		Variables: map[string]cty.Value{
+			rootVar: objectOrEmpty(varVals),
+		},
+		Functions: shared.functions,
+	}
+	for name, value := range shared.variables {
+		evalCtx.Variables[name] = value
+	}
+	return evalCtx
+}
+
+func (e *Evaluator) finishSkippedRootEvaluation(
+	ctx context.Context,
+	instancesBefore int,
+	childResources []*resourceTree,
+) (*resourceTree, map[string]cty.Value, error) {
+	if err := ctx.Err(); err != nil {
+		e.instances = e.instances[:instancesBefore]
+		return nil, nil, err
+	}
+	return moduleResourceTree(nil, childResources), nil, nil
+}
+
+func (e *Evaluator) finalizeChainEvaluation(
+	ctx context.Context,
+	parsed *dirParse,
+	resourceBlocks []*hclsyntax.Block,
+	childResources []*resourceTree,
+	moduleOutputs map[string]cty.Value,
+	scope *ModuleScope,
+	evalCtx *hcl.EvalContext,
+	data *moduleData,
+	cacheKey *evalCacheKey,
+	inputsKeyOK bool,
+	inputs map[string]cty.Value,
+	effects *evaluationEffects,
+	subtreeVisited *directorySet,
+	instancesBefore int,
+	addr string,
+	chain *callChain,
+) (*resourceTree, map[string]cty.Value, error) {
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 
 	rootResources := e.scheduleResources(
@@ -629,7 +662,7 @@ func (e *Evaluator) evaluateChain(
 	}
 
 	e.cacheEvaluation(
-		&cacheKey, inputsKeyOK, inputs, effects, resources,
+		cacheKey, inputsKeyOK, inputs, effects, resources,
 		e.instances[instancesBefore:], outputs, subtreeVisited, addr, chain,
 	)
 

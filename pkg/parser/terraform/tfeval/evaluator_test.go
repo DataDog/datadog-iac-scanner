@@ -3408,3 +3408,70 @@ output "missing" {value=try(file("${path.module}/missing.txt"),"caught")}`
 		})
 	}
 }
+
+func TestEvaluateModule_SkipRootResourcesChildParity(t *testing.T) {
+	tests := []struct {
+		name      string
+		rootFiles map[string]string
+		modFiles  map[string]string
+		wantAttr  string
+		wantVal   string
+	}{
+		{
+			name: "independent root resources",
+			modFiles: map[string]string{
+				"main.tf": `
+variable "bucket_name" { type = string }
+resource "aws_s3_bucket" "b" { bucket = var.bucket_name }
+`,
+			},
+			rootFiles: map[string]string{
+				"main.tf":      "module \"storage\" {\n  source = \"../mod\"\n  bucket_name = \"my-bucket\"\n}\n",
+				"resources.tf": "resource \"aws_vpc\" \"unused\" {\n  cidr_block = \"10.0.0.0/16\"\n}\n",
+			},
+			wantAttr: "bucket",
+			wantVal:  "my-bucket",
+		},
+		{
+			name: "root resource referenced by module call",
+			modFiles: map[string]string{
+				"main.tf": `
+variable "cidr" { type = string }
+resource "aws_subnet" "s" { cidr_block = var.cidr }
+`,
+			},
+			rootFiles: map[string]string{
+				"main.tf": "module \"net\" {\n  source = \"../mod\"\n  cidr = aws_vpc.main.cidr_block\n}\n",
+				"vpc.tf":  "resource \"aws_vpc\" \"main\" {\n  cidr_block = \"10.42.0.0/16\"\n}\n",
+			},
+			wantAttr: "cidr_block",
+			wantVal:  "10.42.0.0/16",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			writeModule(t, tmp, "mod", tt.modFiles)
+			root := writeModule(t, tmp, "root", tt.rootFiles)
+
+			fullRes, _, fullDirs, err := New().EvaluateModule(context.Background(), root, nil)
+			require.NoError(t, err)
+
+			skipEval := New()
+			skipEval.SetSkipRootResources(true)
+			skipRes, _, skipDirs, err := skipEval.EvaluateModule(context.Background(), root, nil)
+			require.NoError(t, err)
+
+			var expectedChild []ResolvedResource
+			for _, r := range fullRes {
+				if r.ModuleAddress != "" {
+					expectedChild = append(expectedChild, r)
+				}
+			}
+			require.Len(t, skipRes, len(expectedChild))
+			require.Equal(t, tt.wantVal, skipRes[0].Attributes[tt.wantAttr].AsString())
+			require.Equal(t, fullDirs, skipDirs)
+		})
+	}
+}

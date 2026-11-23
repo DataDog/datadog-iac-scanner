@@ -884,11 +884,20 @@ func isTrivialRuleBody(body ast.Body) bool {
 }
 
 // extractConstStringSets collects module-level constant string sets/arrays
-// (e.g. `kinds := {"Deployment", "DaemonSet"}`).
+// (e.g. `kinds := {"Deployment", "DaemonSet"}`). Only names defined by a single
+// unconditional rule are recorded so multi-branch/partial definitions are never
+// under-approximated.
 func extractConstStringSets(mod *ast.Module) map[string][]string {
+	counts := make(map[ast.Var]int, len(mod.Rules))
+	for _, r := range mod.Rules {
+		if r.Head != nil {
+			counts[r.Head.Name]++
+		}
+	}
 	out := make(map[string][]string)
 	for _, r := range mod.Rules {
-		if r.Head == nil || !isTrivialRuleBody(r.Body) || r.Else != nil || len(r.Head.Args) > 0 || r.Head.Value == nil {
+		if r.Head == nil || counts[r.Head.Name] != 1 || !isTrivialRuleBody(r.Body) ||
+			r.Else != nil || len(r.Head.Args) > 0 || r.Head.Value == nil {
 			continue
 		}
 		if strs, ok := extractStringLiterals(r.Head.Value.Value); ok && len(strs) > 0 {

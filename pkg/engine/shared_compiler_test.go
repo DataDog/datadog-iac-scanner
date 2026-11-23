@@ -9,6 +9,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/stretchr/testify/require"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
@@ -371,4 +373,106 @@ func TestLoadSharedQueriesCache_ActiveWaiterRetriesCanceledLeader(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("active waiter did not retry after its singleflight leader was canceled")
 	}
+}
+
+// TestInspect_PrefilteredAndBatchedParity checks that static rule prefiltering,
+// document subsetting, and batched evaluation produce the same findings as
+// unbatched evaluation across single-resource, absent-resource, cross-document,
+// negated, and rule-argument queries.
+func TestInspect_PrefilteredAndBatchedParity(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(mainPath, []byte(`
+resource "aws_s3_bucket" "public" {
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "private" {
+  bucket = "ok"
+}
+`), 0o600))
+	otherPath := filepath.Join(root, "versioning.tf")
+	require.NoError(t, os.WriteFile(otherPath, []byte(`
+resource "aws_s3_bucket_versioning" "v" {
+  bucket = "private"
+}
+`), 0o600))
+
+	queries := []model.QueryMetadata{
+		{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		},
+		{
+			Query: "versioning_rule", Content: secondRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "versioning-rule"}, Aggregation: 1,
+		},
+		{
+			Query: "absent_rule", InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "absent-rule"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i, name
+	_ := input.document[i].resource.aws_redshift_cluster[name]
+	result := {"documentId": input.document[i].id, "searchKey": sprintf("aws_redshift_cluster[%s]", [name])}
+}`,
+		},
+		{
+			Query: "cross_doc_rule", InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "cross-doc-rule"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+has_versioning(bucket_name) if {
+	some j, vn
+	v := input.document[j].resource.aws_s3_bucket_versioning[vn]
+	v.bucket == bucket_name
+}
+DatadogPolicy contains result if {
+	some i, name
+	_ := input.document[i].resource.aws_s3_bucket[name]
+	not has_versioning(name)
+	result := {"documentId": input.document[i].id, "searchKey": sprintf("aws_s3_bucket[%s]", [name])}
+}`,
+		},
+		{
+			Query: "args_rule", InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "args-rule"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i, name
+	b := input.document[i].resource.aws_s3_bucket[name]
+	b.acl == input.arguments.bad_acl
+	result := {"documentId": input.document[i].id, "searchKey": sprintf("aws_s3_bucket[%s].acl", [name])}
+}`,
+		},
+	}
+
+	files := append(parseTerraform(t, mainPath), parseTerraform(t, otherPath)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries:    queries,
+		repoPath:   root,
+		vb:         DefaultVulnerabilityBuilder,
+		numWorkers: 2,
+	})
+	ins.ruleConfigs = map[string]config.IacRuleConfig{
+		"args-rule": {Arguments: map[string]interface{}{"bad_acl": "public-read"}},
+	}
+
+	got, err := ins.Inspect(context.Background(), "batched", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	var gotIDs []string
+	for _, v := range got {
+		gotIDs = append(gotIDs, v.QueryID+":"+v.SearchKey)
+	}
+	sort.Strings(gotIDs)
+	require.Equal(t, []string{
+		"acl-rule:aws_s3_bucket[public].acl",
+		"args-rule:aws_s3_bucket[public].acl",
+		"cross-doc-rule:aws_s3_bucket[public]",
+		"versioning-rule:aws_s3_bucket[private]",
+		"versioning-rule:aws_s3_bucket[public]",
+	}, gotIDs)
 }
