@@ -25,6 +25,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -74,24 +75,26 @@ func parseDir(
 		if rErr != nil {
 			continue
 		}
-		if body, ok := parseConfigBody(src, path); ok {
+		if body, ok := parseConfigBody(ctx, fsys, src, path); ok {
 			bodies = append(bodies, body)
 			sources[path] = src
+			if body.SrcRange.Filename != "" && body.SrcRange.Filename != path {
+				sources[body.SrcRange.Filename] = src
+			}
 		}
 	}
 	return bodies, sources, nil
 }
 
-func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
+func parseConfigBody(ctx context.Context, fsys vfs.FS, src []byte, path string) (*hclsyntax.Body, bool) {
 	if tfpath.IsJSONConfig(path) {
 		return parseJSONAsHCLBody(src, path)
 	}
-	f, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
+	body, diags := hclcache.ParseConfig(ctx, fsys, path, src)
+	if diags.HasErrors() || body == nil {
 		return nil, false
 	}
-	body, ok := f.Body.(*hclsyntax.Body)
-	return body, ok
+	return body, true
 }
 
 // variableDecl is what a variable block declares about the values it accepts.
@@ -281,6 +284,9 @@ func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
 
 // LoadRootVarsWithContext preserves the scan boundary for linked variable files.
 func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map[string]cty.Value {
+	if e.hclCache != nil && hclcache.FromContext(ctx) == nil {
+		ctx = hclcache.WithCache(ctx, e.hclCache)
+	}
 	fsys := e.fsys
 	entries, _ := fsys.ReadDir(dir)
 	names := make([]string, 0, len(entries))
@@ -298,7 +304,7 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 		if err != nil {
 			continue
 		}
-		for attrName, attr := range parseVarsFile(src, p) {
+		for attrName, attr := range parseVarsFile(ctx, fsys, src, p) {
 			v, attrDiags := attr.Expr.Value(emptyCtx)
 			if !attrDiags.HasErrors() && v.IsKnown() {
 				out[attrName] = v
@@ -310,18 +316,20 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 
 // parseVarsFile returns the assignments of a variable definitions file, in
 // native or JSON syntax.
-func parseVarsFile(src []byte, path string) hcl.Attributes {
-	var file *hcl.File
-	var diags hcl.Diagnostics
+func parseVarsFile(ctx context.Context, fsys vfs.FS, src []byte, path string) hcl.Attributes {
 	if tfpath.IsTFVarsJSON(path) {
-		file, diags = hcljson.Parse(src, path)
-	} else {
-		file, diags = hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
+		file, diags := hcljson.Parse(src, path)
+		if diags.HasErrors() || file == nil {
+			return nil
+		}
+		attrs, _ := file.Body.JustAttributes()
+		return attrs
 	}
-	if diags.HasErrors() || file == nil {
+	body, diags := hclcache.ParseConfig(ctx, fsys, path, src)
+	if diags.HasErrors() || body == nil {
 		return nil
 	}
-	attrs, _ := file.Body.JustAttributes()
+	attrs, _ := body.JustAttributes()
 	return attrs
 }
 

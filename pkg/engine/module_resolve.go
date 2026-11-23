@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
@@ -693,6 +694,7 @@ func resolveModuleDocuments(
 
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
+	evaluator.SetHCLCache(hclcache.FromContext(ctx))
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)

@@ -6,7 +6,6 @@
 package terraform
 
 import (
-	"bytes"
 	"context"
 	"reflect"
 	"regexp"
@@ -20,13 +19,9 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
-	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
-	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
-	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
@@ -35,17 +30,6 @@ import (
 // configuration, whatever spacing or wrapping the template expression uses. A
 // false positive only costs an extra render pass.
 var jsonDataReference = regexp.MustCompile(`\bdata\s*\.`)
-
-// localDataMarkers are cheap content gates before parsing; the parser still
-// matches block types exactly.
-var localDataMarkers = func() [][]byte {
-	types := localdata.Types()
-	out := make([][]byte, len(types))
-	for i, typ := range types {
-		out[i] = []byte(typ)
-	}
-	return out
-}()
 
 // localDataBlock is a data block of a type localdata renders.
 type localDataBlock struct {
@@ -57,35 +41,17 @@ type localDataBlock struct {
 	readsData bool
 }
 
-// getDataSourcePolicy renders the data sources of a directory that Terraform
+// applyLocalDataBlocks renders the data sources of a directory that Terraform
 // computes from configuration alone into the data variable, so the resources
 // referencing their attributes read the rendered value.
-func getDataSourcePolicy(
-	ctx context.Context, fsys vfs.FS, currentPath string, inputVariables converter.VariableMap, allow map[string]struct{}, keep string,
+func applyLocalDataBlocks(
+	ctx context.Context, currentPath string, blocks []localDataBlock, locals []localAssignment,
+	inputVariables converter.VariableMap,
 ) converter.VariableMap {
-	contextLogger := logger.FromContext(ctx)
-	var (
-		blocks []localDataBlock
-		locals []localAssignment
-	)
-	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
-		content, readErr := tfmodules.ReadConfigFile(ctx, fsys, tfFile, "")
-		if readErr != nil {
-			contextLogger.Debug().Msgf("Error trying to read file %s for data source.", tfFile)
-			continue
-		}
-		wantsData := fileMayDeclareLocalData(content)
-		wantsLocals := bytes.Contains(content, localsMarker)
-		if !wantsData && !wantsLocals {
-			continue
-		}
-		fileBlocks, fileLocals := parseLocalDataFile(ctx, content, tfFile, wantsData, wantsLocals)
-		blocks = append(blocks, fileBlocks...)
-		locals = append(locals, fileLocals...)
-	}
 	if len(blocks) == 0 {
 		return inputVariables
 	}
+	contextLogger := logger.FromContext(ctx)
 	readsData := false
 	for i := range blocks {
 		readsData = readsData || blocks[i].readsData
@@ -455,33 +421,11 @@ func renderJSONTemplate(expr hcl.Expression, evalCtx *hcl.EvalContext, src []byt
 	return (&partial.Renderer{Ctx: evalCtx, Source: partial.BytesSource(quoted)}).Render(parsed)
 }
 
-// localsMarker is a cheap content gate before parsing for locals blocks.
-var localsMarker = []byte(blockTypeLocals)
-
-// parseLocalDataFile parses a configuration file once for the local data
-// blocks it declares and the locals it assigns.
-func parseLocalDataFile(
-	ctx context.Context, content []byte, tfFile string, wantsData, wantsLocals bool,
-) (blocks []localDataBlock, locals []localAssignment) {
-	if tfpath.IsJSONConfig(tfFile) {
-		return jsonLocalDataFile(ctx, content, tfFile, wantsData, wantsLocals)
-	}
-	parsedFile, diags := hclsyntax.ParseConfig(content, tfFile, hcl.InitialPos)
-	if parsedFile == nil || diags.HasErrors() {
-		contextLogger := logger.FromContext(ctx)
-		contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
+func extractLocalDataFromBody(body *hclsyntax.Body, content []byte) (blocks []localDataBlock, locals []localAssignment) {
+	if body == nil {
 		return nil, nil
 	}
-	body, ok := parsedFile.Body.(*hclsyntax.Body)
-	if !ok {
-		return nil, nil
-	}
-	if wantsLocals {
-		locals = localAssignmentsFromBody(body)
-	}
-	if !wantsData {
-		return nil, locals
-	}
+	locals = localAssignmentsFromBody(body)
 	for _, block := range body.Blocks {
 		if block.Type != terraformDataIdentifier || len(block.Labels) < 2 {
 			continue
@@ -513,23 +457,11 @@ func bodyReadsData(body *hclsyntax.Body) bool {
 	return reads
 }
 
-func jsonLocalDataFile(
-	ctx context.Context, src []byte, filename string, wantsData, wantsLocals bool,
-) (blocks []localDataBlock, locals []localAssignment) {
-	parsed, diags := hcljson.Parse(src, filename)
-	if diags.HasErrors() {
-		contextLogger := logger.FromContext(ctx)
-		contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", filename)
-		return nil, nil
-	}
-	content, _, _ := parsed.Body.PartialContent(jsonConfigSchema)
-	if content == nil {
-		return nil, nil
-	}
+func extractLocalDataFromJSONBlocks(contentBlocks hcl.Blocks, src []byte) (blocks []localDataBlock, locals []localAssignment) {
 	readsData := jsonDataReference.Match(src)
-	for _, block := range content.Blocks {
+	for _, block := range contentBlocks {
 		switch {
-		case block.Type == blockTypeLocals && wantsLocals:
+		case block.Type == blockTypeLocals:
 			attrs, _ := block.Body.JustAttributes()
 			names := make([]string, 0, len(attrs))
 			for name := range attrs {
@@ -539,7 +471,7 @@ func jsonLocalDataFile(
 			for _, name := range names {
 				locals = append(locals, localAssignment{name: name, expr: attrs[name].Expr})
 			}
-		case block.Type == terraformDataIdentifier && wantsData && len(block.Labels) >= 2:
+		case block.Type == terraformDataIdentifier && len(block.Labels) >= 2:
 			source, ok := localdata.Lookup(block.Labels[0])
 			if !ok {
 				continue
@@ -556,69 +488,4 @@ func jsonLocalDataFile(
 		}
 	}
 	return blocks, locals
-}
-
-// fileMayDeclareLocalData is a fast precheck before parsing. A literal
-// substring match covers the common case; lexing handles block type labels
-// spelled with escapes that do not appear verbatim in source bytes.
-func fileMayDeclareLocalData(content []byte) bool {
-	for _, marker := range localDataMarkers {
-		if bytes.Contains(content, marker) {
-			return true
-		}
-	}
-	if !bytes.Contains(content, []byte(`\u`)) && !bytes.Contains(content, []byte(`\U`)) {
-		return false
-	}
-	return scanForLocalDataBlock(content)
-}
-
-func scanForLocalDataBlock(content []byte) bool {
-	tokens, diags := hclsyntax.LexConfig(content, "", hcl.InitialPos)
-	if diags.HasErrors() {
-		return false
-	}
-	for i := 0; i < len(tokens); i++ {
-		if tokens[i].Type != hclsyntax.TokenIdent || string(tokens[i].Bytes) != terraformDataIdentifier {
-			continue
-		}
-		label, next := decodeQuotedBlockLabel(tokens, i+1)
-		if _, ok := localdata.Lookup(label); ok {
-			return true
-		}
-		i = next
-	}
-	return false
-}
-
-func decodeQuotedBlockLabel(tokens hclsyntax.Tokens, start int) (label string, next int) {
-	for start < len(tokens) {
-		switch tokens[start].Type {
-		case hclsyntax.TokenNewline, hclsyntax.TokenComment:
-			start++
-		case hclsyntax.TokenOQuote:
-			goto parseQuoted
-		default:
-			return "", start
-		}
-	}
-	return "", start
-
-parseQuoted:
-	var b strings.Builder
-	for j := start + 1; j < len(tokens); j++ {
-		switch tokens[j].Type {
-		case hclsyntax.TokenCQuote:
-			return b.String(), j
-		case hclsyntax.TokenQuotedLit:
-			s, litDiags := hclsyntax.ParseStringLiteralToken(tokens[j])
-			if litDiags.HasErrors() {
-				return "", j
-			}
-			b.WriteString(s)
-		default:
-			return "", j
-		}
-	}
-	return "", start
 }

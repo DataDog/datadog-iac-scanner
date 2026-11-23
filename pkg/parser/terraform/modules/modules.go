@@ -18,13 +18,13 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/hashicorp/hcl/v2/hclwrite"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -267,14 +267,80 @@ func constantString(expr hclsyntax.Expression) (string, bool) {
 	return ctyutil.ConcreteString(val)
 }
 
+type extractCacheKey struct{}
+
+// ExtractCache shares content-keyed module extracts across calls to
+// ParseTerraformModules and ParseTerraformModulesFromFiles within a scan.
+type ExtractCache struct {
+	mu      sync.RWMutex
+	entries map[contentKey]*fileExtract
+}
+
+// NewExtractCache creates an empty ExtractCache.
+func NewExtractCache() *ExtractCache {
+	return &ExtractCache{entries: make(map[contentKey]*fileExtract)}
+}
+
+func (c *ExtractCache) load(key contentKey) (*fileExtract, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.entries == nil {
+		return nil, false
+	}
+	v, ok := c.entries[key]
+	return v, ok
+}
+
+func (c *ExtractCache) store(key contentKey, extract *fileExtract) {
+	c.mu.Lock()
+	if c.entries == nil {
+		c.entries = make(map[contentKey]*fileExtract)
+	}
+	c.entries[key] = extract
+	c.mu.Unlock()
+}
+
+// Release drops all cached extracts.
+func (c *ExtractCache) Release() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.entries = nil
+	c.mu.Unlock()
+}
+
+// WithExtractCache attaches cache to ctx. If cache is nil, a fresh ExtractCache
+// is attached when ctx does not already carry one.
+func WithExtractCache(ctx context.Context, cache *ExtractCache) context.Context {
+	if cache != nil {
+		return context.WithValue(ctx, extractCacheKey{}, cache)
+	}
+	if ExtractCacheFromContext(ctx) != nil {
+		return ctx
+	}
+	return context.WithValue(ctx, extractCacheKey{}, NewExtractCache())
+}
+
+// ExtractCacheFromContext returns the ExtractCache attached to ctx, or nil.
+func ExtractCacheFromContext(ctx context.Context) *ExtractCache {
+	if ctx == nil {
+		return nil
+	}
+	cache, _ := ctx.Value(extractCacheKey{}).(*ExtractCache)
+	return cache
+}
+
 // extractForContent returns the extract for content, parsing it only the first
 // time a given content hash is seen: repositories commonly hold byte-identical
 // .tf files in many directories. Caching the extract instead of the parsed body
 // keeps the cache small enough to live for the whole scan.
-func extractForContent(cache *sync.Map, content, filePath string) (*fileExtract, hcl.Diagnostics) {
+func extractForContent(
+	ctx context.Context, fsys vfs.FS, cache *ExtractCache, content, filePath string,
+) (*fileExtract, hcl.Diagnostics) {
 	key := contentKey{len: len(content), hash: xxhash.Sum64String(content)}
-	if cached, ok := cache.Load(key); ok {
-		return cached.(*fileExtract), nil
+	if cached, ok := cache.load(key); ok {
+		return cached, nil
 	}
 	if tfpath.IsJSONConfig(filePath) {
 		extract, err := extractJSONFile([]byte(content))
@@ -284,19 +350,18 @@ func extractForContent(cache *sync.Map, content, filePath string) (*fileExtract,
 				Summary:  err.Error(),
 			}}
 		}
-		cache.Store(key, extract)
+		cache.store(key, extract)
 		return extract, nil
 	}
-	hclFile, diags := hclsyntax.ParseConfig([]byte(content), filePath, hcl.Pos{Line: 1, Column: 1})
+	body, diags := hclcache.ParseConfigString(ctx, fsys, filePath, content)
 	if diags.HasErrors() {
 		return nil, diags
 	}
-	body, ok := hclFile.Body.(*hclsyntax.Body)
-	if !ok {
+	if body == nil {
 		return nil, diags
 	}
 	extract := extractFile(body)
-	cache.Store(key, extract)
+	cache.store(key, extract)
 	return extract, diags
 }
 
@@ -426,7 +491,10 @@ func parseModulesByDir(
 		return modules, nil
 	}
 
-	extracts := &sync.Map{}
+	extracts := ExtractCacheFromContext(ctx)
+	if extracts == nil {
+		extracts = NewExtractCache()
+	}
 	var mu sync.Mutex
 
 	// HCL parsing is CPU-bound, so the pool draws from the shared CPU budget.
@@ -462,7 +530,7 @@ func parseModulesByDir(
 func parseDirModules(
 	ctx context.Context,
 	fsys vfs.FS,
-	extracts *sync.Map,
+	extracts *ExtractCache,
 	group dirFiles,
 	opts moduleParseOptions,
 ) (map[string]ParsedModule, error) {
@@ -485,7 +553,7 @@ func parseDirModules(
 			}
 			content = string(resolved)
 		}
-		extract, diags := extractForContent(extracts, content, file.FilePath)
+		extract, diags := extractForContent(ctx, fsys, extracts, content, file.FilePath)
 		if diags.HasErrors() {
 			utils.WarnUnlessFixture(ctx, file.FilePath).Msgf("Skipping file %s due to parse errors: %s", file.FilePath, diags.Error())
 			continue
@@ -1233,22 +1301,22 @@ func processEquivalentMapFile(
 		return err
 	}
 
-	hclFile, diag := hclwrite.ParseConfig(contents, "", hcl.InitialPos)
-	if diag.HasErrors() {
+	body, diag := hclcache.ParseConfig(ctx, fsys, path, contents)
+	if diag.HasErrors() || body == nil {
 		parseErr := fmt.Errorf("error parsing input Terraform block in file %s: %s", path, diag.Error())
 		contextLogger.Error().Msg(parseErr.Error())
 		return parseErr
 	}
 
-	for _, block := range hclFile.Body().Blocks() {
-		if block.Type() != "resource" {
+	for _, block := range body.Blocks {
+		if block.Type != "resource" {
 			continue
 		}
-		if len(block.Labels()) < 1 {
+		if len(block.Labels) < 1 {
 			contextLogger.Warn().Msgf("Skipping malformed resource block with no labels in file %s", path)
 			continue
 		}
-		resourceType := block.Labels()[0]
+		resourceType := block.Labels[0]
 		provider, err := GetProviderFromResourceType(resourceType)
 		if err != nil {
 			contextLogger.Warn().Msgf("Failed to get provider from resource type '%s' in file %s: %v", resourceType, path, err)
@@ -1269,38 +1337,49 @@ func processEquivalentMapFile(
 	return nil
 }
 
-func getVariableAttributes(block *hclwrite.Block) map[string]string {
+func getVariableAttributes(block *hclsyntax.Block) map[string]string {
 	attributeToVariableMap := make(map[string]string)
-	for name, attr := range block.Body().Attributes() {
-		value := string(attr.Expr().BuildTokens(nil).Bytes())
-		if !isVariableReference(value) {
-			continue
-		}
-
-		if varName := parseVariableReference(value); varName != "" {
+	for name, attr := range block.Body.Attributes {
+		if varName := parseVariableReferenceExpr(attr.Expr); varName != "" {
 			attributeToVariableMap[name] = varName
 		}
 	}
 
 	// Handle nested blocks too
-	for _, nestedBlock := range block.Body().Blocks() {
+	for _, nestedBlock := range block.Body.Blocks {
 		maps.Copy(attributeToVariableMap, getVariableAttributes(nestedBlock))
 	}
 	return attributeToVariableMap
 }
 
-func isVariableReference(s string) bool {
-	return strings.Contains(s, "var.")
+func parseVariableReferenceExpr(expr hclsyntax.Expression) string {
+	trav, ok := expr.(*hclsyntax.ScopeTraversalExpr)
+	if !ok || len(trav.Traversal) != 2 {
+		return ""
+	}
+	root, ok := trav.Traversal[0].(hcl.TraverseRoot)
+	if !ok || root.Name != "var" {
+		return ""
+	}
+	attr, ok := trav.Traversal[1].(hcl.TraverseAttr)
+	if !ok || !isWordIdent(attr.Name) {
+		return ""
+	}
+	return attr.Name
 }
 
-var reVarRef = regexp.MustCompile(`^var\.(\w+)$`)
-
-func parseVariableReference(s string) string {
-	match := reVarRef.FindStringSubmatch(strings.TrimSpace(s))
-	if len(match) > 1 {
-		return match[1]
+func isWordIdent(s string) bool {
+	if s == "" {
+		return false
 	}
-	return ""
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		isWord := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+		if !isWord {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseTerraformModulesFromFiles is a variant of ParseTerraformModules that accepts an

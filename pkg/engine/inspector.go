@@ -35,6 +35,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -581,13 +582,30 @@ func (c *Inspector) Inspect(
 	queries := c.getQueriesByPlat(platforms)
 	c.inventoryDocuments(ctx, files)
 
+	hasTerraform := shouldInstantiateLocalModules(platforms, files)
+	if hasTerraform && hclcache.FromContext(ctx) == nil {
+		localCache := hclcache.New()
+		ctx = hclcache.WithCache(ctx, localCache)
+		defer localCache.Release()
+	}
+
+	enrichedModules, err := c.parseAndEnrichModules(ctx, files, hasTerraform)
+	if err != nil {
+		return nil, err
+	}
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
-	if shouldInstantiateLocalModules(platforms, files) {
+	if hasTerraform {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
 		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		// Drop the shared HCL syntax cache as soon as Terraform module evaluation
+		// finishes, before OPA payload construction and query evaluation.
+		if cache := hclcache.FromContext(ctx); cache != nil {
+			cache.Release()
+		}
 		// A canceled scan must not scan the modules that were evaluated only in
 		// part; instantiateLocalModules mutates nothing in that case.
 		if err := ctx.Err(); err != nil {
@@ -598,28 +616,6 @@ func (c *Inspector) Inspect(
 
 	// Must run after module mutations (which suppress module bodies in place).
 	combinedFiles := files.Combine(ctx, false)
-
-	// Step 1: Parse Terraform modules. A genuine per-file HCL parse failure is
-	// non-fatal (logged, scan continues), but a context cancellation must abort
-	// the scan rather than proceed with partial module data.
-	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
-		}
-		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
-	}
-	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
-
-	// Step 2: Enrich modules with parsed variables. As with Step 1, a context
-	// cancellation must abort the scan rather than proceed with partial module
-	// data; per-module parse failures are non-fatal and handled internally.
-	rootDir := c.repoPath
-	enrichedModules, err := tfmodules.ParseAllModuleVariables(
-		ctx, c.fsys, parsedModules, rootDir, c.buildModuleMetadataResolver(), c.mergeAllow)
-	if err != nil {
-		return nil, err
-	}
 
 	// Synthetic files stand in for module instantiations of a file that has
 	// already been read; they are only joined once findings need to be
@@ -692,6 +688,35 @@ func (c *Inspector) Inspect(
 
 	c.releasePostEvalFileData(filesMap)
 	return vulnerabilities, nil
+}
+
+// parseAndEnrichModules parses module calls and resolves module variable maps
+// while the shared HCL syntax cache is still warm (before instantiateLocalModules
+// evicts root parses). Neither step reads file.Document or synthetic files.
+func (c *Inspector) parseAndEnrichModules(
+	ctx context.Context, files model.FileMetadatas, releaseExtracts bool,
+) ([]tfmodules.ParsedModule, error) {
+	contextLogger := logger.FromContext(ctx)
+	parsedModules, err := tfmodules.ParseTerraformModules(ctx, c.fsys, files, c.numWorkers)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		contextLogger.Warn().Err(err).Msg("Failed to parse Terraform modules")
+	}
+	contextLogger.Info().Msgf("Found %d modules", len(parsedModules))
+
+	enrichedModules, err := tfmodules.ParseAllModuleVariables(
+		ctx, c.fsys, parsedModules, c.repoPath, c.buildModuleMetadataResolver(), c.mergeAllow)
+	if err != nil {
+		return nil, err
+	}
+	if releaseExtracts {
+		if extracts := tfmodules.ExtractCacheFromContext(ctx); extracts != nil {
+			extracts.Release()
+		}
+	}
+	return enrichedModules, nil
 }
 
 // filterAtCallSites applies the root caller file's rule path filters and

@@ -17,13 +17,13 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 	"golang.org/x/sync/singleflight"
@@ -61,9 +61,24 @@ type Parser struct {
 	dirVarsCache sync.Map // directory selection -> converter.VariableMap
 	dirVarsSF    singleflight.Group
 
-	// mergeAllow, when set, limits OpenTofu twin-shadowing to these paths.
+	// localHCLCache is a fallback HCL syntax cache used only when the caller's
+	// context does not carry a scan-wide hclcache.Cache.
+	localHCLOnce  sync.Once
+	localHCLCache *hclcache.Cache
+
+	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
 	mergeAllow    map[string]struct{}
 	shadowedFiles map[string]struct{}
+}
+
+func (p *Parser) withHCLCache(ctx context.Context) context.Context {
+	if hclcache.FromContext(ctx) != nil {
+		return ctx
+	}
+	p.localHCLOnce.Do(func() {
+		p.localHCLCache = hclcache.New()
+	})
+	return hclcache.WithCache(ctx, p.localHCLCache)
 }
 
 // SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
@@ -121,9 +136,9 @@ func (p *Parser) Resolve(ctx context.Context,
 // vars path directive are resolved per-file because their result depends on file
 // content.
 func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileContent []byte) converter.VariableMap {
+	ctx = p.withHCLCache(ctx)
 	if p.terraformVarsPath == "" && strings.Contains(string(fileContent), terraformVarsPathDirective) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
-		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
+		return resolveDirectoryVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
 	}
 
 	cacheKey := filepath.Clean(dir)
@@ -134,8 +149,7 @@ func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileC
 		return cloneVariableMap(v.(converter.VariableMap))
 	}
 	v, _, _ := p.dirVarsSF.Do(cacheKey, func() (interface{}, error) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
-		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
+		vars := resolveDirectoryVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
 		p.dirVarsCache.Store(cacheKey, vars)
 		return vars, nil
 	})
@@ -274,7 +288,8 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		return resolved, json, nil, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
 	}
 
-	file, diagnostics := hclsyntax.ParseConfig(resolved, filepath.Base(path), hcl.Pos{Byte: 0, Line: 1, Column: 1})
+	ctx = p.withHCLCache(ctx)
+	body, diagnostics := hclcache.ParseConfig(ctx, p.fsys, path, resolved)
 	defer func() {
 		if r := recover(); r != nil {
 			errMessage := "Recovered from panic during parsing of file " + path
@@ -292,8 +307,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		contextLogger.Err(err).Msg("failed to parse comments")
 	}
 
-	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
+	linesToIgnore := comment.GetIgnoreLines(ignore, body)
 
+	file := &hcl.File{Body: body, Bytes: resolved}
 	fc, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
 		BaseDir: filepath.Dir(path),
 		FS:      p.fsys,

@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -116,6 +117,7 @@ func (inv *terraformInventory) withEvaluator(
 	}()
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
+	evaluator.SetHCLCache(hclcache.FromContext(ctx))
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}

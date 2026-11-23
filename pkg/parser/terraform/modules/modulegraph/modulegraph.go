@@ -265,6 +265,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	}
 	ctx = pathutil.WithResolvedPathCache(ctx)
 	ctx = tfmodules.WithMaxConfigFileBytes(ctx, request.MaxConfigFileBytes)
+	ctx = tfmodules.WithExtractCache(ctx, nil)
 	budget := resolver.NewResourceBudget(request.ResourceLimits)
 	ctx = resolver.WithResourceBudget(ctx, budget)
 	moduleMaximum, baselineBytes, enforceAdmission := moduleAdmissionLimit(request)

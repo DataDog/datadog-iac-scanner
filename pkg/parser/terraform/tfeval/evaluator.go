@@ -27,6 +27,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	tffunctions "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
@@ -195,6 +196,10 @@ type Evaluator struct {
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
 	dirCache map[string]dirParse
+	// hclCache is an optional scan-wide HCL syntax cache shared with module
+	// discovery and legacy conversion. ForgetRootParse evicts roots from both
+	// dirCache and hclCache.
+	hclCache *hclcache.Cache
 	// funcFS serves the Terraform filesystem functions of every module this
 	// evaluator reaches, so paths confined once stay resolved for the scan.
 	funcFS *tffunctions.ScanFS
@@ -275,6 +280,9 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	}
 	e.parseMu.Unlock()
 
+	if e.hclCache != nil && hclcache.FromContext(ctx) == nil {
+		ctx = hclcache.WithCache(ctx, e.hclCache)
+	}
 	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
 	dp := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
@@ -302,6 +310,7 @@ func (e *Evaluator) Fork() *Evaluator {
 		notEvaluatedDirs: make(map[string]bool),
 		parseMu:          e.parseMu,
 		dirCache:         e.dirCache,
+		hclCache:         e.hclCache,
 		funcFS:           e.funcFS,
 		mergeAllow:       e.mergeAllow,
 		trackInstances:   e.trackInstances,
@@ -379,6 +388,14 @@ func (e *Evaluator) ForgetRootParse(dir string) {
 	e.parseMu.Lock()
 	delete(e.dirCache, key)
 	e.parseMu.Unlock()
+	if e.hclCache != nil {
+		e.hclCache.ForgetDir(e.fsys, abs)
+	}
+}
+
+// SetHCLCache attaches a shared HCL syntax cache to the evaluator and its forks.
+func (e *Evaluator) SetHCLCache(cache *hclcache.Cache) {
+	e.hclCache = cache
 }
 
 func (e *Evaluator) SetRemoteResolver(r RemoteResolver) {

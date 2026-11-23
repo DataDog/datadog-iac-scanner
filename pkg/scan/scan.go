@@ -29,6 +29,7 @@ import (
 	protoParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/grpc"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	cicdParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
@@ -232,6 +233,16 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 	ctx = pathutil.WithResolvedPathCache(ctx)
 	ctx = tfmodules.WithLinkPlaceholderRoot(ctx, c.ScanParams.RepoPath)
 	ctx = tfmodules.WithMaxConfigFileBytes(ctx, tfmodules.MaxConfigFileBytesForScan(c.ScanParams.MaxFileSizeFlag))
+	if hclcache.FromContext(ctx) == nil {
+		cache := hclcache.New()
+		ctx = hclcache.WithCache(ctx, cache)
+		defer cache.Release()
+	}
+	if tfmodules.ExtractCacheFromContext(ctx) == nil {
+		extracts := tfmodules.NewExtractCache()
+		ctx = tfmodules.WithExtractCache(ctx, extracts)
+		defer extracts.Release()
+	}
 	contextLogger := logger.FromContext(ctx)
 	executeScanParameters, err := c.initScan(ctx)
 

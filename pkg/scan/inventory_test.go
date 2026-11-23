@@ -122,7 +122,7 @@ func TestInventoryDoesNotChangeTheScan(t *testing.T) {
 }
 
 // writeRepo creates the files of a test repository.
-func writeRepo(t *testing.T, files map[string]string) string {
+func writeRepo(t testing.TB, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	for name, content := range files {

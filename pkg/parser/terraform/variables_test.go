@@ -21,6 +21,27 @@ import (
 
 // filepath: filepath.FromSlash("../../test/fixtures/test_helm"),
 
+func getInputVariables(
+	ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string,
+	allow map[string]struct{}, keep string,
+) converter.VariableMap {
+	variablesMap := make(converter.VariableMap)
+	localsMap := make(converter.VariableMap)
+	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
+		vars, locals, _, _, err := parseDirConfigFile(ctx, fsys, tfFile)
+		if err != nil {
+			continue
+		}
+		mergeMaps(variablesMap, vars)
+		mergeMaps(localsMap, locals)
+	}
+	loadVarFiles(ctx, fsys, currentPath, fileContent, terraformVarsPath, variablesMap)
+	return converter.VariableMap{
+		"var":   cty.ObjectVal(sanitizeCtyMap(variablesMap)),
+		"local": cty.ObjectVal(sanitizeCtyMap(localsMap)),
+	}
+}
+
 type mergeMapsTest struct {
 	name string
 	args struct {

@@ -18,6 +18,24 @@ import (
 	"github.com/zclconf/go-cty/cty/gocty"
 )
 
+func getDataSourcePolicy(
+	ctx context.Context, fsys vfs.FS, currentPath string, inputVariables converter.VariableMap, allow map[string]struct{}, keep string,
+) converter.VariableMap {
+	var (
+		blocks []localDataBlock
+		locals []localAssignment
+	)
+	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
+		_, _, fileBlocks, fileLocals, err := parseDirConfigFile(ctx, fsys, tfFile)
+		if err != nil {
+			continue
+		}
+		blocks = append(blocks, fileBlocks...)
+		locals = append(locals, fileLocals...)
+	}
+	return applyLocalDataBlocks(ctx, currentPath, blocks, locals, inputVariables)
+}
+
 func Test_getDataSourcePolicy(t *testing.T) {
 	type args struct {
 		currentPath  string

@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -47,11 +48,10 @@ func parseHCLBody(ctx context.Context, fsys vfs.FS, filename string) (*hclsyntax
 		return nil, err
 	}
 
-	parsedFile, diags := hclsyntax.ParseConfig(src, filename, hcl.InitialPos)
+	body, diags := hclcache.ParseConfig(ctx, fsys, filename, src)
 	if diags.HasErrors() {
 		return nil, diags
 	}
-	body, _ := parsedFile.Body.(*hclsyntax.Body)
 	return body, nil
 }
 
@@ -84,20 +84,6 @@ func getInputVariablesFromJSONFile(ctx context.Context, fsys vfs.FS, filename st
 		}
 	}
 	return variables, nil
-}
-
-// getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
-func getInputVariablesAndLocalsFromFile(
-	ctx context.Context, fsys vfs.FS, filename string,
-) (vars, locals converter.VariableMap, err error) {
-	if tfpath.IsJSONConfig(filename) {
-		return extractVarsAndLocalsFromJSON(ctx, fsys, filename)
-	}
-	body, err := parseHCLBody(ctx, fsys, filename)
-	if err != nil {
-		return nil, nil, err
-	}
-	return extractInputVariables(body, filename), extractLocals(body), nil
 }
 
 // nolint:gocyclo
@@ -147,24 +133,6 @@ func extractInputVariables(body *hclsyntax.Body, filename string) converter.Vari
 	}
 
 	return variables
-}
-
-func extractVarsAndLocalsFromJSON(ctx context.Context, fsys vfs.FS, filename string) (vars, locals converter.VariableMap, err error) {
-	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
-	if err != nil {
-		return nil, nil, err
-	}
-	parsed, diags := hcljson.Parse(src, filename)
-	if diags.HasErrors() {
-		return nil, nil, diags
-	}
-	content, _, diags := parsed.Body.PartialContent(jsonConfigSchema)
-	if diags.HasErrors() && content == nil {
-		return nil, nil, diags
-	}
-
-	vars, locals = varsAndLocalsFromJSONBlocks(content.Blocks)
-	return vars, locals, nil
 }
 
 func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (vars, locals converter.VariableMap) {
@@ -471,28 +439,75 @@ func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
 	return out
 }
 
-func getInputVariables(
+func resolveDirectoryVariables(
 	ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string,
 	allow map[string]struct{}, keep string,
 ) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
 	variablesMap := make(converter.VariableMap)
 	localsMap := make(converter.VariableMap)
+	var (
+		blocks     []localDataBlock
+		dataLocals []localAssignment
+	)
 
-	tfFiles := hclConfigFiles(ctx, fsys, currentPath, allow, keep)
-
-	// Parse all .tf/.tofu files for variables and locals
-	for _, tfFile := range tfFiles {
-		vars, locals, err := getInputVariablesAndLocalsFromFile(ctx, fsys, tfFile)
+	// Read and parse every configuration file in the directory once for variables,
+	// locals, and local data sources.
+	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
+		vars, locals, fileBlocks, fileLocals, err := parseDirConfigFile(ctx, fsys, tfFile)
 		if err != nil {
-			// Non-fatal: a sibling may be unreadable (broken symlink, partial
-			// MemFS push) or invalid HCL (testdata). Match getDataSourcePolicy.
 			contextLogger.Debug().Err(err).Msgf("Skipping default values and locals from %s", tfFile)
 			continue
 		}
 		mergeMaps(variablesMap, vars)
 		mergeMaps(localsMap, locals)
+		blocks = append(blocks, fileBlocks...)
+		dataLocals = append(dataLocals, fileLocals...)
 	}
+
+	loadVarFiles(ctx, fsys, currentPath, fileContent, terraformVarsPath, variablesMap)
+
+	result := make(converter.VariableMap)
+	result["var"] = cty.ObjectVal(sanitizeCtyMap(variablesMap))
+	result["local"] = cty.ObjectVal(sanitizeCtyMap(localsMap))
+	return applyLocalDataBlocks(ctx, currentPath, blocks, dataLocals, result)
+}
+
+func parseDirConfigFile(
+	ctx context.Context, fsys vfs.FS, filename string,
+) (vars, locals converter.VariableMap, blocks []localDataBlock, dataLocals []localAssignment, err error) {
+	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if tfpath.IsJSONConfig(filename) {
+		parsed, diags := hcljson.Parse(src, filename)
+		if diags.HasErrors() {
+			return nil, nil, nil, nil, diags
+		}
+		content, _, diags := parsed.Body.PartialContent(jsonConfigSchema)
+		if diags.HasErrors() && content == nil {
+			return nil, nil, nil, nil, diags
+		}
+		vars, locals = varsAndLocalsFromJSONBlocks(content.Blocks)
+		blocks, dataLocals = extractLocalDataFromJSONBlocks(content.Blocks, src)
+		return vars, locals, blocks, dataLocals, nil
+	}
+	body, diags := hclcache.ParseConfig(ctx, fsys, filename, src)
+	if diags.HasErrors() {
+		return nil, nil, nil, nil, diags
+	}
+	vars = extractInputVariables(body, filename)
+	locals = extractLocals(body)
+	blocks, dataLocals = extractLocalDataFromBody(body, src)
+	return vars, locals, blocks, dataLocals, nil
+}
+
+func loadVarFiles(
+	ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string,
+	variablesMap converter.VariableMap,
+) {
+	contextLogger := logger.FromContext(ctx)
 
 	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
 		vars, errInput := getInputVariablesFromFile(ctx, fsys, tfVarsFile)
@@ -533,15 +548,6 @@ func getInputVariables(
 			contextLogger.Trace().Msgf("%s file not found", terraformVarsPath)
 		}
 	}
-
-	// Final sanitized maps
-	cleanVars := sanitizeCtyMap(variablesMap)
-	cleanLocals := sanitizeCtyMap(localsMap)
-
-	result := make(converter.VariableMap)
-	result["var"] = cty.ObjectVal(cleanVars)
-	result["local"] = cty.ObjectVal(cleanLocals)
-	return result
 }
 
 // autoloadedVarFiles lists the variable definitions files Terraform loads from

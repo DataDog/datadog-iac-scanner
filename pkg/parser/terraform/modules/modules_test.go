@@ -15,7 +15,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 	"unicode/utf8"
 
@@ -392,7 +391,7 @@ func TestParseDirModules_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := parseDirModules(ctx, nil, &sync.Map{}, dirFiles{dir: dir, files: files}, moduleParseOptions{})
+	_, err := parseDirModules(ctx, nil, NewExtractCache(), dirFiles{dir: dir, files: files}, moduleParseOptions{})
 	require.ErrorIs(t, err, context.Canceled)
 }
 

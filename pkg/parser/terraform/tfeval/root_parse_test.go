@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 )
 
 func TestForgetRootParseKeepsCalledModules(t *testing.T) {
@@ -30,8 +32,11 @@ module "bucket" {
 `,
 	})
 
+	cache := hclcache.New()
+	ctx := hclcache.WithCache(context.Background(), cache)
 	e := New()
-	first, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	e.SetHCLCache(cache)
+	first, _, _, err := e.EvaluateModule(ctx, stack, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,14 +52,20 @@ module "bucket" {
 	if got := cached(); len(got) != 2 {
 		t.Fatalf("parse cache after evaluation = %v, want the root and the module it calls", got)
 	}
+	if got := cache.Stats().Entries; got != 2 {
+		t.Fatalf("hclcache entries after evaluation = %d, want 2", got)
+	}
 
 	e.ForgetRootParse(stack)
 	if got := cached(); !reflect.DeepEqual(got, []string{"bucket"}) {
 		t.Fatalf("parse cache after forgetting the root = %v, want only the called module", got)
 	}
+	if got := cache.Stats().Entries; got != 1 {
+		t.Fatalf("hclcache entries after forgetting the root = %d, want 1 (called module only)", got)
+	}
 
 	e.ReleaseEvalCache()
-	again, _, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	again, _, _, err := e.EvaluateModule(ctx, stack, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
