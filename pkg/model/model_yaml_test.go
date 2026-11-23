@@ -833,6 +833,16 @@ Resources:
 	require.Equal(t, "OwnerParameter", m["Ref"])
 }
 
+func TestReplaceForEachVars(t *testing.T) {
+	require.Equal(t, "prefix&{A}", replaceForEachVars("${A}", map[string]string{"A": "prefix&{A}"}))
+
+	bindings := map[string]string{"A": "${AB}", "AB": "value"}
+	for range 100 {
+		require.Equal(t, "${AB}-${AB}-value-value-${UNKNOWN}",
+			replaceForEachVars("${A}-&{A}-${AB}-&{AB}-${UNKNOWN}", bindings))
+	}
+}
+
 func TestDocument_UnmarshalYAML_CloudFormationForEachExpansion(t *testing.T) {
 	ctx := context.Background()
 

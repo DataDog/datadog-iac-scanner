@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
+	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/pkg/errors"
 )
 
@@ -55,8 +57,13 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
 
-	args := make(map[string]string, 0)
-	envs := make(map[string]string, 0)
+	variables := make(dockerfileVariables)
+	declarationLexer := shell.NewLex(parsed.EscapeToken)
+	commandLexer := shell.NewLex(parsed.EscapeToken)
+	// Keep command syntax and references to variables only available at runtime.
+	commandLexer.RawQuotes = true
+	commandLexer.RawEscapes = true
+	commandLexer.SkipUnsetEnv = true
 
 	for _, child := range parsed.AST.Children {
 		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
@@ -89,16 +96,17 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 			cmd.Value = append(cmd.Value, n.Value)
 		}
 
-		if child.Value != "arg" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, args)
-		} else {
-			args = saveArgs(args, cmd.Value[0])
-		}
-
-		if child.Value != "env" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, envs)
-		} else {
-			envs = saveEnvs(envs, cmd.Value)
+		switch child.Value {
+		case "arg":
+			saveArgs(cmd.Value, variables, declarationLexer)
+		case "env":
+			saveEnvs(cmd.Value, variables, declarationLexer)
+		default:
+			for i, value := range cmd.Value {
+				if strings.ContainsRune(value, '$') {
+					cmd.Value[i] = expandCommandWord(value, variables, commandLexer, byte(parsed.EscapeToken))
+				}
+			}
 		}
 
 		if fromValue == "" {
@@ -154,39 +162,32 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
-func resolveArgsAndEnvs(values []string, args map[string]string) []string {
-	for i := range values {
-		for arg := range args {
-			ref1 := fmt.Sprintf("${%s}", arg)
-			values[i] = strings.ReplaceAll(values[i], ref1, args[arg])
-			ref2 := fmt.Sprintf("$%s", arg)
-			values[i] = strings.ReplaceAll(values[i], ref2, args[arg])
-		}
-	}
+type dockerfileVariables map[string]string
 
-	return values
+func (v dockerfileVariables) Get(name string) (string, bool) {
+	value, found := v[name]
+	return value, found
 }
 
-func saveArgs(args map[string]string, argValue string) map[string]string {
-	value := strings.Split(argValue, "=")
-	if len(value) == 2 {
-		args[value[0]] = value[1]
-	}
-	if len(value) > 2 {
-		// to handle cases like ARG VAR=erereR=E
-		args[value[0]] = strings.Join(value[1:], "=")
-	}
-
-	return args
+func (v dockerfileVariables) Keys() []string {
+	return slices.Sorted(maps.Keys(v))
 }
 
-func saveEnvs(envs map[string]string, envValues []string) map[string]string {
-	// Multiple env variables may be defined in the same instruction
-	// Each env variable slice looks like ["name", "value", "="]
-	if len(envValues)%3 == 0 {
-		for i := 0; i < len(envValues); i += 3 {
-			envs[envValues[i]] = envValues[i+1]
+func saveArgs(values []string, variables dockerfileVariables, lexer *shell.Lex) {
+	for _, assignment := range values {
+		name, value, hasDefault := strings.Cut(assignment, "=")
+		if hasDefault {
+			variables[name] = expandWord(value, variables, lexer)
 		}
 	}
-	return envs
+}
+
+func saveEnvs(values []string, variables dockerfileVariables, lexer *shell.Lex) {
+	// BuildKit represents ENV as triples of name, value and separator.
+	// Resolve all values against the previous bindings and keep the source values for rules.
+	assignments := make(dockerfileVariables, len(values)/3)
+	for i := 0; i+2 < len(values); i += 3 {
+		assignments[values[i]] = expandWord(values[i+1], variables, lexer)
+	}
+	maps.Copy(variables, assignments)
 }

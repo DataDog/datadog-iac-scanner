@@ -197,79 +197,193 @@ ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
 	}
 }
 
-func TestSaveAndResolveArgs(t *testing.T) {
+func TestParser_ExpandsVariablesDeterministically(t *testing.T) {
 	tests := []struct {
-		name   string
-		fun    string
-		value  string
-		values []string
-		want   struct {
-			args   map[string]string
-			values []string
-		}
+		name       string
+		dockerfile string
+		want       []interface{}
 	}{
 		{
-			name:   "Args saving and resolving",
-			value:  "ARG=2",
-			values: []string{"ARG=${ARG}"},
-			want: struct {
-				args   map[string]string
-				values []string
-			}{
-				args: map[string]string{
-					"ARG": "2",
-				},
-				values: []string{"ARG=2"},
-			},
+			name: "chained ARG defaults",
+			dockerfile: `FROM alpine
+ARG A=1000
+ARG B=$A
+ARG C=${B}
+RUN groupadd --gid $C`,
+			want: []interface{}{"groupadd --gid 1000"},
+		},
+		{
+			name: "whole names",
+			dockerfile: `FROM alpine
+ARG A=one
+ARG AB=two
+RUN echo $A $AB ${AB} $ABC`,
+			want: []interface{}{"echo one two two $ABC"},
+		},
+		{
+			name: "default for empty or unset",
+			dockerfile: `FROM alpine
+ARG A=
+ARG B=${A:-x}
+ENV C=${MISSING:-y}
+RUN echo $B $C ${A:-z}`,
+			want: []interface{}{"echo x y z"},
+		},
+		{
+			name: "default does not override a non-empty value",
+			dockerfile: `FROM alpine
+ARG A=one
+RUN echo ${A:-x}`,
+			want: []interface{}{"echo one"},
+		},
+		{
+			name: "escaped references and quotes",
+			dockerfile: `FROM alpine
+ARG A=one
+RUN echo \$A '$A' "$A" $A`,
+			want: []interface{}{`echo \$A '$A' "one" one`},
+		},
+		{
+			name:       "file escape directive",
+			dockerfile: "# escape=\x60\nFROM alpine\nARG A=one\nARG B=\x60$A\nRUN echo \x60$A $B $A",
+			want:       []interface{}{"echo \x60$A $A one"},
+		},
+		{
+			name: "mixed declarations and no forward references",
+			dockerfile: `FROM alpine
+ARG A=${B:-before}
+ENV B=after
+ARG C=$B
+ENV D=$C
+RUN echo $A $B $C $D`,
+			want: []interface{}{"echo before after after after"},
+		},
+		{
+			name: "ENV assignments see previous values",
+			dockerfile: `FROM alpine
+ENV A=before
+ENV A=after B=$A
+RUN echo $A $B`,
+			want: []interface{}{"echo after before"},
+		},
+		{
+			name: "ENV legacy form and quoted value",
+			dockerfile: `FROM alpine
+ARG A="two words"
+ENV B "$A more"
+RUN echo "$B"`,
+			want: []interface{}{`echo "two words more"`},
+		},
+		{
+			name: "cross-stage visibility and default-less redeclaration",
+			dockerfile: `ARG A=before
+FROM alpine AS first
+ENV B=$A
+FROM alpine
+ARG A
+RUN echo $A $B`,
+			want: []interface{}{"echo before before"},
+		},
+		{
+			name: "ARG assignments on one line",
+			dockerfile: `FROM alpine
+ARG A=one B=$A
+RUN echo $B`,
+			want: []interface{}{"echo one"},
+		},
+		{
+			name: "ARG or ENV shadows the previous declaration",
+			dockerfile: `FROM alpine
+ARG A=arg
+ENV A=env
+ARG B=$A
+ARG A=again
+RUN echo $A $B`,
+			want: []interface{}{"echo again env"},
+		},
+		{
+			name: "literal value is not expanded again",
+			dockerfile: `FROM alpine
+ARG A=one
+ARG B=\$A
+ENV C=$B
+RUN echo $C`,
+			want: []interface{}{"echo $A"},
+		},
+		{
+			name: "references around unsupported shell syntax",
+			dockerfile: `FROM alpine
+ARG A=one
+RUN echo $A ${A:0:1} ${#A} ${A^^} ${!A} $${{A}} ${A:=fallback} ${A}`,
+			want: []interface{}{"echo one ${A:0:1} ${#A} ${A^^} ${!A} $${{A}} ${A:=fallback} one"},
+		},
+		{
+			name: "apostrophe in trailing shell comment",
+			dockerfile: `FROM alpine
+ARG A=one
+RUN echo $A # don't`,
+			want: []interface{}{"echo one # don't"},
+		},
+		{
+			name: "reference after unmatched apostrophe",
+			dockerfile: `FROM alpine
+ARG A=one
+RUN echo don't $A`,
+			want: []interface{}{"echo don't one"},
+		},
+		{
+			name: "uid before unsupported substring expansion",
+			dockerfile: `FROM alpine
+ARG USER_UID=1000
+ENV HOME=/root
+RUN useradd -u $USER_UID && echo ${HOME:0:3}`,
+			want: []interface{}{"useradd -u 1000 && echo ${HOME:0:3}"},
+		},
+		{
+			name: "fallback respects quotes escapes whole names and defaults",
+			dockerfile: `FROM alpine
+ARG A=one
+ARG AB=two
+ARG EMPTY=
+RUN echo ${A^^} '$A' \$A "$A '$AB'" $AB $ABC ${EMPTY:-${A}} ${EMPTY:-'}'}`,
+			want: []interface{}{`echo ${A^^} '$A' \$A "one 'two'" two $ABC one '}'`},
+		},
+		{
+			name:       "fallback uses file escape directive",
+			dockerfile: "# escape=\x60\nFROM alpine\nARG A=one\nRUN echo ${A^^} \x60$A $A",
+			want:       []interface{}{"echo ${A^^} \x60$A one"},
 		},
 	}
+
+	parser := &Parser{}
 	for _, tt := range tests {
-		args := make(map[string]string)
-		values := make([]string, 1)
 		t.Run(tt.name, func(t *testing.T) {
-			args = saveArgs(args, tt.value)
-			values = resolveArgsAndEnvs(tt.values, args)
-			require.Equal(t, tt.want.args, args)
-			require.Equal(t, tt.want.values, values)
+			for range 100 {
+				_, docs, _, _, err := parser.Parse(context.Background(), []byte(tt.dockerfile), "Dockerfile", true, 15)
+				require.NoError(t, err)
+				require.Len(t, docs, 1)
+				stages := docs[0]["command"].(map[string]interface{})
+				commands := stages["alpine"].([]interface{})
+				last := commands[len(commands)-1].(map[string]interface{})
+				require.Equal(t, "run", last["Cmd"])
+				require.Equal(t, tt.want, last["Value"])
+			}
 		})
 	}
 }
 
-func TestSaveAndResolveEnvs(t *testing.T) {
-	tests := []struct {
-		name     string
-		fun      string
-		envValue []string
-		values   []string
-		want     struct {
-			args   map[string]string
-			values []string
-		}
-	}{
-		{
-			name:     "Env saving and resolving",
-			envValue: []string{"ARG", "2", "=", "ENV", "env", "="},
-			values:   []string{"ARG=${ARG}"},
-			want: struct {
-				args   map[string]string
-				values []string
-			}{
-				args: map[string]string{
-					"ARG": "2",
-					"ENV": "env",
-				},
-				values: []string{"ARG=2"},
-			},
-		},
-	}
-	for _, tt := range tests {
-		args := make(map[string]string)
-		values := make([]string, 1)
-		t.Run(tt.name, func(t *testing.T) {
-			args = saveEnvs(args, tt.envValue)
-			values = resolveArgsAndEnvs(tt.values, args)
-			require.Equal(t, tt.want.args, args)
-			require.Equal(t, tt.want.values, values)
-		})
-	}
+func TestParser_PreservesEnvReferencesForRules(t *testing.T) {
+	const dockerfile = `FROM alpine
+ENV A=before
+ENV A=after B=$A
+RUN echo $B`
+	parser := &Parser{}
+	_, docs, _, _, err := parser.Parse(context.Background(), []byte(dockerfile), "Dockerfile", true, 15)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	stages := docs[0]["command"].(map[string]interface{})
+	commands := stages["alpine"].([]interface{})
+	require.Len(t, commands, 4)
+	require.Equal(t, []interface{}{"A", "after", "=", "B", "$A", "="}, commands[2].(map[string]interface{})["Value"])
+	require.Equal(t, []interface{}{"echo before"}, commands[3].(map[string]interface{})["Value"])
 }
