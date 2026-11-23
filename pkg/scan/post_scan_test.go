@@ -36,6 +36,8 @@ func Test_GetSummary(t *testing.T) {
 				LoadedQueries:    2,
 				ExecutingQueries: 1,
 				ExecutedQueries:  1,
+
+				ParsedTerraformPlans: 2,
 			},
 			scanParameters: Parameters{},
 			results: []model.Vulnerability{
@@ -72,6 +74,7 @@ func Test_GetSummary(t *testing.T) {
 					FailedToScanFiles:      0,
 					TotalQueries:           2,
 					FailedToExecuteQueries: 0,
+					TerraformPlans:         2,
 				},
 				SeveritySummary: model.SeveritySummary{
 					ScanID: "",

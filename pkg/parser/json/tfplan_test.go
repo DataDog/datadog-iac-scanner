@@ -2717,3 +2717,39 @@ func TestLazyDataLineInfoDoesNotRetainInputViews(t *testing.T) {
 	clear(content)
 	require.JSONEq(t, expected, mustJSON(t, data), "returned keys and values must own their bytes")
 }
+
+// TestParsePlanReportsPlan checks that a plan is reported as parsed as a plan
+// by both parse paths, and that content that only looks like a plan, which
+// falls back to a plain JSON document, is not.
+func TestParsePlanReportsPlan(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		isPlan  bool
+	}{
+		{
+			name: "plan",
+			content: `{"format_version": "1.0", "planned_values": {"root_module": {"resources": [
+				{"address": "aws_s3_bucket.main", "type": "aws_s3_bucket", "name": "main", "values": {"acl": "private"}}]}}}`,
+			isPlan: true,
+		},
+		{name: "plan markers without resources", content: `{"format_version": "1.0", "planned_values": {}}`},
+		{
+			name:    "nested plan markers under a top-level resource map",
+			content: `{"resource": {}, "plan": {"format_version": "1.0", "planned_values": {}}}`,
+		},
+		{name: "plain JSON", content: `{"key": "value"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Parser{}
+			_, ok := p.ParseUnannotated([]byte(tt.content), "file.json")
+			require.Equal(t, tt.isPlan, ok)
+
+			out, err := p.ParsePlan(context.Background(), []byte(tt.content), "file.json", false, 15)
+			require.NoError(t, err)
+			require.Len(t, out.Documents, 1)
+			require.Equal(t, tt.isPlan, out.TerraformPlan)
+		})
+	}
+}

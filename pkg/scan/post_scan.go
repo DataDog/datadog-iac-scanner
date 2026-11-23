@@ -34,6 +34,7 @@ func (c *Client) getSummary(ctx context.Context, results []model.Vulnerability,
 		TotalQueries:           c.Tracker.LoadedQueries,
 		FailedToExecuteQueries: c.Tracker.ExecutingQueries - c.Tracker.ExecutedQueries,
 		FoundResources:         c.Tracker.FoundResources,
+		TerraformPlans:         c.Tracker.ParsedTerraformPlans,
 	}
 
 	summary := model.CreateSummary(

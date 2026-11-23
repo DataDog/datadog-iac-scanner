@@ -25,12 +25,14 @@ type CITracker struct {
 	FoundFiles           int
 	LoadedQueries        int
 	ParsedFiles          int
+	ParsedTerraformPlans int
 	lines                int
 	FoundCountLines      int
 	ParsedCountLines     int
 	IgnoreCountLines     int
 	BagOfFilesParse      map[string]int
 	BagOfFilesFound      map[string]int
+	BagOfTerraformPlans  map[string]bool
 	FailedFiles          map[string]string
 	EmptyFiles           map[string]bool
 	FailedRenders        map[string]bool
@@ -102,6 +104,20 @@ func (c *CITracker) TrackFileParse(path string) {
 		c.ParsedFiles++
 	} else {
 		c.BagOfFilesParse[path] = count + 1
+	}
+}
+
+// TrackTerraformPlanParse adds a file successfully parsed as a Terraform plan.
+// A file is counted once, however often it is tracked.
+func (c *CITracker) TrackTerraformPlanParse(path string) {
+	c.syncFileMutex.Lock()
+	defer c.syncFileMutex.Unlock()
+	if c.BagOfTerraformPlans == nil {
+		c.BagOfTerraformPlans = make(map[string]bool)
+	}
+	if !c.BagOfTerraformPlans[path] {
+		c.BagOfTerraformPlans[path] = true
+		c.ParsedTerraformPlans++
 	}
 }
 

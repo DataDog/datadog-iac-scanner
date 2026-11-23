@@ -162,6 +162,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		s.storeSharedParse(s.internContentBytes(*content), &documents, sharedDocs)
 	}
 	s.Tracker.TrackFileParse(filename)
+	if documents.TerraformPlan {
+		s.Tracker.TrackTerraformPlanParse(filename)
+	}
 
 	s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
 	s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))

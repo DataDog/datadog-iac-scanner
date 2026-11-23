@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
@@ -1213,5 +1214,32 @@ func TestBuildSarifIssue_ReportedFindingHasNoFix(t *testing.T) {
 				require.Equal(t, 5, result.ResultLocations[0].PhysicalLocation.Region.StartLine)
 			})
 		}
+	}
+}
+
+func TestAddTags_TerraformPlanCount(t *testing.T) {
+	tests := []struct {
+		name           string
+		terraformPlans int
+		want           []string
+	}{
+		{name: "scan with two plans", terraformPlans: 2, want: []string{"DATADOG_TERRAFORM_PLAN_COUNT:2"}},
+		{name: "scan without plan", terraformPlans: 0, want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			report := NewSarifReport().(*sarifReport)
+			summary := &model.Summary{Counters: model.Counters{ScannedFiles: 3, TerraformPlans: tt.terraformPlans}}
+			require.NoError(t, report.AddTags(context.Background(), summary, &model.DiffAware{}))
+
+			var got []string
+			for _, tag := range report.Runs[0].Tool.Driver.Properties.Tags {
+				if strings.HasPrefix(tag, "DATADOG_TERRAFORM_PLAN_COUNT:") {
+					got = append(got, tag)
+				}
+			}
+			require.Equal(t, tt.want, got)
+			require.Contains(t, report.Runs[0].Tool.Driver.Properties.Tags, "DATADOG_SCANNED_FILE_COUNT:3")
+		})
 	}
 }
