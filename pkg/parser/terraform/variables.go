@@ -558,13 +558,7 @@ func getInputVariables(
 	}
 
 	if terraformVarsPath == "" {
-		match := terraformVarsPathRegex.FindStringSubmatch(fileContent)
-		if match != nil {
-			terraformVarsPath = filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))
-			if !strings.Contains(match[1], ":") {
-				terraformVarsPath = filepath.Join(currentPath, terraformVarsPath)
-			}
-		}
+		terraformVarsPath = fileVariablePath(currentPath, fileContent)
 	}
 
 	mergeMaps(variablesMap, ReadExplicitVariables(ctx, fsys, terraformVarsPath))
@@ -594,7 +588,26 @@ func mergeStandaloneValues(
 	}
 }
 
+func fileVariablePath(dir, content string) string {
+	match := terraformVarsPathRegex.FindStringSubmatch(content)
+	if match == nil {
+		return ""
+	}
+	path := filepath.FromSlash(strings.ReplaceAll(match[1], "\\", "/"))
+	if !strings.Contains(match[1], ":") {
+		path = filepath.Join(dir, path)
+	}
+	return path
+}
+
+// ReadFileVariables loads the variable definitions selected by a file's
+// kics_terraform_vars directive. An explicit scan input supersedes it.
+func ReadFileVariables(ctx context.Context, fsys vfs.FS, filename string, source []byte) converter.VariableMap {
+	return ReadExplicitVariables(ctx, fsys, fileVariablePath(filepath.Dir(filename), string(source)))
+}
+
 // ReadExplicitVariables loads a selected variable definitions file through the scan filesystem.
+// A non-nil map indicates an explicit selection, even when the file is unreadable.
 func ReadExplicitVariables(ctx context.Context, fsys vfs.FS, path string) converter.VariableMap {
 	if path == "" {
 		return nil
@@ -602,7 +615,7 @@ func ReadExplicitVariables(ctx context.Context, fsys vfs.FS, path string) conver
 	contextLogger := logger.FromContext(ctx)
 	if _, err := fsys.Stat(path); err != nil {
 		contextLogger.Trace().Msgf("%s file not found", path)
-		return nil
+		return converter.VariableMap{}
 	}
 	vars, err := getInputVariablesFromFile(ctx, fsys, path)
 	if err != nil {
@@ -611,7 +624,7 @@ func ReadExplicitVariables(ctx context.Context, fsys vfs.FS, path string) conver
 			event = contextLogger.Debug()
 		}
 		event.Err(err).Msgf("Error getting values from %s", path)
-		return nil
+		return converter.VariableMap{}
 	}
 	return vars
 }

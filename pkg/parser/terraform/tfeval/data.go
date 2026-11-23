@@ -43,12 +43,13 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
-	e       *Evaluator
-	blocks  []*hclsyntax.Block
-	sources map[string][]byte
-	locals  *localGraph
-	addr    string
-	chain   *callChain
+	e              *Evaluator
+	blocks         []*hclsyntax.Block
+	sources        map[string][]byte
+	locals         *localGraph
+	addr           string
+	chain          *callChain
+	overrideInputs *overrideInputs
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -83,26 +84,25 @@ type moduleData struct {
 
 func newModuleData(
 	e *Evaluator,
-	sources map[string][]byte,
-	locals *localGraph,
-	static *dirStatic,
+	parsed *dirParse,
 	addr string,
 	chain *callChain,
-	declarations map[*hclsyntax.Body]*hclsyntax.Body,
+	inputs *overrideInputs,
 ) *moduleData {
+	locals, static := parsed.locals, parsed.static
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
+		e: e, blocks: blocks, sources: parsed.sources, locals: locals, addr: addr, chain: chain, overrideInputs: inputs,
 		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
 		readsData:          static.dataReadsData,
 		readsLocals:        static.dataReadsLocals,
 		readsResources:     static.dataReadsResources,
 		readsModuleOutputs: static.dataReadsModules,
 	}
-	d.jsonBodies = jsonLocalDataBodies(blocks, sources, declarations)
+	d.jsonBodies = jsonLocalDataBodies(blocks, parsed.sources, parsed.declarations)
 	return d
 }
 
@@ -297,12 +297,13 @@ func (d *moduleData) evalBlock(
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	fileInputs := d.overrideInputs.forBody(b.Body)
+	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, fileInputs)
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
 		if _, ok := localdata.Lookup(inst.Type); ok {
-			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx)
+			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx, fileInputs)
 		}
 		if d.addr == "" {
 			inst.Iteration = nil
@@ -471,6 +472,7 @@ func sameCtyValues(a, b map[string]cty.Value) bool {
 // expressions which can transform the string and lose its unresolved parts.
 func (d *moduleData) withComputedAttributes(
 	inst *ResolvedResource, b *hclsyntax.Block, scanCtx context.Context, evalCtx *hcl.EvalContext,
+	inputs overrideFileInputs,
 ) map[string]cty.Value {
 	ctx := evalCtx
 	if inst.Iteration != nil {
@@ -482,7 +484,7 @@ func (d *moduleData) withComputedAttributes(
 		body = json
 	}
 	computed := localdata.Evaluate(scanCtx, inst.Type, body, func(expr hcl.Expression) (cty.Value, bool) {
-		scoped := ctx
+		scoped := inputs.context(ctx, expr.Range().Filename)
 		for {
 			inner, vars, bound := partial.Unbind(expr)
 			if !bound {

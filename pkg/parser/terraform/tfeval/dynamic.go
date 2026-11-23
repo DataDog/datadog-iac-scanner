@@ -8,6 +8,7 @@ package tfeval
 
 import (
 	"context"
+	"maps"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/hashicorp/hcl/v2"
@@ -51,7 +52,12 @@ func (e *Evaluator) addDynamicBlocks(
 		}
 		// Retain only this concrete block's binding, not its evaluation context.
 		// Nested dynamic blocks get their own children, even when their AST is shared.
-		document := &documentScope{variables: scope.Variables}
+		variables := scope.Variables
+		if inputs := st.files[b.TypeRange.Filename]; len(inputs) != 0 {
+			variables = maps.Clone(inputs)
+			maps.Copy(variables, scope.Variables)
+		}
+		document := &documentScope{variables: variables}
 		marker := &hclsyntax.Block{Type: generatedBlockType, Labels: paths[i][1:], Body: content}
 		st.document.generated[b] = append(st.document.generated[b], marker)
 		st.document.children[marker] = document
@@ -112,6 +118,7 @@ func (st *bodyState) recordDynamic(b *hclsyntax.Block, n int) {
 // It shares source bodies and cty values, and never keeps an evaluation context.
 type documentScope struct {
 	variables map[string]cty.Value
+	files     overrideFileInputs
 	generated map[*hclsyntax.Block][]*hclsyntax.Block
 	children  map[*hclsyntax.Block]*documentScope
 }

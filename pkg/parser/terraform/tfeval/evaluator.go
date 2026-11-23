@@ -118,8 +118,9 @@ type ModuleScope struct {
 	// evalCtx is the context the module's blocks were evaluated in, final once
 	// evaluation completes, and sources the module's files by filename. They
 	// let a value evaluation could not resolve be rendered as its parts.
-	evalCtx *hcl.EvalContext
-	sources map[string][]byte
+	evalCtx        *hcl.EvalContext
+	sources        map[string][]byte
+	overrideInputs *overrideInputs
 	// dataSources retains only the source/instance metadata
 	// needed to render partial documents after authoritative evaluation finishes.
 	renderedData *sync.Map
@@ -325,8 +326,14 @@ func (e *Evaluator) Fork() *Evaluator {
 
 // SetExplicitRootVars supplies the scan's highest-precedence inputs for roots
 // with effective resource or data overrides.
-// The map is read-only and shared by evaluator forks.
+// A non-nil map disables per-file selections even when it is empty. The map
+// is read-only and shared by evaluator forks.
 func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
+	// The input digest distinguishes different values. An explicit empty file
+	// can keep the same values but change whether file directives apply.
+	if (e.explicitRootVars == nil) != (inputs == nil) && len(e.cache) != 0 {
+		e.ReleaseEvalCache()
+	}
 	e.explicitRootVars = inputs
 }
 
@@ -554,8 +561,11 @@ func (e *Evaluator) evaluateChain(
 	}
 	moduleBlocks, resourceBlocks := parsed.modules, parsed.resources
 	scope := e.newModuleScope(ctx, dir, rootDir, &parsed, inputs)
+	if addr == "" {
+		e.loadOverrideFileInputs(ctx, dir, &parsed, inputs, scope)
+	}
 	evalCtx := scope.evalCtx
-	data := newModuleData(e, parsed.sources, parsed.locals, parsed.static, addr, chain, parsed.declarations)
+	data := newModuleData(e, &parsed, addr, chain, scope.overrideInputs)
 	// Module-call preparation retains its existing data view. Without calls,
 	// resources and data are resolved together by the dependency schedule.
 	if len(moduleBlocks) > 0 {
@@ -710,7 +720,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 {
 		return
 	}
-	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
+	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain, scope.overrideInputs)
 	injected := injectResourceRefs(evalCtx, resources, scope.static.resourceAttrs)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, injected, false)
 	if data.readsOwnResources() {
@@ -1003,10 +1013,11 @@ func (e *Evaluator) evalResourceBlocks(
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain *callChain,
+	inputs *overrideInputs,
 ) []ResolvedResource {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
-		resources = append(resources, e.expandBlock(ctx, rb, evalCtx, addr, chain, false)...)
+		resources = append(resources, e.expandBlock(ctx, rb, evalCtx, addr, chain, false, inputs.forBody(rb.Body))...)
 	}
 	return resources
 }
@@ -1021,6 +1032,7 @@ func (e *Evaluator) expandBlock(
 	addr string,
 	chain *callChain,
 	data bool,
+	inputs overrideFileInputs,
 ) []ResolvedResource {
 	if len(rb.Labels) < 2 {
 		return nil
@@ -1038,6 +1050,7 @@ func (e *Evaluator) expandBlock(
 			iteration = child.Variables
 		}
 		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
+		state.setFileInputs(inputs)
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
 		return ResolvedResource{
 			Type:          typeName,
@@ -1058,10 +1071,10 @@ func (e *Evaluator) expandBlock(
 		}
 	}
 
-	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne, inputs); ok {
 		return out
 	}
-	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne, inputs); ok {
 		return out
 	}
 	return []ResolvedResource{makeOne(resName, evalCtx)}
@@ -1073,12 +1086,13 @@ func (e *Evaluator) expandCountInstances(
 	resName string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+	inputs overrideFileInputs,
 ) ([]ResolvedResource, bool) {
 	countAttr := rb.Body.Attributes["count"]
 	if countAttr == nil {
 		return nil, false
 	}
-	cv, diags := countAttr.Expr.Value(evalCtx)
+	cv, diags := countAttr.Expr.Value(inputs.context(evalCtx, countAttr.SrcRange.Filename))
 	if !diags.HasErrors() && cv.IsKnown() && !cv.IsNull() && cv.Type() == cty.Number {
 		var n int
 		if err := gocty.FromCtyValue(cv, &n); err != nil {
@@ -1123,12 +1137,13 @@ func (e *Evaluator) expandForEachInstances(
 	resName string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+	inputs overrideFileInputs,
 ) ([]ResolvedResource, bool) {
 	feAttr := rb.Body.Attributes["for_each"]
 	if feAttr == nil {
 		return nil, false
 	}
-	fv, diags := feAttr.Expr.Value(evalCtx)
+	fv, diags := feAttr.Expr.Value(inputs.context(evalCtx, feAttr.SrcRange.Filename))
 	if diags.HasErrors() || !isForEachCollection(fv) {
 		return []ResolvedResource{unknownForEachResource(resName, evalCtx, makeOne)}, true
 	}
@@ -1415,9 +1430,17 @@ type bodyState struct {
 	document *documentScope
 	memo     *invariantMemo
 	dynamic  *dynamicRecorder
+	files    overrideFileInputs
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
+}
+
+func (st *bodyState) setFileInputs(inputs overrideFileInputs) {
+	if len(inputs) != 0 {
+		st.files = inputs
+		st.document = &documentScope{files: inputs}
+	}
 }
 
 type dynamicRecorder struct {
@@ -1457,7 +1480,11 @@ func (e *Evaluator) evalBodyWith(
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, evalCtx, st)
+		scoped := evalCtx
+		if st != nil {
+			scoped = st.files.context(evalCtx, attr.SrcRange.Filename)
+		}
+		out[name] = e.evalExprMemo(attr.Expr, scoped, st)
 	}
 
 	blocks := nestedBlocks{out: out}
@@ -1466,7 +1493,7 @@ func (e *Evaluator) evalBodyWith(
 			break
 		}
 		if st != nil && dynamicblock.Is(b) {
-			e.addDynamicBlocks(ctx, &blocks, b, evalCtx, st)
+			e.addDynamicBlocks(ctx, &blocks, b, st.files.context(evalCtx, b.TypeRange.Filename), st)
 			continue
 		}
 		path := append([]string{b.Type}, b.Labels...)

@@ -263,6 +263,71 @@ replicas = 2
 	require.Equal(t, 6, loc.Region.StartLine)
 }
 
+func TestTerraformOverrideUsesFileVariableDirective(t *testing.T) {
+	const directive = "// kics_terraform_vars: selected.tfvars\n"
+	const acl = "  acl = var.acl\n"
+	const count = "  count = var.replicas\n"
+	rule := syntheticQuery("test-override-file-vars", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	bucket.acl == "public-read"
+	bucket.tags.fixture == "test"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
+	for _, scope := range []string{"root", "standalone"} {
+		for _, tc := range []struct {
+			name, basePrefix, overridePrefix, overrideAttrs, explicitPath, source string
+			rows, line                                                            int
+		}{
+			{name: "base", basePrefix: directive, source: "main.tf", rows: 2, line: 7},
+			{name: "override", overridePrefix: directive, overrideAttrs: count + acl, source: "override.tf", rows: 2, line: 4},
+			{name: "absent", rows: 1},
+			{name: "unrelated override", overridePrefix: directive, rows: 1},
+			{name: "explicit input", basePrefix: directive, explicitPath: "explicit.tfvars", rows: 3},
+			{name: "unreadable explicit input", basePrefix: directive, explicitPath: "missing.tfvars", rows: 1},
+		} {
+			t.Run(scope+"/"+tc.name, func(t *testing.T) {
+				files := make(map[string]string)
+				prefix, wantRows := "", tc.rows
+				if scope == "standalone" {
+					prefix, wantRows = "child/", 0
+					files["main.tf"] = "module \"child\" {\n  source = \"./child\"\n  count = 0\n}\n"
+				}
+				files[prefix+"main.tf"] = tc.basePrefix + `variable "acl" { default = "private" }
+variable "replicas" { default = 1 }
+resource "aws_s3_bucket" "example" {
+  bucket = "example"
+` + count + acl + "}\n"
+				files[prefix+"override.tf"] = tc.overridePrefix + "resource \"aws_s3_bucket\" \"example\" {\n" +
+					tc.overrideAttrs + "  tags = { fixture = \"test\" }\n}\n"
+				files[prefix+"terraform.tfvars"] = "acl = \"private\"\nreplicas = 1\n"
+				files[prefix+"selected.tfvars"] = "acl = \"public-read\"\nreplicas = 2\n"
+				files["explicit.tfvars"] = "acl = \"private\"\nreplicas = 3\n"
+				root := writeRepo(t, files)
+				params := terraformParams(root)
+				if tc.explicitPath != "" {
+					params.TerraformVarsPath = filepath.Join(root, tc.explicitPath)
+				}
+				inv, fingerprints := scanLinks(t, params, rule)
+				require.Len(t, inv.Resources, wantRows)
+				if tc.source == "" {
+					require.Empty(t, fingerprints)
+					return
+				}
+				source := prefix + tc.source
+				fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, filepath.FromSlash(source), "Terraform",
+					"aws_s3_bucket", "example", rule.Query, "", "")
+				require.Equal(t, []string{fingerprint}, fingerprints)
+				loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
+				require.Equal(t, source, loc.ArtifactLocation.ArtifactURI)
+				require.Equal(t, tc.line, loc.Region.StartLine)
+				if wantRows != 0 {
+					require.ElementsMatch(t, []string{".|aws_s3_bucket.example[0]", ".|aws_s3_bucket.example[1]"},
+						linkedRefs(inv)[fingerprint])
+				}
+			})
+		}
+	}
+}
+
 func TestTerraformStandaloneOverrideUsesModuleScope(t *testing.T) {
 	rule := syntheticQuery("test-standalone-override", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
 	bucket.acl == "public-read"

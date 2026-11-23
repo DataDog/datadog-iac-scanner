@@ -167,19 +167,77 @@ data "example" "source" { value = "override" }
 
 func TestExplicitRootVarsRekeyCachedOverride(t *testing.T) {
 	dir := writeModule(t, t.TempDir(), "root", map[string]string{
-		"main.tf": `variable "value" { default = "base" }
+		"main.tf": `// kics_terraform_vars: selected.tfvars
+variable "value" { default = "base" }
 resource "example" "this" { value = var.value }`,
-		"override.tf": `resource "example" "this" { other = true }`,
+		"override.tf":     `resource "example" "this" { other = true }`,
+		"selected.tfvars": `value = "directive"`,
 	})
 	e := New().Fork()
-	for _, value := range []string{"first", "second", "first"} {
-		e.SetExplicitRootVars(map[string]cty.Value{"value": cty.StringVal(value)})
+	check := func(value string) {
+		t.Helper()
 		resources, _, _, err := e.EvaluateModule(t.Context(), dir, e.LoadRootVarsWithContext(t.Context(), dir))
 		require.NoError(t, err)
 		require.Len(t, resources, 1)
 		require.Equal(t, cty.StringVal(value), resources[0].Attributes["value"])
 	}
-	require.Equal(t, 2, e.EvalCacheSize())
+	check("directive")
+	e.SetExplicitRootVars(map[string]cty.Value{})
+	check("base")
+	for _, value := range []string{"first", "second", "first"} {
+		e.SetExplicitRootVars(map[string]cty.Value{"value": cty.StringVal(value)})
+		check(value)
+	}
+	require.Equal(t, 3, e.EvalCacheSize())
+	e.SetExplicitRootVars(nil)
+	check("directive")
+}
+
+func TestResourceOverrideDirectiveResolvesLocalsAndDataPerFile(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "module", map[string]string{
+		"main.tf": `// kics_terraform_vars: base.tfvars
+variable "n" { default = 1 }
+variable "action" { default = "s3:ListBucket" }
+locals { action = lower(var.action) }
+data "aws_iam_policy_document" "example" {
+  statement {
+    actions   = [local.action]
+    resources = ["*"]
+  }
+}
+resource "example" "this" {
+  count = var.n
+  policy = data.aws_iam_policy_document.example.json
+}
+`,
+		"override.tf": `// kics_terraform_vars: override.tfvars.json
+resource "example" "this" {
+  action = local.action
+  dynamic "setting" {
+    for_each = [local.action]
+    content { name = setting.value }
+  }
+}
+`,
+		"base.tfvars":          "n = 2\naction = \"s3:GetObject\"\n",
+		"override.tfvars.json": `{"n":3,"action":"s3:PutObject"}`,
+	})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(t.Context(), dir, e.LoadRootVarsWithContext(t.Context(), dir))
+	require.NoError(t, err)
+	require.Len(t, resources, 3)
+	r := findResource(t, resources, "example", "this[1]")
+	doc := AttributesToDocument(&r)
+	require.Contains(t, doc["policy"], "s3:getobject")
+	require.Equal(t, "s3:putobject", doc["action"])
+	require.Equal(t, map[string]interface{}{"name": "s3:putobject"}, doc["setting"])
+
+	overrides := e.ResourceOverrides(t.Context(), dir)
+	require.Len(t, overrides, 1)
+	projected := e.OverrideDocument(t.Context(), &overrides[0], e.StandaloneOverrideScope(t.Context(), dir))
+	require.Contains(t, projected["policy"], "s3:getobject")
+	require.Equal(t, doc["action"], projected["action"])
+	require.Equal(t, doc["setting"], projected["setting"])
 }
 
 func TestResourceOverrideJSON(t *testing.T) {

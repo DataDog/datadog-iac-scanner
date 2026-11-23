@@ -350,7 +350,11 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterator
 		return attrSource{}
 	}
 	if attr, ok := body.Attributes[key]; ok && attr != nil {
-		return attrSource{expr: attr.Expr, iterators: iterators, scope: scope}
+		var bindings map[string]cty.Value
+		if scope != nil {
+			bindings = scope.files[attr.SrcRange.Filename]
+		}
+		return attrSource{expr: attr.Expr, iterators: iterators, scope: scope, bindings: bindings}
 	}
 	var blocks []*hclsyntax.Block
 	var counts []int

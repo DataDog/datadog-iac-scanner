@@ -15,10 +15,12 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcljson "github.com/hashicorp/hcl/v2/json"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const (
@@ -61,12 +63,77 @@ func (e *Evaluator) StandaloneOverrideScope(ctx context.Context, dir string) *Mo
 	if parsed.err != nil || ctx.Err() != nil {
 		return nil
 	}
-	scope := e.newModuleScope(ctx, dir, dir, &parsed, e.LoadRootVarsWithContext(ctx, dir))
-	data := newModuleData(e, parsed.sources, parsed.locals, parsed.static, "", nil, parsed.declarations)
+	inputs := e.LoadRootVarsWithContext(ctx, dir)
+	scope := e.newModuleScope(ctx, dir, dir, &parsed, inputs)
+	e.loadOverrideFileInputs(ctx, dir, &parsed, inputs, scope)
+	e.populateStandaloneData(ctx, &parsed, scope)
+	return scope
+}
+
+func (e *Evaluator) populateStandaloneData(ctx context.Context, parsed *dirParse, scope *ModuleScope) {
+	data := newModuleData(e, parsed, "", nil, scope.overrideInputs)
 	data.refresh(ctx, scope.evalCtx)
 	data.resolved(scope)
 	scope.Local = scope.evalCtx.Variables["local"]
-	return scope
+}
+
+// An effective block can combine expressions from files with different tfvars
+// selections. Bind each expression using its written file, including meta
+// arguments, rather than letting a selection leak to another file's fields.
+type overrideFileInputs map[string]map[string]cty.Value
+
+func (i overrideFileInputs) context(base *hcl.EvalContext, file string) *hcl.EvalContext {
+	if bindings := i[file]; len(bindings) != 0 {
+		return partial.Scope(base, bindings)
+	}
+	return base
+}
+
+type overrideInputs struct {
+	bodies map[*hclsyntax.Body]*hclsyntax.Body
+	files  overrideFileInputs
+}
+
+func (o *overrideInputs) forBody(body *hclsyntax.Body) overrideFileInputs {
+	if o != nil && o.bodies[body] != nil {
+		return o.files
+	}
+	return nil
+}
+
+func (e *Evaluator) loadOverrideFileInputs(
+	ctx context.Context, dir string, parsed *dirParse, inputs map[string]cty.Value, scope *ModuleScope,
+) {
+	if e.explicitRootVars != nil || len(parsed.overrides) == 0 {
+		return
+	}
+	files := make(overrideFileInputs)
+	for _, override := range parsed.overrides {
+		files[override.Declaration.TypeRange.Filename] = nil
+		for _, fragment := range override.Contributions {
+			files[fragment.TypeRange.Filename] = nil
+		}
+	}
+	for filename := range files {
+		selected := terraform.ReadFileVariables(ctx, e.fsys, filename, parsed.sources[filename])
+		if len(selected) == 0 {
+			delete(files, filename)
+			continue
+		}
+		combined := make(map[string]cty.Value, len(inputs)+len(selected))
+		maps.Copy(combined, inputs)
+		maps.Copy(combined, selected)
+		fileScope := e.newModuleScope(ctx, dir, dir, parsed, combined)
+		e.populateStandaloneData(ctx, parsed, fileScope)
+		bindings := map[string]cty.Value{"var": fileScope.Var, "local": fileScope.Local}
+		if value, ok := fileScope.evalCtx.Variables["data"]; ok {
+			bindings["data"] = value
+		}
+		files[filename] = bindings
+	}
+	if len(files) != 0 {
+		scope.overrideInputs = &overrideInputs{bodies: parsed.declarations, files: files}
+	}
 }
 
 // OverrideDocument renders an effective declaration at block granularity.
@@ -80,6 +147,9 @@ func (e *Evaluator) OverrideDocument(
 		evalCtx = scope.evalCtx
 	}
 	state := &bodyState{dynamic: &dynamicRecorder{}}
+	if scope != nil && scope.overrideInputs != nil {
+		state.setFileInputs(scope.overrideInputs.files)
+	}
 	r.Attributes = e.evalBodyWith(ctx, r.Body, evalCtx, nil, state)
 	r.DynamicCounts = state.dynamic.counts
 	r.documentScope = state.document
