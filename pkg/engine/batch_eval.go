@@ -261,7 +261,7 @@ func (c *Inspector) evalQueryBatch(
 		qCtx.findings.recordDuplicates = c.inventory != nil
 
 		singleRS := rego.ResultSet{{Bindings: rego.Vars{"result": raw}}}
-		vuls, moduleRaised, moduleSeverity, decErr := c.DecodeQueryResults(ctx, qCtx, ctx, singleRS, perRuleDur)
+		vuls, moduleRaised, moduleSeverity, decErr := c.decodeBatchedQuerySafely(ctx, qCtx, singleRS, perRuleDur)
 		if decErr == nil {
 			c.tracker.TrackQueryExecution(queries[qid].Aggregation)
 		}
@@ -273,6 +273,23 @@ func (c *Inspector) evalQueryBatch(
 			queryID:             qid,
 		}
 	}
+}
+
+func (c *Inspector) decodeBatchedQuerySafely(
+	ctx context.Context,
+	qCtx *QueryContext,
+	singleRS rego.ResultSet,
+	perRuleDur time.Duration,
+) (vuls []model.Vulnerability, raised int, severity model.Severity, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			errMessage := fmt.Sprintf("Recovered from panic during query '%s' run. ", qCtx.Query.Metadata.Query)
+			err = fmt.Errorf("panic: %v\n%s", r, string(debug.Stack()))
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Err(err).Msg(errMessage)
+		}
+	}()
+	return c.DecodeQueryResults(ctx, qCtx, ctx, singleRS, perRuleDur)
 }
 
 func evalBatchSafely(ctx context.Context, batch queryBatch) (results rego.ResultSet, dur time.Duration, err error) {

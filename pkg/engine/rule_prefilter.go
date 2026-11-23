@@ -6,6 +6,7 @@
 package engine
 
 import (
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -70,6 +71,11 @@ type subsetCacheKey struct {
 	key      string
 }
 
+type nodeVisitKey struct {
+	ptr uintptr
+	n   int // -1 for maps, slice length for slices
+}
+
 // docIndexBuilder incrementally indexes documents during buildPlatformPayloads
 // so source document maps can be released immediately after conversion without
 // being pinned until the end of the loop.
@@ -83,6 +89,7 @@ type docIndexBuilder struct {
 	k8sSeen         map[string]struct{}
 	cfnTypes        map[string][]int
 	cfnSeen         map[string]struct{}
+	visited         map[nodeVisitKey]struct{}
 
 	bucketPos   map[string]int
 	unknownDocs []unknownDocEntry
@@ -114,6 +121,9 @@ func newDocIndexBuilder(neededPlatforms map[string]bool) *docIndexBuilder {
 	if neededPlatforms[platformCloudFormation] {
 		b.cfnTypes = make(map[string][]int, cfnTypesCap)
 		b.cfnSeen = make(map[string]struct{}, cfnSeenCap)
+	}
+	if neededPlatforms[platformKubernetes] || neededPlatforms[platformCloudFormation] {
+		b.visited = make(map[nodeVisitKey]struct{}, k8sSeenCap)
 	}
 	return b
 }
@@ -147,14 +157,16 @@ func (b *docIndexBuilder) addUnknownDoc(doc interface{}) {
 				entry.k8sKind = k
 			}
 			clear(b.k8sSeen)
-			collectObjectKeys(m, b.k8sSeen)
+			clear(b.visited)
+			collectObjectKeys(m, b.k8sSeen, b.visited)
 			for k := range b.k8sSeen {
 				entry.k8sKeys = append(entry.k8sKeys, k)
 			}
 		}
 		if b.neededPlatforms[platformCloudFormation] {
 			clear(b.cfnSeen)
-			collectCFNTypes(m, b.cfnSeen)
+			clear(b.visited)
+			collectCFNTypes(m, b.cfnSeen, b.visited)
 			for t := range b.cfnSeen {
 				entry.cfnTypes = append(entry.cfnTypes, t)
 			}
@@ -179,13 +191,15 @@ func (b *docIndexBuilder) indexPlatformDoc(key string, pos int, m map[string]int
 			b.k8sLower[strings.ToLower(kind)] = append(b.k8sLower[strings.ToLower(kind)], pos)
 		}
 		clear(b.k8sSeen)
-		collectObjectKeys(m, b.k8sSeen)
+		clear(b.visited)
+		collectObjectKeys(m, b.k8sSeen, b.visited)
 		for k := range b.k8sSeen {
 			b.k8sKeys[k] = append(b.k8sKeys[k], pos)
 		}
 	case platformCloudFormation:
 		clear(b.cfnSeen)
-		collectCFNTypes(m, b.cfnSeen)
+		clear(b.visited)
+		collectCFNTypes(m, b.cfnSeen, b.visited)
 		for typ := range b.cfnSeen {
 			b.cfnTypes[typ] = append(b.cfnTypes[typ], pos)
 		}
@@ -269,36 +283,60 @@ func (b *docIndexBuilder) appendUnknownEntry(entry *unknownDocEntry) {
 	}
 }
 
-func collectObjectKeys(node interface{}, seen map[string]struct{}) {
+func markNodeVisited(visited map[nodeVisitKey]struct{}, ptr uintptr, n int) bool {
+	if ptr == 0 || visited == nil {
+		return false
+	}
+	k := nodeVisitKey{ptr: ptr, n: n}
+	if _, seen := visited[k]; seen {
+		return true
+	}
+	visited[k] = struct{}{}
+	return false
+}
+
+func collectObjectKeys(node interface{}, seen map[string]struct{}, visited map[nodeVisitKey]struct{}) {
 	if v, ok := asStringMap(node); ok {
+		if markNodeVisited(visited, reflect.ValueOf(v).Pointer(), -1) {
+			return
+		}
 		for k, child := range v {
 			if k != "" && k[0] != '_' {
 				seen[k] = struct{}{}
 			}
-			collectObjectKeys(child, seen)
+			collectObjectKeys(child, seen, visited)
 		}
 		return
 	}
 	if v, ok := node.([]interface{}); ok {
+		if markNodeVisited(visited, reflect.ValueOf(v).Pointer(), len(v)) {
+			return
+		}
 		for _, elem := range v {
-			collectObjectKeys(elem, seen)
+			collectObjectKeys(elem, seen, visited)
 		}
 	}
 }
 
-func collectCFNTypes(node interface{}, seen map[string]struct{}) {
+func collectCFNTypes(node interface{}, seen map[string]struct{}, visited map[nodeVisitKey]struct{}) {
 	if v, ok := asStringMap(node); ok {
+		if markNodeVisited(visited, reflect.ValueOf(v).Pointer(), -1) {
+			return
+		}
 		if t, ok := v["Type"].(string); ok && t != "" {
 			seen[t] = struct{}{}
 		}
 		for _, child := range v {
-			collectCFNTypes(child, seen)
+			collectCFNTypes(child, seen, visited)
 		}
 		return
 	}
 	if v, ok := node.([]interface{}); ok {
+		if markNodeVisited(visited, reflect.ValueOf(v).Pointer(), len(v)) {
+			return
+		}
 		for _, elem := range v {
-			collectCFNTypes(elem, seen)
+			collectCFNTypes(elem, seen, visited)
 		}
 	}
 }
@@ -504,12 +542,42 @@ func unionSortedInts(lists [][]int) []int {
 	return out[:w]
 }
 
+// moduleHasInputImport reports whether mod imports `input` or any subpath of
+// `input` (e.g. `import input.document as docs`).
+func moduleHasInputImport(mod *ast.Module) bool {
+	if mod == nil {
+		return false
+	}
+	for _, imp := range mod.Imports {
+		if ref, ok := imp.Path.Value.(ast.Ref); ok && len(ref) > 0 && ref[0].Equal(ast.InputRootDocument) {
+			return true
+		}
+	}
+	return false
+}
+
+// moduleHasWith reports whether mod contains any `with` replacement modifier.
+func moduleHasWith(mod *ast.Module) bool {
+	if mod == nil {
+		return false
+	}
+	found := false
+	ast.WalkWiths(mod, func(*ast.With) bool {
+		found = true
+		return true
+	})
+	return found
+}
+
 // moduleReadsInput reports whether any rule in mod references the `input`
-// global variable. Used once per loaded library to prove libraries do not
-// perform hidden cross-document reads of input.document.
+// global variable (directly or via an `import input...`). Used once per loaded
+// library to prove libraries do not perform hidden cross-document reads.
 func moduleReadsInput(mod *ast.Module) bool {
 	if mod == nil {
 		return false
+	}
+	if moduleHasInputImport(mod) {
+		return true
 	}
 	found := false
 	ast.WalkRefs(mod, func(r ast.Ref) bool {
@@ -568,7 +636,7 @@ func moduleUsesUnsafeBuiltin(mod *ast.Module) bool {
 // of the return value) is provably a subtree of the input argument in every
 // rule branch (e.g., k8s `spec_info(document)` returns `{"spec": document...}`).
 func extractLibSubtreeFuncs(mod *ast.Module) map[string]map[string]bool {
-	if mod == nil {
+	if mod == nil || moduleHasWith(mod) {
 		return nil
 	}
 	byName := make(map[string][]*ast.Rule)
@@ -703,7 +771,7 @@ func analyzeRuleFilter(
 	if mod == nil || (canonPlat != platformTerraform && canonPlat != platformKubernetes && canonPlat != platformCloudFormation) {
 		return ruleDocFilter{}
 	}
-	if moduleUsesUnsafeBuiltin(mod) {
+	if moduleUsesUnsafeBuiltin(mod) || moduleHasWith(mod) {
 		return ruleDocFilter{}
 	}
 
@@ -713,7 +781,7 @@ func analyzeRuleFilter(
 	}
 
 	constSets := extractConstStringSets(mod)
-	allSingleDoc := !libReadsInput && !helperReadsInput && allRulesSingleDoc(policyRules)
+	allSingleDoc := !libReadsInput && !helperReadsInput && !moduleHasInputImport(mod) && allRulesSingleDoc(policyRules)
 
 	switch canonPlat {
 	case platformTerraform:
@@ -784,6 +852,14 @@ func ruleReadsInputDocument(r *ast.Rule) bool {
 // non-wildcard variable `v`, AND that `v` is never used outside `input.document[v]`
 // and `some` declarations.
 func singleDocIndexVar(r *ast.Rule) (ast.Var, bool) {
+	hasClosure := false
+	ast.WalkClosures(r, func(interface{}) bool {
+		hasClosure = true
+		return true
+	})
+	if hasClosure {
+		return "", false
+	}
 	allowed := collectSomeDeclTerms(r)
 	docVar, ok := findSingleInputDocVar(r, allowed)
 	if !ok {
@@ -884,9 +960,9 @@ func isTrivialRuleBody(body ast.Body) bool {
 }
 
 // extractConstStringSets collects module-level constant string sets/arrays
-// (e.g. `kinds := {"Deployment", "DaemonSet"}`). Only names defined by a single
-// unconditional rule are recorded so multi-branch/partial definitions are never
-// under-approximated.
+// (e.g. `kinds := {"Deployment", "DaemonSet"}`). Only complete, single-name
+// rules defined once unconditionally are recorded so partial objects, partial
+// sets, and multi-branch definitions are never misread.
 func extractConstStringSets(mod *ast.Module) map[string][]string {
 	counts := make(map[ast.Var]int, len(mod.Rules))
 	for _, r := range mod.Rules {
@@ -896,8 +972,7 @@ func extractConstStringSets(mod *ast.Module) map[string][]string {
 	}
 	out := make(map[string][]string)
 	for _, r := range mod.Rules {
-		if r.Head == nil || counts[r.Head.Name] != 1 || !isTrivialRuleBody(r.Body) ||
-			r.Else != nil || len(r.Head.Args) > 0 || r.Head.Value == nil {
+		if !isCompleteConstRule(r, counts) {
 			continue
 		}
 		if strs, ok := extractStringLiterals(r.Head.Value.Value); ok && len(strs) > 0 {
@@ -905,6 +980,105 @@ func extractConstStringSets(mod *ast.Module) map[string][]string {
 		}
 	}
 	return out
+}
+
+func isCompleteConstRule(r *ast.Rule, counts map[ast.Var]int) bool {
+	if r.Head == nil || r.Default || r.Else != nil || len(r.Head.Args) > 0 || r.Head.Value == nil {
+		return false
+	}
+	if counts[r.Head.Name] != 1 || !isTrivialRuleBody(r.Body) {
+		return false
+	}
+	return r.Head.DocKind() == ast.CompleteDoc && r.Head.Key == nil && len(r.Head.Ref()) == 1
+}
+
+// bodyConstSets removes any module-level constant name that body locally
+// shadows via `:=`, `some`, or `every` bindings so local definitions are never
+// resolved to module-level constants.
+func bodyConstSets(body ast.Body, moduleConstSets map[string][]string) map[string][]string {
+	if len(moduleConstSets) == 0 {
+		return nil
+	}
+	var shadowed map[string]struct{}
+	mark := func(v ast.Var) {
+		name := string(v)
+		if _, exists := moduleConstSets[name]; !exists {
+			return
+		}
+		if shadowed == nil {
+			shadowed = make(map[string]struct{}, 2)
+		}
+		shadowed[name] = struct{}{}
+	}
+	for _, expr := range body {
+		collectExprLocalBindings(expr, mark)
+	}
+	if len(shadowed) == 0 {
+		return moduleConstSets
+	}
+	filtered := make(map[string][]string, len(moduleConstSets)-len(shadowed))
+	for k, v := range moduleConstSets {
+		if _, isShadowed := shadowed[k]; !isShadowed {
+			filtered[k] = v
+		}
+	}
+	return filtered
+}
+
+func collectExprLocalBindings(expr *ast.Expr, mark func(ast.Var)) {
+	switch terms := expr.Terms.(type) {
+	case *ast.SomeDecl:
+		for _, t := range terms.Symbols {
+			ast.WalkVars(t, func(v ast.Var) bool {
+				mark(v)
+				return false
+			})
+		}
+	case *ast.Every:
+		if terms.Key != nil {
+			if v, ok := terms.Key.Value.(ast.Var); ok {
+				mark(v)
+			}
+		}
+		if terms.Value != nil {
+			if v, ok := terms.Value.Value.(ast.Var); ok {
+				mark(v)
+			}
+		}
+	default:
+		if expr.IsCall() && expr.Operator().String() == ast.Assign.Name {
+			if ops := expr.Operands(); len(ops) == 2 {
+				ast.WalkVars(ops[0], func(v ast.Var) bool {
+					mark(v)
+					return false
+				})
+			}
+		}
+	}
+}
+
+func allNonEmptyStrings(strs []string) bool {
+	if len(strs) == 0 {
+		return false
+	}
+	for _, s := range strs {
+		if s == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func allIndexableKeys(strs []string) bool {
+	if len(strs) == 0 {
+		return false
+	}
+	for _, s := range strs {
+		if s == "" || s[0] == '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func extractStringLiterals(v ast.Value) ([]string, bool) {
@@ -1165,8 +1339,9 @@ func analyzeTerraformRule(policyRules []*ast.Rule, constSets map[string][]string
 }
 
 func extractTerraformBodyPreds(body ast.Body, constSets map[string][]string) []tfResourceKey {
+	scopedSets := bodyConstSets(body, constSets)
 	aliases := collectBodyDocAliases(body)
-	exactVar, _ := collectVarStringConstraints(body, constSets)
+	exactVar, _ := collectVarStringConstraints(body, scopedSets)
 
 	var specific []tfResourceKey
 	var sectionOnly []tfResourceKey
@@ -1205,12 +1380,12 @@ func collectTerraformRefPred(
 		if len(tail) >= 2 {
 			switch t := tail[1].Value.(type) {
 			case ast.String:
-				if string(t) != "" {
-					*specific = append(*specific, tfResourceKey{section: secStr, typ: string(t)})
+				if s := string(t); s != "" && s[0] != '_' {
+					*specific = append(*specific, tfResourceKey{section: secStr, typ: s})
 					return
 				}
 			case ast.Var:
-				if strs := exactVar[t]; len(strs) > 0 {
+				if strs := exactVar[t]; allIndexableKeys(strs) {
 					for _, s := range strs {
 						*specific = append(*specific, tfResourceKey{section: secStr, typ: s})
 					}
@@ -1426,8 +1601,9 @@ func extractK8sBodyKeyConjuncts(
 	k8sLibAliases map[string]bool,
 	libSubtreeFuncs map[string]map[string]bool,
 ) [][]string {
+	scopedSets := bodyConstSets(body, constSets)
 	aliases := collectBodyDocAliases(body)
-	exactVar, _ := collectVarStringConstraints(body, constSets)
+	exactVar, _ := collectVarStringConstraints(body, scopedSets)
 
 	docSubtreeVars := make(map[ast.Var]bool, len(aliases.docVars)+aliasExtraCap)
 	for v := range aliases.docVars {
@@ -1454,7 +1630,7 @@ func extractK8sBodyKeyConjuncts(
 				return
 			}
 			for i := start; i < len(ref); i++ {
-				if group := k8sStepKeys(ref[i].Value, exactVar, constSets); len(group) > 0 {
+				if group := k8sStepKeys(ref[i].Value, exactVar, scopedSets); len(group) > 0 {
 					conjuncts = appendUniqueKeyGroup(conjuncts, seenGroups, group)
 				}
 			}
@@ -1480,15 +1656,11 @@ func k8sStepKeys(v ast.Value, exactVar map[ast.Var][]string, constSets map[strin
 }
 
 func appendUniqueKeyGroup(conjuncts [][]string, seen map[string]struct{}, keys []string) [][]string {
-	cp := make([]string, 0, len(keys))
-	for _, k := range keys {
-		if k != "" && k[0] != '_' {
-			cp = append(cp, k)
-		}
-	}
-	if len(cp) == 0 {
+	if !allIndexableKeys(keys) {
 		return conjuncts
 	}
+	cp := make([]string, len(keys))
+	copy(cp, keys)
 	sort.Strings(cp)
 	w := 1
 	for i := 1; i < len(cp); i++ {
@@ -1507,21 +1679,30 @@ func appendUniqueKeyGroup(conjuncts [][]string, seen map[string]struct{}, keys [
 }
 
 func extractK8sBodyKinds(body ast.Body, constSets map[string][]string) (exact, lower []string) {
+	scopedSets := bodyConstSets(body, constSets)
 	aliases := collectBodyDocAliases(body)
-	exactVar, lowerVar := collectVarStringConstraints(body, constSets)
+	exactVar, lowerVar := collectVarStringConstraints(body, scopedSets)
 
 	for v := range collectKindAliasVars(body, aliases) {
-		exact = append(exact, exactVar[v]...)
-		lower = append(lower, lowerVar[v]...)
+		if ex := exactVar[v]; allNonEmptyStrings(ex) {
+			exact = append(exact, ex...)
+		}
+		if lo := lowerVar[v]; allNonEmptyStrings(lo) {
+			lower = append(lower, lo...)
+		}
 	}
 
 	for _, expr := range body {
 		if expr.Negated {
 			continue
 		}
-		ex, lo := extractDirectKindExpr(expr, aliases, constSets)
-		exact = append(exact, ex...)
-		lower = append(lower, lo...)
+		ex, lo := extractDirectKindExpr(expr, aliases, scopedSets)
+		if allNonEmptyStrings(ex) {
+			exact = append(exact, ex...)
+		}
+		if allNonEmptyStrings(lo) {
+			lower = append(lower, lo...)
+		}
 	}
 	return exact, lower
 }
@@ -1714,8 +1895,9 @@ func (tr *cfnSubtreeTracker) propagate(body ast.Body) {
 }
 
 func extractCFNBodyTypes(body ast.Body, constSets map[string][]string) []string {
+	scopedSets := bodyConstSets(body, constSets)
 	aliases := collectBodyDocAliases(body)
-	exactVar, _ := collectVarStringConstraints(body, constSets)
+	exactVar, _ := collectVarStringConstraints(body, scopedSets)
 
 	derived := make(map[ast.Var]struct{}, len(aliases.docVars)+aliasExtraCap)
 	for v := range aliases.docVars {
@@ -1730,10 +1912,15 @@ func extractCFNBodyTypes(body ast.Body, constSets map[string][]string) []string 
 		if expr.Negated || !expr.IsCall() {
 			continue
 		}
-		out = appendCFNExprTypes(out, expr, tracker, constSets, typeVars)
+		out = appendCFNExprTypes(out, expr, tracker, scopedSets, typeVars)
 	}
 	for v := range typeVars {
-		out = append(out, exactVar[v]...)
+		if strs := exactVar[v]; allNonEmptyStrings(strs) {
+			out = append(out, strs...)
+		}
+	}
+	if !allNonEmptyStrings(out) {
+		return nil
 	}
 	return out
 }
