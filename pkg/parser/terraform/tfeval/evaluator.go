@@ -188,8 +188,9 @@ type Evaluator struct {
 
 	// instances holds the module calls the running EvaluateModule evaluated.
 	// They are only collected when trackInstances is set.
-	instances      []ModuleInstance
-	trackInstances bool
+	instances         []ModuleInstance
+	instanceWatermark int
+	trackInstances    bool
 
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
@@ -340,8 +341,21 @@ func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
 // chain is shared with the call's resources and must not be modified.
 func (e *Evaluator) recordModuleInstance(dir, addr string, chain *callChain) {
 	if e.trackInstances {
-		e.instances = append(e.instances, ModuleInstance{Dir: dir, ModuleAddress: addr, chain: chain})
+		e.appendInstances([]ModuleInstance{{Dir: dir, ModuleAddress: addr, chain: chain}})
 	}
+}
+
+// Cached ranges may share the append-only instance buffer. A speculative
+// rollback forks it before appending so old snapshots cannot be overwritten.
+func (e *Evaluator) appendInstances(instances []ModuleInstance) {
+	if len(instances) == 0 {
+		return
+	}
+	if len(e.instances) < e.instanceWatermark {
+		e.instances = slices.Clone(e.instances)
+		e.instanceWatermark = len(e.instances)
+	}
+	e.instances = append(e.instances, instances...)
 }
 
 // AddNotEvaluatedDirs records directories another evaluator skipped.
@@ -429,9 +443,13 @@ func (e *Evaluator) EvaluateModule(
 		abs = filepath.Clean(dir)
 	}
 	visiting := map[string]bool{}
-	allVisited := map[string]bool{}
+	allVisited := &directorySet{}
 	e.instances = nil
-	resources, outputs, err = e.evaluateChain(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited)
+	e.instanceWatermark = 0
+	tree, outputs, err := e.evaluateChain(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited)
+	resources = materializeResources(tree.flatten(ctx))
+	visitedChildDirs = map[string]bool{}
+	allVisited.copyInto(visitedChildDirs)
 	if err == nil {
 		// A canceled or timed-out scan may have stopped mid-expansion. Do not
 		// return that partial tree as a completed evaluation.
@@ -440,7 +458,7 @@ func (e *Evaluator) EvaluateModule(
 	if err != nil {
 		e.instances = nil
 	}
-	return materializeResources(resources), outputs, allVisited, err
+	return resources, outputs, visitedChildDirs, err
 }
 
 // evaluateChain is the recursive worker; visiting tracks physical directory identities for cycle
@@ -453,8 +471,8 @@ func (e *Evaluator) evaluateChain(
 	addr string,
 	chain *callChain,
 	visiting map[string]bool,
-	allVisited map[string]bool,
-) ([]ResolvedResource, map[string]cty.Value, error) {
+	allVisited *directorySet,
+) (*resourceTree, map[string]cty.Value, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -493,7 +511,7 @@ func (e *Evaluator) evaluateChain(
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	if entry := run.partialResult(&cacheKey, inputs, visiting); entry != nil {
+	if entry := run.partialResult(ctx, &cacheKey, inputs, visiting); entry != nil {
 		resources, outputs := e.restoreCachedEvaluation(entry, addr, chain, allVisited)
 		return resources, outputs, nil
 	}
@@ -504,12 +522,8 @@ func (e *Evaluator) evaluateChain(
 
 	// The cache needs this subtree's complete footprint, including directories
 	// another sibling already visited. Keep the caller's coverage independent.
-	subtreeVisited := make(map[string]bool)
-	defer func() {
-		for visited := range subtreeVisited {
-			allVisited[visited] = true
-		}
-	}()
+	subtreeVisited := &directorySet{}
+	defer allVisited.include(subtreeVisited)
 
 	parsed := e.parseDir(ctx, dir, packageRoot)
 	if parsed.err != nil {
@@ -565,10 +579,8 @@ func (e *Evaluator) evaluateChain(
 		rootResources[i].Scope = scope
 	}
 	dataInstances := data.resolved(scope)
-	resources := make([]ResolvedResource, 0, len(rootResources)+len(dataInstances)+len(childResources))
-	resources = append(resources, rootResources...)
-	resources = append(resources, dataInstances...)
-	resources = append(resources, childResources...)
+	rootResources = append(rootResources, dataInstances...)
+	resources := moduleResourceTree(rootResources, childResources)
 
 	outputs := make(map[string]cty.Value, len(parsed.outputs))
 	for name, expr := range parsed.outputs {
@@ -645,8 +657,9 @@ func (e *Evaluator) reuseCachedEvaluation(
 	inputsKeyOK bool,
 	addr string,
 	chain *callChain,
-	visiting, allVisited map[string]bool,
-) (resources []ResolvedResource, outputs map[string]cty.Value, hit bool) {
+	visiting map[string]bool,
+	allVisited *directorySet,
+) (resources *resourceTree, outputs map[string]cty.Value, hit bool) {
 	if !inputsKeyOK {
 		return nil, nil, false
 	}
@@ -656,10 +669,8 @@ func (e *Evaluator) reuseCachedEvaluation(
 	}
 	// A complete result from another ancestry must not bypass the same cycle
 	// check a fresh traversal would apply to one of its descendants.
-	for _, identity := range entry.enteredIdentities {
-		if ctx.Err() != nil || visiting[identity] {
-			return nil, nil, false
-		}
+	if !entry.compatible(ctx, visiting) {
+		return nil, nil, false
 	}
 	resources, outputs = e.restoreCachedEvaluation(entry, addr, chain, allVisited)
 	return resources, outputs, true
@@ -669,23 +680,17 @@ func (e *Evaluator) restoreCachedEvaluation(
 	entry *evalCacheEntry,
 	addr string,
 	chain *callChain,
-	allVisited map[string]bool,
-) (resources []ResolvedResource, outputs map[string]cty.Value) {
-	for _, identity := range entry.enteredIdentities {
-		e.evaluation.effects.recordDecision(identity, false)
-	}
-	for _, identity := range entry.externalStops {
-		e.evaluation.effects.recordDecision(identity, true)
-	}
-	for _, visited := range entry.visitedDirs {
-		allVisited[visited] = true
-	}
+	allVisited *directorySet,
+) (resources *resourceTree, outputs map[string]cty.Value) {
+	e.evaluation.effects.entered.include(entry.enteredIdentities)
+	e.evaluation.effects.blocked.include(entry.blockedIdentities)
+	allVisited.include(entry.visitedDirs)
 	for _, stopped := range entry.stoppedDirs {
 		e.evaluation.recordStop(stopped, e.notEvaluatedDirs)
 	}
 	rebased := chainRebaser{entry.baseChain: chain}
-	e.instances = append(e.instances, entry.rebaseInstances(addr, chain, rebased)...)
-	return entry.rebase(addr, chain, rebased), entry.outputs
+	e.appendInstances(entry.rebaseInstances(addr, chain, rebased))
+	return entry.rebase(addr, chain), entry.outputs
 }
 
 func (e *Evaluator) preinjectResourceRefs(
@@ -713,39 +718,29 @@ func (e *Evaluator) cacheEvaluation(
 	inputsKeyOK bool,
 	inputs map[string]cty.Value,
 	effects *evaluationEffects,
-	resources []ResolvedResource,
+	resources *resourceTree,
 	instances []ModuleInstance,
 	outputs map[string]cty.Value,
-	subtreeVisited map[string]bool,
+	subtreeVisited *directorySet,
 	addr string,
 	chain *callChain,
 ) {
 	if len(effects.stops) == 0 && !inputsKeyOK {
 		return
 	}
-	visitedDirs := make([]string, 0, len(subtreeVisited))
-	for visited := range subtreeVisited {
-		visitedDirs = append(visitedDirs, visited)
-	}
+
 	stoppedDirs := make([]string, 0, len(effects.stops))
 	for stopped := range effects.stops {
 		stoppedDirs = append(stoppedDirs, stopped)
 	}
 	entry := &evalCacheEntry{
-		resources: resources, instances: slices.Clone(instances), outputs: outputs,
-		visitedDirs: visitedDirs, stoppedDirs: stoppedDirs, baseAddr: addr, baseChain: chain,
+		resources: resources, instances: instances[:len(instances):len(instances)], outputs: outputs,
+		visitedDirs: subtreeVisited, stoppedDirs: stoppedDirs, baseAddr: addr, baseChain: chain,
 	}
-	// Cycle dependencies include speculative passes as well as published work.
-	for identity := range effects.entered {
-		entry.enteredIdentities = append(entry.enteredIdentities, identity)
-	}
-	for identity := range effects.blocked {
-		// Stops at directories entered within the subtree are internal cycles.
-		if !effects.entered[identity] {
-			entry.externalStops = append(entry.externalStops, identity)
-		}
-	}
-	if len(stoppedDirs) > 0 || len(entry.externalStops) > 0 {
+	e.instanceWatermark = max(e.instanceWatermark, len(e.instances))
+	entry.enteredIdentities = effects.entered
+	entry.blockedIdentities = effects.blocked
+	if len(stoppedDirs) > 0 || entry.hasExternalStops() {
 		e.evaluation.rememberPartial(key, inputs, entry)
 		return
 	}
@@ -782,8 +777,8 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	dir, rootDir, packageRoot, addr string,
 	chain *callChain,
 	visiting map[string]bool,
-	allVisited map[string]bool,
-) (childResources []ResolvedResource, moduleOutputs map[string]cty.Value) {
+	allVisited *directorySet,
+) (childResources []*resourceTree, moduleOutputs map[string]cty.Value) {
 	contextLogger := logger.FromContext(ctx)
 
 	// Seed with the pre-pass values already in evalCtx so that forward dependencies
@@ -803,7 +798,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 	}
 	order := scope.static.moduleOrder
-	results := newModuleCallResources(order)
+	results := newModuleCallResources[*resourceTree](order)
 	for position := range moduleBlocks {
 		blockIndex := position
 		if order != nil {
@@ -858,8 +853,10 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				break
 			}
 			e.recordModuleInstance(call.dir, childAddr, childChain)
-			allVisited[call.dir] = true
-			results.add(blockIndex, childRes)
+			allVisited.add(call.dir)
+			if childRes != nil {
+				results.add(blockIndex, []*resourceTree{childRes})
+			}
 			outs = append(outs, objectOrEmpty(childOuts))
 		}
 		results.finish(blockIndex)
@@ -1706,7 +1703,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			childChain := chain.append(&instanceSite)
 			_, childOuts, err := e.evaluateChain(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
-				tmpVisiting, map[string]bool{},
+				tmpVisiting, &directorySet{},
 			)
 			if err == nil {
 				outs = append(outs, objectOrEmpty(childOuts))

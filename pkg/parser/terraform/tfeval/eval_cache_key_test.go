@@ -156,48 +156,66 @@ module "beta" {
 
 func TestEvaluateModule_DeepLocalModules(t *testing.T) {
 	for _, levels := range []int{1, 24, 64, 256} {
-		t.Run(fmt.Sprint(levels), func(t *testing.T) {
-			root := t.TempDir()
-			for i := levels - 1; i >= 0; i-- {
-				source := `resource "terraform_data" "leaf" {input="leaf-known"}
-output "value" {value="leaf-known"}`
-				if i < levels-1 {
-					source = fmt.Sprintf("module \"n\" {source=\"../l%02d\"}\noutput \"value\" {value=module.n.value}", i+1)
+		for _, dense := range []bool{false, true} {
+			t.Run(fmt.Sprintf("levels%d/dense%t", levels, dense), func(t *testing.T) {
+				root := t.TempDir()
+				for i := levels - 1; i >= 0; i-- {
+					source := `output "value" {value="leaf-known"}`
+					if i < levels-1 {
+						source = fmt.Sprintf("module \"n\" {source=\"../l%02d\"}\noutput \"value\" {value=module.n.value}", i+1)
+					}
+					if dense || i == levels-1 {
+						source += `
+resource "terraform_data" "value" {input="leaf-known"}`
+					}
+					writeModule(t, root, fmt.Sprintf("l%02d", i), map[string]string{"main.tf": source})
 				}
-				writeModule(t, root, fmt.Sprintf("l%02d", i), map[string]string{"main.tf": source})
-			}
-			evaluator := New()
-			evaluator.SetTrackModuleInstances(true)
-			resources, outputs, visited, err := evaluator.EvaluateModule(t.Context(), filepath.Join(root, "l00"), nil)
-			require.NoError(t, err)
-			require.Len(t, resources, 1)
-			require.Equal(t, cty.StringVal("leaf-known"), resources[0].Attributes["input"])
-			require.Equal(t, cty.StringVal("leaf-known"), outputs["value"])
-			instances := evaluator.TakeModuleInstances()
-			require.Len(t, instances, levels-1)
-			storage := map[*CallSite]bool{}
-			for _, instance := range instances {
-				require.Len(t, instance.CallChain, strings.Count(instance.ModuleAddress, "module."))
-				require.Equal(t, len(instance.CallChain), cap(instance.CallChain))
-				for i := range instance.CallChain {
-					site := &instance.CallChain[i]
-					require.Equal(t, "n", site.ModuleName)
-					require.Equal(t, filepath.Join(root, fmt.Sprintf("l%02d", i), "main.tf"), site.CalledFrom)
-					storage[site] = true
+				evaluator := New()
+				evaluator.SetTrackModuleInstances(true)
+				resources, outputs, visited, err := evaluator.EvaluateModule(t.Context(), filepath.Join(root, "l00"), nil)
+				require.NoError(t, err)
+				wantResources := 1
+				if dense {
+					wantResources = levels
 				}
-			}
-			require.Less(t, len(storage), 3*levels, "exporting every module path must retain linear call-site storage")
-			require.Len(t, resources[0].CallChain, levels-1)
-			repeated, repeatedOutputs, _, err := evaluator.EvaluateModule(t.Context(), filepath.Join(root, "l00"), nil)
-			require.NoError(t, err)
-			require.Equal(t, resources, repeated, "cache reuse must preserve resource provenance")
-			require.Equal(t, outputs, repeatedOutputs)
-			require.Equal(t, instances, evaluator.TakeModuleInstances(), "cache reuse must preserve module provenance")
-			require.Empty(t, evaluator.NotEvaluatedDirs())
-			for i := 1; i < levels; i++ {
-				require.True(t, visited[filepath.Join(root, fmt.Sprintf("l%02d", i))])
-			}
-		})
+				require.Len(t, resources, wantResources)
+				require.Equal(t, cty.StringVal("leaf-known"), outputs["value"])
+				for i, resource := range resources {
+					level := levels - 1
+					if dense {
+						level = i
+					}
+					require.Equal(t, filepath.Join(root, fmt.Sprintf("l%02d", level), "main.tf"), resource.DefinedIn)
+					require.Equal(t, cty.StringVal("leaf-known"), resource.Attributes["input"])
+					require.Len(t, resource.CallChain, level)
+				}
+				require.Equal(t, wantResources, cachedResources(evaluator), "cache retention must count each resource once regardless of ancestor depth")
+				instances := evaluator.TakeModuleInstances()
+				require.Len(t, instances, levels-1)
+				storage := map[*CallSite]bool{}
+				for _, instance := range instances {
+					require.Len(t, instance.CallChain, strings.Count(instance.ModuleAddress, "module."))
+					require.Equal(t, len(instance.CallChain), cap(instance.CallChain))
+					for i := range instance.CallChain {
+						site := &instance.CallChain[i]
+						require.Equal(t, "n", site.ModuleName)
+						require.Equal(t, filepath.Join(root, fmt.Sprintf("l%02d", i), "main.tf"), site.CalledFrom)
+						storage[site] = true
+					}
+				}
+				require.Less(t, len(storage), 3*levels, "exporting every module path must retain linear call-site storage")
+				repeated, repeatedOutputs, repeatedVisited, err := evaluator.EvaluateModule(t.Context(), filepath.Join(root, "l00"), nil)
+				require.NoError(t, err)
+				require.Equal(t, resources, repeated, "cache reuse must preserve resource order and provenance")
+				require.Equal(t, outputs, repeatedOutputs)
+				require.Equal(t, visited, repeatedVisited)
+				require.Equal(t, instances, evaluator.TakeModuleInstances(), "cache reuse must preserve module provenance")
+				require.Empty(t, evaluator.NotEvaluatedDirs())
+				for i := 1; i < levels; i++ {
+					require.True(t, visited[filepath.Join(root, fmt.Sprintf("l%02d", i))])
+				}
+			})
+		}
 	}
 }
 
@@ -334,13 +352,13 @@ module "leaf" {source="../leaf"}`})
 				"value": finalValue, "source": cty.StringVal(finalSource), "version": cty.StringVal(finalVersion),
 			})
 			resources, _ := evaluator.evaluateLocalModuleBlocks(t.Context(), parsed.modules, parsed.static.siblings,
-				evalCtx, scope, data, stack, stack, "", "", nil, visiting, map[string]bool{})
+				evalCtx, scope, data, stack, stack, "", "", nil, visiting, &directorySet{})
 			wantEvaluations := 1
 			if changed == "unknown input refinements" {
 				wantEvaluations = 2
 			}
 			require.Equal(t, wantEvaluations, evaluator.DataBlockEvaluations(), "changed native inputs require fresh evaluation; provenance alone is rebound")
-			value := findResource(t, materializeResources(resources), "terraform_data", "value")
+			value := findResource(t, materializeResources(moduleResourceTree(nil, resources).flatten(t.Context())), "terraform_data", "value")
 			require.True(t, value.Attributes["input"].RawEquals(finalValue.Equals(cty.NullVal(cty.String))), "the final attributes must reflect the refined inputs")
 			require.Len(t, value.CallChain, 1)
 			require.Equal(t, finalSource, value.CallChain[0].Source)
@@ -537,7 +555,9 @@ output "v" {value=module.a.v}`, "../"+filepath.Base(source.dir))})
 						key := evalCacheKey{dir: m, rootDir: root, inputs: canonicalInputsKey(nil)}
 						entry := cached.cache[key]
 						require.NotNil(t, entry)
-						require.Contains(t, entry.visitedDirs, source.dir, "coverage retains the evaluated lexical path")
+						coverage := map[string]bool{}
+						entry.visitedDirs.copyInto(coverage)
+						require.Contains(t, coverage, source.dir, "coverage retains the evaluated lexical path")
 						visiting := map[string]bool{}
 						switch contextName {
 						case "unrelated":
@@ -672,7 +692,7 @@ module "self" {source="./"}`})
 				nextVisiting[leafID] = true
 			}
 			nextVisiting["unrelated"] = true
-			entry := e.evaluation.partialResult(&key, nil, nextVisiting)
+			entry := e.evaluation.partialResult(t.Context(), &key, nil, nextVisiting)
 			if changed == "irrelevant ancestor" {
 				require.NotNil(t, entry)
 			} else {
@@ -719,18 +739,18 @@ func TestEvalCache_SpeculativeCycleDependencies(t *testing.T) {
 			e.evaluation.finishEffects(speculative, e.notEvaluatedDirs, false)
 			require.Empty(t, e.NotEvaluatedDirs(), "speculative reporting effects must roll back")
 			key := evalCacheKey{dir: root, rootDir: root, inputs: canonicalInputsKey(nil)}
-			e.cacheEvaluation(&key, true, nil, outer, nil, nil, map[string]cty.Value{}, map[string]bool{}, "", nil)
+			e.cacheEvaluation(&key, true, nil, outer, nil, nil, map[string]cty.Value{}, &directorySet{}, "", nil)
 			// This parent has no published children or stops, only pre-pass dependencies.
 			visiting[identity] = !blocked
 			if blocked {
-				require.Nil(t, e.evaluation.partialResult(&key, nil, visiting), "external speculative stop no longer applies")
+				require.Nil(t, e.evaluation.partialResult(t.Context(), &key, nil, visiting), "external speculative stop no longer applies")
 				visiting[identity] = true
-				require.NotNil(t, e.evaluation.partialResult(&key, nil, visiting))
+				require.NotNil(t, e.evaluation.partialResult(t.Context(), &key, nil, visiting))
 			} else {
-				_, _, hit := e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, map[string]bool{})
+				_, _, hit := e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, &directorySet{})
 				require.False(t, hit, "a speculative child would now stop")
 				visiting[identity] = false
-				_, _, hit = e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, map[string]bool{})
+				_, _, hit = e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, &directorySet{})
 				require.True(t, hit)
 			}
 		})
@@ -806,35 +826,58 @@ func (e *Evaluator) evaluate(ctx context.Context, dir, rootDir, packageRoot stri
 	for _, site := range sites {
 		chain = chain.append(&site)
 	}
-	resources, outputs, err := e.evaluateChain(ctx, dir, rootDir, packageRoot, inputs, addr, chain, visiting, visited)
-	return materializeResources(resources), outputs, err
+	footprint := &directorySet{}
+	resources, outputs, err := e.evaluateChain(ctx, dir, rootDir, packageRoot, inputs, addr, chain, visiting, footprint)
+	footprint.copyInto(visited)
+	return materializeResources(resources.flatten(ctx)), outputs, err
 }
 
-// Include empty module instances: their provenance must not require resources
-// at every level to expose repeated ancestor copies.
+// Vary resource density and cache state independently of module depth.
 func BenchmarkEvaluateModuleDeepChain(b *testing.B) {
-	for _, depth := range []int{64, 128, 256} {
-		b.Run(fmt.Sprint(depth), func(b *testing.B) {
-			root := filepath.Join(b.TempDir(), "modules")
-			files := map[string][]byte{}
-			for i := range depth {
-				source := `resource "terraform_data" "leaf" {input="known"}`
-				if i+1 < depth {
-					source = fmt.Sprintf("module \"next\" {source=\"../n%d\"}", i+1)
-				}
-				files[filepath.Join(root, fmt.Sprintf("n%d", i), "main.tf")] = []byte(source)
+	for _, dense := range []bool{false, true} {
+		for _, state := range []string{"cold", "parsed", "cached"} {
+			for _, depth := range []int{64, 128, 256} {
+				b.Run(fmt.Sprintf("dense%t/%s/%d", dense, state, depth), func(b *testing.B) {
+					root := filepath.Join(b.TempDir(), "modules")
+					files := map[string][]byte{}
+					for i := range depth {
+						source := ""
+						if dense || i == depth-1 {
+							source = `resource "terraform_data" "value" {input="known"}`
+						}
+						if i+1 < depth {
+							source += fmt.Sprintf("\nmodule \"next\" {source=\"../n%d\"}", i+1)
+						}
+						files[filepath.Join(root, fmt.Sprintf("n%d", i), "main.tf")] = []byte(source)
+					}
+					fsys := vfs.NewMemFS(files)
+					evaluator := NewWithFS(fsys)
+					evaluator.SetTrackModuleInstances(true)
+					entry := filepath.Join(root, "n0")
+					if _, _, _, err := evaluator.EvaluateModule(b.Context(), entry, nil); err != nil {
+						b.Fatal(err)
+					}
+					want := 1
+					if dense {
+						want = depth
+					}
+					b.ReportAllocs()
+					b.ResetTimer()
+					for b.Loop() {
+						switch state {
+						case "cold":
+							evaluator = NewWithFS(fsys)
+							evaluator.SetTrackModuleInstances(true)
+						case "parsed":
+							evaluator.ReleaseEvalCache()
+						}
+						resources, _, _, err := evaluator.EvaluateModule(b.Context(), entry, nil)
+						if err != nil || len(resources) != want || len(evaluator.TakeModuleInstances()) != depth-1 {
+							b.Fatalf("incomplete evaluation: %v", err)
+						}
+					}
+				})
 			}
-			fsys := vfs.NewMemFS(files)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for b.Loop() {
-				evaluator := NewWithFS(fsys)
-				evaluator.SetTrackModuleInstances(true)
-				resources, _, _, err := evaluator.EvaluateModule(b.Context(), filepath.Join(root, "n0"), nil)
-				if err != nil || len(resources) != 1 || len(evaluator.TakeModuleInstances()) != depth-1 {
-					b.Fatalf("incomplete evaluation: %v", err)
-				}
-			}
-		})
+		}
 	}
 }

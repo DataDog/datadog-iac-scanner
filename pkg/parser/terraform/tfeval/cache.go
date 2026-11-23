@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"hash/maphash"
+	"iter"
 	"maps"
 	"reflect"
 	"sort"
@@ -34,7 +35,7 @@ type evalCacheKey struct {
 }
 
 // evalCacheEntry holds a module evaluation and its native effects. Entries with
-// stoppedDirs or externalStops are partial and belong only to the current root's cache;
+// published stops or external cycle dependencies are partial and belong only to the current root's cache;
 // the evaluator-wide cache contains completed entries only.
 // visitedDirs is the complete set of directories evaluated below this module,
 // independent of previously visited siblings. The caller tracks the module itself.
@@ -44,16 +45,16 @@ type evalCacheKey struct {
 // address and chain onto the result. Outputs need no rewrite because rootDir is
 // part of the cache key.
 type evalCacheEntry struct {
-	resources []ResolvedResource
+	resources *resourceTree
 	// instances are the module calls evaluated inside this evaluation.
 	instances         []ModuleInstance
 	outputs           map[string]cty.Value
-	visitedDirs       []string
+	visitedDirs       *directorySet
 	baseAddr          string
 	baseChain         *callChain
 	stoppedDirs       []string
-	enteredIdentities []string
-	externalStops     []string
+	enteredIdentities *directorySet
+	blockedIdentities *directorySet
 }
 
 // rebase returns the cached resources as they would have been recorded had the
@@ -63,18 +64,11 @@ type evalCacheEntry struct {
 // Attributes and Body are shared rather than copied. They are the expensive part
 // of a resolved resource and they are identical for identical inputs, so sharing
 // them is what makes reuse cheap; both are treated as read-only after evaluation.
-func (entry *evalCacheEntry) rebase(addr string, chain *callChain, rebased chainRebaser) []ResolvedResource {
-	if entry.baseAddr == addr && sameCallChain(entry.baseChain, chain) {
+func (entry *evalCacheEntry) rebase(addr string, chain *callChain) *resourceTree {
+	if entry.resources == nil || (entry.baseAddr == addr && sameCallChain(entry.baseChain, chain)) {
 		return entry.resources
 	}
-	out := make([]ResolvedResource, len(entry.resources))
-	for i := range entry.resources {
-		r := entry.resources[i]
-		r.ModuleAddress = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
-		r.chain = rebased.rebase(r.chain)
-		out[i] = r
-	}
-	return out
+	return &resourceTree{source: entry.resources, baseAddr: entry.baseAddr, addr: addr, baseChain: entry.baseChain, chain: chain}
 }
 
 // rebaseInstances returns the cached module calls as they would have been
@@ -128,28 +122,14 @@ type partialEvalCacheEntry struct {
 	result *evalCacheEntry
 }
 
-func (r *evaluationRun) partialResult(key *evalCacheKey, inputs map[string]cty.Value, visiting map[string]bool) *evalCacheEntry {
+func (r *evaluationRun) partialResult(
+	ctx context.Context, key *evalCacheKey, inputs map[string]cty.Value, visiting map[string]bool,
+) *evalCacheEntry {
 	for _, entry := range r.partial[*key] {
 		if !maps.EqualFunc(entry.inputs, inputs, cty.Value.RawEquals) {
 			continue
 		}
-		compatible := true
-		for _, dir := range entry.result.externalStops {
-			if !visiting[dir] {
-				compatible = false
-				break
-			}
-		}
-		if !compatible {
-			continue
-		}
-		for _, dir := range entry.result.enteredIdentities {
-			if visiting[dir] {
-				compatible = false
-				break
-			}
-		}
-		if compatible {
+		if entry.result.compatible(ctx, visiting) {
 			return entry.result
 		}
 	}
@@ -169,26 +149,20 @@ func (r *evaluationRun) rememberPartial(key *evalCacheKey, inputs map[string]cty
 type evaluationEffects struct {
 	parent  *evaluationEffects
 	stops   map[string]bool
-	entered map[string]bool
-	blocked map[string]bool
+	entered *directorySet
+	blocked *directorySet
 }
 
 func (f *evaluationEffects) recordDecision(dir string, blocked bool) {
 	if blocked {
-		if f.blocked == nil {
-			f.blocked = make(map[string]bool)
-		}
-		f.blocked[dir] = true
+		f.blocked.add(dir)
 	} else {
-		if f.entered == nil {
-			f.entered = make(map[string]bool)
-		}
-		f.entered[dir] = true
+		f.entered.add(dir)
 	}
 }
 
 func (r *evaluationRun) beginEffects() *evaluationEffects {
-	frame := &evaluationEffects{parent: r.effects}
+	frame := &evaluationEffects{parent: r.effects, entered: &directorySet{}, blocked: &directorySet{}}
 	r.effects = frame
 	return frame
 }
@@ -208,12 +182,8 @@ func (r *evaluationRun) finishEffects(frame *evaluationEffects, notEvaluated map
 	// Pre-pass reporting effects roll back, but their cycle decisions can affect
 	// published outputs. Keep those dependencies in the enclosing evaluation.
 	if frame.parent != nil {
-		for dir := range frame.entered {
-			frame.parent.recordDecision(dir, false)
-		}
-		for dir := range frame.blocked {
-			frame.parent.recordDecision(dir, true)
-		}
+		frame.parent.entered.include(frame.entered)
+		frame.parent.blocked.include(frame.blocked)
 	}
 	if !commit {
 		for dir, existed := range frame.stops {
@@ -576,4 +546,194 @@ func writeType(w keySink, t cty.Type) bool {
 
 func isCollectionOrStructural(t cty.Type) bool {
 	return t.IsListType() || t.IsSetType() || t.IsTupleType() || t.IsMapType() || t.IsObjectType()
+}
+
+// directorySet is an immutable subtree footprint once its evaluation finishes.
+// Parents retain child nodes rather than copying their transitive directories.
+// A walk visits each shared node once, including on converging empty DAGs.
+type directorySet struct {
+	direct   []string
+	children []*directorySet
+}
+
+func (s *directorySet) empty() bool { return s == nil || (len(s.direct) == 0 && len(s.children) == 0) }
+
+func (s *directorySet) add(dir string) { s.direct = append(s.direct, dir) }
+func (s *directorySet) include(child *directorySet) {
+	if !child.empty() {
+		s.children = append(s.children, child)
+	}
+}
+func (s *directorySet) all() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		pending := []*directorySet{s}
+		var seen map[*directorySet]bool
+		for len(pending) > 0 {
+			last := len(pending) - 1
+			node := pending[last]
+			pending = pending[:last]
+			if node == nil {
+				continue
+			}
+			// A linear prefix cannot be reached again by a descendant. Allocate
+			// deduplication state only when a branch can introduce shared nodes.
+			if seen == nil && len(node.children) > 1 {
+				seen = map[*directorySet]bool{}
+			}
+			if seen != nil {
+				if seen[node] {
+					continue
+				}
+				seen[node] = true
+			}
+			for _, dir := range node.direct {
+				if !yield(dir) {
+					return
+				}
+			}
+			pending = append(pending, node.children...)
+		}
+	}
+}
+func (s *directorySet) copyInto(out map[string]bool) {
+	for dir := range s.all() {
+		out[dir] = true
+	}
+}
+
+// Partial reuse must preserve both successful entries and external cycle stops.
+// Stops within the subtree are internal cycles, already covered by its entries.
+func (entry *evalCacheEntry) compatible(ctx context.Context, visiting map[string]bool) bool {
+	if len(visiting) == 0 && entry.blockedIdentities.empty() {
+		return ctx.Err() == nil
+	}
+	var entered map[string]bool
+	if !entry.blockedIdentities.empty() {
+		entered = map[string]bool{}
+	}
+	for dir := range entry.enteredIdentities.all() {
+		if ctx.Err() != nil || visiting[dir] {
+			return false
+		}
+		if entered != nil {
+			entered[dir] = true
+		}
+	}
+	for dir := range entry.blockedIdentities.all() {
+		if ctx.Err() != nil || (!entered[dir] && !visiting[dir]) {
+			return false
+		}
+	}
+	return true
+}
+
+// resourceTree stores local results and references to child results. Cache
+// entries share the tree instead of retaining a flattened copy at every level.
+// A cache hit adds a provenance view; only the public result is flattened.
+type resourceTree struct {
+	local            []ResolvedResource
+	children         []*resourceTree
+	source           *resourceTree
+	baseAddr, addr   string
+	baseChain, chain *callChain
+}
+
+func moduleResourceTree(local []ResolvedResource, children []*resourceTree) *resourceTree {
+	if len(local) == 0 {
+		if len(children) == 0 {
+			return nil
+		}
+		if len(children) == 1 {
+			return children[0]
+		}
+	}
+	return &resourceTree{local: local, children: children}
+}
+
+type resourceTransform struct {
+	view   *resourceTree
+	chains chainRebaser
+	outer  *resourceTransform
+}
+
+// A linear tree cannot multiply shared resource occurrences. Its local slices
+// already own this many structs, so reserve one export array without growing it
+// repeatedly. Branching results grow incrementally and remain cancellable even
+// when a compact DAG represents many occurrences.
+func (tree *resourceTree) linearSize(ctx context.Context) int {
+	size := 0
+	for tree != nil {
+		if ctx.Err() != nil || len(tree.children) > 1 {
+			return 0
+		}
+		size += len(tree.local)
+		switch {
+		case tree.source != nil:
+			tree = tree.source
+		case len(tree.children) == 1:
+			tree = tree.children[0]
+		default:
+			tree = nil
+		}
+	}
+	return size
+}
+
+func (tree *resourceTree) flatten(ctx context.Context) []ResolvedResource {
+	type work struct {
+		tree      *resourceTree
+		transform *resourceTransform
+	}
+	pending := []work{{tree: tree}}
+	var out []ResolvedResource
+	if size := tree.linearSize(ctx); size > 0 {
+		out = make([]ResolvedResource, 0, size)
+	}
+	for len(pending) > 0 {
+		if ctx.Err() != nil {
+			return nil
+		}
+		last := len(pending) - 1
+		item := pending[last]
+		pending = pending[:last]
+		node := item.tree
+		if node == nil {
+			continue
+		}
+		transform := item.transform
+		if node.source != nil {
+			transform = &resourceTransform{view: node, chains: chainRebaser{node.baseChain: node.chain}, outer: transform}
+			pending = append(pending, work{node.source, transform})
+			continue
+		}
+		for i := range node.local {
+			if ctx.Err() != nil {
+				return nil
+			}
+			resource := node.local[i]
+			for t := transform; t != nil; t = t.outer {
+				resource.ModuleAddress = rebaseAddr(resource.ModuleAddress, t.view.baseAddr, t.view.addr)
+				resource.chain = t.chains.rebase(resource.chain)
+			}
+			out = append(out, resource)
+		}
+		for i := len(node.children) - 1; i >= 0; i-- {
+			pending = append(pending, work{node.children[i], transform})
+		}
+	}
+	return out
+}
+
+func (entry *evalCacheEntry) hasExternalStops() bool {
+	if entry.blockedIdentities.empty() {
+		return false
+	}
+	entered := map[string]bool{}
+	entry.enteredIdentities.copyInto(entered)
+	for dir := range entry.blockedIdentities.all() {
+		if !entered[dir] {
+			return true
+		}
+	}
+	return false
 }

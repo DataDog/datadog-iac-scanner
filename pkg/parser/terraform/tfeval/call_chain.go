@@ -6,8 +6,6 @@
 
 package tfeval
 
-import "slices"
-
 // callChain is an immutable path. Descending into a module adds one node rather
 // than copying all its ancestors. Cache entries and instances share these nodes.
 type callChain struct {
@@ -80,8 +78,9 @@ func (m chainMaterializer) materialize(c *callChain) []CallSite {
 	return view.sites[:len(view.sites):len(view.sites)]
 }
 
-func materializeResources(resources []ResolvedResource) []ResolvedResource {
-	out := slices.Clone(resources)
+// materializeResources takes ownership of a freshly flattened result slice.
+// Cached resource nodes are never passed here or changed during export.
+func materializeResources(out []ResolvedResource) []ResolvedResource {
 	chains := chainMaterializer{}
 	for i := range out {
 		out[i].CallChain = chains.materialize(out[i].chain)

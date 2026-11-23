@@ -65,21 +65,32 @@ resource "aws_s3_bucket" "root" { bucket = "stack%d-root" }
 	return dirs
 }
 
-// cachedResources counts the ResolvedResource structs the evaluation cache is
-// holding. Every entry stores its whole subtree, so this is what a scan actually
-// retains, not the number of resources it reports.
+// cachedResources counts distinct resource structs retained by the cache,
+// accounting for subtree nodes shared by multiple entries.
 func cachedResources(e *Evaluator) int {
 	total := 0
+	seen := map[*resourceTree]bool{}
+	var pending []*resourceTree
 	for _, entry := range e.cache {
-		total += len(entry.resources)
+		pending = append(pending, entry.resources)
+	}
+	for len(pending) > 0 {
+		last := len(pending) - 1
+		node := pending[last]
+		pending = pending[:last]
+		if node == nil || seen[node] {
+			continue
+		}
+		seen[node] = true
+		total += len(node.local)
+		pending = append(pending, node.source)
+		pending = append(pending, node.children...)
 	}
 	return total
 }
 
-// Every cache entry holds the resolved resources of its whole subtree, so holding
-// entries for a whole repository makes peak memory scale with the number of
-// roots, which is what puts a monorepo over its memory limit. Releasing between
-// roots must keep retention flat as roots are added.
+// Releasing between roots must keep cache retention flat as roots are added,
+// even when every root evaluates a shared module chain with distinct inputs.
 func TestReleaseEvalCache_RetentionDoesNotGrowWithRootCount(t *testing.T) {
 	const sharedDepth = 6
 	const resourcesPerModule = 4
