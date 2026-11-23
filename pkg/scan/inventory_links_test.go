@@ -262,6 +262,51 @@ replicas = 2
 	require.Equal(t, 6, loc.Region.StartLine)
 }
 
+func TestTerraformOverridePreservesCertificateMetadata(t *testing.T) {
+	pem, err := os.ReadFile(filepath.Join("..", "..", "test", "fixtures", "test_certificate", "certificate.pem"))
+	require.NoError(t, err)
+	rule := syntheticQuery("test-certificate-metadata", "terraform", "Terraform", `	cert := input.document[i].resource.aws_acm_certificate[name]
+	cert.tags.fixture == "test"
+	is_array(cert.certificate_body.expiration_date)
+	cert.certificate_body.rsa_key_bytes == 512
+	typ := "aws_acm_certificate"
+	key := sprintf("aws_acm_certificate.%s.certificate_body", [name])`)
+	for _, tc := range []struct {
+		name, prefix, overrideBody, wantFile string
+		wantLine, wantRows                   int
+	}{
+		{"root inherits", "", "", "main.tf", 2, 1},
+		{"root replaces", "", "  certificate_body = \"replacement.pem\"\n", "override.tf", 3, 1},
+		{"standalone inherits", "child/", "", "child/main.tf", 2, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := map[string]string{
+				tc.prefix + "main.tf": `resource "aws_acm_certificate" "example" {
+  certificate_body = "certificate.pem"
+}
+`,
+				tc.prefix + "override.tf":     "resource \"aws_acm_certificate\" \"example\" {\n  tags = { fixture = \"test\" }\n" + tc.overrideBody + "}\n",
+				tc.prefix + "certificate.pem": string(pem),
+				tc.prefix + "replacement.pem": string(pem),
+			}
+			if tc.prefix != "" {
+				files["main.tf"] = `module "child" {
+  source = "./child"
+  count  = 0
+}
+`
+			}
+			params := terraformParams(writeRepo(t, files))
+			inv, fingerprints := scanLinks(t, params, rule)
+			require.Len(t, inv.Resources, tc.wantRows)
+			require.Len(t, fingerprints, 1)
+			loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
+			require.Equal(t, tc.wantFile, loc.ArtifactLocation.ArtifactURI)
+			require.Equal(t, tc.wantLine, loc.Region.StartLine)
+		})
+	}
+}
+
 func TestTerraformJSONOverrideFinding(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"main.tf": `resource "aws_s3_bucket" "example" {

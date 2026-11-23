@@ -278,7 +278,7 @@ func Test_Resolve(t *testing.T) {
 	require.Equal(t, []byte(have), resolved)
 }
 
-func TestTerraform_ProcessContent(t *testing.T) {
+func TestEnrichResourceCertificate(t *testing.T) {
 	type args struct {
 		elements model.Document
 		content  string
@@ -308,7 +308,8 @@ func TestTerraform_ProcessContent(t *testing.T) {
 	ctx := context.Background()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			NewDefault().processContent(ctx, tt.args.elements, tt.args.content, tt.args.path)
+			tt.args.elements["certificate_body"] = tt.args.content
+			EnrichResourceCertificate(ctx, vfs.Default(), tt.args.elements, tt.args.path)
 			require.Equal(t, tt.want, tt.args.elements["certificate_body"])
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
@@ -69,7 +70,11 @@ func (e *Evaluator) OverrideDocument(
 	r.Attributes = e.evalBodyWith(ctx, r.Body, evalCtx, nil, state)
 	r.DynamicCounts = state.dynamic.counts
 	r.documentScope = state.document
-	return AttributesToDocumentWithContext(ctx, &r)
+	doc := AttributesToDocumentWithContext(ctx, &r)
+	if attr := r.Body.Attributes["certificate_body"]; override.Effective.Type == scheduledResource && attr != nil {
+		terraform.EnrichResourceCertificate(ctx, e.fsys, doc, attr.SrcRange.Filename)
+	}
+	return doc
 }
 
 type overrideBlockKey struct{ kind, typ, name string }
