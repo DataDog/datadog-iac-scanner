@@ -337,11 +337,7 @@ func (s *resourceSchedule) evaluate(unit int) {
 		s.exposed[unit] = s.resources[unit]
 		return
 	}
-	inputs := blockEvalInputs(b, ctx)
-	cached, exists := s.data.evalCache[b]
-	if !exists || !sameCtyValues(cached.inputs, inputs) {
-		cached = s.data.evalBlock(s.ctx, b, ctx, inputs)
-	}
+	cached := s.data.evaluateBlock(s.ctx, b, ctx)
 	s.resources[unit], s.exposed[unit] = cached.instances, cached.exposed
 }
 

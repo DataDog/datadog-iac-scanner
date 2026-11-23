@@ -247,11 +247,7 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	instances := make([]ResolvedResource, 0, len(d.blocks))
 	exposed := make([]ResolvedResource, 0, len(d.blocks))
 	for _, b := range d.blocks {
-		inputs := blockEvalInputs(b, evalCtx)
-		cached, ok := d.evalCache[b]
-		if !ok || !sameCtyValues(cached.inputs, inputs) {
-			cached = d.evalBlock(ctx, b, evalCtx, inputs)
-		}
+		cached := d.evaluateBlock(ctx, b, evalCtx)
 		instances = append(instances, cached.instances...)
 		exposed = append(exposed, cached.exposed...)
 	}
@@ -264,6 +260,18 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 		}
 	}
 	return objectOrEmpty(byType.Variables)
+}
+
+func (d *moduleData) evaluateBlock(ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext) blockEvalCache {
+	inputs := blockEvalInputs(b, evalCtx)
+	// A selected local can read a dependency hidden by the same local's
+	// default branch. Its default value alone cannot validate a cache hit.
+	if d.overrideInputs == nil || !d.overrideInputs.directedData[b.Body] {
+		if cached, ok := d.evalCache[b]; ok && sameCtyValues(cached.inputs, inputs) {
+			return cached
+		}
+	}
+	return d.evalBlock(ctx, b, evalCtx, inputs)
 }
 
 // exposeUnknown sets data.<typ>.<name> to an unknown value, the result of a

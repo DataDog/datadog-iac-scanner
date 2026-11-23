@@ -401,6 +401,36 @@ resource "example" "this" { effective = data.aws_iam_policy_document.example.jso
 	require.Equal(t, doc["original"], doc["effective"])
 }
 
+func TestResourceOverrideDirectiveRefreshesDataWhenDefaultLocalIsUnchanged(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "root", map[string]string{
+		"main.tf": `// kics_terraform_vars: selected.tfvars
+variable "use_child" { default = false }
+module "child" { source = "../child" }
+locals { arn = var.use_child ? module.child.arn : "arn:aws:s3:::default" }
+data "aws_iam_policy_document" "policy" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = [local.arn]
+  }
+}
+resource "example" "this" { policy = data.aws_iam_policy_document.policy.json }
+`,
+		"override.tf":     `data "aws_iam_policy_document" "policy" { version = "2012-10-17" }`,
+		"selected.tfvars": "use_child = true\n",
+	})
+	writeModule(t, root, "child", map[string]string{
+		"main.tf": `output "arn" { value = "arn:aws:s3:::selected" }`,
+	})
+	e := New()
+	ctx := t.Context()
+	resources, _, _, err := e.EvaluateModule(ctx, dir, e.LoadRootVarsWithContext(ctx, dir))
+	require.NoError(t, err)
+	r := findResource(t, resources, "example", "this")
+	require.True(t, r.Attributes["policy"].IsKnown())
+	require.Contains(t, r.Attributes["policy"].AsString(), "arn:aws:s3:::selected")
+}
+
 func TestResourceOverrideJSON(t *testing.T) {
 	dir := writeModule(t, t.TempDir(), "module", map[string]string{
 		"main.tf": `
