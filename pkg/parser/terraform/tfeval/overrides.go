@@ -32,7 +32,6 @@ const (
 // ResourceOverride retains the declaration and every matching override in
 // application order. Effective keeps the declaration's header and body range,
 // and each effective argument and nested block retains its own source range.
-// A nil Declaration means the override had no unambiguous match.
 type ResourceOverride struct {
 	Declaration   *hclsyntax.Block
 	Effective     *hclsyntax.Block
@@ -124,15 +123,13 @@ func resolveResourceOverrides(
 				continue
 			}
 			pos, ok := declarations[key]
-			isVariable := key.kind == blockTypeVariable
 			if !ok || pos.body < 0 {
 				log.Warn().Str("file", block.TypeRange.Filename).Int("line", block.TypeRange.Start.Line).
-					Msg("tfeval: override requires a unique base declaration")
-				if !isVariable {
-					overrides = append(overrides, ResourceOverride{Contributions: []*hclsyntax.Block{block}})
-				}
+					Msg("tfeval: keeping override as a standalone block because it has no unique base declaration")
+				remaining = append(remaining, block)
 				continue
 			}
+			isVariable := key.kind == blockTypeVariable
 			decl := bodies[pos.body].Blocks[pos.block]
 			effective := result[pos.body].Blocks[pos.block]
 			contribution := block

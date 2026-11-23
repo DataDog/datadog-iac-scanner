@@ -79,15 +79,14 @@ func scanTerraformOverrides(
 }
 
 func (o *terraformOverrides) add(config tfeval.ResourceOverride) {
-	if decl := config.Declaration; decl != nil {
-		path := absPath(decl.TypeRange.Filename, o.repoPath)
-		file := o.byPath[path]
-		if file == nil {
-			return // the declaration is outside the scan input
-		}
-		key := model.TerraformBlock{Kind: decl.Type, Type: decl.Labels[0], Name: decl.Labels[1]}
-		o.definitions[overrideDefinition{path, key}] = &overrideProjection{config: config, decl: file}
+	decl := config.Declaration
+	path := absPath(decl.TypeRange.Filename, o.repoPath)
+	file := o.byPath[path]
+	if file == nil {
+		return // the declaration is outside the scan input
 	}
+	key := model.TerraformBlock{Kind: decl.Type, Type: decl.Labels[0], Name: decl.Labels[1]}
+	o.definitions[overrideDefinition{path, key}] = &overrideProjection{config: config, decl: file}
 	for _, fragment := range config.Contributions {
 		if f := o.byPath[absPath(fragment.TypeRange.Filename, o.repoPath)]; f != nil {
 			kind := fragment.Labels[0]

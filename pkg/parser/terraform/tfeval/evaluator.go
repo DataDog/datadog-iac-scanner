@@ -286,11 +286,9 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	dp := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
 		dp.bodies, dp.overrides = resolveResourceOverrides(ctx, bodies, sources)
-		for _, override := range dp.overrides {
-			if override.Declaration != nil {
-				if dp.declarations == nil {
-					dp.declarations = make(map[*hclsyntax.Body]*hclsyntax.Body)
-				}
+		if len(dp.overrides) > 0 {
+			dp.declarations = make(map[*hclsyntax.Body]*hclsyntax.Body, len(dp.overrides))
+			for _, override := range dp.overrides {
 				dp.declarations[override.Effective.Body] = override.Declaration.Body
 			}
 		}

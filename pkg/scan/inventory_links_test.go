@@ -255,6 +255,59 @@ DatadogPolicy contains {
 	require.Equal(t, 5, loc.Region.StartLine)
 }
 
+func TestTerraformOrphanOverrideFindings(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf":     `resource "aws_s3_bucket" "base" { bucket = "base" }`,
+		"sub/main.tf": `resource "aws_s3_bucket" "other" { bucket = "other" }`,
+		"sub/override.tf": `resource "aws_s3_bucket" "base" {
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "other" {
+  acl = "public-read"
+}
+`,
+		"sub/z_override.tf": `resource "aws_s3_bucket" "orphan" {
+  bucket = "orphan"
+  acl    = "public-read"
+}
+`,
+	})
+	logging := syntheticQuery("test-bucket-logging", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	not bucket.logging
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s].logging", [name])`)
+	versioning := syntheticQuery("test-bucket-versioning", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	not bucket.versioning
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket[%s].versioning", [name])`)
+	params := terraformParams(root)
+	inv, _ := scanLinks(t, params, terraformPublicACLRule, logging, versioning)
+	rows := make(map[string]string)
+	for _, row := range inv.Resources {
+		rows[row.ResourceRef] = row.File
+	}
+	require.Equal(t, map[string]string{
+		".|aws_s3_bucket.base":     "main.tf",
+		"sub|aws_s3_bucket.base":   "sub/override.tf",
+		"sub|aws_s3_bucket.other":  "sub/main.tf",
+		"sub|aws_s3_bucket.orphan": "sub/z_override.tf",
+	}, rows)
+
+	sarif, err := os.ReadFile(filepath.Join(params.OutputPath, "result.sarif"))
+	require.NoError(t, err)
+	var report struct{ Runs []reportmodel.SarifRun }
+	require.NoError(t, json.Unmarshal(sarif, &report))
+	links := linkedRefs(inv)
+	var rules []string
+	for _, result := range report.Runs[0].Results {
+		if result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI == "sub/z_override.tf" {
+			rules = append(rules, result.ResultRuleID)
+			require.Equal(t, []string{"sub|aws_s3_bucket.orphan"}, links[result.PartialFingerprints.DatadogFingerprint])
+		}
+	}
+	require.ElementsMatch(t, []string{"test-public-acl", "test-bucket-logging", "test-bucket-versioning"}, rules)
+}
+
 func TestTerraformDataOverrideFinding(t *testing.T) {
 	const declaration = `data "aws_iam_policy_document" "example" {
   statement {

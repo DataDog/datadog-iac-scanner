@@ -123,6 +123,20 @@ func TestLinkRepeatedListObjectsByTheirKey(t *testing.T) {
 	}, inv.FindingLinks, "the object the key names, not the first that shares its coordinates")
 }
 
+func TestLinkTerraformOverrideUsesKnownDeclaration(t *testing.T) {
+	c := NewCollector(t.TempDir())
+	c.AddResource(&Resource{ResourcePath: "aws_s3_bucket.other", Platform: platforms.Terraform,
+		RootModule: ".", Block: "aws_s3_bucket.other", File: "main.tf.json", LineStart: 1, LineEnd: 1})
+	c.AddFinding(&Finding{Fingerprint: "without-row", File: "main.tf.json", Line: 4,
+		BlockStart: 1, Block: "aws_s3_bucket.missing", SearchKey: "aws_s3_bucket[missing].acl"})
+	c.AddFinding(&Finding{Fingerprint: "with-row", File: "main.tf.json", Line: 4,
+		BlockStart: 1, Block: "aws_s3_bucket.other", SearchKey: "aws_s3_bucket[other].acl"})
+
+	inv := c.Build(testMetadata())
+	require.Equal(t, []FindingLink{{FindingFingerprint: "with-row", ResourceRef: ".|aws_s3_bucket.other"}}, inv.FindingLinks)
+	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
+}
+
 func TestSearchKeyBlock(t *testing.T) {
 	for key, want := range map[string]string{
 		"aws_s3_bucket[logs].acl":                                      "aws_s3_bucket.logs",

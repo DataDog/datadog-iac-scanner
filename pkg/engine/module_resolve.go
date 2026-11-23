@@ -56,13 +56,12 @@ type moduleResolutionResult struct {
 	ok            bool
 }
 
-// instantiateLocalModules evaluates local modules and injects resolved resource
-// documents. In a called module body only the resource blocks are dropped (they
-// are re-emitted instantiated, with caller-resolved values); variable, output,
-// data and locals blocks are kept so their rules still fire exactly as in a
-// standalone scan. The instantiated local "module" call-sites are stripped from
-// root documents so call-site rule branches don't fire alongside the
-// instantiated resources.
+// instantiateLocalModules evaluates Terraform modules. Resolved resource and
+// data instances in called modules are emitted as synthetic documents. The
+// original documents retain other blocks and use the effective configuration
+// for overrides still scanned there. Instantiated local module calls are
+// stripped from root documents so call-site rule branches do not duplicate
+// the instance findings.
 //
 // It mutates the input FileMetadata documents in place. Mutations are applied
 // only after evaluation succeeds (see resolveModulesSafely); a panic during

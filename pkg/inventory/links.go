@@ -168,10 +168,12 @@ func matchTerraform(rows []Resource, candidates, atStart []int, f *Finding) []in
 	if namesNonResourceBlock(f.SearchKey) {
 		return nil
 	}
-	block := f.Block
-	if block == "" {
-		block = searchKeyBlock(f.SearchKey)
+	if f.Block != "" {
+		// The declaration is known even when the inventory has no row for
+		// it. The source line can belong to another file.
+		return ofBlock(rows, atStart, f.Block)
 	}
+	block := searchKeyBlock(f.SearchKey)
 	if f.BlockStart > 0 && len(atStart) > 0 {
 		if named := ofBlock(rows, atStart, block); len(named) > 0 {
 			return named

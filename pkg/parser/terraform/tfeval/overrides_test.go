@@ -185,19 +185,50 @@ resource "example" "this" {
 	require.Equal(t, map[string]interface{}{"name": "retained"}, doc["retained"])
 }
 
-func TestResourceOverrideRequiresDeclarationInModule(t *testing.T) {
+func TestOrphanOverridesStayStandaloneInTheirModule(t *testing.T) {
 	root := writeModule(t, t.TempDir(), "module", map[string]string{
 		"main.tf": `resource "example" "this" { value = "declared" }`,
 	})
 	env := writeModule(t, root, "environments/dev", map[string]string{
-		"settings_override.tf": `resource "example" "this" { value = "override" }`,
+		"settings_override.tf": `
+variable "replicas" { default = 2 }
+resource "example" "this" {
+  count = var.replicas
+  value = "override"
+}
+data "example" "source" { value = "override" }
+`,
 	})
 	e := New()
 	resources, _, _, err := e.EvaluateModule(t.Context(), env, nil)
 	require.NoError(t, err)
-	require.Empty(t, resources)
+	require.Len(t, resources, 3)
+	require.Empty(t, e.ResourceOverrides(t.Context(), env))
+	for i, want := range []string{"example.this[0]", "example.this[1]", "data.example.source"} {
+		address, complete := resources[i].TerraformAddress()
+		require.True(t, complete)
+		require.Equal(t, want, address)
+		require.Equal(t, filepath.Join(env, "settings_override.tf"), resources[i].DefinedIn)
+		require.Equal(t, cty.StringVal("override"), resources[i].Attributes["value"])
+	}
 	resources, _, _, err = e.EvaluateModule(t.Context(), root, nil)
 	require.NoError(t, err)
 	require.Len(t, resources, 1)
 	require.Equal(t, cty.StringVal("declared"), resources[0].Attributes["value"])
+}
+
+func TestOverrideWithAmbiguousBaseStaysStandalone(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "module", map[string]string{
+		"a.tf":        `resource "example" "this" { value = "first" }`,
+		"b.tf":        `resource "example" "this" { value = "second" }`,
+		"override.tf": `resource "example" "this" { value = "standalone" }`,
+	})
+	e := New()
+	resources, _, _, err := e.EvaluateModule(t.Context(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 3)
+	require.Empty(t, e.ResourceOverrides(t.Context(), dir))
+	for i, want := range []string{"first", "second", "standalone"} {
+		require.Equal(t, cty.StringVal(want), resources[i].Attributes["value"])
+	}
 }
