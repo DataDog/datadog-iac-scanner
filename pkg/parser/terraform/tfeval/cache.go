@@ -50,7 +50,7 @@ type evalCacheEntry struct {
 	outputs           map[string]cty.Value
 	visitedDirs       []string
 	baseAddr          string
-	baseChain         []CallSite
+	baseChain         *callChain
 	stoppedDirs       []string
 	enteredIdentities []string
 	externalStops     []string
@@ -63,7 +63,7 @@ type evalCacheEntry struct {
 // Attributes and Body are shared rather than copied. They are the expensive part
 // of a resolved resource and they are identical for identical inputs, so sharing
 // them is what makes reuse cheap; both are treated as read-only after evaluation.
-func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedResource {
+func (entry *evalCacheEntry) rebase(addr string, chain *callChain, rebased chainRebaser) []ResolvedResource {
 	if entry.baseAddr == addr && sameCallChain(entry.baseChain, chain) {
 		return entry.resources
 	}
@@ -71,7 +71,7 @@ func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedRes
 	for i := range entry.resources {
 		r := entry.resources[i]
 		r.ModuleAddress = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
-		r.CallChain = rebaseChain(r.CallChain, len(entry.baseChain), chain)
+		r.chain = rebased.rebase(r.chain)
 		out[i] = r
 	}
 	return out
@@ -79,7 +79,7 @@ func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedRes
 
 // rebaseInstances returns the cached module calls as they would have been
 // recorded at addr/chain, sharing them when that is where they were recorded.
-func (entry *evalCacheEntry) rebaseInstances(addr string, chain []CallSite) []ModuleInstance {
+func (entry *evalCacheEntry) rebaseInstances(addr string, chain *callChain, rebased chainRebaser) []ModuleInstance {
 	if len(entry.instances) == 0 || (entry.baseAddr == addr && sameCallChain(entry.baseChain, chain)) {
 		return entry.instances
 	}
@@ -87,7 +87,7 @@ func (entry *evalCacheEntry) rebaseInstances(addr string, chain []CallSite) []Mo
 	for i := range entry.instances {
 		instance := entry.instances[i]
 		instance.ModuleAddress = rebaseAddr(instance.ModuleAddress, entry.baseAddr, addr)
-		instance.CallChain = rebaseChain(instance.CallChain, len(entry.baseChain), chain)
+		instance.chain = rebased.rebase(instance.chain)
 		out[i] = instance
 	}
 	return out
@@ -95,20 +95,24 @@ func (entry *evalCacheEntry) rebaseInstances(addr string, chain []CallSite) []Mo
 
 // sameCallChain includes the caller scopes: equal addresses and depths can
 // belong to different parent evaluations after their sibling inputs refine.
-func sameCallChain(first, second []CallSite) bool {
-	if len(first) != len(second) {
-		return false
-	}
-	for i := range first {
-		a, b := &first[i], &second[i]
-		if a.ModuleName != b.ModuleName || a.Source != b.Source || a.Version != b.Version ||
-			a.CalledFrom != b.CalledFrom || a.CalledLine != b.CalledLine || a.CalledEndLine != b.CalledEndLine ||
-			a.CalledColumn != b.CalledColumn || a.CalledEndColumn != b.CalledEndColumn ||
-			a.Body != b.Body || a.Caller != b.Caller || !a.InstanceKey.RawEquals(b.InstanceKey) {
+func sameCallChain(first, second *callChain) bool {
+	for first != second {
+		if first == nil || second == nil || first.depth != second.depth {
 			return false
 		}
+		if !sameCallSite(&first.site, &second.site) {
+			return false
+		}
+		first, second = first.parent, second.parent
 	}
 	return true
+}
+
+func sameCallSite(a, b *CallSite) bool {
+	return a.ModuleName == b.ModuleName && a.Source == b.Source && a.Version == b.Version &&
+		a.CalledFrom == b.CalledFrom && a.CalledLine == b.CalledLine && a.CalledEndLine == b.CalledEndLine &&
+		a.CalledColumn == b.CalledColumn && a.CalledEndColumn == b.CalledEndColumn &&
+		a.Body == b.Body && a.Caller == b.Caller && a.InstanceKey.RawEquals(b.InstanceKey)
 }
 
 // evaluationRun owns partial results for one recursive root evaluation.
@@ -244,22 +248,6 @@ func rebaseAddr(recorded, baseAddr, addr string) string {
 		return addr
 	}
 	return joinAddr(addr, suffix)
-}
-
-// rebaseChain replaces the leading hops a cached chain was recorded under with the
-// current caller's hops, preserving the hops taken inside the cached subtree.
-func rebaseChain(recorded []CallSite, baseLen int, chain []CallSite) []CallSite {
-	if baseLen > len(recorded) {
-		baseLen = len(recorded)
-	}
-	inner := recorded[baseLen:]
-	if len(inner) == 0 {
-		return cloneChain(chain)
-	}
-	out := make([]CallSite, 0, len(chain)+len(inner))
-	out = append(out, chain...)
-	out = append(out, inner...)
-	return out
 }
 
 // inputsDigest identifies a resolved input map by two independent 64-bit digests

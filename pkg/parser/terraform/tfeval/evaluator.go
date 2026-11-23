@@ -69,8 +69,9 @@ type ResolvedResource struct {
 	DefEndLine    int
 	DefColumn     int
 	DefEndColumn  int
-	ModuleAddress string // "" for root module resources
-	CallChain     []CallSite
+	ModuleAddress string     // "" for root module resources
+	CallChain     []CallSite // Read-only; prefixes may be shared.
+	chain         *callChain
 	// DynamicCounts is how many blocks each dynamic block of Body generated for
 	// this instance, so generated blocks can be mapped back to their sources.
 	DynamicCounts DynamicCounts
@@ -138,7 +139,8 @@ type ModuleScope struct {
 type ModuleInstance struct {
 	Dir           string
 	ModuleAddress string
-	CallChain     []CallSite
+	CallChain     []CallSite // Read-only; prefixes may be shared.
+	chain         *callChain
 }
 
 // Evaluator evaluates local Terraform modules.
@@ -324,16 +326,21 @@ func (e *Evaluator) TakeNotEvaluatedDirs() []string {
 // TakeModuleInstances returns the module calls the last EvaluateModule
 // evaluated, nothing when it failed, and forgets them.
 func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
-	instances := e.instances
+	instances := slices.Clone(e.instances)
+	chains := chainMaterializer{}
+	for i := range instances {
+		instances[i].CallChain = chains.materialize(instances[i].chain)
+		instances[i].chain = nil
+	}
 	e.instances = nil
 	return instances
 }
 
 // recordModuleInstance notes an evaluated call when instances are tracked. The
 // chain is shared with the call's resources and must not be modified.
-func (e *Evaluator) recordModuleInstance(dir, addr string, chain []CallSite) {
+func (e *Evaluator) recordModuleInstance(dir, addr string, chain *callChain) {
 	if e.trackInstances {
-		e.instances = append(e.instances, ModuleInstance{Dir: dir, ModuleAddress: addr, CallChain: chain})
+		e.instances = append(e.instances, ModuleInstance{Dir: dir, ModuleAddress: addr, chain: chain})
 	}
 }
 
@@ -424,7 +431,7 @@ func (e *Evaluator) EvaluateModule(
 	visiting := map[string]bool{}
 	allVisited := map[string]bool{}
 	e.instances = nil
-	resources, outputs, err = e.evaluate(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited)
+	resources, outputs, err = e.evaluateChain(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited)
 	if err == nil {
 		// A canceled or timed-out scan may have stopped mid-expansion. Do not
 		// return that partial tree as a completed evaluation.
@@ -433,18 +440,18 @@ func (e *Evaluator) EvaluateModule(
 	if err != nil {
 		e.instances = nil
 	}
-	return resources, outputs, allVisited, err
+	return materializeResources(resources), outputs, allVisited, err
 }
 
-// evaluate is the recursive worker; visiting tracks physical directory identities for cycle
+// evaluateChain is the recursive worker; visiting tracks physical directory identities for cycle
 // detection; allVisited accumulates every child dir successfully evaluated as a module.
-func (e *Evaluator) evaluate(
+func (e *Evaluator) evaluateChain(
 	ctx context.Context,
 	dir, rootDir string,
 	packageRoot string,
 	inputs map[string]cty.Value,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 	visiting map[string]bool,
 	allVisited map[string]bool,
 ) ([]ResolvedResource, map[string]cty.Value, error) {
@@ -637,7 +644,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 	key evalCacheKey,
 	inputsKeyOK bool,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 	visiting, allVisited map[string]bool,
 ) (resources []ResolvedResource, outputs map[string]cty.Value, hit bool) {
 	if !inputsKeyOK {
@@ -661,7 +668,7 @@ func (e *Evaluator) reuseCachedEvaluation(
 func (e *Evaluator) restoreCachedEvaluation(
 	entry *evalCacheEntry,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 	allVisited map[string]bool,
 ) (resources []ResolvedResource, outputs map[string]cty.Value) {
 	for _, identity := range entry.enteredIdentities {
@@ -676,8 +683,9 @@ func (e *Evaluator) restoreCachedEvaluation(
 	for _, stopped := range entry.stoppedDirs {
 		e.evaluation.recordStop(stopped, e.notEvaluatedDirs)
 	}
-	e.instances = append(e.instances, entry.rebaseInstances(addr, chain)...)
-	return entry.rebase(addr, chain), entry.outputs
+	rebased := chainRebaser{entry.baseChain: chain}
+	e.instances = append(e.instances, entry.rebaseInstances(addr, chain, rebased)...)
+	return entry.rebase(addr, chain, rebased), entry.outputs
 }
 
 func (e *Evaluator) preinjectResourceRefs(
@@ -687,7 +695,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	evalCtx *hcl.EvalContext,
 	data *moduleData,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 ) {
 	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 {
 		return
@@ -710,7 +718,7 @@ func (e *Evaluator) cacheEvaluation(
 	outputs map[string]cty.Value,
 	subtreeVisited map[string]bool,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 ) {
 	if len(effects.stops) == 0 && !inputsKeyOK {
 		return
@@ -752,7 +760,7 @@ func (e *Evaluator) applySiblingModulePrepass(
 	scope *ModuleScope,
 	data *moduleData,
 	dir, rootDir, packageRoot, addr string,
-	chain []CallSite,
+	chain *callChain,
 	visiting map[string]bool,
 ) {
 	if len(moduleBlocks) <= 1 || scope.static.moduleOrder != nil {
@@ -772,7 +780,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 	scope *ModuleScope,
 	data *moduleData,
 	dir, rootDir, packageRoot, addr string,
-	chain []CallSite,
+	chain *callChain,
 	visiting map[string]bool,
 	allVisited map[string]bool,
 ) (childResources []ResolvedResource, moduleOutputs map[string]cty.Value) {
@@ -827,10 +835,10 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			if instance.unknownKey {
 				instanceSite.InstanceKey = cty.DynamicVal
 			}
-			childChain := append(cloneChain(chain), instanceSite)
+			childChain := chain.append(&instanceSite)
 			instancesBefore := len(e.instances)
 
-			childRes, childOuts, cErr := e.evaluate(
+			childRes, childOuts, cErr := e.evaluateChain(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
 				childChain, visiting, allVisited,
 			)
@@ -992,7 +1000,7 @@ func (e *Evaluator) evalResourceBlocks(
 	resourceBlocks []*hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 ) []ResolvedResource {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
@@ -1009,7 +1017,7 @@ func (e *Evaluator) expandBlock(
 	rb *hclsyntax.Block,
 	evalCtx *hcl.EvalContext,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 	data bool,
 ) []ResolvedResource {
 	if len(rb.Labels) < 2 {
@@ -1043,7 +1051,7 @@ func (e *Evaluator) expandBlock(
 			DefColumn:     rb.TypeRange.Start.Column,
 			DefEndColumn:  rb.Range().End.Column,
 			ModuleAddress: addr,
-			CallChain:     cloneChain(chain),
+			chain:         chain,
 			Data:          data,
 		}
 	}
@@ -1636,7 +1644,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 	evalCtx *hcl.EvalContext,
 	scope *ModuleScope,
 	dir, rootDir, packageRoot, addr string,
-	chain []CallSite,
+	chain *callChain,
 	visiting map[string]bool,
 ) map[string]cty.Value {
 	instancesBefore := len(e.instances)
@@ -1695,8 +1703,8 @@ func (e *Evaluator) preliminaryModuleOutputs(
 			if instance.unknownKey {
 				instanceSite.InstanceKey = cty.DynamicVal
 			}
-			childChain := append(cloneChain(chain), instanceSite)
-			_, childOuts, err := e.evaluate(
+			childChain := chain.append(&instanceSite)
+			_, childOuts, err := e.evaluateChain(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
 				tmpVisiting, map[string]bool{},
 			)

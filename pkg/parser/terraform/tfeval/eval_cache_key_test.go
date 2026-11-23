@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
@@ -153,7 +155,7 @@ module "beta" {
 }
 
 func TestEvaluateModule_DeepLocalModules(t *testing.T) {
-	for _, levels := range []int{24, 64} {
+	for _, levels := range []int{1, 24, 64, 256} {
 		t.Run(fmt.Sprint(levels), func(t *testing.T) {
 			root := t.TempDir()
 			for i := levels - 1; i >= 0; i-- {
@@ -171,7 +173,26 @@ output "value" {value="leaf-known"}`
 			require.Len(t, resources, 1)
 			require.Equal(t, cty.StringVal("leaf-known"), resources[0].Attributes["input"])
 			require.Equal(t, cty.StringVal("leaf-known"), outputs["value"])
-			require.Len(t, evaluator.TakeModuleInstances(), levels-1)
+			instances := evaluator.TakeModuleInstances()
+			require.Len(t, instances, levels-1)
+			storage := map[*CallSite]bool{}
+			for _, instance := range instances {
+				require.Len(t, instance.CallChain, strings.Count(instance.ModuleAddress, "module."))
+				require.Equal(t, len(instance.CallChain), cap(instance.CallChain))
+				for i := range instance.CallChain {
+					site := &instance.CallChain[i]
+					require.Equal(t, "n", site.ModuleName)
+					require.Equal(t, filepath.Join(root, fmt.Sprintf("l%02d", i), "main.tf"), site.CalledFrom)
+					storage[site] = true
+				}
+			}
+			require.Less(t, len(storage), 3*levels, "exporting every module path must retain linear call-site storage")
+			require.Len(t, resources[0].CallChain, levels-1)
+			repeated, repeatedOutputs, _, err := evaluator.EvaluateModule(t.Context(), filepath.Join(root, "l00"), nil)
+			require.NoError(t, err)
+			require.Equal(t, resources, repeated, "cache reuse must preserve resource provenance")
+			require.Equal(t, outputs, repeatedOutputs)
+			require.Equal(t, instances, evaluator.TakeModuleInstances(), "cache reuse must preserve module provenance")
 			require.Empty(t, evaluator.NotEvaluatedDirs())
 			for i := 1; i < levels; i++ {
 				require.True(t, visited[filepath.Join(root, fmt.Sprintf("l%02d", i))])
@@ -319,7 +340,7 @@ module "leaf" {source="../leaf"}`})
 				wantEvaluations = 2
 			}
 			require.Equal(t, wantEvaluations, evaluator.DataBlockEvaluations(), "changed native inputs require fresh evaluation; provenance alone is rebound")
-			value := findResource(t, resources, "terraform_data", "value")
+			value := findResource(t, materializeResources(resources), "terraform_data", "value")
 			require.True(t, value.Attributes["input"].RawEquals(finalValue.Equals(cty.NullVal(cty.String))), "the final attributes must reflect the refined inputs")
 			require.Len(t, value.CallChain, 1)
 			require.Equal(t, finalSource, value.CallChain[0].Source)
@@ -775,5 +796,45 @@ output "value" {value=try(module.next.value,var.value)}
 				}
 			}
 		}
+	}
+}
+
+// evaluate keeps the cache matrices' explicit caller setup while production
+// recursion uses immutable paths and exports slices only at API boundaries.
+func (e *Evaluator) evaluate(ctx context.Context, dir, rootDir, packageRoot string, inputs map[string]cty.Value, addr string, sites []CallSite, visiting, visited map[string]bool) ([]ResolvedResource, map[string]cty.Value, error) {
+	var chain *callChain
+	for _, site := range sites {
+		chain = chain.append(&site)
+	}
+	resources, outputs, err := e.evaluateChain(ctx, dir, rootDir, packageRoot, inputs, addr, chain, visiting, visited)
+	return materializeResources(resources), outputs, err
+}
+
+// Include empty module instances: their provenance must not require resources
+// at every level to expose repeated ancestor copies.
+func BenchmarkEvaluateModuleDeepChain(b *testing.B) {
+	for _, depth := range []int{64, 128, 256} {
+		b.Run(fmt.Sprint(depth), func(b *testing.B) {
+			root := filepath.Join(b.TempDir(), "modules")
+			files := map[string][]byte{}
+			for i := range depth {
+				source := `resource "terraform_data" "leaf" {input="known"}`
+				if i+1 < depth {
+					source = fmt.Sprintf("module \"next\" {source=\"../n%d\"}", i+1)
+				}
+				files[filepath.Join(root, fmt.Sprintf("n%d", i), "main.tf")] = []byte(source)
+			}
+			fsys := vfs.NewMemFS(files)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				evaluator := NewWithFS(fsys)
+				evaluator.SetTrackModuleInstances(true)
+				resources, _, _, err := evaluator.EvaluateModule(b.Context(), filepath.Join(root, "n0"), nil)
+				if err != nil || len(resources) != 1 || len(evaluator.TakeModuleInstances()) != depth-1 {
+					b.Fatalf("incomplete evaluation: %v", err)
+				}
+			}
+		})
 	}
 }
