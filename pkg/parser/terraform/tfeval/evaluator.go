@@ -582,7 +582,8 @@ func (e *Evaluator) evaluateChain(
 	)
 
 	if addr == "" && e.skipRootResources {
-		return e.finishSkippedRootEvaluation(ctx, instancesBefore, childResources)
+		tree, err := e.finishSkippedRootEvaluation(ctx, instancesBefore, childResources)
+		return tree, nil, err
 	}
 
 	return e.finalizeChainEvaluation(
@@ -608,12 +609,12 @@ func (e *Evaluator) finishSkippedRootEvaluation(
 	ctx context.Context,
 	instancesBefore int,
 	childResources []*resourceTree,
-) (*resourceTree, map[string]cty.Value, error) {
+) (*resourceTree, error) {
 	if err := ctx.Err(); err != nil {
 		e.instances = e.instances[:instancesBefore]
-		return nil, nil, err
+		return nil, err
 	}
-	return moduleResourceTree(nil, childResources), nil, nil
+	return moduleResourceTree(nil, childResources), nil
 }
 
 func (e *Evaluator) finalizeChainEvaluation(
