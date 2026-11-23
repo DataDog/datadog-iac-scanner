@@ -114,7 +114,7 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
-	res.overrides.apply(files, res.syntheticFiles)
+	res.overrides.apply(files, res.docs, res.syntheticFiles)
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 

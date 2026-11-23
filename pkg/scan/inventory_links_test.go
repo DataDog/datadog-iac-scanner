@@ -255,6 +255,63 @@ DatadogPolicy contains {
 	require.Equal(t, 5, loc.Region.StartLine)
 }
 
+func TestTerraformDataOverrideFinding(t *testing.T) {
+	const declaration = `data "aws_iam_policy_document" "example" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["*"]
+  }
+}
+`
+	rule := syntheticQuery("test-iam-statement", "terraform", "Terraform", `	policy := input.document[i].data.aws_iam_policy_document[name]
+	policy.statement.actions[_] == "*"
+	typ := "aws_iam_policy_document"
+	key := sprintf("aws_iam_policy_document[%s].statement[0]", [name])`)
+
+	for _, tc := range []struct {
+		file, content string
+		line          int
+	}{
+		{"override.tf", `data "aws_iam_policy_document" "example" {
+  statement {
+    actions   = ["*"]
+    resources = ["*"]
+  }
+}
+`, 3},
+		{"override.tf.json", `{
+  "data": {
+    "aws_iam_policy_document": {
+      "example": {
+        "statement": [{
+          "actions": ["*"], "resources": ["*"]
+        }]
+      }
+    }
+  }
+}
+`, 5},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			root := writeRepo(t, map[string]string{"main.tf": declaration, tc.file: tc.content})
+			params := terraformParams(root)
+			inv, fingerprints := scanLinks(t, params, rule)
+			require.Len(t, inv.Resources, 1)
+			require.Equal(t, "main.tf", inv.Resources[0].File)
+			require.Len(t, fingerprints, 1)
+			require.Equal(t, []string{".|data.aws_iam_policy_document.example"}, linkedRefs(inv)[fingerprints[0]])
+
+			sarif, err := os.ReadFile(filepath.Join(params.OutputPath, "result.sarif"))
+			require.NoError(t, err)
+			var report struct{ Runs []reportmodel.SarifRun }
+			require.NoError(t, json.Unmarshal(sarif, &report))
+			loc := report.Runs[0].Results[0].ResultLocations[0].PhysicalLocation
+			require.Equal(t, tc.file, loc.ArtifactLocation.ArtifactURI)
+			require.Equal(t, tc.line, loc.Region.StartLine)
+		})
+	}
+}
+
 func TestTerraformOverrideFindingInCalledModule(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"main.tf": `module "child" {

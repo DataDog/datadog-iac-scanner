@@ -9,6 +9,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"maps"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -144,7 +145,7 @@ func (o *terraformOverrides) prepare(
 	}
 }
 
-func (o *terraformOverrides) apply(files model.FileMetadatas, syntheticFiles []*model.FileMetadata) {
+func (o *terraformOverrides) apply(files model.FileMetadatas, docs []model.Document, syntheticFiles []*model.FileMetadata) {
 	if o == nil {
 		return
 	}
@@ -164,11 +165,40 @@ func (o *terraformOverrides) apply(files model.FileMetadatas, syntheticFiles []*
 			setTerraformBlock(file, def.TerraformBlock, projection.document)
 		}
 	}
-	for _, synthetic := range syntheticFiles {
+	for i, synthetic := range syntheticFiles {
 		if file := o.byPath[absPath(synthetic.FilePath, o.repoPath)]; file != nil {
-			synthetic.TerraformOverrides = file.TerraformOverrides
+			synthetic.TerraformOverrides = withUnqualifiedDataOverrides(file.TerraformOverrides, docs[i])
 		}
 	}
+	for _, file := range files {
+		if file != nil && len(file.TerraformOverrides) > 0 {
+			file.TerraformOverrides = withUnqualifiedDataOverrides(file.TerraformOverrides, file.Document)
+		}
+	}
+}
+
+// Some legacy rules name data blocks without a data prefix. Record that alias
+// only in documents where the data block has no same-named managed resource.
+// The document itself may be released before finding source lookup.
+func withUnqualifiedDataOverrides(
+	sources map[model.TerraformBlock]*model.TerraformOverrideSource, document model.Document,
+) map[model.TerraformBlock]*model.TerraformOverrideSource {
+	var aliased map[model.TerraformBlock]*model.TerraformOverrideSource
+	data := docAsMap(document[dataRoot])
+	resources := docAsMap(document[terraformResourceBlock])
+	for key, source := range sources {
+		if key.Kind == dataRoot && docAsMap(data[key.Type])[key.Name] != nil && docAsMap(resources[key.Type])[key.Name] == nil {
+			if aliased == nil {
+				aliased = maps.Clone(sources)
+			}
+			key.Kind = ""
+			aliased[key] = source
+		}
+	}
+	if aliased != nil {
+		return aliased
+	}
+	return sources
 }
 
 func setTerraformBlock(file *model.FileMetadata, key model.TerraformBlock, document map[string]interface{}) {
@@ -242,6 +272,14 @@ func terraformFindingSource(
 	}
 	key, field := overrideFindingPath(path, searchKey)
 	source := file.TerraformOverrides[key]
+	if key.Kind == "" {
+		if source != nil {
+			key.Kind = dataRoot
+		} else {
+			key.Kind = terraformResourceBlock
+			source = file.TerraformOverrides[key]
+		}
+	}
 	if source == nil {
 		return nil
 	}
@@ -268,9 +306,14 @@ func overrideFindingPath(path model.SourcePath, searchKey string) (block model.T
 		}
 		return key, ""
 	}
-	kind := terraformResourceBlock
-	key := strings.TrimPrefix(searchKey, "resource.")
-	if rest, data := strings.CutPrefix(key, "data."); data {
+	return legacyOverrideFindingPath(searchKey)
+}
+
+func legacyOverrideFindingPath(searchKey string) (block model.TerraformBlock, property string) {
+	key, kind := searchKey, ""
+	if rest, explicit := strings.CutPrefix(key, "resource."); explicit {
+		kind, key = terraformResourceBlock, rest
+	} else if rest, explicit := strings.CutPrefix(key, "data."); explicit {
 		kind, key = dataRoot, rest
 	}
 	typ, name, tail := legacyTerraformBlockPath(key)
