@@ -34,7 +34,7 @@ type evalCacheKey struct {
 }
 
 // evalCacheEntry holds a module evaluation and its native effects. Entries with
-// stoppedDirs are partial and belong only to the current root's contextual cache;
+// stoppedDirs or externalStops are partial and belong only to the current root's cache;
 // the evaluator-wide cache contains completed entries only.
 // visitedDirs is the complete set of directories evaluated below this module,
 // independent of previously visited siblings. The caller tracks the module itself.
@@ -46,12 +46,14 @@ type evalCacheKey struct {
 type evalCacheEntry struct {
 	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.
-	instances   []ModuleInstance
-	outputs     map[string]cty.Value
-	visitedDirs []string
-	baseAddr    string
-	baseChain   []CallSite
-	stoppedDirs []string
+	instances         []ModuleInstance
+	outputs           map[string]cty.Value
+	visitedDirs       []string
+	baseAddr          string
+	baseChain         []CallSite
+	stoppedDirs       []string
+	enteredIdentities []string
+	externalStops     []string
 }
 
 // rebase returns the cached resources as they would have been recorded had the
@@ -109,24 +111,12 @@ func sameCallChain(first, second []CallSite) bool {
 	return true
 }
 
-// evaluationRun owns partial results for one recursive root evaluation. Its
-// ancestry tokens intern exact physical paths, never a permissive ancestor subset.
+// evaluationRun owns partial results for one recursive root evaluation.
+// Reuse depends on the cycle decisions made by a subtree, not its exact callers.
 // Native values may be reused between caller scopes; their call chains are rebound.
 type evaluationRun struct {
-	ancestry uint64
-	paths    map[ancestryEdge]uint64
-	partial  map[partialEvalCacheKey][]partialEvalCacheEntry
-	effects  *evaluationEffects
-}
-
-type ancestryEdge struct {
-	parent uint64
-	dir    string
-}
-
-type partialEvalCacheKey struct {
-	evaluation evalCacheKey
-	ancestry   uint64
+	partial map[evalCacheKey][]partialEvalCacheEntry
+	effects *evaluationEffects
 }
 
 type partialEvalCacheEntry struct {
@@ -134,43 +124,63 @@ type partialEvalCacheEntry struct {
 	result *evalCacheEntry
 }
 
-func (r *evaluationRun) childAncestry(dir string) uint64 {
-	key := ancestryEdge{parent: r.ancestry, dir: dir}
-	if token, ok := r.paths[key]; ok {
-		return token
-	}
-	if r.paths == nil {
-		r.paths = make(map[ancestryEdge]uint64)
-	}
-	token := uint64(len(r.paths)) + 1
-	r.paths[key] = token
-	return token
-}
-
-func (r *evaluationRun) partialResult(key *evalCacheKey, inputs map[string]cty.Value) *evalCacheEntry {
-	bucket := partialEvalCacheKey{evaluation: *key, ancestry: r.ancestry}
-	for _, entry := range r.partial[bucket] {
-		if maps.EqualFunc(entry.inputs, inputs, cty.Value.RawEquals) {
+func (r *evaluationRun) partialResult(key *evalCacheKey, inputs map[string]cty.Value, visiting map[string]bool) *evalCacheEntry {
+	for _, entry := range r.partial[*key] {
+		if !maps.EqualFunc(entry.inputs, inputs, cty.Value.RawEquals) {
+			continue
+		}
+		compatible := true
+		for _, dir := range entry.result.externalStops {
+			if !visiting[dir] {
+				compatible = false
+				break
+			}
+		}
+		if !compatible {
+			continue
+		}
+		for _, dir := range entry.result.enteredIdentities {
+			if visiting[dir] {
+				compatible = false
+				break
+			}
+		}
+		if compatible {
 			return entry.result
 		}
 	}
 	return nil
 }
 
-func (r *evaluationRun) rememberPartial(key *evalCacheKey, ancestry uint64, inputs map[string]cty.Value, entry *evalCacheEntry) {
+func (r *evaluationRun) rememberPartial(key *evalCacheKey, inputs map[string]cty.Value, entry *evalCacheEntry) {
 	if r.partial == nil {
-		r.partial = make(map[partialEvalCacheKey][]partialEvalCacheEntry)
+		r.partial = make(map[evalCacheKey][]partialEvalCacheEntry)
 	}
-	bucket := partialEvalCacheKey{evaluation: *key, ancestry: ancestry}
-	r.partial[bucket] = append(r.partial[bucket], partialEvalCacheEntry{inputs: maps.Clone(inputs), result: entry})
+	r.partial[*key] = append(r.partial[*key], partialEvalCacheEntry{inputs: maps.Clone(inputs), result: entry})
 }
 
 // Each effects frame records a directory's initial global state on its first
 // stop, even if a sibling or earlier root already marked that directory. This
 // keeps repeated stops compact and lets speculative pre-passes roll back alone.
 type evaluationEffects struct {
-	parent *evaluationEffects
-	stops  map[string]bool
+	parent  *evaluationEffects
+	stops   map[string]bool
+	entered map[string]bool
+	blocked map[string]bool
+}
+
+func (f *evaluationEffects) recordDecision(dir string, blocked bool) {
+	if blocked {
+		if f.blocked == nil {
+			f.blocked = make(map[string]bool)
+		}
+		f.blocked[dir] = true
+	} else {
+		if f.entered == nil {
+			f.entered = make(map[string]bool)
+		}
+		f.entered[dir] = true
+	}
 }
 
 func (r *evaluationRun) beginEffects() *evaluationEffects {
@@ -191,6 +201,16 @@ func (r *evaluationRun) recordStop(dir string, notEvaluated map[string]bool) {
 
 func (r *evaluationRun) finishEffects(frame *evaluationEffects, notEvaluated map[string]bool, commit bool) {
 	r.effects = frame.parent
+	// Pre-pass reporting effects roll back, but their cycle decisions can affect
+	// published outputs. Keep those dependencies in the enclosing evaluation.
+	if frame.parent != nil {
+		for dir := range frame.entered {
+			frame.parent.recordDecision(dir, false)
+		}
+		for dir := range frame.blocked {
+			frame.parent.recordDecision(dir, true)
+		}
+	}
 	if !commit {
 		for dir, existed := range frame.stops {
 			if !existed {

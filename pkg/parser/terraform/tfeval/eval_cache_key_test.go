@@ -329,7 +329,7 @@ module "leaf" {source="../leaf"}`})
 
 // The same native subtrees can be reached repeatedly while sibling inputs
 // refine, or through empty fan-out. Partial cycle results must stay reusable
-// under the same ancestry without expanding their stop effects into a tree.
+// under compatible ancestries without expanding their stop effects into a tree.
 func TestEvalCache_ContextualPartialResults(t *testing.T) {
 	for _, levels := range []int{4, 6, 8} {
 		for _, cycle := range []bool{false, true} {
@@ -572,5 +572,145 @@ output "v" {value=module.z_consumer.v}`})
 		require.Equal(t, cty.StringVal("known"), outputs["v"])
 		require.True(t, visited[filepath.Join(root, "a")], "the complete footprint survives sibling order and later cache hits")
 		require.True(t, visited[filepath.Join(root, "m")])
+	}
+}
+
+// Distinct directory paths can converge before a cycle. Work must follow the
+// evaluated directory/input states, rather than all paths through the DAG.
+func TestEvalCache_PartialDAG(t *testing.T) {
+	for _, shape := range []string{"diamond", "empty-grid"} {
+		t.Run(shape, func(t *testing.T) {
+			root := t.TempDir()
+			levels := 12
+			if shape == "empty-grid" {
+				levels = 40
+			}
+			for i := levels - 1; i >= 0; i-- {
+				body := ""
+				if i == levels-1 {
+					if shape == "diamond" {
+						body = "data \"x\" \"y\" {}\nmodule \"back\" {source=\"../h00\"}\n"
+					} else {
+						body = "module \"self\" {source=\"./\"}\n"
+					}
+				} else if shape == "diamond" {
+					body = fmt.Sprintf("module \"direct\" {source=\"../h%02d\"}\nmodule \"via\" {source=\"../a%02d\"}\n", i+1, i)
+					writeModule(t, root, fmt.Sprintf("a%02d", i), map[string]string{"main.tf": fmt.Sprintf("module \"next\" {source=\"../h%02d\"}", i+1)})
+				} else {
+					body = fmt.Sprintf("module \"left\" {source=\"../h%02d\"}\nmodule \"right\" {source=\"../a%02d\"}\n", i+1, i+1)
+				}
+				writeModule(t, root, fmt.Sprintf("h%02d", i), map[string]string{"main.tf": body})
+				if shape == "empty-grid" {
+					writeModule(t, root, fmt.Sprintf("a%02d", i), map[string]string{"main.tf": body})
+				}
+			}
+			evaluator := New()
+			base, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			ctx := &cancellationCheckContext{Context: base, cancel: cancel, maxChecks: int64(2000 * levels)}
+			resources, _, visited, err := evaluator.EvaluateModule(ctx, filepath.Join(root, "h00"), nil)
+			require.NoError(t, err)
+			require.LessOrEqual(t, evaluator.DataBlockEvaluations(), 4*levels)
+			if shape == "diamond" {
+				require.Len(t, resources, 1<<(levels-1), "each data occurrence still needs its own provenance")
+				require.Equal(t, []string{filepath.Join(root, "h00")}, evaluator.NotEvaluatedDirs())
+				require.Len(t, visited, 2*levels-2)
+			} else {
+				require.Empty(t, resources)
+				require.Equal(t, 2, len(evaluator.NotEvaluatedDirs()))
+				require.Len(t, visited, 2*levels-2)
+			}
+			require.Empty(t, evaluator.cache, "partial DAGs never enter the complete cache")
+			require.Nil(t, evaluator.evaluation)
+		})
+	}
+}
+
+func TestEvalCache_PartialAncestryCompatibility(t *testing.T) {
+	root := t.TempDir()
+	leaf := writeModule(t, root, "leaf", map[string]string{"main.tf": `resource "terraform_data" "leaf" {input="leaf"}`})
+	target := writeModule(t, root, "target", map[string]string{"main.tf": `resource "terraform_data" "target" {input="target"}
+module "leaf" {source="../leaf"}
+module "self" {source="./"}`})
+	for _, changed := range []string{"stop no longer active", "entered directory now active", "irrelevant ancestor"} {
+		t.Run(changed, func(t *testing.T) {
+			e := New()
+			e.evaluation = &evaluationRun{}
+			leafID, err := e.moduleDirectoryIdentity(t.Context(), leaf)
+			require.NoError(t, err)
+			firstVisiting := map[string]bool{}
+			if changed != "entered directory now active" {
+				firstVisiting[leafID] = true
+			}
+			first, _, err := e.evaluate(t.Context(), target, root, "", nil, "module.first", nil, firstVisiting, map[string]bool{})
+			require.NoError(t, err)
+			key := evalCacheKey{dir: target, rootDir: root, inputs: canonicalInputsKey(nil)}
+			nextVisiting := map[string]bool{}
+			if changed != "stop no longer active" {
+				nextVisiting[leafID] = true
+			}
+			nextVisiting["unrelated"] = true
+			entry := e.evaluation.partialResult(&key, nil, nextVisiting)
+			if changed == "irrelevant ancestor" {
+				require.NotNil(t, entry)
+			} else {
+				require.Nil(t, entry)
+			}
+			next, _, err := e.evaluate(t.Context(), target, root, "", nil, "module.second", nil, nextVisiting, map[string]bool{})
+			require.NoError(t, err)
+			wantFirst, wantNext := 1, 1
+			if changed == "entered directory now active" {
+				wantFirst = 2
+			}
+			if changed == "stop no longer active" {
+				wantNext = 2
+			}
+			require.Len(t, first, wantFirst)
+			require.Len(t, next, wantNext)
+			for _, r := range next {
+				require.True(t, strings.HasPrefix(r.ModuleAddress, "module.second"))
+			}
+		})
+	}
+}
+
+// A pre-pass may be abandoned, but changing one of its cycle decisions can
+// change the outputs it supplied. Such entries must still respect that ancestry.
+func TestEvalCache_SpeculativeCycleDependencies(t *testing.T) {
+	root := t.TempDir()
+	leaf := writeModule(t, root, "leaf", map[string]string{"main.tf": `resource "terraform_data" "r" {input="ready"}`})
+	for _, blocked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("blocked=%t", blocked), func(t *testing.T) {
+			e := New()
+			e.evaluation = &evaluationRun{}
+			outer := e.evaluation.beginEffects()
+			speculative := e.evaluation.beginEffects()
+			identity, err := e.moduleDirectoryIdentity(t.Context(), leaf)
+			require.NoError(t, err)
+			visiting := map[string]bool{identity: blocked}
+			_, _, err = e.evaluate(t.Context(), leaf, root, "", nil, "module.speculative", nil, visiting, map[string]bool{})
+			if blocked {
+				require.ErrorIs(t, err, ErrModuleNotEvaluated)
+			} else {
+				require.NoError(t, err)
+			}
+			e.evaluation.finishEffects(speculative, e.notEvaluatedDirs, false)
+			require.Empty(t, e.NotEvaluatedDirs(), "speculative reporting effects must roll back")
+			key := evalCacheKey{dir: root, rootDir: root, inputs: canonicalInputsKey(nil)}
+			e.cacheEvaluation(&key, true, nil, outer, nil, nil, map[string]cty.Value{}, map[string]bool{}, "", nil)
+			// This parent has no published children or stops, only pre-pass dependencies.
+			visiting[identity] = !blocked
+			if blocked {
+				require.Nil(t, e.evaluation.partialResult(&key, nil, visiting), "external speculative stop no longer applies")
+				visiting[identity] = true
+				require.NotNil(t, e.evaluation.partialResult(&key, nil, visiting))
+			} else {
+				_, _, hit := e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, map[string]bool{})
+				require.False(t, hit, "a speculative child would now stop")
+				visiting[identity] = false
+				_, _, hit = e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, map[string]bool{})
+				require.True(t, hit)
+			}
+		})
 	}
 }

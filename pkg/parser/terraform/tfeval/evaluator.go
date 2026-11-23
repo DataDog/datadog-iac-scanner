@@ -463,6 +463,7 @@ func (e *Evaluator) evaluate(
 	if err != nil {
 		return nil, nil, err
 	}
+	effects.recordDecision(identity, visiting[identity])
 	if visiting[identity] {
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
@@ -485,14 +486,11 @@ func (e *Evaluator) evaluate(
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	if entry := run.partialResult(&cacheKey, inputs); entry != nil {
+	if entry := run.partialResult(&cacheKey, inputs, visiting); entry != nil {
 		resources, outputs := e.restoreCachedEvaluation(entry, addr, chain, allVisited)
 		return resources, outputs, nil
 	}
 
-	ancestry := run.ancestry
-	run.ancestry = run.childAncestry(identity)
-	defer func() { run.ancestry = ancestry }()
 	visiting[identity] = true
 	defer delete(visiting, identity)
 	instancesBefore := len(e.instances)
@@ -579,7 +577,7 @@ func (e *Evaluator) evaluate(
 	}
 
 	e.cacheEvaluation(
-		&cacheKey, inputsKeyOK, inputs, ancestry, effects, resources,
+		&cacheKey, inputsKeyOK, inputs, effects, resources,
 		e.instances[instancesBefore:], outputs, subtreeVisited, addr, chain,
 	)
 
@@ -651,9 +649,8 @@ func (e *Evaluator) reuseCachedEvaluation(
 	}
 	// A complete result from another ancestry must not bypass the same cycle
 	// check a fresh traversal would apply to one of its descendants.
-	for _, visited := range entry.visitedDirs {
-		identity, err := e.moduleDirectoryIdentity(ctx, visited)
-		if err != nil || visiting[identity] {
+	for _, identity := range entry.enteredIdentities {
+		if ctx.Err() != nil || visiting[identity] {
 			return nil, nil, false
 		}
 	}
@@ -667,6 +664,12 @@ func (e *Evaluator) restoreCachedEvaluation(
 	chain []CallSite,
 	allVisited map[string]bool,
 ) (resources []ResolvedResource, outputs map[string]cty.Value) {
+	for _, identity := range entry.enteredIdentities {
+		e.evaluation.effects.recordDecision(identity, false)
+	}
+	for _, identity := range entry.externalStops {
+		e.evaluation.effects.recordDecision(identity, true)
+	}
 	for _, visited := range entry.visitedDirs {
 		allVisited[visited] = true
 	}
@@ -701,7 +704,6 @@ func (e *Evaluator) cacheEvaluation(
 	key *evalCacheKey,
 	inputsKeyOK bool,
 	inputs map[string]cty.Value,
-	ancestry uint64,
 	effects *evaluationEffects,
 	resources []ResolvedResource,
 	instances []ModuleInstance,
@@ -725,8 +727,18 @@ func (e *Evaluator) cacheEvaluation(
 		resources: resources, instances: slices.Clone(instances), outputs: outputs,
 		visitedDirs: visitedDirs, stoppedDirs: stoppedDirs, baseAddr: addr, baseChain: chain,
 	}
-	if len(stoppedDirs) > 0 {
-		e.evaluation.rememberPartial(key, ancestry, inputs, entry)
+	// Cycle dependencies include speculative passes as well as published work.
+	for identity := range effects.entered {
+		entry.enteredIdentities = append(entry.enteredIdentities, identity)
+	}
+	for identity := range effects.blocked {
+		// Stops at directories entered within the subtree are internal cycles.
+		if !effects.entered[identity] {
+			entry.externalStops = append(entry.externalStops, identity)
+		}
+	}
+	if len(stoppedDirs) > 0 || len(entry.externalStops) > 0 {
+		e.evaluation.rememberPartial(key, inputs, entry)
 		return
 	}
 	e.cache[*key] = entry
