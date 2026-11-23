@@ -1,0 +1,10 @@
+apiVersion: v2
+name: determinism
+version: 0.1.0
+dependencies:
+  - name: first
+    version: 0.1.0
+  - name: second
+    version: 0.1.0
+  - name: third
+    version: 0.1.0
