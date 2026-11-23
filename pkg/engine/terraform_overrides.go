@@ -371,6 +371,7 @@ func (q *QueryContext) locateStructuredFinding(
 	// JSON override. The written-path resolver currently supports native HCL.
 	key := terraformLegacyPath(path)
 	if key == "" {
+		// This error deliberately drops the finding because its written location is unknown.
 		return model.VulnerabilityLines{}, errors.New("incomplete Terraform block path")
 	}
 	lines := d.DetectLine(ctx, file, key)

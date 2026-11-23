@@ -523,6 +523,61 @@ variable "effective_acl" {}
 	require.Equal(t, 2, attribution.ModuleCodeLocation.LineStart)
 }
 
+func TestTerraformCountedOverrideFindingInCalledModule(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf": `module "child" {
+  source    = "./child"
+  base_name = "example"
+}
+`,
+		"child/main.tf": `resource "aws_s3_bucket" "example" {
+  count  = 1
+  bucket = "${var.base_name}-${count.index}"
+}
+variable "base_name" {}
+`,
+		"child/override.tf": `resource "aws_s3_bucket" "example" {
+  count = 2
+  acl   = "public-read"
+}
+`,
+	})
+	rule := syntheticQuery("test-counted-override", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	startswith(bucket.bucket, "example-")
+	bucket.acl == "public-read"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
+
+	params := terraformParams(root)
+	inv, fingerprints := scanLinks(t, params, rule)
+	const overrideFile = "child/override.tf"
+	fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, overrideFile, "Terraform",
+		"aws_s3_bucket", "example", rule.Query, "", "main.tf|module.child")
+	require.Equal(t, []string{fingerprint}, fingerprints)
+	require.ElementsMatch(t, []string{
+		".|module.child.aws_s3_bucket.example[0]",
+		".|module.child.aws_s3_bucket.example[1]",
+	}, linkedRefs(inv)[fingerprint])
+	require.Len(t, inv.Resources, 2)
+	for _, row := range inv.Resources {
+		require.Equal(t, "child/main.tf", row.File)
+	}
+
+	result := readSARIFRun(t, params).Results[0]
+	primary := result.ResultLocations[0].PhysicalLocation
+	require.Equal(t, "main.tf", primary.ArtifactLocation.ArtifactURI)
+	require.Equal(t, 2, primary.Region.StartLine, "the literal ACL is controlled by the module")
+	module, err := json.Marshal(result.ResultProperties["module"])
+	require.NoError(t, err)
+	var attribution model.ModuleAttributionSARIF
+	require.NoError(t, json.Unmarshal(module, &attribution))
+	require.Equal(t, overrideFile, attribution.ModuleCodeLocation.Filename)
+	require.Equal(t, 3, attribution.ModuleCodeLocation.LineStart)
+	require.Len(t, attribution.ModulePath, 1)
+	require.Equal(t, "child", attribution.ModulePath[0].Name)
+	require.Equal(t, "local", attribution.ModulePath[0].SourceType)
+}
+
 func TestTerraformZeroInstancesWithoutOverrides(t *testing.T) {
 	for _, tc := range []struct {
 		name, expansion string
