@@ -594,10 +594,9 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 // collectNotEvaluatedDirs marks the directories the evaluator skipped, and
 // everything they call, as unresolved.
 //
-// A directory is reached from several call sites, and depth, cycle and budget
-// stops apply to one call site at a time, so a directory can come out of a scan
-// with some instances resolved and others skipped. Suppression is decided per
-// directory, so without this the resolved instances would suppress the body and
+// A directory is reached from several call sites, and an evaluation can be
+// skipped at one call site while other instances resolve. Suppression is decided
+// per directory, so without this the resolved instances would suppress the body and
 // the skipped ones would be represented by nothing at all — a silent false
 // negative for exactly the inputs that were never evaluated. Keeping the body
 // costs a finding that also appears on a resolved instance, which is the safe
