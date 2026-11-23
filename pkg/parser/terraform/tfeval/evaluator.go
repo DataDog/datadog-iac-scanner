@@ -320,7 +320,8 @@ func (e *Evaluator) Fork() *Evaluator {
 	}
 }
 
-// SetExplicitRootVars supplies the scan's highest-precedence root inputs.
+// SetExplicitRootVars supplies the scan's highest-precedence inputs for roots
+// with effective resource or data overrides.
 // The map is read-only and shared by evaluator forks.
 func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
 	e.explicitRootVars = inputs

@@ -14,6 +14,32 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+func TestExplicitRootVarsOnlyAffectEffectiveOverrides(t *testing.T) {
+	root := t.TempDir()
+	e := New()
+	e.SetExplicitRootVars(map[string]cty.Value{"value": cty.StringVal("selected")})
+	worker := e.Fork()
+	for _, tc := range []struct {
+		name, override, want string
+	}{
+		{"plain", "", "automatic"},
+		{"orphan", `resource "example" "orphan" { other = true }`, "automatic"},
+		{"matched", `resource "example" "this" { other = true }`, "selected"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := map[string]string{
+				"main.tf":          `resource "example" "this" { value = var.value }`,
+				"terraform.tfvars": `value = "automatic"`,
+			}
+			if tc.override != "" {
+				files["override.tf"] = tc.override
+			}
+			dir := writeModule(t, root, tc.name, files)
+			require.Equal(t, cty.StringVal(tc.want), worker.LoadRootVarsWithContext(t.Context(), dir)["value"])
+		})
+	}
+}
+
 func TestResourceOverrides(t *testing.T) {
 	dir := writeModule(t, t.TempDir(), "module", map[string]string{
 		"main.tf": `
