@@ -350,3 +350,36 @@ func (f *fakeDatadogClient) GetRemoteConfig(_ context.Context, repoUrl string, l
 func (f *fakeDatadogClient) GetLibraries(_ context.Context) (map[string]datadog.Library, error) {
 	return map[string]datadog.Library{}, nil
 }
+
+// The plan-scanning settings are accepted from the local file and from the merged remote config.
+func TestReadConfigWithPlanScanning(t *testing.T) {
+	const repoUrl = "https://example.com/repo.git"
+	for _, version := range []string{"v1.4", "v1.8"} {
+		cfg := "schema-version: " + version + "\niac:\n  ignore-rules:\n    - query1\n  global-config:\n    plan-scanning:\n      enabled: true\n"
+		expected := IacConfig{IgnoreRules: []string{"query1"}}
+
+		t.Run(version+"/local file", func(t *testing.T) {
+			tmp := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(tmp, ConfigFileNameBase+".yaml"), []byte(cfg), 0644))
+
+			parsed, b, err := ReadConfiguration(t.Context(), tmp)
+			require.NoError(t, err)
+			assert.Equal(t, cfg, string(b))
+			assert.Equal(t, expected, *parsed)
+		})
+
+		t.Run(version+"/remote config", func(t *testing.T) {
+			client := &fakeDatadogClient{
+				t:                  t,
+				expectedSentConfig: nil,
+				expectedRepoUrl:    repoUrl,
+				remoteConfig:       []byte(cfg),
+			}
+
+			parsed, b, err := ReadConfiguration(t.Context(), t.TempDir(), WithDatadog(client, repoUrl))
+			require.NoError(t, err)
+			assert.Equal(t, cfg, string(b))
+			assert.Equal(t, expected, *parsed)
+		})
+	}
+}

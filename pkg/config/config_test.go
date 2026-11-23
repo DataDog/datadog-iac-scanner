@@ -129,3 +129,34 @@ iac:
 	require.NotNil(t, rc.Arguments)
 	assert.Equal(t, []interface {}([]interface {}{"Env"}), rc.Arguments["required_tags"])
 }
+
+func TestParsePlanScanning(t *testing.T) {
+	t.Run("enabled is accepted", func(t *testing.T) {
+		cfg, err := ParseConfig([]byte("schema-version: v1.4\niac:\n  global-config:\n    plan-scanning:\n      enabled: true\n"))
+		require.NoError(t, err)
+		assert.NotNil(t, cfg)
+	})
+
+	t.Run("section alone is accepted", func(t *testing.T) {
+		cfg, err := ParseConfig([]byte("schema-version: v1.4\niac:\n  global-config:\n    plan-scanning: {}\n"))
+		require.NoError(t, err)
+		assert.NotNil(t, cfg)
+	})
+
+	t.Run("section does not change the scanner config", func(t *testing.T) {
+		cfg, err := ParseConfig([]byte("schema-version: v1.4\niac:\n  ignore-rules: [abc]\n  global-config:\n    plan-scanning:\n      enabled: false\n"))
+		require.NoError(t, err)
+		assert.Equal(t, IacConfig{IgnoreRules: []string{"abc"}}, *cfg)
+	})
+
+	t.Run("unknown key is rejected", func(t *testing.T) {
+		_, err := ParseConfig([]byte("schema-version: v1.4\niac:\n  global-config:\n    plan-scanning:\n      xinvalid: true\n"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "field `xinvalid` is not valid in the `iac.global-config.plan-scanning` section")
+	})
+
+	t.Run("non-boolean value is rejected", func(t *testing.T) {
+		_, err := ParseConfig([]byte("schema-version: v1.4\niac:\n  global-config:\n    plan-scanning:\n      enabled: sometimes\n"))
+		require.Error(t, err)
+	})
+}
