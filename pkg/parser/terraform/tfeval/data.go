@@ -48,7 +48,7 @@ type moduleData struct {
 	sources map[string][]byte
 	locals  *localGraph
 	addr    string
-	chain   []CallSite
+	chain   *callChain
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -87,7 +87,7 @@ func newModuleData(
 	locals *localGraph,
 	static *dirStatic,
 	addr string,
-	chain []CallSite,
+	chain *callChain,
 	declarations map[*hclsyntax.Body]*hclsyntax.Body,
 ) *moduleData {
 	blocks := locals.dataBlocks

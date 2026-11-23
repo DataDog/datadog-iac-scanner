@@ -105,7 +105,8 @@ resource "example" "this" {
 func TestResourceOverridesExpandInsideCalledModule(t *testing.T) {
 	root := t.TempDir()
 	dir := writeModule(t, root, "root", map[string]string{
-		"main.tf": `module "child" { source = "../child" }`,
+		"main.tf": `module "first" { source = "../child" }
+module "second" { source = "../child" }`,
 	})
 	child := writeModule(t, root, "child", map[string]string{
 		"main.tf": `
@@ -133,25 +134,52 @@ resource "example" "keyed" { for_each = var.values }
 data "example" "source" { value = "override" }
 `,
 	})
-	resources, _, _, err := New().EvaluateModule(t.Context(), dir, nil)
+	e := New()
+	resources, _, _, err := e.EvaluateModule(t.Context(), dir, nil)
 	require.NoError(t, err)
-	require.Len(t, resources, 4)
+	require.Len(t, resources, 8)
+	require.Equal(t, 1, e.DataBlockEvaluations(), "the second call reuses the child evaluation")
 	values := make(map[string]cty.Value)
 	for _, r := range resources {
 		require.Equal(t, filepath.Join(child, "main.tf"), r.DefinedIn)
+		require.NotNil(t, r.DeclarationBody)
+		require.Equal(t, r.DefinedIn, r.DeclarationBody.SrcRange.Filename)
+		require.Len(t, r.CallChain, 1)
+		require.Equal(t, r.ModuleAddress, "module."+r.CallChain[0].ModuleName)
 		address, ok := r.TerraformAddress()
 		require.True(t, ok)
 		values[address] = r.Attributes["value"]
 		if r.Data {
 			require.Equal(t, cty.StringVal("retained"), r.Attributes["other"])
+			require.Equal(t, filepath.Join(child, "override.tf"), r.Body.Attributes["value"].SrcRange.Filename)
 		}
 	}
-	require.Equal(t, map[string]cty.Value{
-		"module.child.example.counted[0]":   cty.NumberIntVal(0),
-		"module.child.example.counted[1]":   cty.NumberIntVal(1),
-		`module.child.example.keyed["new"]`: cty.StringVal("new"),
-		"module.child.data.example.source":  cty.StringVal("override"),
-	}, values)
+	want := make(map[string]cty.Value)
+	for _, call := range []string{"first", "second"} {
+		prefix := "module." + call + "."
+		want[prefix+"example.counted[0]"] = cty.NumberIntVal(0)
+		want[prefix+"example.counted[1]"] = cty.NumberIntVal(1)
+		want[prefix+`example.keyed["new"]`] = cty.StringVal("new")
+		want[prefix+"data.example.source"] = cty.StringVal("override")
+	}
+	require.Equal(t, want, values)
+}
+
+func TestExplicitRootVarsRekeyCachedOverride(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{
+		"main.tf": `variable "value" { default = "base" }
+resource "example" "this" { value = var.value }`,
+		"override.tf": `resource "example" "this" { other = true }`,
+	})
+	e := New().Fork()
+	for _, value := range []string{"first", "second", "first"} {
+		e.SetExplicitRootVars(map[string]cty.Value{"value": cty.StringVal(value)})
+		resources, _, _, err := e.EvaluateModule(t.Context(), dir, e.LoadRootVarsWithContext(t.Context(), dir))
+		require.NoError(t, err)
+		require.Len(t, resources, 1)
+		require.Equal(t, cty.StringVal(value), resources[0].Attributes["value"])
+	}
+	require.Equal(t, 2, e.EvalCacheSize())
 }
 
 func TestResourceOverrideJSON(t *testing.T) {
