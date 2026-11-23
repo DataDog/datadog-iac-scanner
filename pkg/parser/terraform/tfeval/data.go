@@ -303,7 +303,7 @@ func (d *moduleData) evalBlock(
 		inst := &expanded[i]
 		view := *inst
 		if _, ok := localdata.Lookup(inst.Type); ok {
-			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx, fileInputs)
+			view.Attributes = d.withComputedAttributes(inst, b, ctx, evalCtx)
 		}
 		if d.addr == "" {
 			inst.Iteration = nil
@@ -472,7 +472,6 @@ func sameCtyValues(a, b map[string]cty.Value) bool {
 // expressions which can transform the string and lose its unresolved parts.
 func (d *moduleData) withComputedAttributes(
 	inst *ResolvedResource, b *hclsyntax.Block, scanCtx context.Context, evalCtx *hcl.EvalContext,
-	inputs overrideFileInputs,
 ) map[string]cty.Value {
 	ctx := evalCtx
 	if inst.Iteration != nil {
@@ -484,7 +483,12 @@ func (d *moduleData) withComputedAttributes(
 		body = json
 	}
 	computed := localdata.Evaluate(scanCtx, inst.Type, body, func(expr hcl.Expression) (cty.Value, bool) {
-		scoped := inputs.context(ctx, expr.Range().Filename)
+		scoped := ctx
+		if inst.documentScope != nil {
+			if view := inst.documentScope.files[expr.Range().Filename]; view != nil {
+				scoped = partial.Scope(ctx, view.bindings)
+			}
+		}
 		for {
 			inner, vars, bound := partial.Unbind(expr)
 			if !bound {
@@ -531,9 +535,14 @@ func (d *moduleData) resolved(scope *ModuleScope) []ResolvedResource {
 				value, _ := inst.InstanceKey.Unmark()
 				key.instance = value.GoString()
 			}
-			scope.dataSources[key] = documentDataSource{
+			metadata := documentDataSource{
 				source: source, body: body, iteration: inst.Iteration, json: json, filename: block.TypeRange.Filename,
 			}
+			metadata.directed = d.overrideInputs != nil && d.overrideInputs.directedData[block.Body]
+			if inst.documentScope != nil {
+				metadata.files = inst.documentScope.files
+			}
+			scope.dataSources[key] = metadata
 		}
 	}
 	return d.instances

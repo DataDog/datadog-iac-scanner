@@ -15,7 +15,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -65,7 +64,7 @@ func (e *Evaluator) StandaloneOverrideScope(ctx context.Context, dir string) *Mo
 	}
 	inputs := e.LoadRootVarsWithContext(ctx, dir)
 	scope := e.newModuleScope(ctx, dir, dir, &parsed, inputs)
-	e.loadOverrideFileInputs(ctx, dir, &parsed, inputs, scope)
+	e.loadOverrideFileInputs(ctx, &parsed, inputs, scope)
 	e.populateStandaloneData(ctx, &parsed, scope)
 	return scope
 }
@@ -80,38 +79,31 @@ func (e *Evaluator) populateStandaloneData(ctx context.Context, parsed *dirParse
 // An effective block can combine expressions from files with different tfvars
 // selections. Bind each expression using its written file, including meta
 // arguments, rather than letting a selection leak to another file's fields.
-type overrideFileInputs map[string]map[string]cty.Value
-
-func (i overrideFileInputs) context(base *hcl.EvalContext, file string) *hcl.EvalContext {
-	if bindings := i[file]; len(bindings) != 0 {
-		return partial.Scope(base, bindings)
-	}
-	return base
-}
-
 type overrideInputs struct {
-	bodies map[*hclsyntax.Body]*hclsyntax.Body
-	files  overrideFileInputs
+	parsed       *dirParse
+	scope        *ModuleScope
+	files        map[string]cty.Value
+	directedData map[*hclsyntax.Body]bool
 }
 
-func (o *overrideInputs) forBody(body *hclsyntax.Body) overrideFileInputs {
-	if o != nil && o.bodies[body] != nil {
-		return o.files
+func (o *overrideInputs) forBody(body *hclsyntax.Body) *overrideInputs {
+	if o != nil && o.parsed.declarations[body] != nil {
+		return o
 	}
 	return nil
 }
 
 func (e *Evaluator) loadOverrideFileInputs(
-	ctx context.Context, dir string, parsed *dirParse, inputs map[string]cty.Value, scope *ModuleScope,
+	ctx context.Context, parsed *dirParse, inputs map[string]cty.Value, scope *ModuleScope,
 ) {
 	if e.explicitRootVars != nil || len(parsed.overrides) == 0 {
 		return
 	}
-	files := make(overrideFileInputs)
+	files := make(map[string]cty.Value)
 	for _, override := range parsed.overrides {
-		files[override.Declaration.TypeRange.Filename] = nil
+		files[override.Declaration.TypeRange.Filename] = cty.NilVal
 		for _, fragment := range override.Contributions {
-			files[fragment.TypeRange.Filename] = nil
+			files[fragment.TypeRange.Filename] = cty.NilVal
 		}
 	}
 	for filename := range files {
@@ -123,17 +115,32 @@ func (e *Evaluator) loadOverrideFileInputs(
 		combined := make(map[string]cty.Value, len(inputs)+len(selected))
 		maps.Copy(combined, inputs)
 		maps.Copy(combined, selected)
-		fileScope := e.newModuleScope(ctx, dir, dir, parsed, combined)
-		e.populateStandaloneData(ctx, parsed, fileScope)
-		bindings := map[string]cty.Value{"var": fileScope.Var, "local": fileScope.Local}
-		if value, ok := fileScope.evalCtx.Variables["data"]; ok {
-			bindings["data"] = value
-		}
-		files[filename] = bindings
+		files[filename] = objectOrEmpty(e.resolveVariables(parsed.varDecls, combined))
 	}
 	if len(files) != 0 {
-		scope.overrideInputs = &overrideInputs{bodies: parsed.declarations, files: files}
+		scope.overrideInputs = &overrideInputs{
+			parsed: parsed, scope: scope, files: files, directedData: directedDataBodies(parsed.overrides, files),
+		}
 	}
+}
+
+func directedDataBodies(overrides []ResourceOverride, files map[string]cty.Value) map[*hclsyntax.Body]bool {
+	var directed map[*hclsyntax.Body]bool
+	for _, override := range overrides {
+		if override.Effective.Type != blockTypeData {
+			continue
+		}
+		for _, body := range append([]*hclsyntax.Block{override.Declaration}, override.Contributions...) {
+			if _, ok := files[body.TypeRange.Filename]; ok {
+				if directed == nil {
+					directed = make(map[*hclsyntax.Body]bool)
+				}
+				directed[override.Effective.Body] = true
+				break
+			}
+		}
+	}
+	return directed
 }
 
 // OverrideDocument renders an effective declaration at block granularity.
@@ -147,8 +154,8 @@ func (e *Evaluator) OverrideDocument(
 		evalCtx = scope.evalCtx
 	}
 	state := &bodyState{dynamic: &dynamicRecorder{}}
-	if scope != nil && scope.overrideInputs != nil {
-		state.setFileInputs(scope.overrideInputs.files)
+	if scope != nil {
+		state.setFileInputs(e.fileViews(ctx, evalCtx, r.Body, scope.overrideInputs))
 	}
 	r.Attributes = e.evalBodyWith(ctx, r.Body, evalCtx, nil, state)
 	r.DynamicCounts = state.dynamic.counts

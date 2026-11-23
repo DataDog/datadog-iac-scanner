@@ -45,14 +45,37 @@ func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) m
 }
 
 // newRenderer renders r's attributes in the context they were evaluated in.
-func newRenderer(scanCtx context.Context, r *ResolvedResource) *partial.Renderer {
+type documentRenderer struct {
+	*partial.Renderer
+	references *documentReferenceRenderer
+}
+
+func newRenderer(scanCtx context.Context, r *ResolvedResource) *documentRenderer {
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
-		return &partial.Renderer{}
+		return &documentRenderer{Renderer: &partial.Renderer{}}
 	}
+	references := documentReferences(scanCtx, r.Scope)
 	rd := &partial.Renderer{
-		Ctx: r.Scope.evalCtx, Source: partial.FileSources(r.Scope.sources), Reference: documentReferences(scanCtx, r.Scope),
+		Ctx: r.Scope.evalCtx, Source: partial.FileSources(r.Scope.sources), Reference: references.forFile(nil),
 	}
-	return rd.WithBindings(documentIteration(r))
+	return &documentRenderer{Renderer: rd.WithBindings(documentIteration(r)), references: references}
+}
+
+func (r *documentRenderer) withSource(src *attrSource) *documentRenderer {
+	if src.file == nil && len(src.bindings) == 0 {
+		return r
+	}
+	next := *r
+	if src.file != nil {
+		rd := *r.Renderer
+		rd.Ctx = partial.Scope(rd.Ctx, src.file.bindings)
+		if r.references != nil {
+			rd.Reference = r.references.forFile(src.file)
+		}
+		next.Renderer = &rd
+	}
+	next.Renderer = next.WithBindings(src.bindings)
+	return &next
 }
 
 // Root resources omit their iteration map during evaluation. Recover its
@@ -87,15 +110,14 @@ const (
 // expression places a reference's value into a document. Its values never enter
 // the evaluation context. Completed results are memoized by scope; recursion
 // state belongs to this rendering, and canceled or truncated results are not shared.
-func documentReferences(ctx context.Context, scope *ModuleScope) func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool) {
+func documentReferences(ctx context.Context, scope *ModuleScope) *documentReferenceRenderer {
 	cache := scope.renderedData
 	if cache == nil {
 		cache = &sync.Map{}
 	}
-	r := &documentReferenceRenderer{
+	return &documentReferenceRenderer{
 		scope: scope, ctx: ctx, rendered: cache, visiting: map[documentDataKey]bool{}, cacheable: true,
 	}
-	return r.resolve
 }
 
 type documentReferenceRenderer struct {
@@ -107,7 +129,20 @@ type documentReferenceRenderer struct {
 	depth     int
 }
 
-func (r *documentReferenceRenderer) resolve(t hcl.Traversal, _ *hcl.EvalContext) (cty.Value, bool) {
+func (r *documentReferenceRenderer) forFile(view *fileInputView) func(hcl.Traversal, *hcl.EvalContext) (cty.Value, bool) {
+	return func(t hcl.Traversal, _ *hcl.EvalContext) (cty.Value, bool) {
+		return r.resolve(t, view)
+	}
+}
+
+func (r *documentReferenceRenderer) evaluationContext(view *fileInputView) *hcl.EvalContext {
+	if view == nil {
+		return r.scope.evalCtx
+	}
+	return partial.Scope(r.scope.evalCtx, view.bindings)
+}
+
+func (r *documentReferenceRenderer) resolve(t hcl.Traversal, view *fileInputView) (cty.Value, bool) {
 	if len(t) < 2 {
 		return cty.NilVal, false
 	}
@@ -123,29 +158,29 @@ func (r *documentReferenceRenderer) resolve(t hcl.Traversal, _ *hcl.EvalContext)
 	}
 	switch t.RootName() {
 	case rootLocal:
-		return r.local(t, name.Name)
+		return r.local(t, name.Name, view)
 	case blockTypeData:
-		return r.data(t, name.Name)
+		return r.data(t, name.Name, view)
 	default:
 		return cty.NilVal, false
 	}
 }
 
-func (r *documentReferenceRenderer) local(t hcl.Traversal, name string) (cty.Value, bool) {
+func (r *documentReferenceRenderer) local(t hcl.Traversal, name string, view *fileInputView) (cty.Value, bool) {
 	expr := r.scope.Locals[name]
 	if expr == nil {
 		return cty.NilVal, false
 	}
 	// A module local belongs to its declaration scope, not the consumer loop.
-	alias, known := partial.ReferenceTraversal(expr, r.scope.evalCtx)
+	alias, known := partial.ReferenceTraversal(expr, r.evaluationContext(view))
 	if !known {
 		return cty.NilVal, false
 	}
 	combined := append(append(hcl.Traversal{}, alias...), t[2:]...)
-	return r.resolve(combined, r.scope.evalCtx)
+	return r.resolve(combined, view)
 }
 
-func (r *documentReferenceRenderer) data(t hcl.Traversal, typ string) (cty.Value, bool) {
+func (r *documentReferenceRenderer) data(t hcl.Traversal, typ string, view *fileInputView) (cty.Value, bool) {
 	if len(t) < dataAttributeTraversalSteps {
 		return cty.NilVal, false
 	}
@@ -164,10 +199,13 @@ func (r *documentReferenceRenderer) data(t hcl.Traversal, typ string) (cty.Value
 		end++
 	}
 	data, exists := r.scope.dataSources[key]
+	if view != nil && view.recomputed[documentDataKey{typ: key.typ, name: key.name}] {
+		data, exists = view.data[key]
+	}
 	if !exists {
 		return cty.NilVal, false
 	}
-	v, ok := r.render(key, data)
+	v, ok := r.render(key, data, view)
 	if !ok {
 		return cty.NilVal, false
 	}
@@ -185,10 +223,16 @@ type documentDataSource struct {
 	iteration map[string]cty.Value
 	filename  string
 	json      bool
+	directed  bool
+	files     map[string]*fileInputView
 }
 
-func (r *documentReferenceRenderer) render(key documentDataKey, data documentDataSource) (cty.Value, bool) {
-	if v, ok := r.rendered.Load(key); ok {
+func (r *documentReferenceRenderer) render(key documentDataKey, data documentDataSource, view *fileInputView) (cty.Value, bool) {
+	cache := r.rendered
+	if view != nil {
+		cache = &view.rendered
+	}
+	if v, ok := cache.Load(key); ok {
 		return v.(cty.Value), true
 	}
 	if r.visiting[key] {
@@ -200,13 +244,24 @@ func (r *documentReferenceRenderer) render(key documentDataKey, data documentDat
 	}
 	r.visiting[key] = true
 	defer delete(r.visiting, key)
-	rd := (&partial.Renderer{
-		Ctx: r.scope.evalCtx, Source: partial.FileSources(r.scope.sources), Reference: r.resolve,
-	}).WithBindings(data.iteration)
+	renderer := func(expressionView *fileInputView) *partial.Renderer {
+		return (&partial.Renderer{
+			Ctx: r.evaluationContext(expressionView), Source: partial.FileSources(r.scope.sources),
+			Reference: r.forFile(expressionView),
+		}).WithBindings(data.iteration)
+	}
+	rd := renderer(view)
 	eval := rd.Render
-	if data.json {
+	if data.json || data.directed {
 		eval = func(expr hcl.Expression) (cty.Value, bool) {
-			return renderDataJSON(rd, expr, r.scope.sources[data.filename])
+			scoped := rd
+			if data.directed {
+				scoped = renderer(data.files[expr.Range().Filename])
+			}
+			if data.json {
+				return renderDataJSON(scoped, expr, r.scope.sources[data.filename])
+			}
+			return scoped.Render(expr)
 		}
 	}
 	attrs := data.source(r.ctx, data.body, eval)
@@ -220,7 +275,7 @@ func (r *documentReferenceRenderer) render(key documentDataKey, data documentDat
 	}
 	v := objectOrEmpty(values)
 	if r.cacheable {
-		r.rendered.Store(key, v)
+		cache.Store(key, v)
 	}
 	return v, true
 }
@@ -239,6 +294,7 @@ func renderDataJSON(rd *partial.Renderer, expr hcl.Expression, src []byte) (cty.
 type attrSource struct {
 	scope      *documentScope
 	bindings   map[string]cty.Value
+	file       *fileInputView
 	expr       hclsyntax.Expression // attribute value expression
 	body       *hclsyntax.Body      // body of a single nested block
 	blocks     []*hclsyntax.Block   // nested blocks sharing one type
@@ -333,7 +389,7 @@ func (s *attrSource) blocksFromCounts(n int) (blocks []*hclsyntax.Block, ok bool
 }
 
 func attributesToDocument(
-	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, scope *documentScope, rd *partial.Renderer,
+	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, scope *documentScope, rd *documentRenderer,
 ) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
 	for key, val := range attrs {
@@ -350,11 +406,11 @@ func sourceFor(body *hclsyntax.Body, key string, dynamic DynamicCounts, iterator
 		return attrSource{}
 	}
 	if attr, ok := body.Attributes[key]; ok && attr != nil {
-		var bindings map[string]cty.Value
+		var file *fileInputView
 		if scope != nil {
-			bindings = scope.files[attr.SrcRange.Filename]
+			file = scope.files[attr.SrcRange.Filename]
 		}
-		return attrSource{expr: attr.Expr, iterators: iterators, scope: scope, bindings: bindings}
+		return attrSource{expr: attr.Expr, iterators: iterators, scope: scope, file: file}
 	}
 	var blocks []*hclsyntax.Block
 	var counts []int
@@ -453,21 +509,24 @@ func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
 // src to recover what an unresolved value looked like in the configuration.
 // rd renders unresolved values; it is nil once v is known to be wholly known,
 // so a resolved subtree is walked once.
-func ctyValueToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) interface{} {
-	if rd != nil && src.bindings != nil {
-		rd = rd.WithBindings(src.bindings)
-	}
+func ctyValueToDocument(v cty.Value, src *attrSource, rd *documentRenderer) interface{} {
 	if rd != nil {
 		if v.IsWhollyKnown() {
 			rd = nil
-		} else if src.expr != nil && !readsIterator(src.expr, src.iterators) {
+		} else {
+			rd = rd.withSource(src)
+		}
+		if rd != nil && src.expr != nil && !readsIterator(src.expr, src.iterators) {
 			if rendered, ok := rd.RenderUnresolved(src.expr); ok {
 				return ctyValueToDocument(rendered, &attrSource{}, nil)
 			}
 		}
 	}
 	if !v.IsKnown() {
-		return unresolvedToDocument(src.expr, rd)
+		if rd == nil {
+			return unresolvedToDocument(src.expr, nil)
+		}
+		return unresolvedToDocument(src.expr, rd.Renderer)
 	}
 	if v.IsNull() {
 		return nil
@@ -508,7 +567,7 @@ func readsIterator(expr hclsyntax.Expression, iterators []string) bool {
 }
 
 // ctySeqToDocument converts a tuple/list/set to a slice.
-func ctySeqToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) []interface{} {
+func ctySeqToDocument(v cty.Value, src *attrSource, rd *documentRenderer) []interface{} {
 	n := v.LengthInt()
 	elemSrcs := seqElementSources(src, n)
 	list := make([]interface{}, 0, n)
@@ -558,6 +617,7 @@ func blockSource(src *attrSource, block *hclsyntax.Block) attrSource {
 		if child := src.scope.children[block]; child != nil {
 			out.scope = child
 			out.bindings = child.variables
+			out.file = child.file
 		}
 	}
 	return out
@@ -565,13 +625,13 @@ func blockSource(src *attrSource, block *hclsyntax.Block) attrSource {
 
 // ctyMapToDocument converts an object/map to a Go map; non-string or unknown
 // keys are skipped (keys are always strings in well-formed Terraform).
-func ctyMapToDocument(v cty.Value, src *attrSource, rd *partial.Renderer) map[string]interface{} {
+func ctyMapToDocument(v cty.Value, src *attrSource, rd *documentRenderer) map[string]interface{} {
 	body := src.body
 	if blocks := src.blocksFor(1); body == nil && len(blocks) == 1 && src.labelDepth >= len(blocks[0].Labels) {
 		body = blocks[0].Body
 		block := blockSource(src, blocks[0])
-		if rd != nil && block.bindings != nil {
-			rd = rd.WithBindings(block.bindings)
+		if rd != nil {
+			rd = rd.withSource(&block)
 		}
 		src = &block
 	}

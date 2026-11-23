@@ -7,6 +7,7 @@
 package tfeval
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -238,6 +239,166 @@ resource "example" "this" {
 	require.Contains(t, projected["policy"], "s3:getobject")
 	require.Equal(t, doc["action"], projected["action"])
 	require.Equal(t, doc["setting"], projected["setting"])
+}
+
+func TestResourceOverrideDirectiveUsesResolvedDependencies(t *testing.T) {
+	root := t.TempDir()
+	dir := writeModule(t, root, "root", map[string]string{
+		"main.tf": `// kics_terraform_vars: selected.tfvars
+variable "suffix" { default = "default" }
+module "child" { source = "../child" }
+resource "example" "dependency" { value = "public" }
+locals {
+  acl  = module.child.acl
+  name = "${example.dependency.value}-${var.suffix}"
+  n    = length(module.child.keys) + (var.suffix == "selected" ? 1 : 0)
+}
+data "aws_iam_policy_document" "late" {
+  statement {
+    actions   = ["s3:${var.suffix}"]
+    resources = [module.child.arn, example.dependency.value]
+  }
+}
+resource "example" "counted" {
+  count = local.n
+  acl   = local.acl
+  policy = data.aws_iam_policy_document.late.json
+}
+resource "example" "keyed" {
+  for_each = toset([local.name])
+  name     = each.key
+}
+`,
+		"override.tf": `resource "example" "counted" { enabled = true }
+resource "example" "keyed" { enabled = true }`,
+		"selected.tfvars": `suffix = "selected"`,
+	})
+	writeModule(t, root, "child", map[string]string{
+		"main.tf": `output "acl" { value = "public-read" }
+output "keys" { value = ["one"] }
+output "arn" { value = "arn:aws:s3:::example" }`,
+	})
+	e := New()
+	ctx := t.Context()
+	resources, _, _, err := e.EvaluateModule(ctx, dir, e.LoadRootVarsWithContext(ctx, dir))
+	require.NoError(t, err)
+	require.Len(t, resources, 5)
+	counted := findResource(t, resources, "example", "counted[1]")
+	require.Equal(t, cty.StringVal("public-read"), counted.Attributes["acl"])
+	require.Contains(t, counted.Attributes["policy"].AsString(), `"s3:selected"`)
+	require.Contains(t, counted.Attributes["policy"].AsString(), `"arn:aws:s3:::example"`)
+	require.Contains(t, counted.Attributes["policy"].AsString(), `"public"`)
+	keyed := findResource(t, resources, "example", `keyed["public-selected"]`)
+	require.Equal(t, cty.StringVal("public-selected"), keyed.Attributes["name"])
+	for _, override := range e.ResourceOverrides(ctx, dir) {
+		if override.Declaration.Labels[1] == "counted" {
+			projected := e.OverrideDocument(ctx, &override, counted.Scope)
+			require.Equal(t, "public-read", projected["acl"])
+			require.Equal(t, json.Number("2"), projected["count"])
+		}
+	}
+}
+
+func TestResourceOverrideDirectiveRetainsPartialPolicies(t *testing.T) {
+	for _, source := range []struct{ name, contents string }{
+		{"policy.tf", `data "aws_iam_policy_document" "example" {
+  count = var.policies
+  statement {
+    actions   = [var.action]
+    resources = [var.arn]
+  }
+}`},
+		{"policy.tf.json", `{"data":{"aws_iam_policy_document":{"example":{"count":"${var.policies}","statement":[
+  {"actions":["${var.action}"],"resources":["${var.arn}"]}
+]}}}}`},
+	} {
+		t.Run(source.name, func(t *testing.T) {
+			dir := writeModule(t, t.TempDir(), "root", map[string]string{
+				"main.tf": `// kics_terraform_vars: base.tfvars
+variable "action" { default = "s3:ListBucket" }
+variable "arn" { type = string }
+variable "policies" { default = 0 }
+locals { policy = data.aws_iam_policy_document.example[0].json }
+resource "example" "this" {
+  base_policy = local.policy
+}
+`,
+				"override.tf": `// kics_terraform_vars: override.tfvars
+resource "example" "this" {
+  policy = local.policy
+  dynamic "setting" {
+    for_each = ["loop"]
+    iterator = var
+    content {
+      label  = var.value
+      policy = data.aws_iam_policy_document.example[0].json
+    }
+  }
+  dynamic "masked" {
+    for_each = [{}]
+    iterator = data
+    content { policy = data.aws_iam_policy_document.example[0].json }
+  }
+}
+`,
+				source.name:       source.contents,
+				"base.tfvars":     "action = \"s3:GetObject\"\npolicies = 1\n",
+				"override.tfvars": "action = \"*\"\npolicies = 1\n",
+			})
+			e := New()
+			ctx := t.Context()
+			resources, _, _, err := e.EvaluateModule(ctx, dir, e.LoadRootVarsWithContext(ctx, dir))
+			require.NoError(t, err)
+			r := findResource(t, resources, "example", "this")
+			overrides := e.ResourceOverrides(ctx, dir)
+			require.Len(t, overrides, 1)
+			for _, doc := range []map[string]interface{}{
+				AttributesToDocument(&r),
+				e.OverrideDocument(ctx, &overrides[0], r.Scope),
+				e.OverrideDocument(ctx, &overrides[0], e.StandaloneOverrideScope(ctx, dir)),
+			} {
+				require.Contains(t, doc["base_policy"], `["s3:GetObject"]`)
+				require.Contains(t, doc["policy"], `["*"]`)
+				require.Contains(t, doc["policy"], "${var.arn}")
+				require.Equal(t, map[string]interface{}{"label": "loop", "policy": doc["policy"]}, doc["setting"])
+				require.Equal(t, map[string]interface{}{"policy": "${data.aws_iam_policy_document.example[0].json}"}, doc["masked"])
+			}
+		})
+	}
+}
+
+func TestResourceOverrideDirectivePreservesDataFilesOwnSelection(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{
+		"main.tf": `variable "action" { default = "*" }
+variable "arn" { type = string }
+resource "example" "this" {
+  original = data.aws_iam_policy_document.example.json
+}
+`,
+		"policy.tf": `// kics_terraform_vars: policy.tfvars
+data "aws_iam_policy_document" "example" {
+  statement {
+    actions   = [var.action]
+    resources = [var.arn]
+  }
+}
+`,
+		"override.tf": `// kics_terraform_vars: consumer.tfvars
+data "aws_iam_policy_document" "example" { version = "2012-10-17" }
+resource "example" "this" { effective = data.aws_iam_policy_document.example.json }
+`,
+		"policy.tfvars":   `action = "s3:GetObject"`,
+		"consumer.tfvars": `action = "s3:ListBucket"`,
+	})
+	e := New()
+	ctx := t.Context()
+	resources, _, _, err := e.EvaluateModule(ctx, dir, e.LoadRootVarsWithContext(ctx, dir))
+	require.NoError(t, err)
+	r := findResource(t, resources, "example", "this")
+	doc := AttributesToDocument(&r)
+	require.Contains(t, doc["original"], `["s3:GetObject"]`)
+	require.Contains(t, doc["original"], "${var.arn}")
+	require.Equal(t, doc["original"], doc["effective"])
 }
 
 func TestResourceOverrideJSON(t *testing.T) {

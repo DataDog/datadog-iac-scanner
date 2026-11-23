@@ -562,7 +562,7 @@ func (e *Evaluator) evaluateChain(
 	moduleBlocks, resourceBlocks := parsed.modules, parsed.resources
 	scope := e.newModuleScope(ctx, dir, rootDir, &parsed, inputs)
 	if addr == "" {
-		e.loadOverrideFileInputs(ctx, dir, &parsed, inputs, scope)
+		e.loadOverrideFileInputs(ctx, &parsed, inputs, scope)
 	}
 	evalCtx := scope.evalCtx
 	data := newModuleData(e, &parsed, addr, chain, scope.overrideInputs)
@@ -1032,7 +1032,7 @@ func (e *Evaluator) expandBlock(
 	addr string,
 	chain *callChain,
 	data bool,
-	inputs overrideFileInputs,
+	inputs *overrideInputs,
 ) []ResolvedResource {
 	if len(rb.Labels) < 2 {
 		return nil
@@ -1041,6 +1041,7 @@ func (e *Evaluator) expandBlock(
 
 	// Attributes that ignore each/count evaluate identically in every instance.
 	memo := newInvariantMemo()
+	views := e.fileViews(ctx, evalCtx, rb.Body, inputs)
 
 	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
 		// Only attribution of module resources and data evaluation read the
@@ -1050,7 +1051,7 @@ func (e *Evaluator) expandBlock(
 			iteration = child.Variables
 		}
 		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
-		state.setFileInputs(inputs)
+		state.setFileInputs(views)
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
 		return ResolvedResource{
 			Type:          typeName,
@@ -1071,10 +1072,10 @@ func (e *Evaluator) expandBlock(
 		}
 	}
 
-	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne, inputs); ok {
+	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne, views); ok {
 		return out
 	}
-	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne, inputs); ok {
+	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne, views); ok {
 		return out
 	}
 	return []ResolvedResource{makeOne(resName, evalCtx)}
@@ -1086,7 +1087,7 @@ func (e *Evaluator) expandCountInstances(
 	resName string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
-	inputs overrideFileInputs,
+	inputs *fileViews,
 ) ([]ResolvedResource, bool) {
 	countAttr := rb.Body.Attributes["count"]
 	if countAttr == nil {
@@ -1137,7 +1138,7 @@ func (e *Evaluator) expandForEachInstances(
 	resName string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
-	inputs overrideFileInputs,
+	inputs *fileViews,
 ) ([]ResolvedResource, bool) {
 	feAttr := rb.Body.Attributes["for_each"]
 	if feAttr == nil {
@@ -1430,16 +1431,16 @@ type bodyState struct {
 	document *documentScope
 	memo     *invariantMemo
 	dynamic  *dynamicRecorder
-	files    overrideFileInputs
+	files    *fileViews
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
 }
 
-func (st *bodyState) setFileInputs(inputs overrideFileInputs) {
-	if len(inputs) != 0 {
+func (st *bodyState) setFileInputs(inputs *fileViews) {
+	if inputs != nil {
 		st.files = inputs
-		st.document = &documentScope{files: inputs}
+		st.document = &documentScope{files: inputs.views}
 	}
 }
 
