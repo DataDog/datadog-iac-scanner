@@ -174,7 +174,7 @@ type resourceSchedule struct {
 	globals            map[string]cty.Value
 	data               *moduleData
 	addr               string
-	chain              []CallSite
+	chain              *callChain
 	resources, exposed [][]ResolvedResource
 	references         map[int]cty.Value
 	cyclic             []bool
@@ -183,7 +183,7 @@ type resourceSchedule struct {
 
 func (e *Evaluator) scheduleResources(
 	ctx context.Context, blocks []*hclsyntax.Block, scope *ModuleScope, evalCtx *hcl.EvalContext,
-	data *moduleData, addr string, chain []CallSite,
+	data *moduleData, addr string, chain *callChain,
 ) []ResolvedResource {
 	g := scope.static.resources
 	s := &resourceSchedule{
