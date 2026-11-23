@@ -47,6 +47,14 @@ func TestUnqualifiedDataOverrideSource(t *testing.T) {
 	require.NotNil(t, terraformFindingSource(file, nil, "data.local_file[example].filename"))
 }
 
+func TestTerraformLegacyPath(t *testing.T) {
+	path := model.SourcePath{{Key: "data"}, {Key: "local_file"}, {Key: "example"}, {Key: "filename"}}
+	for length := range 3 {
+		require.Empty(t, terraformLegacyPath(path[:length]))
+	}
+	require.Equal(t, "data.local_file[{{example}}].filename", terraformLegacyPath(path))
+}
+
 // writeFile creates dir/name with content and returns the absolute path.
 func writeFile(t *testing.T, dir, name, content string) string {
 	t.Helper()

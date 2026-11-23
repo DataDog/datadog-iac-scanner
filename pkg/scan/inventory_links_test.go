@@ -7,6 +7,7 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	reportmodel "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,11 +54,15 @@ DatadogPolicy contains result if {
 // fingerprint of each finding.
 func scanLinks(t *testing.T, params *Parameters, queries ...model.QueryMetadata) (*inventory.Inventory, []string) {
 	t.Helper()
+	return scanLinksWithContext(t, context.Background(), params, queries...)
+}
+
+func scanLinksWithContext(t *testing.T, ctx context.Context, params *Parameters, queries ...model.QueryMetadata) (*inventory.Inventory, []string) {
+	t.Helper()
 	params.OutputPath = t.TempDir()
 	params.OutputName = "result"
 	params.ReportFormats = []string{"sarif"}
 	params.InventoryPath = filepath.Join(t.TempDir(), "inventory.json")
-	ctx := context.Background()
 	c, err := NewClient(ctx, params, &consolePrinter.Printer{})
 	require.NoError(t, err)
 	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
@@ -70,21 +76,21 @@ func scanLinks(t *testing.T, params *Parameters, queries ...model.QueryMetadata)
 	var inv inventory.Inventory
 	require.NoError(t, json.Unmarshal(data, &inv))
 
-	var sarif struct {
-		Runs []struct {
-			Results []struct {
-				PartialFingerprints map[string]string `json:"partialFingerprints"`
-			} `json:"results"`
-		} `json:"runs"`
-	}
-	data, err = os.ReadFile(filepath.Join(params.OutputPath, "result.sarif"))
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(data, &sarif))
 	var fingerprints []string
-	for _, r := range sarif.Runs[0].Results {
-		fingerprints = append(fingerprints, r.PartialFingerprints["DATADOG_FINGERPRINT"])
+	for _, r := range readSARIFRun(t, params).Results {
+		fingerprints = append(fingerprints, r.PartialFingerprints.DatadogFingerprint)
 	}
 	return &inv, fingerprints
+}
+
+func readSARIFRun(t *testing.T, params *Parameters) reportmodel.SarifRun {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(params.OutputPath, "result.sarif"))
+	require.NoError(t, err)
+	var sarif struct{ Runs []reportmodel.SarifRun }
+	require.NoError(t, json.Unmarshal(data, &sarif))
+	require.Len(t, sarif.Runs, 1)
+	return sarif.Runs[0]
 }
 
 // linkedRefs maps each fingerprint to the rows it links to.
@@ -160,12 +166,19 @@ resource "aws_s3_bucket" "absent" {
   count = 2
   bucket = "absent"
 }
+resource "aws_s3_bucket" "disabled_each" {
+  for_each = { example = "example" }
+  bucket = each.value
+}
 `,
 		"override.tf": `resource "aws_s3_bucket" "example" {
   acl = "public-read"
 }
 resource "aws_s3_bucket" "absent" {
   count = 0
+}
+resource "aws_s3_bucket" "disabled_each" {
+  for_each = {}
 }
 `,
 	})
@@ -185,22 +198,26 @@ resource "aws_s3_bucket" "absent" {
 	doc.resource.aws_s3_bucket.sibling.bucket == "sibling"
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket[%s].bucket", [name])`)
-	absent := syntheticQuery("test-absent", "terraform", "Terraform", `	name := "absent"
+	absent := syntheticQuery("test-absent", "terraform", "Terraform", `	name := {"absent", "disabled_each"}[_]
 	input.document[i].resource.aws_s3_bucket[name]
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket[%s]", [name])`)
-	sarif := sarifResults(t, terraformParams(root), terraformPublicACLRule, privateOrMissing, missing, siblings, absent)
-	var report struct{ Runs []reportmodel.SarifRun }
-	require.NoError(t, json.Unmarshal([]byte(sarif), &report))
-	require.Len(t, report.Runs, 1)
-	require.Len(t, report.Runs[0].Results, 2)
-	for _, result := range report.Runs[0].Results {
+	params := terraformParams(root)
+	inv, _ := scanLinks(t, params, terraformPublicACLRule, privateOrMissing, missing, siblings, absent)
+	require.Len(t, inv.Resources, 2)
+	require.Contains(t, rowsByPath(inv), "aws_s3_bucket.example")
+	require.Contains(t, rowsByPath(inv), "aws_s3_bucket.sibling")
+	results := readSARIFRun(t, params).Results
+	require.Len(t, results, 2)
+	for _, result := range results {
 		require.NotEmpty(t, result.ResultLocations)
 		loc := result.ResultLocations[0].PhysicalLocation
 		switch result.ResultRuleID {
 		case "test-public-acl":
 			require.Equal(t, "override.tf", loc.ArtifactLocation.ArtifactURI)
 			require.Equal(t, 2, loc.Region.StartLine)
+			require.Equal(t, model.GetDatadogFingerprintHash(model.SCIInfo{}, "override.tf", "Terraform",
+				"aws_s3_bucket", "example", "test-public-acl", "", ""), result.PartialFingerprints.DatadogFingerprint)
 		case "test-same-file":
 			require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
 			require.Equal(t, 2, loc.Region.StartLine)
@@ -243,6 +260,8 @@ DatadogPolicy contains {
 `
 	inv, fingerprints := scanLinks(t, terraformParams(root), rule)
 	require.Len(t, fingerprints, 1)
+	require.Equal(t, model.GetDatadogFingerprintHash(model.SCIInfo{}, "override.tf.json", "Terraform",
+		"aws_s3_bucket", "example", "test-public-acl", "", ""), fingerprints[0])
 	require.Equal(t, []string{".|aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
 	require.Zero(t, inv.Stats.FindingsUnlinked)
 	sarif := sarifResults(t, terraformParams(root), rule)
@@ -281,7 +300,12 @@ resource "aws_s3_bucket" "other" {
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket[%s].versioning", [name])`)
 	params := terraformParams(root)
-	inv, _ := scanLinks(t, params, terraformPublicACLRule, logging, versioning)
+	var logs bytes.Buffer
+	log := zerolog.New(zerolog.SyncWriter(&logs)).Level(zerolog.WarnLevel)
+	inv, _ := scanLinksWithContext(t, log.WithContext(context.Background()), params, terraformPublicACLRule, logging, versioning)
+	warnings := standaloneOverrideWarnings(t, &logs, root)
+	require.Contains(t, warnings, "sub/override.tf")
+	require.Contains(t, warnings, "sub/z_override.tf")
 	rows := make(map[string]string)
 	for _, row := range inv.Resources {
 		rows[row.ResourceRef] = row.File
@@ -293,19 +317,110 @@ resource "aws_s3_bucket" "other" {
 		"sub|aws_s3_bucket.orphan": "sub/z_override.tf",
 	}, rows)
 
-	sarif, err := os.ReadFile(filepath.Join(params.OutputPath, "result.sarif"))
-	require.NoError(t, err)
-	var report struct{ Runs []reportmodel.SarifRun }
-	require.NoError(t, json.Unmarshal(sarif, &report))
+	const file = "sub/z_override.tf"
+	const ref = "sub|aws_s3_bucket.orphan"
+	require.Equal(t, inventory.Resource{
+		ResourceRef: ref, ResourcePath: "aws_s3_bucket.orphan", Platform: "terraform",
+		ResourceType: "aws_s3_bucket", ResourceName: "orphan", Provider: "aws",
+		File: file, LineStart: 1, LineEnd: 4, ColumnStart: 1, ColumnEnd: 2,
+		Completeness: inventory.CompletenessComplete,
+	}, rowsByPath(inv)["aws_s3_bucket.orphan"])
 	links := linkedRefs(inv)
 	var rules []string
-	for _, result := range report.Runs[0].Results {
-		if result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI == "sub/z_override.tf" {
+	for _, result := range readSARIFRun(t, params).Results {
+		if result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI == file {
 			rules = append(rules, result.ResultRuleID)
-			require.Equal(t, []string{"sub|aws_s3_bucket.orphan"}, links[result.PartialFingerprints.DatadogFingerprint])
+			fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, file, "Terraform",
+				"aws_s3_bucket", "orphan", result.ResultRuleID, "", "")
+			require.Equal(t, fingerprint, result.PartialFingerprints.DatadogFingerprint)
+			require.Equal(t, []string{ref}, links[fingerprint])
 		}
 	}
 	require.ElementsMatch(t, []string{"test-public-acl", "test-bucket-logging", "test-bucket-versioning"}, rules)
+}
+
+func standaloneOverrideWarnings(t *testing.T, logs *bytes.Buffer, root string) []string {
+	t.Helper()
+	var files []string
+	for _, entry := range logLines(t, logs) {
+		if entry["message"] == "tfeval: keeping override as a standalone block because it has no unique base declaration" {
+			require.Equal(t, "warn", entry["level"])
+			file, ok := entry["file"].(string)
+			require.True(t, ok)
+			rel, err := filepath.Rel(root, file)
+			require.NoError(t, err)
+			files = append(files, filepath.ToSlash(rel))
+		}
+	}
+	return files
+}
+
+func TestTerraformOverrideWithAmbiguousBase(t *testing.T) {
+	const bucket = `resource "aws_s3_bucket" "example" {
+  acl = "public-read"
+}
+`
+	root := writeRepo(t, map[string]string{"a.tf": bucket, "b.tf": bucket, "override.tf": bucket})
+	params := terraformParams(root)
+	var logs bytes.Buffer
+	log := zerolog.New(zerolog.SyncWriter(&logs)).Level(zerolog.WarnLevel)
+	inv, _ := scanLinksWithContext(t, log.WithContext(context.Background()), params, terraformPublicACLRule)
+	require.Contains(t, standaloneOverrideWarnings(t, &logs, root), "override.tf")
+
+	var files []string
+	for _, result := range readSARIFRun(t, params).Results {
+		files = append(files, result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
+	}
+	require.ElementsMatch(t, []string{"a.tf", "b.tf", "override.tf"}, files)
+	require.Len(t, inv.Resources, 1)
+	require.Equal(t, "a.tf", inv.Resources[0].File)
+	fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, "a.tf", "Terraform",
+		"aws_s3_bucket", "example", "test-public-acl", "", "")
+	require.Equal(t, []inventory.FindingLink{{FindingFingerprint: fingerprint, ResourceRef: ".|aws_s3_bucket.example"}}, inv.FindingLinks)
+}
+
+func TestTerraformHCLOverridesOfJSONBase(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"main.tf.json": `{
+  "resource": {
+    "aws_s3_bucket": {
+      "example": {
+        "bucket": "example",
+        "acl": "private"
+      }
+    }
+  }
+}
+`,
+		"a_override.tf": `resource "aws_s3_bucket" "example" {
+  acl = "private"
+  force_destroy = true
+}
+`,
+		"override.tf": `resource "aws_s3_bucket" "example" {
+  acl = "public-read"
+}
+`,
+	})
+	rule := syntheticQuery("test-effective-bucket", "terraform", "Terraform", `	bucket := input.document[i].resource.aws_s3_bucket[name]
+	bucket.bucket == "example"
+	bucket.force_destroy == true
+	bucket.acl == "public-read"
+	typ := "aws_s3_bucket"
+	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
+
+	params := terraformParams(root)
+	inv, fingerprints := scanLinks(t, params, rule)
+	require.Len(t, inv.Resources, 1)
+	require.Equal(t, "main.tf.json", inv.Resources[0].File)
+	require.Equal(t, 4, inv.Resources[0].LineStart)
+	require.Len(t, fingerprints, 1)
+	require.Equal(t, []string{".|aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
+	results := readSARIFRun(t, params).Results
+	require.Len(t, results, 1)
+	loc := results[0].ResultLocations[0].PhysicalLocation
+	require.Equal(t, "override.tf", loc.ArtifactLocation.ArtifactURI)
+	require.Equal(t, 2, loc.Region.StartLine)
 }
 
 func TestTerraformDataOverrideFinding(t *testing.T) {
@@ -317,7 +432,9 @@ func TestTerraformDataOverrideFinding(t *testing.T) {
 }
 `
 	rule := syntheticQuery("test-iam-statement", "terraform", "Terraform", `	policy := input.document[i].data.aws_iam_policy_document[name]
-	policy.statement.actions[_] == "*"
+	walk(policy.statement, [path, actions])
+	path[count(path)-1] == "actions"
+	actions[_] == "*"
 	typ := "aws_iam_policy_document"
 	key := sprintf("aws_iam_policy_document[%s].statement[0]", [name])`)
 
@@ -352,13 +469,11 @@ func TestTerraformDataOverrideFinding(t *testing.T) {
 			require.Len(t, inv.Resources, 1)
 			require.Equal(t, "main.tf", inv.Resources[0].File)
 			require.Len(t, fingerprints, 1)
+			require.Equal(t, model.GetDatadogFingerprintHash(model.SCIInfo{}, tc.file, "Terraform",
+				"aws_iam_policy_document", "example", "test-iam-statement", "", ""), fingerprints[0])
 			require.Equal(t, []string{".|data.aws_iam_policy_document.example"}, linkedRefs(inv)[fingerprints[0]])
 
-			sarif, err := os.ReadFile(filepath.Join(params.OutputPath, "result.sarif"))
-			require.NoError(t, err)
-			var report struct{ Runs []reportmodel.SarifRun }
-			require.NoError(t, json.Unmarshal(sarif, &report))
-			loc := report.Runs[0].Results[0].ResultLocations[0].PhysicalLocation
+			loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
 			require.Equal(t, tc.file, loc.ArtifactLocation.ArtifactURI)
 			require.Equal(t, tc.line, loc.Region.StartLine)
 		})

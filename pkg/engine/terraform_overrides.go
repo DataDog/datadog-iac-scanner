@@ -370,6 +370,9 @@ func (q *QueryContext) locateStructuredFinding(
 	// Use the existing JSON detector when an effective HCL path leads to a
 	// JSON override. The written-path resolver currently supports native HCL.
 	key := terraformLegacyPath(path)
+	if key == "" {
+		return model.VulnerabilityLines{}, errors.New("incomplete Terraform block path")
+	}
 	lines := d.DetectLine(ctx, file, key)
 	if lines.Line < 1 {
 		return lines, errors.New("no written location in the Terraform JSON override")
@@ -378,6 +381,9 @@ func (q *QueryContext) locateStructuredFinding(
 }
 
 func terraformLegacyPath(path model.SourcePath) string {
+	if len(path) < 3 {
+		return ""
+	}
 	var key strings.Builder
 	if path[0].Key == dataRoot {
 		key.WriteString(dataTypePrefix)
