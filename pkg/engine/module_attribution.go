@@ -736,7 +736,7 @@ func moduleAttributionForResource(
 	}
 	clone.Arguments = nil
 	if override := v.TerraformOverride; override != nil && override.SourceFileID != "" {
-		clone.ModuleCodeLocation.Filename = filepath.Join(filepath.Dir(clone.ModuleCodeLocation.Filename), filepath.Base(v.FileName))
+		clone.ModuleCodeLocation.Filename = pathpkg.Join(pathpkg.Dir(clone.ModuleCodeLocation.Filename), filepath.Base(v.FileName))
 	}
 	narrowCodeLocation(&clone.ModuleCodeLocation, v)
 	return clone

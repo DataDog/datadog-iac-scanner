@@ -330,7 +330,7 @@ resource "aws_s3_bucket" "other" {
 	for _, result := range readSARIFRun(t, params).Results {
 		if result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI == file {
 			rules = append(rules, result.ResultRuleID)
-			fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, file, "Terraform",
+			fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, filepath.FromSlash(file), "Terraform",
 				"aws_s3_bucket", "orphan", result.ResultRuleID, "", "")
 			require.Equal(t, fingerprint, result.PartialFingerprints.DatadogFingerprint)
 			require.Equal(t, []string{ref}, links[fingerprint])
@@ -551,7 +551,7 @@ variable "base_name" {}
 	params := terraformParams(root)
 	inv, fingerprints := scanLinks(t, params, rule)
 	const overrideFile = "child/override.tf"
-	fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, overrideFile, "Terraform",
+	fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, filepath.FromSlash(overrideFile), "Terraform",
 		"aws_s3_bucket", "example", rule.Query, "", "main.tf|module.child")
 	require.Equal(t, []string{fingerprint}, fingerprints)
 	require.ElementsMatch(t, []string{
