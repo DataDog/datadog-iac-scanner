@@ -1,8 +1,10 @@
 package helm
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -151,4 +153,56 @@ func makeDeterministic(ch *chart.Chart) *chart.Chart {
 		makeDeterministic(dep)
 	}
 	return ch
+}
+
+// Helm loads sibling charts from a map. Order them before numbering templates
+// so hashes of included templates receive the same stamps on each render.
+func sortChartDependencies(ch *chart.Chart) {
+	dependencies := ch.Dependencies()
+	if len(dependencies) > 1 {
+		aliases := make(map[*chart.Chart]string, len(dependencies))
+		for _, dep := range dependencies {
+			aliases[dep] = chartDependencyAlias(dep, ch.Metadata.Dependencies)
+		}
+		slices.SortFunc(dependencies, func(a, b *chart.Chart) int {
+			if order := strings.Compare(a.Name(), b.Name()); order != 0 {
+				return order
+			}
+			if order := strings.Compare(aliases[a], aliases[b]); order != 0 {
+				return order
+			}
+			if order := strings.Compare(a.Metadata.Version, b.Metadata.Version); order != 0 {
+				return order
+			}
+			// The same chart version can appear in more than one archive or directory.
+			return slices.CompareFunc(a.Raw, b.Raw, func(x, y *chart.File) int {
+				if order := strings.Compare(x.Name, y.Name); order != 0 {
+					return order
+				}
+				return bytes.Compare(x.Data, y.Data)
+			})
+		})
+		ch.SetDependencies(dependencies...)
+	}
+	for _, dep := range dependencies {
+		sortChartDependencies(dep)
+	}
+}
+
+// Helm applies aliases during install. Before install a loaded chart can
+// satisfy multiple declarations, so use the first alias in lexical order.
+func chartDependencyAlias(dep *chart.Chart, declarations []*chart.Dependency) string {
+	var alias string
+	for _, declaration := range declarations {
+		if declaration == nil || declaration.Name != dep.Name() || !versionMatches(declaration.Version, dep.Metadata.Version) {
+			continue
+		}
+		if declaration.Alias == "" {
+			return ""
+		}
+		if alias == "" || declaration.Alias < alias {
+			alias = declaration.Alias
+		}
+	}
+	return alias
 }

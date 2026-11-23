@@ -148,6 +148,7 @@ func runInstall(ctx context.Context, chartPath string, fsys vfs.FS, index *chart
 	excluded := getExcluded(ctx, chartRequested, chartPath)
 
 	chartRequested = makeDeterministic(chartRequested)
+	sortChartDependencies(chartRequested)
 	sources := setID(chartRequested, marks)
 
 	if instErr := checkIfInstallable(chartRequested); instErr != nil {

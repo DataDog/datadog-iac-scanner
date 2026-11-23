@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -180,4 +181,53 @@ func TestHelm_DeterministicRendering(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, first.File, second.File, "helm rendering must be deterministic")
+}
+
+func TestHelm_DeterministicSubchartChecksum(t *testing.T) {
+	const configMap = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}
+data:
+  setting: enabled
+`
+	files := map[string][]byte{
+		"app/Chart.yaml":              []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"),
+		"app/charts/group/Chart.yaml": []byte("apiVersion: v2\nname: group\nversion: 1.0.0\n"),
+	}
+	for _, name := range []string{"alpha", "beta", "gamma"} {
+		dir := "app/charts/group/charts/" + name
+		files[dir+"/Chart.yaml"] = []byte("apiVersion: v2\nname: " + name + "\nversion: 1.0.0\n")
+		files[dir+"/templates/configmap.yaml"] = []byte(configMap)
+	}
+	files["app/charts/group/charts/alpha/templates/pod.yaml"] = []byte(`apiVersion: v1
+kind: Pod
+metadata:
+  name: checksum
+  annotations:
+    checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+spec:
+  containers:
+    - name: app
+      image: busybox
+`)
+
+	resolver := NewResolver(vfs.NewMemFS(files))
+	ctx := context.Background()
+	first, err := resolver.Resolve(ctx, "app")
+	require.NoError(t, err)
+	require.Len(t, first.File, 4)
+	var pod []byte
+	for _, file := range first.File {
+		if filepath.Base(file.FileName) == "pod.yaml" {
+			pod = file.Content
+		}
+	}
+	require.Regexp(t, `checksum/config: [0-9a-f]{64}`, string(pod))
+
+	for run := 2; run <= 20; run++ {
+		got, err := resolver.Resolve(ctx, "app")
+		require.NoError(t, err)
+		require.Equal(t, first.File, got.File, "render %d", run)
+	}
 }
