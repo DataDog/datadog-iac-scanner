@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -596,5 +597,137 @@ func TestResolver_ReferenceMetadataOwnership(t *testing.T) {
 				require.Equal(t, 1, fsys.totalReads())
 			})
 		}
+	}
+}
+
+type precheckFS struct {
+	vfs.FS
+	stats  int
+	cancel context.CancelFunc
+}
+
+func (f *precheckFS) Stat(name string) (fs.FileInfo, error) {
+	f.stats++
+	if f.cancel != nil {
+		f.cancel()
+	}
+	return f.FS.Stat(name)
+}
+
+func TestMayResolveRejectsInvalidAndExcessivelyNestedJSON(t *testing.T) {
+	for name, content := range map[string]string{
+		"excessive arrays":          strings.Repeat("[", 30000) + "0" + strings.Repeat("]", 30000),
+		"excessive objects":         strings.Repeat(`{"x":`, 12000) + "0" + strings.Repeat("}", 12000),
+		"invalid after candidate":   `{"x":"file.json"} garbage`,
+		"truncated after candidate": `{"x":"file.json",`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			files := &precheckFS{FS: vfs.NewMemFS(map[string][]byte{filepath.FromSlash("/scan/file.json"): []byte("{}")})}
+			resolver := NewResolver(files, json.Unmarshal, json.Marshal, []string{".json"})
+			require.False(t, resolver.MayResolve(context.Background(), []byte(content), "/scan/plan.json"))
+			require.Zero(t, files.stats, "invalid input must not reach filesystem resolution")
+		})
+	}
+}
+
+func TestMayResolveHonorsCancellation(t *testing.T) {
+	for _, canceled := range []bool{true, false} {
+		t.Run(fmt.Sprint(canceled), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			files := &precheckFS{FS: vfs.NewMemFS(nil), cancel: cancel}
+			resolver := NewResolver(files, json.Unmarshal, json.Marshal, []string{".json"})
+			if canceled {
+				cancel()
+			}
+			content := []byte(`["missing.json","another.json"]`)
+			require.False(t, resolver.MayResolve(ctx, content, "/scan/plan.json"))
+			if canceled {
+				require.Zero(t, files.stats)
+			} else {
+				require.Equal(t, 1, files.stats)
+			}
+		})
+	}
+}
+
+// The oracle walks encoding/json's decoded values, independently of the token
+// state machine. Keep cases where ref status crosses arrays but resets at maps.
+func FuzzMayResolveDoesNotMissReferences(f *testing.F) {
+	for _, seed := range []string{
+		`{"$ref":"#/definition","$ref":null}`,
+		`{"x":"file.json","x":null}`,
+		`{"x":"file.json"}`,
+		`{"x":"file\u002ejson"}`,
+		`{"$ref":[["#/definition"]]}`,
+		`{"$ref":{"x":"#/definition"}}`,
+		`{"x":[{"$ref":"#/definition"}]}`,
+		`{"$ref":"#","next":["#/definition"]}`,
+		`{"x":{"ref":"#/definition"},"y":{"allOf$REF":["#/definition"]}}`,
+		`{"x":1e999,"y":null,"z":true}`,
+		`{"x":"plan.json","file.json":"unrelated"}`,
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		if len(input) > 65536 {
+			t.Skip()
+		}
+		var decoded any
+		if json.Unmarshal([]byte(input), &decoded) != nil {
+			return
+		}
+		files := vfs.NewMemFS(map[string][]byte{filepath.FromSlash("/scan/file.json"): []byte("{}")})
+		resolver := NewResolver(files, json.Unmarshal, json.Marshal, []string{".json"})
+		var walk func(any, bool) bool
+		walk = func(value any, ref bool) bool {
+			switch value := value.(type) {
+			case string:
+				if value == "plan.json" {
+					return false
+				}
+				if strings.HasPrefix(value, "#") {
+					return ref && value != "#"
+				}
+				exists, _, _ := resolver.findFilePath(filepath.FromSlash("/scan"), value, false, []string{".json"})
+				return exists
+			case []any:
+				for _, child := range value {
+					if walk(child, ref) {
+						return true
+					}
+				}
+			case map[string]any:
+				for key, child := range value {
+					if walk(child, strings.Contains(strings.ToLower(key), "$ref")) {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		// A precheck may conservatively report a candidate overwritten by a
+		// later duplicate key. It must never skip a reference in the decoded
+		// document; exact eligibility for common cases is tested separately.
+		got := resolver.MayResolve(context.Background(), []byte(input), "/scan/plan.json")
+		if walk(decoded, false) {
+			require.True(t, got)
+		}
+	})
+}
+
+func BenchmarkMayResolveNestedJSON(b *testing.B) {
+	resolver := NewResolver(vfs.NewMemFS(nil), json.Unmarshal, json.Marshal, []string{".json"})
+	for _, depth := range []int{1000, 8000, 30000} {
+		content := []byte(strings.Repeat("[", depth) + "0" + strings.Repeat("]", depth))
+		b.Run(fmt.Sprint(depth), func(b *testing.B) {
+			b.SetBytes(int64(len(content)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if resolver.MayResolve(context.Background(), content, "/scan/plan.json") {
+					b.Fatal("unexpected reference")
+				}
+			}
+		})
 	}
 }

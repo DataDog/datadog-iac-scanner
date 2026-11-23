@@ -722,3 +722,116 @@ func TestSinkConcurrentPlanLineInfoEviction(t *testing.T) {
 	}
 	require.LessOrEqual(t, retained, 2)
 }
+
+// This is the scan path used by custom rules: a deep anchor selects a value
+// held only by a prior-state data source. Verify exact lines through loading,
+// eviction/reload, and full line-info payload export.
+func TestSinkPriorDataAnchoredLinesMatchFullParse(t *testing.T) {
+	plan := []byte(`{
+ "format_version": "1.2",
+ "planned_values": {"root_module": {}},
+ "prior_state": {
+  "format_version": "1.0",
+  "values": {"root_module": {"resources": [{
+   "address": "data.kubernetes_pod.web",
+   "mode": "data",
+   "type": "kubernetes_pod",
+   "name": "web",
+   "values": {"pods": [{
+    "name": "web",
+    "securityContext": {"capabilities": {"add": [
+     "NET_ADMIN",
+     "SYS_ADMIN"
+    ]}}
+   }]}
+  }]}}
+ }
+}`)
+	ctx := context.Background()
+	p := &jsonParser.Parser{}
+	add := func(b *parser.Builder) *parser.Builder { return b.Add(p) }
+	file := sinkFileWith(t, add, "plan.json", plan)
+	require.NoError(t, file.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+		require.NotContains(t, doc, "data", "ordinary resource lookups stay light")
+		return nil
+	}))
+	key := "name={{web}}.securityContext.capabilities.add[1]"
+	expected := 0
+	for i, line := range file.Lines() {
+		if bytes.Contains([]byte(line), []byte(`"SYS_ADMIN"`)) {
+			expected = i + 1
+			break
+		}
+	}
+	require.Positive(t, expected)
+	for range 2 {
+		require.NoError(t, file.UseLineInfoDocumentSections(ctx, detector.LineInfoSections(file.Kind, key),
+			func(doc map[string]interface{}) error {
+				require.Contains(t, doc, "data")
+				require.Equal(t, expected, detector.NewDetectLine(0).DetectLine(ctx, file, key).Line)
+				return nil
+			}))
+		file.SetLineInfoRetention(nil)
+		file.DiscardLineInfoDocument()
+	}
+	exported := sinkFileWith(t, add, "plan.json", plan, func(s *Service) { s.LineInfoPayload = true })
+	payload := model.FileMetadatas{exported}.Combine(ctx, true)
+	require.Len(t, payload.Documents, 1)
+	_, whole, _, _, err := p.Parse(ctx, []byte(exported.OriginalData), "plan.json", false, 15)
+	require.NoError(t, err)
+	want, err := json.Marshal(whole[0]["data"])
+	require.NoError(t, err)
+	got, err := json.Marshal(payload.Documents[0]["data"])
+	require.NoError(t, err)
+	require.JSONEq(t, string(want), string(got))
+}
+
+func TestSinkAnchorSectionNameCollisions(t *testing.T) {
+	plan := []byte(`{
+  "format_version":"1.2",
+  "planned_values":{"root_module":{}},
+  "prior_state":{"format_version":"1.0","values":{"root_module":{"resources":[{
+   "address":"data.test.source","mode":"data","type":"test","name":"source",
+   "values":{"items":[{
+    "data":"in_prior","resource_changes":"in_prior","name":"in_prior",
+    "permissions":{"actions":[
+     "safe",
+     "DANGEROUS_PRIOR"
+    ]}
+   }]}
+  }]}}},
+  "resource_changes":[{
+   "data":"in_changes","resource_changes":"in_changes","name":"in_changes",
+   "permissions":{"actions":[
+    "safe",
+    "DANGEROUS_CHANGES"
+   ]}
+  }]
+ }`)
+	for _, anchor := range []string{"data", "resource_changes", "name"} {
+		for target, marker := range map[string]string{"in_prior": "DANGEROUS_PRIOR", "in_changes": "DANGEROUS_CHANGES"} {
+			t.Run(anchor+"/"+target, func(t *testing.T) {
+				p := &jsonParser.Parser{}
+				// A fresh file is essential: a previous finding must not hide a
+				// missing section by having already loaded it.
+				file := sinkFileWith(t, func(b *parser.Builder) *parser.Builder { return b.Add(p) }, "plan.json", plan)
+				key := anchor + "={{" + target + "}}.permissions.actions[1]"
+				expected := 0
+				for i, line := range file.Lines() {
+					if bytes.Contains([]byte(line), []byte(marker)) {
+						expected = i + 1
+						break
+					}
+				}
+				require.Positive(t, expected)
+				require.NoError(t, file.UseLineInfoDocumentSections(context.Background(), detector.LineInfoSections(file.Kind, key),
+					func(doc map[string]interface{}) error {
+						require.Contains(t, doc, "data")
+						require.Contains(t, doc, "resource_changes")
+						require.Equal(t, expected, detector.NewDetectLine(0).DetectLine(context.Background(), file, key).Line)
+						return nil
+					}))
+			})
+		}
+	}
+}

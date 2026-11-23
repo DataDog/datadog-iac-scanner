@@ -176,18 +176,27 @@ func detectTerraformPlanLine(
 
 // LineInfoSections returns the sections of a file's line-info document, beyond
 // the ones it always holds, that line detection reads to locate searchKey:
-// for a Terraform plan, the change list under a key rooted at it or an
-// anchored key selecting one of its changes.
+// for a Terraform plan, prior-state data or changes under an explicit path,
+// and both sections for deep anchors, which search the document as a whole.
 func LineInfoSections(kind model.FileKind, searchKey string) []string {
 	if kind != model.KindTerraformPlan {
 		return nil
 	}
-	if comps := expandSearchKeyPath(searchKey); len(comps) > 0 && comps[0] == "resource_changes" {
-		return []string{"resource_changes"}
-	}
+	// Classify the anchored syntax before expanding an explicit path:
+	// expandSearchKeyPath drops the value anchor, so its key alone can look
+	// like a section name even when the selected object lives elsewhere.
 	segments, extracted := splitSearchKeySegments(searchKey)
-	if _, rest, anchored := parseAnchoredPrefix(segments, extracted); anchored && hasNumericIndex(expandKeyPath(rest, extracted)) {
-		return []string{"resource_changes"}
+	if _, rest, anchored := parseAnchoredPrefix(segments, extracted); anchored {
+		if hasNumericIndex(expandKeyPath(rest, extracted)) {
+			return []string{"data", "resource_changes"}
+		}
+		return nil
+	}
+	if comps := expandSearchKeyPath(searchKey); len(comps) > 0 {
+		switch comps[0] {
+		case "resource_changes", "data":
+			return []string{comps[0]}
+		}
 	}
 	return nil
 }

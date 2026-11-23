@@ -25,13 +25,13 @@ type Parser struct {
 // Resolve - replace or modifies in-memory content before parsing
 func (p *Parser) Resolve(ctx context.Context, fileContent []byte, filename string,
 	resolveReferences bool, maxResolverDepth int) (resolved []byte, resolvedFiles map[string]model.ResolvedFile, err error) {
-	if !p.mayResolve(fileContent, filename) {
+	res := file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions())
+	if !res.MayResolve(ctx, fileContent, filename) {
 		// The resolution would decode, walk and re-encode the whole file to
 		// return fileContent unchanged.
 		return fileContent, make(map[string]model.ResolvedFile), nil
 	}
 	// Resolve files passed as arguments with file resolver (e.g. file://)
-	res := file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions())
 	resolvedFilesCache := make(map[string]file.ResolvedFile)
 	resolved = res.Resolve(ctx, fileContent, filename, 0, maxResolverDepth, resolvedFilesCache, resolveReferences)
 
@@ -111,6 +111,9 @@ func (p *Parser) ParseLineInfoSection(fileContent []byte, filePath, name string)
 	if !ok {
 		return nil, false
 	}
+	if name == "data" {
+		return parseTFPlanDataLineInfo(fileContent, sections)
+	}
 	section, ok := sections[name]
 	if !ok {
 		return nil, false
@@ -135,8 +138,8 @@ func (p *Parser) planDocuments(fileContent []byte, filePath string,
 // mayResolve reports whether resolving fileContent can change it (see
 // file.Resolver.MayResolve).
 func (p *Parser) mayResolve(fileContent []byte, filename string) bool {
-	root := jsonView(fileContent)
-	return file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions()).MayResolve(&root, filename)
+	return file.NewResolver(p.FS, json.Unmarshal, json.Marshal, p.SupportedExtensions()).
+		MayResolve(context.Background(), fileContent, filename)
 }
 
 // SupportedExtensions returns extensions supported by this parser, which is json extension

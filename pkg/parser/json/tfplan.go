@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"unsafe"
 
@@ -488,8 +489,17 @@ func annotatedSection(content []byte, key string, section *planSection) (interfa
 	if section.Index <= 0 {
 		return nil, false
 	}
+	valueLine := 1 + bytes.Count(content[:section.Index], []byte{'\n'})
+	keyLine := 1 + bytes.Count(content[:section.keyIndex], []byte{'\n'})
+	return annotatedSectionAt(content, key, section, valueLine, keyLine)
+}
+
+// annotatedSectionAt annotates a section whose source lines are already known.
+func annotatedSectionAt(content []byte, key string, section *planSection, valueLine, keyLine int) (interface{}, bool) {
+	if section.Index <= 0 {
+		return nil, false
+	}
 	raw := content[section.Index : section.Index+len(section.Raw)]
-	lineAt := func(offset int) int { return 1 + bytes.Count(content[:offset], []byte{'\n'}) }
 	if section.IsArray() {
 		wrapped := append(append(append([]byte(`{"`), key...), `":`...), raw...)
 		wrapped = append(wrapped, '}')
@@ -497,15 +507,15 @@ func annotatedSection(content []byte, key string, section *planSection) (interfa
 		if err := json.Unmarshal(wrapped, &values); err != nil {
 			return nil, false
 		}
-		initializeJSONLineAt(wrapped, lineAt(section.Index)).setLineInfo(values)
+		initializeJSONLineAt(wrapped, valueLine).setLineInfo(values)
 		return values[key], true
 	}
 	var values map[string]interface{}
 	if err := json.Unmarshal(raw, &values); err != nil || values == nil {
 		return nil, false
 	}
-	jLine := initializeJSONLineAt(raw, lineAt(section.Index))
-	values["_dd_lines"] = jLine.setLine(values, lineAt(section.keyIndex), "", false)
+	jLine := initializeJSONLineAt(raw, valueLine)
+	values["_dd_lines"] = jLine.setLine(values, keyLine, "", false)
 	return values, true
 }
 
@@ -591,9 +601,9 @@ func detachedValue(r *gjson.Result) any {
 var lineInfoSections = []string{"configuration"}
 
 // lazyLineInfoSections are the sections built only for the findings that need
-// them: annotating resource_changes is a third of a large plan's line-info
-// cost, for search keys that few rules use.
-var lazyLineInfoSections = []string{"resource_changes"}
+// them: resource_changes and prior-state data are searched by deep anchored
+// keys, while ordinary resource findings need neither.
+var lazyLineInfoSections = []string{"resource_changes", "data"}
 
 // parseTFPlanLineInfo builds the line-info document of a plan for line
 // detection: the "resource" section of the parseTFPlan document, read from
@@ -632,6 +642,104 @@ func parseTFPlanLineInfo(content []byte) (doc model.Document, ok bool) {
 		}
 	}
 	return doc, true
+}
+
+// parseTFPlanDataLineInfo restores the prior-state data section for anchored
+// lookups without annotating managed resources or retaining prior_state itself.
+func parseTFPlanDataLineInfo(content []byte, sections map[string]planSection) (interface{}, bool) {
+	prior, exists := sections["prior_state"]
+	if !exists || !prior.IsObject() ||
+		(&hcl_plan.State{FormatVersion: prior.Get("format_version").String()}).Validate() != nil {
+		return nil, false
+	}
+	changes, err := decodeResourceChangeViews(content)
+	if err != nil {
+		return nil, false
+	}
+	deleted := deletedAddresses(changes)
+	root := prior.Get("values.root_module")
+	if !root.IsObject() {
+		return nil, false
+	}
+
+	entries := priorDataLineInfoEntries(&root, deleted)
+	// Modules need not appear in any particular JSON field order. Annotate
+	// selected values in source order, counting each intervening newline once.
+	sort.Slice(entries, func(i, j int) bool { return entries[i].values.keyIndex < entries[j].values.keyIndex })
+	offset, line := 0, 1
+	lineAt := func(next int) int {
+		line += bytes.Count(content[offset:next], []byte{'\n'})
+		offset = next
+		return line
+	}
+	d := planDocument{data: make(map[string]interface{}), meta: make(map[string]interface{})}
+	for _, e := range entries {
+		header := 0
+		var values map[string]interface{}
+		if e.values.keyIndex > 0 {
+			header = lineAt(e.values.keyIndex)
+			valueLine := lineAt(e.values.Index)
+			if e.values.IsObject() {
+				annotated, ok := annotatedSectionAt(content, "values", &e.values, valueLine, header)
+				if !ok {
+					return nil, false
+				}
+				values, _ = annotated.(map[string]interface{})
+			} else if e.values.Raw != "null" {
+				return nil, false
+			}
+		}
+		d.add(d.data, e.typ, "data."+e.typ, e.key, values, header, nil)
+	}
+	return d.data, len(d.data) > 0
+}
+
+type priorDataLineInfoEntry struct {
+	typ, key string
+	values   planSection
+}
+
+// priorDataLineInfoEntries selects data resources using the same deletion,
+// module and instance-key rules as readPriorStateData.
+func priorDataLineInfoEntries(root *gjson.Result, deleted map[string]bool) []priorDataLineInfoEntry {
+	var entries []priorDataLineInfoEntry
+	modules := []gjson.Result{*root}
+	for len(modules) > 0 {
+		module := modules[len(modules)-1]
+		modules = modules[:len(modules)-1]
+		address := ""
+		if module.Index != root.Index {
+			address = module.Get("address").String()
+		}
+		module.Get("resources").ForEach(func(_, resource gjson.Result) bool {
+			if resource.Get("mode").String() != string(hcl_plan.DataResourceMode) || deleted[resource.Get("address").String()] {
+				return true
+			}
+			key := resource.Get("name").String()
+			if address != "" {
+				key = address + "." + key
+			}
+			if index := resource.Get("index"); index.Exists() {
+				key = formatResourceKeyWithIndex(key, index.Value())
+			}
+			// gjson strings may reference the whole input buffer. The returned
+			// tree must not retain that temporary copy of the plan.
+			e := priorDataLineInfoEntry{typ: strings.Clone(resource.Get("type").String()), key: strings.Clone(key)}
+			resource.ForEach(func(key, value gjson.Result) bool {
+				if key.String() == "values" {
+					e.values = planSection{Result: value, keyIndex: key.Index}
+				}
+				return true
+			})
+			entries = append(entries, e)
+			return true
+		})
+		module.Get("child_modules").ForEach(func(_, child gjson.Result) bool {
+			modules = append(modules, child)
+			return true
+		})
+	}
+	return entries
 }
 
 // resourceHeaderLines holds each resource's "values" attribute line, keyed

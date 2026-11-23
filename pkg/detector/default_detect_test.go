@@ -605,7 +605,7 @@ func Test_detectLineTerraformPlanAnchoredChange(t *testing.T) {
 	// The scan's line-info document gets the change list when a key needs it.
 	changes, ok := p.ParseLineInfoSection([]byte(plan), "plan.json", "resource_changes")
 	require.True(t, ok)
-	require.Equal(t, []string{"resource_changes"},
+	require.Equal(t, []string{"data", "resource_changes"},
 		LineInfoSections(model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions[1]"))
 	lineInfo[0]["resource_changes"] = changes
 
@@ -821,7 +821,8 @@ func Test_LineInfoSections(t *testing.T) {
 	}{
 		"shallow anchored change": {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions", nil},
 		"anchor without a path":   {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}", nil},
-		"anchored change key":     {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions[0]", []string{"resource_changes"}},
+		"anchored change key":     {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions[0]", []string{"data", "resource_changes"}},
+		"key rooted at data":      {model.KindTerraformPlan, "data.kubernetes_pod[web].capabilities.add[1]", []string{"data"}},
 		"key rooted at changes":   {model.KindTerraformPlan, "resource_changes[0].change.actions", []string{"resource_changes"}},
 		"resource key":            {model.KindTerraformPlan, "aws_s3_bucket[main].acl", nil},
 		"declaration key":         {model.KindTerraformPlan, "configuration.root_module.outputs.name", nil},
@@ -833,4 +834,19 @@ func Test_LineInfoSections(t *testing.T) {
 			require.Equal(t, tt.want, LineInfoSections(tt.kind, tt.searchKey))
 		})
 	}
+}
+
+func TestLineInfoSectionsDistinguishesAnchorsFromSections(t *testing.T) {
+	for _, key := range []string{"data", "resource_changes", "address", "name"} {
+		for _, tail := range []string{"", ".permissions", ".permissions.actions"} {
+			searchKey := key + "={{prod}}" + tail
+			require.Nil(t, LineInfoSections(model.KindTerraformPlan, searchKey), searchKey)
+		}
+		for _, tail := range []string{".permissions.actions[1]", ".permissions.actions.1"} {
+			searchKey := key + "={{prod}}" + tail
+			require.Equal(t, []string{"data", "resource_changes"}, LineInfoSections(model.KindTerraformPlan, searchKey), searchKey)
+		}
+	}
+	require.Equal(t, []string{"data"}, LineInfoSections(model.KindTerraformPlan, "data.test[prod].permissions.actions[1]"))
+	require.Equal(t, []string{"resource_changes"}, LineInfoSections(model.KindTerraformPlan, "resource_changes[0].permissions.actions[1]"))
 }

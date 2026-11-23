@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2373,6 +2374,9 @@ func TestParseLineInfo_tfplanMatchesParseResourceSection(t *testing.T) {
 	changes, ok := (&Parser{}).ParseLineInfoSection(content, "plan.json", "resource_changes")
 	require.True(t, ok)
 	require.JSONEq(t, mustJSON(t, whole["resource_changes"]), mustJSON(t, changes))
+	data, ok := (&Parser{}).ParseLineInfoSection(content, "plan.json", "data")
+	require.True(t, ok)
+	require.JSONEq(t, mustJSON(t, whole["data"]), mustJSON(t, data))
 	for _, name := range []string{"resource", "configuration", "missing"} {
 		_, ok = (&Parser{}).ParseLineInfoSection(content, "plan.json", name)
 		require.False(t, ok, "%s is not a lazy section", name)
@@ -2488,4 +2492,133 @@ func TestTFPlanEvaluationContractMatchesMain(t *testing.T) {
 			require.JSONEq(t, mustJSON(t, expected[0]), mustJSON(t, light[0]))
 		})
 	}
+}
+
+// Compare every data value and marker with the whole parse across module,
+// index, deletion and serialization-order variants.
+func TestLazyDataLineInfoMatchesWholeParse(t *testing.T) {
+	var plan map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(sectionsPlan), &plan))
+	prior := plan["prior_state"].(map[string]interface{})["values"].(map[string]interface{})
+	root := prior["root_module"].(map[string]interface{})
+	values := map[string]interface{}{
+		"name":            "web",
+		"securityContext": map[string]interface{}{"capabilities": map[string]interface{}{"add": []interface{}{"NET_ADMIN", "SYS_ADMIN"}}},
+		"heterogeneous":   []interface{}{map[string]interface{}{"a": 1}, nil, map[string]interface{}{"b": []interface{}{"x", "y"}}},
+	}
+	resource := func(address, name string, index interface{}) map[string]interface{} {
+		r := map[string]interface{}{"address": address, "mode": "data", "type": "kubernetes_pod", "name": name, "values": values}
+		if index != nil {
+			r["index"] = index
+		}
+		return r
+	}
+	root["child_modules"] = []interface{}{
+		map[string]interface{}{"address": "module.z", "resources": []interface{}{resource("data.kubernetes_pod.indexed[0]", "indexed", 0)}},
+		map[string]interface{}{"address": "module.a", "child_modules": []interface{}{
+			map[string]interface{}{"address": "module.a.module.nested", "resources": []interface{}{
+				resource("data.kubernetes_pod.each", "each", "eu.]"),
+			}},
+		}},
+	}
+	root["resources"] = append(root["resources"].([]interface{}), resource("data.kubernetes_pod.root", "root", nil))
+	// Children serialize before root resources, and the explicit traversal's
+	// stack visits sibling modules in reverse order.
+	content, err := json.MarshalIndent(plan, "", "  ")
+	require.NoError(t, err)
+	for name, content := range map[string][]byte{
+		"indented": content,
+		"minified": func() []byte { b, e := json.Marshal(plan); require.NoError(t, e); return b }(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := &Parser{}
+			_, whole, _, _, err := p.Parse(context.Background(), content, "plan.json", false, 15)
+			require.NoError(t, err)
+			section, ok := p.ParseLineInfoSection(content, "plan.json", "data")
+			require.True(t, ok)
+			require.JSONEq(t, mustJSON(t, whole[0]["data"]), mustJSON(t, section))
+			data := section.(map[string]interface{})
+			require.NotContains(t, data["aws_iam_policy_document"], "old", "deleted data stays excluded")
+			require.NotContains(t, data, "aws_s3_bucket", "managed prior state stays excluded")
+		})
+	}
+}
+
+// Check the complete detector-visible projection, including every optional
+// section, rather than maintaining an allowlist of only the common paths.
+func TestReducedPlanLineInfoCoversWholeDetectorDocument(t *testing.T) {
+	p := &Parser{}
+	content := []byte(sectionsPlan)
+	_, whole, _, _, err := p.Parse(context.Background(), content, "plan.json", false, 15)
+	require.NoError(t, err)
+	reduced, ok := p.ParseLineInfo(content, "plan.json")
+	require.True(t, ok)
+	for _, name := range lazyLineInfoSections {
+		section, ok := p.ParseLineInfoSection(content, "plan.json", name)
+		if ok {
+			reduced[0][name] = section
+		}
+	}
+	expected := whole[0]
+	delete(expected, TfplanMetaKey) // detector deliberately skips metadata
+	require.JSONEq(t, mustJSON(t, expected), mustJSON(t, reduced[0]))
+}
+
+func TestLazyDataLineInfoHandlesAbsentValues(t *testing.T) {
+	for name, suffix := range map[string]string{"missing": "", "null": `,"values":null`, "empty": `,"values":{}`} {
+		t.Run(name, func(t *testing.T) {
+			content := []byte(`{"format_version":"1.2","planned_values":{"root_module":{}},
+"prior_state":{"format_version":"1.0","values":{"root_module":{"resources":[
+{"address":"data.test.a","mode":"data","type":"test","name":"a"` + suffix + `}]}}}}`)
+			p := &Parser{}
+			_, whole, _, _, err := p.Parse(context.Background(), content, "plan.json", false, 15)
+			require.NoError(t, err)
+			section, ok := p.ParseLineInfoSection(content, "plan.json", "data")
+			require.True(t, ok)
+			require.JSONEq(t, mustJSON(t, whole[0]["data"]), mustJSON(t, section))
+		})
+	}
+}
+
+func BenchmarkPriorDataLineInfo(b *testing.B) {
+	for _, count := range []int{100, 1000} {
+		resources := make([]interface{}, 0, count)
+		for i := range count {
+			name := fmt.Sprintf("entry_%d", i)
+			resources = append(resources, map[string]interface{}{
+				"address": "data.test." + name, "mode": "data", "type": "test", "name": name,
+				"values": map[string]interface{}{"value": name, "items": []string{"a", "b"}},
+			})
+		}
+		plan := map[string]interface{}{
+			"format_version": "1.2",
+			"planned_values": map[string]interface{}{"root_module": map[string]interface{}{}},
+			"prior_state": map[string]interface{}{"format_version": "1.0", "values": map[string]interface{}{
+				"root_module": map[string]interface{}{"resources": resources},
+			}},
+		}
+		content, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			p := &Parser{}
+			b.SetBytes(int64(len(content)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, ok := p.ParseLineInfoSection(content, "plan.json", "data"); !ok {
+					b.Fatal("missing data")
+				}
+			}
+		})
+	}
+}
+
+func TestLazyDataLineInfoDoesNotRetainInputViews(t *testing.T) {
+	content := []byte(sectionsPlan)
+	data, ok := (&Parser{}).ParseLineInfoSection(content, "plan.json", "data")
+	require.True(t, ok)
+	expected := mustJSON(t, data)
+	clear(content)
+	require.JSONEq(t, expected, mustJSON(t, data), "returned keys and values must own their bytes")
 }
