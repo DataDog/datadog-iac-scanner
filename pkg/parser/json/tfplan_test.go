@@ -6,9 +6,17 @@
 package json
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -2099,4 +2107,613 @@ func TestJson_parseTFPlan_dd_tfplan_meta_call_site_chain_grows_linearly_not_expo
 		depth, full, depth/2, half)
 	require.Less(t, full, 100,
 		"call_site_expressions should stay proportional to the number of real call sites (depth=%d), not explode to %d", depth, full)
+}
+
+// sectionsPlan has resources in the root and a child module, count and
+// for_each instances, a managed resource that already exists (so it is in
+// prior_state too), a data source and a data source being deleted.
+const sectionsPlan = `{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.logs",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "logs",
+          "values": {
+            "bucket": "logs-planned",
+            "tags": {
+              "env": "prod"
+            },
+            "versioning": [
+              {
+                "enabled": true
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_instance.web[0]",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "index": 0,
+          "values": {
+            "ami": "ami-1",
+            "vpc_security_group_ids": [
+              "sg-1",
+              "sg-2"
+            ]
+          }
+        }
+      ],
+      "child_modules": [
+        {
+          "address": "module.app",
+          "resources": [
+            {
+              "address": "module.app.aws_s3_bucket.logs[\"eu\"]",
+              "mode": "managed",
+              "type": "aws_s3_bucket",
+              "name": "logs",
+              "index": "eu",
+              "values": {
+                "bucket": "app-eu"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.logs",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "logs",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "bucket": "logs-prior"
+        },
+        "after": {
+          "bucket": "logs-planned"
+        },
+        "after_unknown": {
+          "arn": true
+        }
+      }
+    },
+    {
+      "address": "data.aws_iam_policy_document.old",
+      "mode": "data",
+      "type": "aws_iam_policy_document",
+      "name": "old",
+      "change": {
+        "actions": [
+          "delete"
+        ]
+      }
+    }
+  ],
+  "prior_state": {
+    "format_version": "1.0",
+    "values": {
+      "root_module": {
+        "resources": [
+          {
+            "address": "aws_s3_bucket.logs",
+            "mode": "managed",
+            "type": "aws_s3_bucket",
+            "name": "logs",
+            "values": {
+              "bucket": "logs-prior"
+            }
+          },
+          {
+            "address": "data.aws_iam_policy_document.read",
+            "mode": "data",
+            "type": "aws_iam_policy_document",
+            "name": "read",
+            "values": {
+              "json": "{}"
+            }
+          },
+          {
+            "address": "data.aws_iam_policy_document.old",
+            "mode": "data",
+            "type": "aws_iam_policy_document",
+            "name": "old",
+            "values": {
+              "json": "{}"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "configuration": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.logs",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "logs",
+          "expressions": {
+            "bucket": {
+              "constant_value": "logs-planned"
+            }
+          }
+        }
+      ],
+      "module_calls": {
+        "app": {
+          "expressions": {
+            "name": {
+              "references": [
+                "var.name"
+              ]
+            }
+          },
+          "module": {
+            "resources": [
+              {
+                "address": "aws_s3_bucket.logs",
+                "mode": "managed",
+                "type": "aws_s3_bucket",
+                "name": "logs",
+                "expressions": {
+                  "bucket": {
+                    "references": [
+                      "var.name"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+`
+
+// annotatedPlanParse decodes and annotates the entire input before remapping
+// it, to compare its section markers with the reduced line-info parse.
+func annotatedPlanParse(t *testing.T, content []byte) model.Document {
+	t.Helper()
+	var doc model.Document
+	require.NoError(t, json.Unmarshal(content, &doc))
+	parsed, err := parseTFPlan(initializeJSONLine(content).setLineInfo(doc))
+	require.NoError(t, err)
+	return parsed
+}
+
+// withoutLineMarkers returns v as JSON without any _dd_lines key, as the
+// scanned document is once sanitized.
+func withoutLineMarkers(t *testing.T, v interface{}) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	var decoded interface{}
+	require.NoError(t, json.Unmarshal(b, &decoded))
+	var strip func(interface{}) interface{}
+	strip = func(v interface{}) interface{} {
+		switch t := v.(type) {
+		case map[string]interface{}:
+			delete(t, "_dd_lines")
+			for k, x := range t {
+				t[k] = strip(x)
+			}
+		case []interface{}:
+			for i, x := range t {
+				t[i] = strip(x)
+			}
+		}
+		return v
+	}
+	b, err = json.Marshal(strip(decoded))
+	require.NoError(t, err)
+	return string(b)
+}
+
+func compactPlan(t *testing.T) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	require.NoError(t, json.Compact(&out, []byte(sectionsPlan)))
+	return out.Bytes()
+}
+
+// TestParse_tfplanKeepsEverySectionMarker checks that Parse, which feeds
+// test-rules and line-info payload exports, annotates every section of a
+// plan, resource_changes included, and that the scan's unannotated parse
+// holds the same document without markers.
+func TestParse_tfplanKeepsEverySectionMarker(t *testing.T) {
+	for name, content := range map[string][]byte{
+		"indented": []byte(sectionsPlan),
+		"minified": compactPlan(t),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, docs, _, _, err := (&Parser{}).Parse(context.Background(), content, "plan.json", false, 15)
+			require.NoError(t, err)
+			require.Len(t, docs, 1)
+			require.Equal(t, mustJSON(t, annotatedPlanParse(t, content)), mustJSON(t, docs[0]))
+			for _, section := range []string{"resource", "data", "resource_changes", "configuration"} {
+				require.Contains(t, mustJSON(t, docs[0][section]), "_dd_lines", section)
+			}
+
+			unannotated, ok := (&Parser{}).ParseUnannotated(content, "plan.json")
+			require.True(t, ok)
+			require.Len(t, unannotated, 1)
+			require.NotContains(t, mustJSON(t, unannotated[0]), "_dd_lines")
+			require.Equal(t, withoutLineMarkers(t, docs[0]), mustJSON(t, unannotated[0]))
+		})
+	}
+}
+
+// The full parse collapses duplicate object keys before remapping the plan.
+// The scan's optimized path must expose the same values in both its document
+// sections and metadata, including configuration call-site provenance.
+func TestParseUnannotated_tfplanDuplicateMetadataKeys(t *testing.T) {
+	const change = `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true}}}`
+	const configuration = `{"root_module":{"module_calls":{"app":{"expressions":{"name":{"constant_value":"selected"}},"module":{"resources":[{"address":"aws_s3_bucket.logs","expressions":{"bucket":{"references":["var.name"]}}}]}}}}}`
+	for _, tt := range []struct {
+		name, changes, config string
+	}{
+		{
+			name:    "after_unknown known last",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true},"after_unknown":{"arn":false}}}`,
+		},
+		{
+			name:    "after_unknown unknown last",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":false},"after_unknown":{"arn":true}}}`,
+		},
+		{
+			name:    "after_unknown null last",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true},"after_unknown":null}}`,
+		},
+		{
+			name:    "after_unknown object replaced",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"old":true},"after_unknown":{"arn":false}}}`,
+		},
+		{
+			name:    "nested unknown attribute",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true,"arn":false}}}`,
+		},
+		{
+			name:    "change replaced",
+			changes: `{"address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":false}},"change":{"after_unknown":{"arn":true}}}`,
+		},
+		{
+			name:    "change address replaced",
+			changes: `{"address":"aws_s3_bucket.wrong","address":"aws_s3_bucket.logs","change":{"after_unknown":{"arn":true}}}`,
+		},
+		{
+			name:   "configuration root replaced",
+			config: `{"root_module":{},"root_module":{"resources":[{"address":"aws_s3_bucket.logs","expressions":{"bucket":{"constant_value":"selected"}}}]}}`,
+		},
+		{
+			name:   "configuration address replaced",
+			config: `{"root_module":{"resources":[{"address":"aws_s3_bucket.wrong","address":"aws_s3_bucket.logs","expressions":{"bucket":{"constant_value":"selected"}}}]}}`,
+		},
+		{
+			name:   "configuration expressions replaced",
+			config: `{"root_module":{"resources":[{"address":"aws_s3_bucket.logs","expressions":{"wrong":{"constant_value":"ignored"}},"expressions":{"bucket":{"constant_value":"selected"}}}]}}`,
+		},
+		{
+			name:   "configuration provisioners replaced",
+			config: `{"root_module":{"resources":[{"address":"aws_s3_bucket.logs","provisioners":[{"type":"wrong"}],"provisioners":[{"type":"selected"}]}]}}`,
+		},
+		{
+			name:   "module argument replaced",
+			config: strings.Replace(configuration, `"name":{"constant_value":"selected"}`, `"name":{"constant_value":"ignored"},"name":{"constant_value":"selected"}`, 1),
+		},
+		{
+			name:   "module argument references replaced",
+			config: strings.Replace(configuration, `"references":["var.name"]`, `"references":["var.wrong"],"references":["var.name"]`, 1),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			changes, config := tt.changes, tt.config
+			if changes == "" {
+				changes = change
+			}
+			if config == "" {
+				config = configuration
+			}
+			content := []byte(fmt.Sprintf(`{
+  "format_version":"1.2",
+  "planned_values":{"root_module":{
+    "resources":[{"address":"aws_s3_bucket.logs","mode":"managed","type":"aws_s3_bucket","name":"logs","values":{"bucket":"root"}}],
+    "child_modules":[{"address":"module.app","resources":[{"address":"module.app.aws_s3_bucket.logs","mode":"managed","type":"aws_s3_bucket","name":"logs","values":{"bucket":"child"}}]}]
+  }},
+  "resource_changes":[%s],
+  "configuration":%s
+}`, changes, config))
+			whole := annotatedPlanParse(t, content)
+			got, ok := (&Parser{}).ParseUnannotated(content, "plan.json")
+			require.True(t, ok)
+			require.Len(t, got, 1)
+			require.JSONEq(t, withoutLineMarkers(t, whole), mustJSON(t, got[0]))
+
+			// Adding provenance must not mutate either source section.
+			var decoded model.Document
+			require.NoError(t, json.Unmarshal(content, &decoded))
+			for _, section := range []string{"resource_changes", "configuration"} {
+				require.Equal(t, decoded[section], got[0][section], section)
+			}
+		})
+	}
+}
+
+func TestParseLineInfo_tfplanMatchesParseResourceSection(t *testing.T) {
+	content := []byte(sectionsPlan)
+	docs, ok := (&Parser{}).ParseLineInfo(content, "plan.json")
+	require.True(t, ok)
+	require.Len(t, docs, 1)
+	require.ElementsMatch(t, []string{"resource", "configuration"}, keysOf(docs[0]))
+	whole := annotatedPlanParse(t, content)
+	for _, section := range []string{"resource", "configuration"} {
+		require.JSONEq(t, mustJSON(t, whole[section]), mustJSON(t, docs[0][section]), section)
+	}
+
+	// The change list is built on demand, annotated as a whole parse is.
+	changes, ok := (&Parser{}).ParseLineInfoSection(content, "plan.json", "resource_changes")
+	require.True(t, ok)
+	require.JSONEq(t, mustJSON(t, whole["resource_changes"]), mustJSON(t, changes))
+	data, ok := (&Parser{}).ParseLineInfoSection(content, "plan.json", "data")
+	require.True(t, ok)
+	require.JSONEq(t, mustJSON(t, whole["data"]), mustJSON(t, data))
+	for _, name := range []string{"resource", "configuration", "missing"} {
+		_, ok = (&Parser{}).ParseLineInfoSection(content, "plan.json", name)
+		require.False(t, ok, "%s is not a lazy section", name)
+	}
+	_, ok = (&Parser{}).ParseLineInfoSection([]byte(`{"Resources": {}}`), "plan.json", "resource_changes")
+	require.False(t, ok, "other JSON has none")
+
+	_, ok = (&Parser{}).ParseLineInfo([]byte(`{"Resources": {}}`), "plan.json")
+	require.False(t, ok, "other JSON is parsed whole")
+
+	// A plan value naming a file is resolved by the full parse only.
+	plan := filepath.FromSlash("/scan/plan.json")
+	p := &Parser{FS: vfs.NewMemFS(map[string][]byte{filepath.FromSlash("/scan/policy.json"): []byte(`{}`)})}
+	withFile := strings.Replace(sectionsPlan, `"logs-planned"`, `"policy.json"`, 1)
+	_, ok = p.ParseLineInfo([]byte(withFile), plan)
+	require.False(t, ok, "a plan referencing a file is parsed whole")
+	_, ok = p.ParseLineInfoSection([]byte(withFile), plan, "resource_changes")
+	require.False(t, ok, "its whole parse already holds every section")
+}
+
+// TestParse_tfplanHeaderLinesFollowTheirSection checks that a resource that
+// already exists points at its planned values, which rules read, rather than
+// at its prior state, that a data source points at its prior state, and that
+// resources of child modules have header lines too.
+func TestParse_tfplanHeaderLinesFollowTheirSection(t *testing.T) {
+	content := []byte(sectionsPlan)
+	_, docs, _, _, err := (&Parser{}).Parse(context.Background(), content, "plan.json", false, 15)
+	require.NoError(t, err)
+	doc := docs[0]
+
+	// Each "values" key sits on the line above its first attribute.
+	headerLine := func(firstAttribute string) float64 {
+		i := strings.Index(sectionsPlan, firstAttribute)
+		require.GreaterOrEqual(t, i, 0, firstAttribute)
+		return float64(strings.Count(sectionsPlan[:i], "\n"))
+	}
+	lineOf := func(section, typ, key string) interface{} {
+		lines := doc[section].(map[string]interface{})[typ].(map[string]interface{})["_dd_lines"]
+		return lines.(map[string]interface{})["_dd_"+key].(map[string]interface{})["_dd_line"]
+	}
+	require.Equal(t, headerLine(`"bucket": "logs-planned"`), lineOf("resource", "aws_s3_bucket", "logs"))
+	require.Equal(t, headerLine(`"bucket": "app-eu"`), lineOf("resource", "aws_s3_bucket", `module.app.logs["eu"]`))
+	require.Equal(t, headerLine(`"json": "{}"`), lineOf("data", "aws_iam_policy_document", "read"))
+	require.NotContains(t, doc["data"].(map[string]interface{})["aws_iam_policy_document"], "old",
+		"a data source being deleted is not read from prior_state")
+}
+
+func TestParse_tfplanFallsBackToWholeParse(t *testing.T) {
+	for name, content := range map[string]string{
+		"repeated section":         `{"format_version": "1.2", "planned_values": {"root_module": {}}, "planned_values": {"root_module": {}}}`,
+		"unsupported version":      `{"format_version": "9.0", "planned_values": {"root_module": {}}}`,
+		"planned_values not a map": `{"format_version": "1.2", "planned_values": [], "x": 1}`,
+		"no root module":           `{"format_version": "1.2", "planned_values": {}, "configuration": []}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, ok := parseTFPlanContent([]byte(content))
+			require.False(t, ok)
+			_, ok = parseTFPlanLineInfo([]byte(content))
+			require.False(t, ok)
+		})
+	}
+	// A plan without a root module stays a plain JSON document instead of
+	// panicking.
+	_, docs, _, _, err := (&Parser{}).Parse(context.Background(),
+		[]byte(`{"format_version": "1.2", "planned_values": {}, "configuration": []}`), "plan.json", false, 15)
+	require.NoError(t, err)
+	require.NotContains(t, docs[0], "resource")
+	// An unsupported plan stays a plain JSON document, as before.
+	_, docs, _, _, err = (&Parser{}).Parse(context.Background(),
+		[]byte(`{"format_version": "9.0", "planned_values": {"root_module": {}}}`), "plan.json", false, 15)
+	require.NoError(t, err)
+	require.Contains(t, docs[0], "planned_values")
+	require.NotContains(t, docs[0], "resource")
+}
+
+func mustJSON(t *testing.T, v interface{}) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(b)
+}
+
+func keysOf(doc model.Document) []string {
+	keys := make([]string, 0, len(doc))
+	for k := range doc {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// The expected evaluation document was produced by main at 221479ff2,
+// independently of both parser paths below. Line-marker changes are tested
+// separately: the rule-facing document must keep the existing contract.
+func TestTFPlanEvaluationContractMatchesMain(t *testing.T) {
+	baseline, err := os.ReadFile("testdata/tfplan_eval_contract.json")
+	require.NoError(t, err)
+	var expected []model.Document
+	require.NoError(t, json.Unmarshal(baseline, &expected))
+	require.Len(t, expected, 1)
+	for name, content := range map[string][]byte{
+		"indented": []byte(sectionsPlan),
+		"minified": compactPlan(t),
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := &Parser{}
+			_, annotated, _, _, err := p.Parse(context.Background(), content, "plan.json", false, 15)
+			require.NoError(t, err)
+			require.Len(t, annotated, 1)
+			require.JSONEq(t, mustJSON(t, expected[0]), withoutLineMarkers(t, annotated[0]))
+			light, ok := p.ParseUnannotated(content, "plan.json")
+			require.True(t, ok)
+			require.Len(t, light, 1)
+			require.JSONEq(t, mustJSON(t, expected[0]), mustJSON(t, light[0]))
+		})
+	}
+}
+
+// Compare every data value and marker with the whole parse across module,
+// index, deletion and serialization-order variants.
+func TestLazyDataLineInfoMatchesWholeParse(t *testing.T) {
+	var plan map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(sectionsPlan), &plan))
+	prior := plan["prior_state"].(map[string]interface{})["values"].(map[string]interface{})
+	root := prior["root_module"].(map[string]interface{})
+	values := map[string]interface{}{
+		"name":            "web",
+		"securityContext": map[string]interface{}{"capabilities": map[string]interface{}{"add": []interface{}{"NET_ADMIN", "SYS_ADMIN"}}},
+		"heterogeneous":   []interface{}{map[string]interface{}{"a": 1}, nil, map[string]interface{}{"b": []interface{}{"x", "y"}}},
+	}
+	resource := func(address, name string, index interface{}) map[string]interface{} {
+		r := map[string]interface{}{"address": address, "mode": "data", "type": "kubernetes_pod", "name": name, "values": values}
+		if index != nil {
+			r["index"] = index
+		}
+		return r
+	}
+	root["child_modules"] = []interface{}{
+		map[string]interface{}{"address": "module.z", "resources": []interface{}{resource("data.kubernetes_pod.indexed[0]", "indexed", 0)}},
+		map[string]interface{}{"address": "module.a", "child_modules": []interface{}{
+			map[string]interface{}{"address": "module.a.module.nested", "resources": []interface{}{
+				resource("data.kubernetes_pod.each", "each", "eu.]"),
+			}},
+		}},
+	}
+	root["resources"] = append(root["resources"].([]interface{}), resource("data.kubernetes_pod.root", "root", nil))
+	// Children serialize before root resources, and the explicit traversal's
+	// stack visits sibling modules in reverse order.
+	content, err := json.MarshalIndent(plan, "", "  ")
+	require.NoError(t, err)
+	for name, content := range map[string][]byte{
+		"indented": content,
+		"minified": func() []byte { b, e := json.Marshal(plan); require.NoError(t, e); return b }(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := &Parser{}
+			_, whole, _, _, err := p.Parse(context.Background(), content, "plan.json", false, 15)
+			require.NoError(t, err)
+			section, ok := p.ParseLineInfoSection(content, "plan.json", "data")
+			require.True(t, ok)
+			require.JSONEq(t, mustJSON(t, whole[0]["data"]), mustJSON(t, section))
+			data := section.(map[string]interface{})
+			require.NotContains(t, data["aws_iam_policy_document"], "old", "deleted data stays excluded")
+			require.NotContains(t, data, "aws_s3_bucket", "managed prior state stays excluded")
+		})
+	}
+}
+
+// Check the complete detector-visible projection, including every optional
+// section, rather than maintaining an allowlist of only the common paths.
+func TestReducedPlanLineInfoCoversWholeDetectorDocument(t *testing.T) {
+	p := &Parser{}
+	content := []byte(sectionsPlan)
+	_, whole, _, _, err := p.Parse(context.Background(), content, "plan.json", false, 15)
+	require.NoError(t, err)
+	reduced, ok := p.ParseLineInfo(content, "plan.json")
+	require.True(t, ok)
+	for _, name := range lazyLineInfoSections {
+		section, ok := p.ParseLineInfoSection(content, "plan.json", name)
+		if ok {
+			reduced[0][name] = section
+		}
+	}
+	expected := whole[0]
+	delete(expected, TfplanMetaKey) // detector deliberately skips metadata
+	require.JSONEq(t, mustJSON(t, expected), mustJSON(t, reduced[0]))
+}
+
+func TestLazyDataLineInfoHandlesAbsentValues(t *testing.T) {
+	for name, suffix := range map[string]string{"missing": "", "null": `,"values":null`, "empty": `,"values":{}`} {
+		t.Run(name, func(t *testing.T) {
+			content := []byte(`{"format_version":"1.2","planned_values":{"root_module":{}},
+"prior_state":{"format_version":"1.0","values":{"root_module":{"resources":[
+{"address":"data.test.a","mode":"data","type":"test","name":"a"` + suffix + `}]}}}}`)
+			p := &Parser{}
+			_, whole, _, _, err := p.Parse(context.Background(), content, "plan.json", false, 15)
+			require.NoError(t, err)
+			section, ok := p.ParseLineInfoSection(content, "plan.json", "data")
+			require.True(t, ok)
+			require.JSONEq(t, mustJSON(t, whole[0]["data"]), mustJSON(t, section))
+		})
+	}
+}
+
+func BenchmarkPriorDataLineInfo(b *testing.B) {
+	for _, count := range []int{100, 1000} {
+		resources := make([]interface{}, 0, count)
+		for i := range count {
+			name := fmt.Sprintf("entry_%d", i)
+			resources = append(resources, map[string]interface{}{
+				"address": "data.test." + name, "mode": "data", "type": "test", "name": name,
+				"values": map[string]interface{}{"value": name, "items": []string{"a", "b"}},
+			})
+		}
+		plan := map[string]interface{}{
+			"format_version": "1.2",
+			"planned_values": map[string]interface{}{"root_module": map[string]interface{}{}},
+			"prior_state": map[string]interface{}{"format_version": "1.0", "values": map[string]interface{}{
+				"root_module": map[string]interface{}{"resources": resources},
+			}},
+		}
+		content, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			p := &Parser{}
+			b.SetBytes(int64(len(content)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, ok := p.ParseLineInfoSection(content, "plan.json", "data"); !ok {
+					b.Fatal("missing data")
+				}
+			}
+		})
+	}
+}
+
+func TestLazyDataLineInfoDoesNotRetainInputViews(t *testing.T) {
+	content := []byte(sectionsPlan)
+	data, ok := (&Parser{}).ParseLineInfoSection(content, "plan.json", "data")
+	require.True(t, ok)
+	expected := mustJSON(t, data)
+	clear(content)
+	require.JSONEq(t, expected, mustJSON(t, data), "returned keys and values must own their bytes")
 }

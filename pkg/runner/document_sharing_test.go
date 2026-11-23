@@ -220,6 +220,23 @@ func TestShareableParse(t *testing.T) {
 // TestCloneDocumentTopLevelSharedChildren verifies the per-file copy handed
 // out from the shared-parse cache: the top-level map is fresh (so Combine can
 // insert the file's id/file) while child maps stay shared with the cache.
+// TestLookupSharedParseDoesNotIntern checks that looking a file up in the
+// shared-parse cache keeps no copy of it: only shared parses intern content.
+func TestLookupSharedParseDoesNotIntern(t *testing.T) {
+	s := &Service{}
+	content := []byte(`{"a": 1}`)
+	require.Nil(t, s.lookupSharedParse(content))
+	require.Empty(t, s.contentInterner)
+
+	key := s.internContentBytes(content)
+	s.storeSharedParse(key, &parser.ParsedDocument{Kind: model.KindJSON}, []model.Document{{"a": 1.0}})
+	shared := s.lookupSharedParse(content)
+	require.NotNil(t, shared)
+	require.Equal(t, string(content), shared.content)
+	require.Equal(t, key, s.internContentBytes(content))
+	require.Len(t, s.contentInterner, 1)
+}
+
 func TestCloneDocumentTopLevelSharedChildren(t *testing.T) {
 	child := map[string]interface{}{"spec": "value"}
 	doc := model.Document{"apiVersion": "v1", "metadata": child}

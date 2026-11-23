@@ -110,7 +110,7 @@ func resolveAnchoredPath(segments []string, extracted [][]string, doc map[string
 // when present, the bare {{variant}} segment following it. ok is false when
 // the key is not anchored in this shape.
 func parseAnchoredPrefix(segments []string, extracted [][]string) (prefix anchoredKeyPrefix, rest []string, ok bool) {
-	if len(segments) < 2 || len(extracted) < 1 {
+	if len(segments) == 0 || len(extracted) < 1 {
 		return prefix, nil, false
 	}
 	root := segments[0]
@@ -124,7 +124,7 @@ func parseAnchoredPrefix(segments []string, extracted [][]string) (prefix anchor
 		return prefix, nil, false
 	}
 	rest = segments[1:]
-	if strings.Contains(rest[0], "{{") && !strings.Contains(rest[0], "=") {
+	if len(rest) > 0 && strings.Contains(rest[0], "{{") && !strings.Contains(rest[0], "=") {
 		prefix.variant = resolvePlaceholders(rest[0], extracted)
 		if prefix.variant == "" {
 			return prefix, nil, false
@@ -273,5 +273,5 @@ func mapKeys(node interface{}) ([]string, bool) {
 
 // skipMarkerKey hides the line-info bookkeeping keys from the anchor search.
 func skipMarkerKey(k string) bool {
-	return k == "_dd_lines" || k == "_path" || k == "id" || strings.HasPrefix(k, "_dd_")
+	return k == lineInfoKey || k == "_path" || k == "id" || strings.HasPrefix(k, "_dd_")
 }

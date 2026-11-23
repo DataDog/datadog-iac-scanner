@@ -1,0 +1,158 @@
+[
+  {
+    "_dd_tfplan_meta": {
+      "aws_instance": {
+        "web[0]": {
+          "address": "aws_instance.web[0]"
+        }
+      },
+      "aws_s3_bucket": {
+        "logs": {
+          "address": "aws_s3_bucket.logs",
+          "after_unknown": {
+            "arn": true
+          },
+          "configuration_expressions": {
+            "bucket": {
+              "constant_value": "logs-planned"
+            }
+          }
+        },
+        "module.app.logs[\"eu\"]": {
+          "address": "module.app.aws_s3_bucket.logs[\"eu\"]",
+          "configuration_expressions": {
+            "bucket": {
+              "call_site_expressions": [
+                {
+                  "references": [
+                    "var.name"
+                  ]
+                }
+              ],
+              "references": [
+                "var.name"
+              ]
+            }
+          }
+        }
+      },
+      "data.aws_iam_policy_document": {
+        "read": {
+          "address": "data.aws_iam_policy_document.read"
+        }
+      }
+    },
+    "configuration": {
+      "root_module": {
+        "module_calls": {
+          "app": {
+            "expressions": {
+              "name": {
+                "references": [
+                  "var.name"
+                ]
+              }
+            },
+            "module": {
+              "resources": [
+                {
+                  "address": "aws_s3_bucket.logs",
+                  "expressions": {
+                    "bucket": {
+                      "references": [
+                        "var.name"
+                      ]
+                    }
+                  },
+                  "mode": "managed",
+                  "name": "logs",
+                  "type": "aws_s3_bucket"
+                }
+              ]
+            }
+          }
+        },
+        "resources": [
+          {
+            "address": "aws_s3_bucket.logs",
+            "expressions": {
+              "bucket": {
+                "constant_value": "logs-planned"
+              }
+            },
+            "mode": "managed",
+            "name": "logs",
+            "type": "aws_s3_bucket"
+          }
+        ]
+      }
+    },
+    "data": {
+      "aws_iam_policy_document": {
+        "read": {
+          "json": "{}"
+        }
+      }
+    },
+    "resource": {
+      "aws_instance": {
+        "web[0]": {
+          "ami": "ami-1",
+          "vpc_security_group_ids": [
+            "sg-1",
+            "sg-2"
+          ]
+        }
+      },
+      "aws_s3_bucket": {
+        "logs": {
+          "bucket": "logs-planned",
+          "tags": {
+            "env": "prod"
+          },
+          "versioning": [
+            {
+              "enabled": true
+            }
+          ]
+        },
+        "module.app.logs[\"eu\"]": {
+          "bucket": "app-eu"
+        }
+      }
+    },
+    "resource_changes": [
+      {
+        "address": "aws_s3_bucket.logs",
+        "change": {
+          "actions": [
+            "update"
+          ],
+          "after": {
+            "bucket": "logs-planned"
+          },
+          "after_unknown": {
+            "arn": true
+          },
+          "before": {
+            "bucket": "logs-prior"
+          }
+        },
+        "mode": "managed",
+        "name": "logs",
+        "type": "aws_s3_bucket"
+      },
+      {
+        "address": "data.aws_iam_policy_document.old",
+        "change": {
+          "actions": [
+            "delete"
+          ]
+        },
+        "mode": "data",
+        "name": "old",
+        "type": "aws_iam_policy_document"
+      }
+    ]
+  }
+]

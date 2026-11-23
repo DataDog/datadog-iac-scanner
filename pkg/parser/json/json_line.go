@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -40,6 +39,12 @@ type fifo struct {
 
 // initiateJSONLine will create a map, containing line information for every key present in the JSON
 func initializeJSONLine(doc []byte) *jsonLine {
+	return initializeJSONLineAt(doc, 1)
+}
+
+// initializeJSONLineAt is initializeJSONLine for a JSON value that starts on
+// line startLine of its file, so its lines are counted as in the whole file.
+func initializeJSONLineAt(doc []byte, startLine int) *jsonLine {
 	newMap := make(map[string]model.Document)
 	dec := json.NewDecoder(bytes.NewReader(doc))
 
@@ -51,7 +56,7 @@ func initializeJSONLine(doc []byte) *jsonLine {
 		parent:      "",
 	}
 
-	line := 1
+	line := startLine
 	prevInputOffset := 0
 
 	// for each token inside JSON
@@ -106,11 +111,11 @@ func initializeJSONLine(doc []byte) *jsonLine {
 			parentMap[jstruct.parent] = newLineSlice
 			newMap[tokStringRepresentation] = parentMap
 		} else if v, ok := newMap[tokStringRepresentation][jstruct.parent]; ok {
-			// key info is in map with the same path so append is made
-			newLineSlice := &fifo{name: tokStringRepresentation}
-			newLineSlice.add(v.(*fifo).Value...)
-			newLineSlice.add(line)
-			newMap[tokStringRepresentation][jstruct.parent] = newLineSlice
+			// key info is in map with the same path so append is made. Only
+			// the map holds the fifo, so append in place: copying it on each
+			// repeat was quadratic in how often a key repeats at one path
+			// (every resource of a large Terraform plan).
+			v.(*fifo).add(line)
 		} else {
 			// key info is in map with different path
 			newLineSlice := &fifo{name: tokStringRepresentation}
@@ -249,9 +254,10 @@ func (j *jsonLine) setSeqLines(v []interface{}, def int, father, key string,
 	// update father path with key
 	fatherKey := father + "." + key
 
+	mapEntries := mapEntryIndexes(v)
 	// iterate over each element of the array
 	for _, contentEntry := range v {
-		defaultLineArr := j.getMapDefaultLine(v, fatherKey)
+		defaultLineArr := j.getMapDefaultLine(v, mapEntries, fatherKey)
 		if defaultLineArr == -1 {
 			defaultLineArr = def
 		}
@@ -278,29 +284,40 @@ func (j *jsonLine) setSeqLines(v []interface{}, def int, father, key string,
 	return lineArr
 }
 
-// must get all and choose the smallest one
-func (j *jsonLine) getMapDefaultLine(v []interface{}, father string) int {
-	returnNumber := -1
-	for _, contentEntry := range v {
-		linesNumbers := make([]int, 0)
-		if c, ok := contentEntry.(map[string]interface{}); ok {
-			for key := range c {
-				if _, ok2 := j.LineInfo[key][father]; !ok2 {
-					continue
-				}
-				line := j.LineInfo[key][father]
-				if len(line.(*fifo).Value) == 0 {
-					continue
-				}
-				linesNumbers = append(linesNumbers, line.(*fifo).head())
+// getMapDefaultLine returns the smallest line among the keys of the last
+// object in v that has any line information left (-1 if none does).
+// mapEntries are the indexes of v's objects, from mapEntryIndexes. Scanning
+// back from the last object stops at that one instead of visiting every
+// object, which was quadratic in the array length for each array element.
+func (j *jsonLine) getMapDefaultLine(v []interface{}, mapEntries []int, father string) int {
+	for i := len(mapEntries) - 1; i >= 0; i-- {
+		c := v[mapEntries[i]].(map[string]interface{})
+		returnNumber := -1
+		for key := range c {
+			line, ok := j.LineInfo[key][father]
+			if !ok || len(line.(*fifo).Value) == 0 {
+				continue
 			}
-			if len(linesNumbers) > 0 {
-				sort.Ints(linesNumbers)
-				returnNumber = linesNumbers[0]
+			if head := line.(*fifo).head(); returnNumber == -1 || head < returnNumber {
+				returnNumber = head
 			}
 		}
+		if returnNumber != -1 {
+			return returnNumber
+		}
 	}
-	return returnNumber
+	return -1
+}
+
+// mapEntryIndexes returns the indexes of the objects in v.
+func mapEntryIndexes(v []interface{}) []int {
+	var indexes []int
+	for i, entry := range v {
+		if _, ok := entry.(map[string]interface{}); ok {
+			indexes = append(indexes, i)
+		}
+	}
+	return indexes
 }
 
 // SET OF TOOLS TO ASSIST WITH JSON LINE

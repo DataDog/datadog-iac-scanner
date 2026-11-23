@@ -473,6 +473,154 @@ func Test_detectLineTerraformPlan(t *testing.T) {
 	require.Equal(t, 13, got.Line)
 }
 
+// Test_detectLineTerraformPlanEncodedPolicy checks that a searchKey into a
+// JSON-encoded attribute, which rules read decoded, points at the attribute.
+func Test_detectLineTerraformPlanEncodedPolicy(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_iam_role.deploy",
+          "type": "aws_iam_role",
+          "name": "deploy",
+          "values": {
+            "name": "deploy",
+            "assume_role_policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"123456789012\"}}]}"
+          }
+        }
+      ]
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	d := defaultDetectLine{}
+	require.Equal(t, 12, d.DetectLine(context.Background(), file, "aws_iam_role[deploy].assume_role_policy.Statement[0]", 0).Line)
+	require.Equal(t, 12, d.DetectLine(context.Background(), file, "aws_iam_role[deploy].assume_role_policy.Statement[0].Principal.AWS", 0).Line)
+	// A missing attribute is not mistaken for an encoded one.
+	require.NotEqual(t, 12, d.DetectLine(context.Background(), file, "aws_iam_role[deploy].missing.Statement[0]", 0).Line)
+}
+
+// Test_detectLineTerraformPlanDeclarations checks that output and variable
+// findings point at their declarations in the plan's configuration.
+func Test_detectLineTerraformPlanDeclarations(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {}
+  },
+  "configuration": {
+    "root_module": {
+      "outputs": {
+        "bucket": {
+          "expression": {}
+        }
+      },
+      "module_calls": {
+        "a": {
+          "module": {
+            "outputs": {
+              "name": {}
+            },
+            "variables": {
+              "region": {}
+            }
+          }
+        },
+        "b": {
+          "module": {
+            "outputs": {
+              "name": {}
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+	p := &jsonParser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+	file := &model.FileMetadata{
+		Kind:              model.KindTerraformPlan,
+		LineInfoDocument:  docs[0],
+		LinesOriginalData: utils.SplitLines(plan),
+	}
+	d := defaultDetectLine{}
+	detect := func(searchKey string) int {
+		return d.DetectLine(context.Background(), file, searchKey, 0).Line
+	}
+	require.Equal(t, 9, detect("output[bucket]"))
+	require.Equal(t, 10, detect("output[bucket].expression"))
+	require.Equal(t, 20, detect("variable[region]"))
+	require.Equal(t, 17, detect("configuration.root_module.module_calls.a.module.outputs.name"))
+	require.Equal(t, 27, detect("configuration.root_module.module_calls.b.module.outputs.name"))
+	// Declared by two modules: only the full path tells them apart.
+	require.NotContains(t, []int{17, 27}, detect("output[name]"))
+}
+
+// Test_detectLineTerraformPlanAnchoredChange checks that an anchored
+// searchKey into resource_changes finds the same line in the document of a
+// scan's line-info reparse as in a whole parse.
+func Test_detectLineTerraformPlanAnchoredChange(t *testing.T) {
+	plan := `{
+  "format_version": "1.0",
+  "planned_values": {
+    "root_module": {}
+  },
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.logs",
+      "change": {
+        "actions": [
+          "no-op"
+        ]
+      }
+    },
+    {
+      "address": "aws_s3_bucket.main",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ]
+      }
+    }
+  ]
+}`
+	p := &jsonParser.Parser{}
+	_, whole, _, _, err := p.Parse(context.Background(), []byte(plan), "plan.json", false, 1)
+	require.NoError(t, err)
+	lineInfo, ok := p.ParseLineInfo([]byte(plan), "plan.json")
+	require.True(t, ok)
+
+	// The scan's line-info document gets the change list when a key needs it.
+	changes, ok := p.ParseLineInfoSection([]byte(plan), "plan.json", "resource_changes")
+	require.True(t, ok)
+	require.Equal(t, []string{"data", "resource_changes"},
+		LineInfoSections(model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions[1]"))
+	lineInfo[0]["resource_changes"] = changes
+
+	for name, doc := range map[string]model.Document{"whole parse": whole[0], "line-info reparse": lineInfo[0]} {
+		file := &model.FileMetadata{
+			Kind:              model.KindTerraformPlan,
+			LineInfoDocument:  doc,
+			LinesOriginalData: utils.SplitLines(plan),
+		}
+		got := defaultDetectLine{}.DetectLine(context.Background(), file,
+			"address={{aws_s3_bucket.main}}.change.actions[1]", 0)
+		require.Equal(t, 20, got.Line, name)
+	}
+}
+
 func Test_detectLineTerraformPlanResourceLevel(t *testing.T) {
 	plan := `{
   "format_version": "1.0",
@@ -663,4 +811,42 @@ func Test_defaultDetectLine_prepareResolvedFiles(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_LineInfoSections(t *testing.T) {
+	for name, tt := range map[string]struct {
+		kind      model.FileKind
+		searchKey string
+		want      []string
+	}{
+		"shallow anchored change": {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions", nil},
+		"anchor without a path":   {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}", nil},
+		"anchored change key":     {model.KindTerraformPlan, "address={{aws_s3_bucket.main}}.change.actions[0]", []string{"data", "resource_changes"}},
+		"key rooted at data":      {model.KindTerraformPlan, "data.kubernetes_pod[web].capabilities.add[1]", []string{"data"}},
+		"key rooted at changes":   {model.KindTerraformPlan, "resource_changes[0].change.actions", []string{"resource_changes"}},
+		"resource key":            {model.KindTerraformPlan, "aws_s3_bucket[main].acl", nil},
+		"declaration key":         {model.KindTerraformPlan, "configuration.root_module.outputs.name", nil},
+		"encoded attribute key":   {model.KindTerraformPlan, "aws_iam_role[deploy].assume_role_policy.Statement[0]", nil},
+		"anchored key, not plan":  {model.KindYAML, "name={{task}}.{{module}}.policy.Statement[0]", nil},
+		"changes key, not a plan": {model.KindJSON, "resource_changes[0]", nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tt.want, LineInfoSections(tt.kind, tt.searchKey))
+		})
+	}
+}
+
+func TestLineInfoSectionsDistinguishesAnchorsFromSections(t *testing.T) {
+	for _, key := range []string{"data", "resource_changes", "address", "name"} {
+		for _, tail := range []string{"", ".permissions", ".permissions.actions"} {
+			searchKey := key + "={{prod}}" + tail
+			require.Nil(t, LineInfoSections(model.KindTerraformPlan, searchKey), searchKey)
+		}
+		for _, tail := range []string{".permissions.actions[1]", ".permissions.actions.1"} {
+			searchKey := key + "={{prod}}" + tail
+			require.Equal(t, []string{"data", "resource_changes"}, LineInfoSections(model.KindTerraformPlan, searchKey), searchKey)
+		}
+	}
+	require.Equal(t, []string{"data"}, LineInfoSections(model.KindTerraformPlan, "data.test[prod].permissions.actions[1]"))
+	require.Equal(t, []string{"resource_changes"}, LineInfoSections(model.KindTerraformPlan, "resource_changes[0].permissions.actions[1]"))
 }
