@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"hash/maphash"
+	"maps"
 	"reflect"
 	"sort"
 	"strconv"
@@ -32,26 +33,27 @@ type evalCacheKey struct {
 	inputs      inputsDigest
 }
 
-// evalCacheEntry holds the result of a completed module evaluation.
+// evalCacheEntry holds a module evaluation and its native effects. Entries with
+// stoppedDirs or externalStops are partial and belong only to the current root's cache;
+// the evaluator-wide cache contains completed entries only.
 // visitedDirs is the complete set of directories evaluated below this module,
 // independent of previously visited siblings. The caller tracks the module itself.
 //
-// baseAddr and baseChainLen record the position the entry was first evaluated at,
+// baseAddr and baseChain record the position the entry was first evaluated at,
 // so a caller reaching the same module by another path can rewrite the recorded
 // address and chain onto the result. Outputs need no rewrite because rootDir is
 // part of the cache key.
 type evalCacheEntry struct {
 	resources []ResolvedResource
 	// instances are the module calls evaluated inside this evaluation.
-	instances    []ModuleInstance
-	outputs      map[string]cty.Value
-	visitedDirs  []string
-	baseAddr     string
-	baseChainLen int
-	// evalDepth is the nesting depth this entry was evaluated at. A module cached
-	// from a deeper call may have truncated descendants; shallower callers need a
-	// fresh evaluation with more depth remaining.
-	evalDepth int
+	instances         []ModuleInstance
+	outputs           map[string]cty.Value
+	visitedDirs       []string
+	baseAddr          string
+	baseChain         []CallSite
+	stoppedDirs       []string
+	enteredIdentities []string
+	externalStops     []string
 }
 
 // rebase returns the cached resources as they would have been recorded had the
@@ -62,14 +64,14 @@ type evalCacheEntry struct {
 // of a resolved resource and they are identical for identical inputs, so sharing
 // them is what makes reuse cheap; both are treated as read-only after evaluation.
 func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedResource {
-	if entry.baseAddr == addr && entry.baseChainLen == len(chain) {
+	if entry.baseAddr == addr && sameCallChain(entry.baseChain, chain) {
 		return entry.resources
 	}
 	out := make([]ResolvedResource, len(entry.resources))
 	for i := range entry.resources {
 		r := entry.resources[i]
 		r.ModuleAddress = rebaseAddr(r.ModuleAddress, entry.baseAddr, addr)
-		r.CallChain = rebaseChain(r.CallChain, entry.baseChainLen, chain)
+		r.CallChain = rebaseChain(r.CallChain, len(entry.baseChain), chain)
 		out[i] = r
 	}
 	return out
@@ -78,17 +80,156 @@ func (entry *evalCacheEntry) rebase(addr string, chain []CallSite) []ResolvedRes
 // rebaseInstances returns the cached module calls as they would have been
 // recorded at addr/chain, sharing them when that is where they were recorded.
 func (entry *evalCacheEntry) rebaseInstances(addr string, chain []CallSite) []ModuleInstance {
-	if len(entry.instances) == 0 || (entry.baseAddr == addr && entry.baseChainLen == len(chain)) {
+	if len(entry.instances) == 0 || (entry.baseAddr == addr && sameCallChain(entry.baseChain, chain)) {
 		return entry.instances
 	}
 	out := make([]ModuleInstance, len(entry.instances))
 	for i := range entry.instances {
 		instance := entry.instances[i]
 		instance.ModuleAddress = rebaseAddr(instance.ModuleAddress, entry.baseAddr, addr)
-		instance.CallChain = rebaseChain(instance.CallChain, entry.baseChainLen, chain)
+		instance.CallChain = rebaseChain(instance.CallChain, len(entry.baseChain), chain)
 		out[i] = instance
 	}
 	return out
+}
+
+// sameCallChain includes the caller scopes: equal addresses and depths can
+// belong to different parent evaluations after their sibling inputs refine.
+func sameCallChain(first, second []CallSite) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	for i := range first {
+		a, b := &first[i], &second[i]
+		if a.ModuleName != b.ModuleName || a.Source != b.Source || a.Version != b.Version ||
+			a.CalledFrom != b.CalledFrom || a.CalledLine != b.CalledLine || a.CalledEndLine != b.CalledEndLine ||
+			a.CalledColumn != b.CalledColumn || a.CalledEndColumn != b.CalledEndColumn ||
+			a.Body != b.Body || a.Caller != b.Caller || !a.InstanceKey.RawEquals(b.InstanceKey) {
+			return false
+		}
+	}
+	return true
+}
+
+// evaluationRun owns partial results for one recursive root evaluation.
+// Reuse depends on the cycle decisions made by a subtree, not its exact callers.
+// Native values may be reused between caller scopes; their call chains are rebound.
+type evaluationRun struct {
+	partial map[evalCacheKey][]partialEvalCacheEntry
+	effects *evaluationEffects
+}
+
+type partialEvalCacheEntry struct {
+	inputs map[string]cty.Value
+	result *evalCacheEntry
+}
+
+func (r *evaluationRun) partialResult(key *evalCacheKey, inputs map[string]cty.Value, visiting map[string]bool) *evalCacheEntry {
+	for _, entry := range r.partial[*key] {
+		if !maps.EqualFunc(entry.inputs, inputs, cty.Value.RawEquals) {
+			continue
+		}
+		compatible := true
+		for _, dir := range entry.result.externalStops {
+			if !visiting[dir] {
+				compatible = false
+				break
+			}
+		}
+		if !compatible {
+			continue
+		}
+		for _, dir := range entry.result.enteredIdentities {
+			if visiting[dir] {
+				compatible = false
+				break
+			}
+		}
+		if compatible {
+			return entry.result
+		}
+	}
+	return nil
+}
+
+func (r *evaluationRun) rememberPartial(key *evalCacheKey, inputs map[string]cty.Value, entry *evalCacheEntry) {
+	if r.partial == nil {
+		r.partial = make(map[evalCacheKey][]partialEvalCacheEntry)
+	}
+	r.partial[*key] = append(r.partial[*key], partialEvalCacheEntry{inputs: maps.Clone(inputs), result: entry})
+}
+
+// Each effects frame records a directory's initial global state on its first
+// stop, even if a sibling or earlier root already marked that directory. This
+// keeps repeated stops compact and lets speculative pre-passes roll back alone.
+type evaluationEffects struct {
+	parent  *evaluationEffects
+	stops   map[string]bool
+	entered map[string]bool
+	blocked map[string]bool
+}
+
+func (f *evaluationEffects) recordDecision(dir string, blocked bool) {
+	if blocked {
+		if f.blocked == nil {
+			f.blocked = make(map[string]bool)
+		}
+		f.blocked[dir] = true
+	} else {
+		if f.entered == nil {
+			f.entered = make(map[string]bool)
+		}
+		f.entered[dir] = true
+	}
+}
+
+func (r *evaluationRun) beginEffects() *evaluationEffects {
+	frame := &evaluationEffects{parent: r.effects}
+	r.effects = frame
+	return frame
+}
+
+func (r *evaluationRun) recordStop(dir string, notEvaluated map[string]bool) {
+	if r.effects.stops == nil {
+		r.effects.stops = make(map[string]bool)
+	}
+	if _, seen := r.effects.stops[dir]; !seen {
+		r.effects.stops[dir] = notEvaluated[dir]
+	}
+	notEvaluated[dir] = true
+}
+
+func (r *evaluationRun) finishEffects(frame *evaluationEffects, notEvaluated map[string]bool, commit bool) {
+	r.effects = frame.parent
+	// Pre-pass reporting effects roll back, but their cycle decisions can affect
+	// published outputs. Keep those dependencies in the enclosing evaluation.
+	if frame.parent != nil {
+		for dir := range frame.entered {
+			frame.parent.recordDecision(dir, false)
+		}
+		for dir := range frame.blocked {
+			frame.parent.recordDecision(dir, true)
+		}
+	}
+	if !commit {
+		for dir, existed := range frame.stops {
+			if !existed {
+				delete(notEvaluated, dir)
+			}
+		}
+		return
+	}
+	if frame.parent == nil || len(frame.stops) == 0 {
+		return
+	}
+	if frame.parent.stops == nil {
+		frame.parent.stops = make(map[string]bool)
+	}
+	for dir, existed := range frame.stops {
+		if _, recorded := frame.parent.stops[dir]; !recorded {
+			frame.parent.stops[dir] = existed
+		}
+	}
 }
 
 // rebaseAddr swaps the prefix a cached address was recorded under for the current
@@ -217,8 +358,7 @@ func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digest
 		return true
 	}
 	if !v.IsKnown() {
-		w.WriteString("?")
-		return writeType(w, v.Type())
+		return m.writeUnknown(ctx, w, v)
 	}
 	// Walk collections instead of cty/json: JSON collapses list/set and map/object
 	// to the same shape, including nested wholly-known values inside partial keys.
@@ -263,6 +403,52 @@ func (m *keyMemo) writeValue(ctx context.Context, w keySink, v cty.Value, digest
 		// retaining different native semantics. They are not safe cache keys.
 		return false
 	}
+	return true
+}
+
+// writeUnknown preserves the observable refinements exposed by cty.ValueRange
+// in the pinned cty version. Review these fields when upgrading cty: a type-only
+// key can reuse a result computed with incompatible nullability, shape or bounds.
+func (m *keyMemo) writeUnknown(ctx context.Context, w keySink, value cty.Value) bool {
+	w.WriteString("unknown(")
+	if !writeType(w, value.Type()) {
+		return false
+	}
+	bounds := value.Range()
+	w.WriteString(",nullable=")
+	w.WriteString(strconv.FormatBool(bounds.CouldBeNull()))
+	switch {
+	case value.Type() == cty.String:
+		w.WriteString(",prefix=")
+		w.WriteString(strconv.Quote(bounds.StringPrefix()))
+	case value.Type() == cty.Number:
+		lower, lowerInclusive := bounds.NumberLowerBound()
+		upper, upperInclusive := bounds.NumberUpperBound()
+		// Current cty uses infinities for unbounded endpoints. A future
+		// unrepresentable bound must bypass caching rather than recurse into
+		// another unknown bound or discard its constraints.
+		if !lower.IsKnown() || !upper.IsKnown() {
+			return false
+		}
+		w.WriteString(",min=")
+		if !m.writeValue(ctx, w, lower, false) {
+			return false
+		}
+		w.WriteString(",minInclusive=")
+		w.WriteString(strconv.FormatBool(lowerInclusive))
+		w.WriteString(",max=")
+		if !m.writeValue(ctx, w, upper, false) {
+			return false
+		}
+		w.WriteString(",maxInclusive=")
+		w.WriteString(strconv.FormatBool(upperInclusive))
+	case value.Type().IsCollectionType():
+		w.WriteString(",minLength=")
+		w.WriteString(strconv.Itoa(bounds.LengthLowerBound()))
+		w.WriteString(",maxLength=")
+		w.WriteString(strconv.Itoa(bounds.LengthUpperBound()))
+	}
+	w.WriteString(")")
 	return true
 }
 

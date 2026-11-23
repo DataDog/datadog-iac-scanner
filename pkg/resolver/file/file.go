@@ -206,6 +206,75 @@ func (r *Resolver) Resolve(ctx context.Context, fileContent []byte, path string,
 	return fileContent
 }
 
+// MayResolve conservatively reports whether Resolve can resolve anything in the JSON
+// document root of the file at path, the only case where its result differs
+// from the file: a string value naming an existing file with one of the
+// resolver's extensions, or a same-file reference under a $ref key. Without
+// one, Resolve decodes, walks and re-encodes the whole file to return it
+// unchanged.
+func (r *Resolver) MayResolve(ctx context.Context, content []byte, path string) bool {
+	// Reject invalid JSON (including excessive nesting) before inspecting
+	// references. Token walks then consume each byte a bounded number of times,
+	// unlike recursively calling gjson.ForEach on every enclosing subtree.
+	if ctx.Err() != nil || !json.Valid(content) {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.UseNumber()
+	type frame struct {
+		object, key, ref bool
+	}
+	frames := []frame{{}} // root value
+	dir, base := filepath.Dir(path), filepath.Base(path)
+	for ctx.Err() == nil {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		switch token {
+		case json.Delim('}'), json.Delim(']'):
+			frames = frames[:len(frames)-1]
+			continue
+		}
+		current := &frames[len(frames)-1]
+		if key, ok := token.(string); ok && current.object && current.key {
+			current.ref = strings.Contains(strings.ToLower(key), "$ref")
+			current.key = false
+			continue
+		}
+		ref := current.ref
+		if current.object {
+			current.key = true
+		}
+		switch value := token.(type) {
+		case json.Delim:
+			if value == '{' {
+				// Maps choose ref status from their own keys. Arrays inherit it.
+				frames = append(frames, frame{object: true, key: true})
+			} else {
+				frames = append(frames, frame{ref: ref})
+			}
+		case string:
+			if r.mayResolveString(value, dir, base, ref) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *Resolver) mayResolveString(value, dir, base string, ref bool) bool {
+	switch {
+	case value == base:
+		return false
+	case strings.HasPrefix(value, "#"):
+		return ref && value != "#"
+	default:
+		found, _, _ := r.findFilePath(dir, value, false, r.Extension)
+		return found
+	}
+}
+
 func (r *Resolver) walk(
 	ctx context.Context,
 	originalFileContent []byte,

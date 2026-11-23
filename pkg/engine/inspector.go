@@ -327,6 +327,12 @@ func (c *Inspector) SetEvalGcRelief(relief bool) {
 	c.evalGcRelief = relief
 }
 
+// QueryConcurrency bounds simultaneous query evaluation and finding decoding.
+// Queries share the process-wide CPU budget, even with a larger worker pool.
+func (c *Inspector) QueryConcurrency() int {
+	return min(max(c.numWorkers, 1), utils.AvailableCPUs())
+}
+
 // SetCompactFindingsAtDecode keeps one finding per identity as each rule's
 // findings are decoded, so a module instantiated per count/for_each instance
 // does not have every duplicate instance of its findings held in memory until
@@ -1016,7 +1022,7 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 			}
 		}
 	}
-	options := []rego.EvalOption{rego.EvalParsedInput(payload)}
+	options := []rego.EvalOption{rego.EvalParsedInput(payload), rego.EvalVirtualCache(newIdentityVirtualCache())}
 
 	var cov *cover.Cover
 	if c.enableCoverageReport {

@@ -29,14 +29,20 @@ type iacConfig struct {
 }
 
 type iacGlobalConfig struct {
-	IgnorePaths      []string      `yaml:"ignore-paths,omitempty"`
-	OnlyPaths        []string      `yaml:"only-paths,omitempty"`
-	IgnoreSeverities []iacSeverity `yaml:"ignore-severities,omitempty"`
-	OnlySeverities   []iacSeverity `yaml:"only-severities,omitempty"`
-	IgnoreCategories []iacCategory `yaml:"ignore-categories,omitempty"`
-	OnlyCategories   []iacCategory `yaml:"only-categories,omitempty"`
-	IgnorePlatforms  []iacPlatform `yaml:"ignore-platforms,omitempty"`
-	OnlyPlatforms    []iacPlatform `yaml:"only-platforms,omitempty"`
+	IgnorePaths      []string             `yaml:"ignore-paths,omitempty"`
+	OnlyPaths        []string             `yaml:"only-paths,omitempty"`
+	IgnoreSeverities []iacSeverity        `yaml:"ignore-severities,omitempty"`
+	OnlySeverities   []iacSeverity        `yaml:"only-severities,omitempty"`
+	IgnoreCategories []iacCategory        `yaml:"ignore-categories,omitempty"`
+	OnlyCategories   []iacCategory        `yaml:"only-categories,omitempty"`
+	IgnorePlatforms  []iacPlatform        `yaml:"ignore-platforms,omitempty"`
+	OnlyPlatforms    []iacPlatform        `yaml:"only-platforms,omitempty"`
+	PlanScanning     *iacPlanScanningYaml `yaml:"plan-scanning,omitempty"`
+}
+
+// iacPlanScanningYaml is the YAML representation of the Terraform plan scanning settings.
+type iacPlanScanningYaml struct {
+	Enabled *bool `yaml:"enabled,omitempty"`
 }
 
 // iacRuleConfigYaml is the YAML representation of a per-rule override block.

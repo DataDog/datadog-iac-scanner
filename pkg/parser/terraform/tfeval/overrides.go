@@ -38,6 +38,15 @@ type ResourceOverride struct {
 	Contributions []*hclsyntax.Block
 }
 
+func attachDeclarationBodies(resources []ResolvedResource, declarations map[*hclsyntax.Body]*hclsyntax.Body) {
+	if len(declarations) == 0 {
+		return
+	}
+	for i := range resources {
+		resources[i].DeclarationBody = declarations[resources[i].Body]
+	}
+}
+
 // ResourceOverrides returns the resource and data overrides of a scanned
 // directory, including blocks that expand to zero instances.
 func (e *Evaluator) ResourceOverrides(ctx context.Context, dir string) []ResourceOverride {

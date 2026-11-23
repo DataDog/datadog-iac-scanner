@@ -218,6 +218,37 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
 
 	if runtime.GOOS == "windows" {
+		t.Run("rooted metadata conflicts", func(t *testing.T) {
+			scanPath, err := filepath.Abs(filepath.Join("..", "..", "test", "e2e", "fixtures", "no-exclusions.tf"))
+			require.NoError(t, err)
+			dir := t.TempDir()
+			t.Chdir(dir)
+			volume := filepath.VolumeName(dir)
+			metadataFile := filepath.Join(dir, "metadata.json")
+			inventoryParent := filepath.Join(dir, "inventory.json")
+			for _, tt := range []struct{ name, metadataPath, inventoryPath string }{
+				{"inventory below metadata", metadataFile, filepath.Join(metadataFile, "inventory.json")},
+				{"inventory above metadata", filepath.Join(inventoryParent, "metadata.json"), inventoryParent},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					err := scanAction.Run(t.Context(), []string{
+						"scan", "--path", scanPath, "--type", "terraform",
+						"--output-path", t.TempDir(), "--offline-bundle-path", bundleDir,
+						"--metadata-path", tt.metadataPath[len(volume):], "--inventory-path", tt.inventoryPath,
+					})
+					var exitErr *withExitCodeError
+					require.ErrorAs(t, err, &exitErr)
+					require.Equal(t, 50, exitErr.code, "the scan is unchanged")
+					data, err := os.ReadFile(tt.metadataPath)
+					require.NoError(t, err, "the metadata is written as a file")
+					var metadata scan.ScanMetadata
+					require.NoError(t, json.Unmarshal(data, &metadata))
+					require.NotNil(t, metadata.Inventory)
+					require.Equal(t, scan.InventoryFailed, metadata.Inventory.Status)
+					require.Equal(t, scan.InventoryReasonPathConflict, metadata.Inventory.Reason)
+				})
+			}
+		})
 		return
 	}
 	// The metadata path reaches the inventory's through symlinks: a link that

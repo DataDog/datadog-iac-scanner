@@ -79,16 +79,31 @@ var errLinkLoop = errors.New("too many levels of symbolic links")
 // symlink included, as a file opened for writing is; a rename or a removal
 // acts on the link itself. From the first component that does not exist, the
 // rest is kept as written.
+//
+//nolint:gocyclo // Keep Windows path handling with the component walk.
 func ResolvePath(path string, followLast bool) (string, error) {
+	sep := string(filepath.Separator)
 	if !filepath.IsAbs(path) {
 		wd, err := os.Getwd()
 		if err != nil {
 			return "", err
 		}
-		path = wd + string(filepath.Separator) + path
+		wdVolume, pathVolume := filepath.VolumeName(wd), filepath.VolumeName(path)
+		if path != "" && os.IsPathSeparator(path[0]) {
+			path = wdVolume + path
+		} else {
+			if pathVolume != "" && !strings.EqualFold(pathVolume, wdVolume) {
+				// Resolve only the drive's current directory. The walk handles the suffix.
+				wd, err = filepath.Abs(pathVolume)
+				if err != nil {
+					return "", err
+				}
+			}
+			path = wd + sep + path[len(pathVolume):]
+		}
 	}
 	volume := filepath.VolumeName(path)
-	resolved := volume + string(filepath.Separator)
+	resolved := volume + sep
 	rest := pathComponents(path[len(volume):])
 	for hops := 0; len(rest) > 0; {
 		component := rest[0]
@@ -122,8 +137,11 @@ func ResolvePath(path string, followLast bool) (string, error) {
 		}
 		if filepath.IsAbs(target) {
 			targetVolume := filepath.VolumeName(target)
-			resolved = targetVolume + string(filepath.Separator)
+			resolved = targetVolume + sep
 			target = target[len(targetVolume):]
+		} else if target != "" && os.IsPathSeparator(target[0]) {
+			// A rooted Windows target starts on the volume containing the link.
+			resolved = filepath.VolumeName(resolved) + sep
 		}
 		rest = append(pathComponents(target), rest...)
 	}
