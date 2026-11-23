@@ -694,6 +694,7 @@ func resolveModuleDocuments(
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
+	evaluator.SetSkipRootResources(inv == nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}

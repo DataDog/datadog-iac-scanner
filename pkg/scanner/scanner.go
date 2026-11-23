@@ -110,8 +110,6 @@ func StartScan(ctx context.Context, scanID string, services serviceSlice) error 
 	metrics.Metric.Start("start_scan")
 	contextLogger := logger.FromContext(ctx)
 	var wg sync.WaitGroup
-	wgDone := make(chan bool)
-	errCh := make(chan error)
 
 	contextLogger.Info().Msgf("Starting scan with id: %s", scanID)
 
@@ -127,28 +125,33 @@ func StartScan(ctx context.Context, scanID string, services serviceSlice) error 
 		}
 	}
 
-	workersCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
+	// Run services sequentially rather than concurrently: each service's query
+	// evaluation already saturates AvailableCPUs(), so running services in
+	// parallel cannot increase throughput while holding multiple platforms'
+	// OPA payloads, compilers, and detector caches live at once.
 	for _, service := range services {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		serviceErrCh := make(chan error, 1)
 		wg.Add(1)
-		go service.StartScan(workersCtx, scanID, errCh, &wg)
-	}
-
-	go func() {
+		service.StartScan(ctx, scanID, serviceErrCh, &wg)
 		wg.Wait()
-		close(wgDone)
-		close(errCh)
-	}()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-wgDone:
-		return nil
-	case err := <-errCh:
-		return err
+		if service.Inspector != nil {
+			service.Inspector.ReleaseDetectorCaches()
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		select {
+		case err := <-serviceErrCh:
+			if err != nil {
+				return err
+			}
+		default:
+		}
 	}
+	return nil
 }
 
 // GetQueriesLength returns the Total of queries for all Services

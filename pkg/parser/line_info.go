@@ -5,20 +5,21 @@
  */
 package parser
 
-import "context"
+import (
+	"context"
 
-type lineInfoOnlyKey struct{}
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+)
 
 // WithLineInfoOnly marks a parse as a reparse that only needs the document's
 // line markers, so parsers may skip enrichment that only rules consume.
 func WithLineInfoOnly(ctx context.Context) context.Context {
-	return context.WithValue(ctx, lineInfoOnlyKey{}, true)
+	return model.WithLineInfoOnly(ctx)
 }
 
 // IsLineInfoOnly reports whether ctx was marked with WithLineInfoOnly.
 func IsLineInfoOnly(ctx context.Context) bool {
-	v, _ := ctx.Value(lineInfoOnlyKey{}).(bool)
-	return v
+	return model.IsLineInfoOnly(ctx)
 }
 
 type lineInfoExportKey struct{}
@@ -36,17 +37,14 @@ func IsLineInfoExport(ctx context.Context) bool {
 	return v
 }
 
-type lazyLineInfoKey struct{}
-
 // WithLazyLineInfo marks a parse whose documents' line markers are never
 // read, because line info is rebuilt on demand by a line-info reparse (see
 // WithLineInfoOnly), so parsers may leave the markers out.
 func WithLazyLineInfo(ctx context.Context) context.Context {
-	return context.WithValue(ctx, lazyLineInfoKey{}, true)
+	return model.WithLazyLineInfo(ctx)
 }
 
 // IsLazyLineInfo reports whether ctx was marked with WithLazyLineInfo.
 func IsLazyLineInfo(ctx context.Context) bool {
-	v, _ := ctx.Value(lazyLineInfoKey{}).(bool)
-	return v
+	return model.IsLazyLineInfo(ctx)
 }

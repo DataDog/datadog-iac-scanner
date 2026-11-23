@@ -22,6 +22,7 @@ const (
 	rootLocal     = "local"
 	rootPath      = "path"
 	rootTerraform = "terraform"
+	rootEach      = "each"
 )
 
 // localMemoKey identifies a value by its expression and the values it

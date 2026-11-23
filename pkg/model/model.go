@@ -167,6 +167,9 @@ type lineInfoState struct {
 	// retention, when set, keeps the file's tree loaded across decode passes
 	// (see LineInfoRetention) instead of discarding it after each use.
 	retention *LineInfoRetention
+	// optional marks a lazy reparser of an already-parsed document: findings
+	// whose line detection never consults LineInfoDocument may skip loading it.
+	optional bool
 }
 
 // lineInfoGroup is the line-info tree shared by the copies of one source file.
@@ -389,6 +392,61 @@ type TerraformScope struct {
 	PlanAddresses map[PlanResourceKey]string
 }
 
+// SetLineInfoOptional marks a lazy line-info loader as an on-demand reparse
+// of an already-parsed document, allowing findings that never consult
+// LineInfoDocument to skip reconstruction. Call after SetLineInfoLoader.
+func (f *FileMetadata) SetLineInfoOptional() {
+	if f.lineInfo != nil {
+		f.lineInfo.optional = true
+	}
+}
+
+// LineInfoOptional reports whether f's lazy line-info loader may be skipped
+// for findings that do not read LineInfoDocument.
+func (f *FileMetadata) LineInfoOptional() bool {
+	return f.lineInfo != nil && f.lineInfo.optional
+}
+
+// WithoutLineInfoView returns a view of f with no LineInfoDocument or lazy
+// loader, without reading f.LineInfoDocument (safe alongside concurrent
+// UseLineInfoDocument / DiscardLineInfoDocument calls on f). It shares
+// f.linesLazy so Lines() and substring caches remain shared. When f has no
+// lazy loader, f is returned unchanged.
+func (f *FileMetadata) WithoutLineInfoView() *FileMetadata {
+	if f.lineInfo == nil {
+		return f
+	}
+	var linesOrig *[]string
+	if f.linesLazy == nil {
+		linesOrig = f.LinesOriginalData
+	}
+	return &FileMetadata{
+		ID:                  f.ID,
+		ScanID:              f.ScanID,
+		Document:            f.Document,
+		OriginalData:        f.OriginalData,
+		LinesOriginalData:   linesOrig,
+		linesLazy:           f.linesLazy,
+		Kind:                f.Kind,
+		FilePath:            f.FilePath,
+		Commands:            f.Commands,
+		LinesIgnore:         f.LinesIgnore,
+		ResolvedFiles:       f.ResolvedFiles,
+		IsMinified:          f.IsMinified,
+		HelmID:              f.HelmID,
+		IDInfo:              f.IDInfo,
+		HelmAttribution:     f.HelmAttribution,
+		SourceDocumentIndex: f.SourceDocumentIndex,
+		Reported:            f.Reported,
+		Archive:             f.Archive,
+		ModuleCallChain:     f.ModuleCallChain,
+		ModuleAttributions:  f.ModuleAttributions,
+		TerraformScope:      f.TerraformScope,
+		TerraformInstances:  f.TerraformInstances,
+		Platform:            f.Platform,
+	}
+}
+
 // SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
 func (f *FileMetadata) SetLineInfoLoader(
 	loader func(ctx context.Context, fm *FileMetadata) (map[string]interface{}, error),
@@ -428,7 +486,7 @@ func cloneLineInfoState(src *lineInfoState) *lineInfoState {
 		group = src.copies
 		src.mu.Unlock()
 	}
-	return &lineInfoState{loader: src.loader, group: group}
+	return &lineInfoState{loader: src.loader, group: group, optional: src.optional}
 }
 
 // LineInfoShareKey identifies the line-info tree f reads: copies of one source

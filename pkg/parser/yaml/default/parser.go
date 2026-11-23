@@ -38,8 +38,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		return nil, nil, nil, nil, err
 	}
 
-	// UnmarshalYAML already adds line tracking, so we can use documents directly
-	return resolved, yamlParser.ConvertKeysToString(yamlParser.AddExtraInfo(ctx, fsys, documents, filePath)), ignoreLines, resolvedFiles, nil
+	// UnmarshalYAML already constructs string-keyed maps and adds line tracking
+	// when requested, so ConvertKeysToString is unnecessary.
+	return resolved, yamlParser.AddExtraInfo(ctx, fsys, documents, filePath), ignoreLines, resolvedFiles, nil
 }
 
 // SupportedExtensions returns extensions supported by this parser, which are yaml and yml extension

@@ -669,9 +669,12 @@ func sanitizeScanDocumentValueInPlace(
 	if done, err := marks.enter(ptr); done {
 		return err
 	}
-	defer marks.leave(ptr)
 
 	delete(bodyType, "_dd_lines")
+	var filterFields []string
+	if resolveFilters {
+		filterFields = lines[kind]
+	}
 	for key, v := range bodyType {
 		childResolveFilters := resolveFilters
 		if kind == model.KindTerraformPlan && atDocumentRoot {
@@ -680,26 +683,28 @@ func sanitizeScanDocumentValueInPlace(
 		switch value := v.(type) {
 		case map[string]interface{}:
 			if err := sanitizeScanDocumentNodeInPlace(value, kind, childResolveFilters, false, marks); err != nil {
+				marks.leave(ptr)
 				return err
 			}
 		case []interface{}:
 			for _, indx := range value {
 				if err := sanitizeScanDocumentNodeInPlace(indx, kind, childResolveFilters, false, marks); err != nil {
+					marks.leave(ptr)
 					return err
 				}
 			}
 		case string:
-			if resolveFilters {
-				if field, ok := lines[kind]; ok && utils.Contains(key, field) {
-					bodyType[key] = resolveJSONFilter(value)
-				}
+			if len(filterFields) > 0 && utils.Contains(key, filterFields) {
+				bodyType[key] = resolveJSONFilter(value)
 			}
 		default:
 			if err := sanitizeNormalizedValueInPlace(bodyType, key, kind, childResolveFilters, marks); err != nil {
+				marks.leave(ptr)
 				return err
 			}
 		}
 	}
+	marks.leave(ptr)
 	return nil
 }
 

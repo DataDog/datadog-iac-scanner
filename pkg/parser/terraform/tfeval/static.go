@@ -18,14 +18,15 @@ import (
 // dirStatic is dependency analysis of parsed syntax, shared by every instance
 // of a directory. None of these answers depends on the evaluated input values.
 type dirStatic struct {
-	resourceAttrs      map[string][]string
-	resources          *blockGraph
-	siblings           []siblingReads
-	moduleOrder        []int
-	dataReadsData      bool
-	dataReadsLocals    bool
-	dataReadsResources bool
-	dataReadsModules   bool
+	resourceAttrs          map[string][]string
+	resources              *blockGraph
+	siblings               []siblingReads
+	moduleOrder            []int
+	dataReadsData          bool
+	dataReadsLocals        bool
+	dataReadsResources     bool
+	dataReadsModules       bool
+	needsResourcePreinject bool
 }
 
 func newDirStatic(dp *dirParse) *dirStatic {
@@ -42,12 +43,25 @@ func newDirStatic(dp *dirParse) *dirStatic {
 	}
 	s.dataReadsResources = s.dataReadsResources || (s.dataReadsLocals && dp.locals.readsResources)
 	s.dataReadsModules = s.dataReadsModules || (s.dataReadsLocals && dp.locals.readsModules)
+	s.needsResourcePreinject = dp.locals.readsResources || s.dataReadsResources || modulesReadResources(dp)
 	// Module-dependent data needs full output publications between calls;
 	// keep its existing orchestration outside the module/local DAG path.
 	if !s.dataReadsModules {
 		s.moduleOrder = moduleDependencyOrder(dp)
 	}
 	return s
+}
+
+func modulesReadResources(dp *dirParse) bool {
+	if len(dp.resourceTypes) == 0 {
+		return false
+	}
+	for _, mb := range dp.modules {
+		if bodyReadsResource(mb.Body, dp.resourceTypes) {
+			return true
+		}
+	}
+	return false
 }
 
 // referencedResourceAttrs records top-level reads of declared managed resources.

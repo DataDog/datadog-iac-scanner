@@ -230,6 +230,7 @@ func (s *Service) sinkDocument(
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
 		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+	file.SetLineInfoOptional()
 	if documents.Kind == model.KindTerraformPlan {
 		file.SetLineInfoRetention(s.planLineInfoRetention())
 		if !s.LineInfoPayload {
@@ -274,6 +275,7 @@ func (s *Service) sinkSharedParse(
 		}
 		file.SetLineInfoLoader(newLineInfoLoader(
 			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+		file.SetLineInfoOptional()
 		file.SetLazyLines()
 		s.saveToFile(ctx, &file)
 	}

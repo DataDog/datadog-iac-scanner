@@ -201,6 +201,10 @@ type Evaluator struct {
 
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to inventory paths.
 	mergeAllow map[string]struct{}
+
+	// skipRootResources avoids evaluating root-level resources and outputs when
+	// the caller only consumes child-module resources (non-inventory scans).
+	skipRootResources bool
 }
 
 // dirParse is a parsed module directory: its files, the blocks evaluation
@@ -263,7 +267,21 @@ func (e *Evaluator) NotEvaluatedDirs() []string {
 	return dirs
 }
 
-// parseDir returns the parsed module directory, parsed once and shared by
+func (e *Evaluator) parseDirForChain(ctx context.Context, dir, packageRoot, addr string) dirParse {
+	if addr == "" && e.skipRootResources {
+		key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
+		e.parseMu.Lock()
+		cached, ok := e.dirCache[key]
+		e.parseMu.Unlock()
+		if ok {
+			return cached
+		}
+		dp, _ := parseRootDirForModules(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+		return dp
+	}
+	return e.parseDir(ctx, dir, packageRoot)
+}
+
 // every fork with its locals graph.
 func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirParse {
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
@@ -295,18 +313,24 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 // and skipped directories are its own.
 func (e *Evaluator) Fork() *Evaluator {
 	return &Evaluator{
-		funcs:            e.funcs,
-		fsys:             e.fsys,
-		cache:            make(map[evalCacheKey]*evalCacheEntry),
-		remoteResolver:   e.remoteResolver,
-		notEvaluatedDirs: make(map[string]bool),
-		parseMu:          e.parseMu,
-		dirCache:         e.dirCache,
-		funcFS:           e.funcFS,
-		mergeAllow:       e.mergeAllow,
-		trackInstances:   e.trackInstances,
+		funcs:             e.funcs,
+		fsys:              e.fsys,
+		cache:             make(map[evalCacheKey]*evalCacheEntry),
+		remoteResolver:    e.remoteResolver,
+		notEvaluatedDirs:  make(map[string]bool),
+		parseMu:           e.parseMu,
+		dirCache:          e.dirCache,
+		funcFS:            e.funcFS,
+		mergeAllow:        e.mergeAllow,
+		trackInstances:    e.trackInstances,
+		skipRootResources: e.skipRootResources,
 	}
 }
+
+// SetSkipRootResources skips evaluating root-level resources and outputs when
+// only child-module resources are consumed. Root resources referenced by module
+// calls, locals, or data blocks are still pre-injected before child evaluation.
+func (e *Evaluator) SetSkipRootResources(skip bool) { e.skipRootResources = skip }
 
 // SetTrackModuleInstances makes evaluations record the module calls they
 // evaluate, for TakeModuleInstances. Forks inherit the setting.
@@ -526,7 +550,7 @@ func (e *Evaluator) evaluateChain(
 	subtreeVisited := &directorySet{}
 	defer allVisited.include(subtreeVisited)
 
-	parsed := e.parseDir(ctx, dir, packageRoot)
+	parsed := e.parseDirForChain(ctx, dir, packageRoot, addr)
 	if parsed.err != nil {
 		return nil, nil, parsed.err
 	}
@@ -568,6 +592,14 @@ func (e *Evaluator) evaluateChain(
 	childResources, moduleOutputs := e.evaluateLocalModuleBlocks(
 		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, visiting, subtreeVisited,
 	)
+
+	if addr == "" && e.skipRootResources {
+		if err := ctx.Err(); err != nil {
+			e.instances = e.instances[:instancesBefore]
+			return nil, nil, err
+		}
+		return moduleResourceTree(nil, childResources), nil, nil
+	}
 
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 
@@ -703,7 +735,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	addr string,
 	chain *callChain,
 ) {
-	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 {
+	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 || !scope.static.needsResourcePreinject {
 		return
 	}
 	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
