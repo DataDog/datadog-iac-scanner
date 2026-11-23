@@ -3181,7 +3181,7 @@ resource "terraform_data" "result" {
 func TestModuleCallResources(t *testing.T) {
 	for _, order := range [][]int{nil, {0, 1, 2, 3}, {0, 2, 1, 3}, {3, 2, 1, 0}, {1, 0, 3, 2}} {
 		t.Run(fmt.Sprint(order), func(t *testing.T) {
-			r := newModuleCallResources(order)
+			r := newModuleCallResources[ResolvedResource](order)
 			sequence := order
 			if sequence == nil {
 				sequence = []int{0, 1, 2, 3}

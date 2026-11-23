@@ -439,13 +439,3 @@ func joinAddr(parent, seg string) string {
 	}
 	return parent + "." + seg
 }
-
-// cloneChain copies the slice to avoid aliasing across sibling recursions.
-func cloneChain(chain []CallSite) []CallSite {
-	if len(chain) == 0 {
-		return nil
-	}
-	out := make([]CallSite, len(chain))
-	copy(out, chain)
-	return out
-}
