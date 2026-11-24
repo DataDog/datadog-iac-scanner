@@ -309,7 +309,7 @@ func TestEnrichResourceCertificate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.args.elements["certificate_body"] = tt.args.content
-			EnrichResourceCertificate(ctx, vfs.Default(), tt.args.elements, tt.args.path)
+			EnrichResourceCertificate(ctx, vfs.Default(), tt.args.elements, tt.args.path, "")
 			require.Equal(t, tt.want, tt.args.elements["certificate_body"])
 		})
 	}

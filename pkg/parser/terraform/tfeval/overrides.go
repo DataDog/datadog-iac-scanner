@@ -10,6 +10,8 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
@@ -35,9 +37,10 @@ const (
 // application order. Effective keeps the declaration's header and body range,
 // and each effective argument and nested block retains its own source range.
 type ResourceOverride struct {
-	Declaration   *hclsyntax.Block
-	Effective     *hclsyntax.Block
-	Contributions []*hclsyntax.Block
+	Declaration       *hclsyntax.Block
+	Effective         *hclsyntax.Block
+	Contributions     []*hclsyntax.Block
+	certificateSource string
 }
 
 func attachDeclarationBodies(resources []ResolvedResource, declarations map[*hclsyntax.Body]*hclsyntax.Body) {
@@ -162,7 +165,7 @@ func (e *Evaluator) OverrideDocument(
 	r.documentScope = state.document
 	doc := AttributesToDocumentWithContext(ctx, &r)
 	if attr := r.Body.Attributes["certificate_body"]; override.Effective.Type == scheduledResource && attr != nil {
-		terraform.EnrichResourceCertificate(ctx, e.fsys, doc, attr.SrcRange.Filename)
+		terraform.EnrichResourceCertificate(ctx, e.fsys, doc, attr.SrcRange.Filename, override.certificateSource)
 	}
 	return doc
 }
@@ -270,7 +273,28 @@ func resolveResourceOverrides(
 		bodyCopy.Blocks = remaining
 		result[firstOverride+i] = &bodyCopy
 	}
+	for i := range overrides {
+		if overrides[i].Effective.Type == scheduledResource {
+			overrides[i].certificateSource = writtenCertificate(overrides[i].Effective.Body.Attributes["certificate_body"], sources)
+		}
+	}
 	return result, overrides
+}
+
+// The JSON-to-HCL conversion can change expression offsets. Use the original
+// attribute range to recover the written certificate expression.
+func writtenCertificate(attr *hclsyntax.Attribute, sources map[string][]byte) string {
+	if attr == nil || !tfpath.IsJSONConfig(attr.SrcRange.Filename) {
+		return ""
+	}
+	src := sources[attr.SrcRange.Filename]
+	start, end := attr.NameRange.End.Byte, attr.SrcRange.End.Byte
+	if start < 0 || end > len(src) || start >= end {
+		return ""
+	}
+	_, raw, _ := strings.Cut(string(src[start:end]), ":")
+	written, _ := strconv.Unquote(strings.TrimSpace(raw))
+	return written
 }
 
 // overrideJSONBlock resolves the block/attribute ambiguity of JSON where a

@@ -153,8 +153,9 @@ func cloneVariableMap(src converter.VariableMap) converter.VariableMap {
 }
 
 // EnrichResourceCertificate replaces a resource's PEM filename with its metadata.
-// path is the source file of the certificate_body argument.
-func EnrichResourceCertificate(ctx context.Context, fsys vfs.FS, elements model.Document, path string) {
+// written is the optional JSON expression from path. It can name the PEM file
+// even if the effective value contains the PEM contents or could not be resolved.
+func EnrichResourceCertificate(ctx context.Context, fsys vfs.FS, elements model.Document, path, written string) {
 	var value string
 	switch body := elements["certificate_body"].(type) {
 	case string:
@@ -164,7 +165,11 @@ func EnrichResourceCertificate(ctx context.Context, fsys vfs.FS, elements model.
 	default:
 		return
 	}
-	if filename := utils.CheckCertificate(value); filename != "" {
+	filename := utils.CheckCertificate(value)
+	if filename == "" && (strings.Contains(value, "-----BEGIN CERTIFICATE-----") || strings.Contains(value, "${")) {
+		filename = utils.CheckCertificate(written)
+	}
+	if filename != "" {
 		if info := utils.AddCertificateInfo(ctx, fsys, path, filename); info != nil {
 			elements["certificate_body"] = info
 		}
@@ -178,7 +183,7 @@ func (p *Parser) processResourcesElements(ctx context.Context, resourcesElements
 			return errors.New("failed to process resources")
 		case interface{}:
 			if elements, ok := t.(model.Document); ok {
-				EnrichResourceCertificate(ctx, p.fsys, elements, path)
+				EnrichResourceCertificate(ctx, p.fsys, elements, path, "")
 			}
 		}
 	}

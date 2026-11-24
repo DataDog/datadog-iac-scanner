@@ -11,9 +11,78 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
+
+func TestVariableOverrideDefaultParity(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files map[string]string
+		want  cty.Value
+	}{
+		{
+			name: "HCL base and JSON override omit default",
+			files: map[string]string{
+				"variables.tf":     `variable "value" { default = "base" }`,
+				"override.tf.json": `{"variable":{"value":{"description":"updated"}}}`,
+			},
+			want: cty.StringVal("base"),
+		},
+		{
+			name: "JSON base and multiple mixed overrides",
+			files: map[string]string{
+				"variables.tf.json": `{"variable":{"value":{"default":"base"}}}`,
+				"a_override.tf":     `variable "value" { default = "first" }`,
+				"override.tf.json":  `{"variable":{"value":{"default":"last"}}}`,
+				"z_override.tf":     `variable "value" { description = "updated" }`,
+			},
+			want: cty.StringVal("last"),
+		},
+		{
+			name: "explicit null replaces base default",
+			files: map[string]string{
+				"variables.tf.json": `{"variable":{"value":{"default":"base"}}}`,
+				"override.tf":       `variable "value" { default = null }`,
+			},
+			want: cty.NullVal(cty.DynamicPseudoType),
+		},
+		{
+			name: "ambiguous base keeps override standalone",
+			files: map[string]string{
+				"a.tf":        `variable "value" { default = "first" }`,
+				"b.tf.json":   `{"variable":{"value":{"default":"second"}}}`,
+				"override.tf": `variable "value" { description = "updated" }`,
+			},
+			want: cty.DynamicVal,
+		},
+		{
+			name: "orphan override provides a default",
+			files: map[string]string{
+				"override.tf.json": `{"variable":{"value":{"default":"standalone"}}}`,
+			},
+			want: cty.StringVal("standalone"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const resource = `resource "example" "this" { value = var.value }`
+			tc.files["main.tf"] = resource
+			dir := writeModule(t, t.TempDir(), "module", tc.files)
+
+			parser := terraform.NewDefault()
+			_, vars, err := parser.Resolve(t.Context(), []byte(resource), filepath.Join(dir, "main.tf"), false, 0)
+			require.NoError(t, err)
+			require.True(t, tc.want.RawEquals(vars["var"].GetAttr("value")), "parser default: %#v", vars["var"])
+
+			resources, _, _, err := New().EvaluateModule(t.Context(), dir, nil)
+			require.NoError(t, err)
+			require.Len(t, resources, 1)
+			got := resources[0].Attributes["value"]
+			require.True(t, tc.want.RawEquals(got), "evaluator default: %#v", got)
+		})
+	}
+}
 
 func TestExplicitRootVarsOnlyAffectEffectiveOverrides(t *testing.T) {
 	root := t.TempDir()

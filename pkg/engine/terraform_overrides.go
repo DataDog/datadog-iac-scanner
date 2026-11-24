@@ -117,7 +117,7 @@ func (o *terraformOverrides) record(
 		}
 		p.live = true
 		if r.ModuleAddress == "" && p.document == nil {
-			p.document = o.renderDocument(ctx, evaluator, key, &p.config, r.Scope)
+			p.document = evaluator.OverrideDocument(ctx, &p.config, r.Scope)
 		}
 	}
 }
@@ -145,36 +145,9 @@ func (o *terraformOverrides) prepare(
 				scope = evaluator.StandaloneOverrideScope(ctx, dir)
 				fallbackScopes[dir] = scope
 			}
-			projection.document = o.renderDocument(ctx, evaluator, def.TerraformBlock, &projection.config, scope)
+			projection.document = evaluator.OverrideDocument(ctx, &projection.config, scope)
 		}
 	}
-}
-
-func (o *terraformOverrides) renderDocument(
-	ctx context.Context, evaluator *tfeval.Evaluator, key model.TerraformBlock,
-	config *tfeval.ResourceOverride, scope *tfeval.ModuleScope,
-) map[string]interface{} {
-	document := evaluator.OverrideDocument(ctx, config, scope)
-	const certificateBody = "certificate_body"
-	attr := config.Effective.Body.Attributes[certificateBody]
-	if key.Kind != terraformResourceBlock || attr == nil || !tfpath.IsJSONConfig(attr.SrcRange.Filename) ||
-		docAsMap(document[certificateBody]) != nil {
-		return document
-	}
-	source := o.byPath[absPath(attr.SrcRange.Filename, o.repoPath)]
-	if source == nil {
-		return document
-	}
-
-	// The JSON parser can recover the certificate's filename from the written
-	// expression. The evaluated value may contain PEM contents or be unknown.
-	resources := docAsMap(source.Document[key.Kind])
-	written := docAsMap(docAsMap(resources[key.Type])[key.Name])
-	info := docAsMap(written[certificateBody])
-	if info["expiration_date"] != nil {
-		document[certificateBody] = info
-	}
-	return document
 }
 
 func (o *terraformOverrides) apply(files model.FileMetadatas, docs []model.Document, syntheticFiles []*model.FileMetadata) {

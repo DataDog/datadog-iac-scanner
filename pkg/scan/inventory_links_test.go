@@ -417,6 +417,7 @@ func TestTerraformOverridePreservesCertificateFileExpression(t *testing.T) {
 	require.NoError(t, err)
 	for _, syntax := range []struct {
 		name, extension, block, certificate, tags, other, separator, check string
+		countZero, countOne                                                string
 		firstArgumentLine                                                  int
 	}{
 		{
@@ -444,6 +445,8 @@ func TestTerraformOverridePreservesCertificateFileExpression(t *testing.T) {
 			tags:              `        "tags": {"fixture": "test"}`,
 			other:             `        "domain_name": "example.invalid"`,
 			separator:         ",\n",
+			countZero:         `        "count": 0`,
+			countOne:          `        "count": 1`,
 			firstArgumentLine: 5,
 			check: `is_array(cert.certificate_body.expiration_date)
 	cert.certificate_body.rsa_key_bytes == 512
@@ -456,13 +459,23 @@ func TestTerraformOverridePreservesCertificateFileExpression(t *testing.T) {
 	typ := "aws_acm_certificate"
 	key := sprintf("aws_acm_certificate.%s.certificate_body", [name])`)
 		baseFile, overrideFile := "main"+syntax.extension, "override"+syntax.extension
-		for _, source := range []string{baseFile, overrideFile} {
-			t.Run(syntax.name+"/"+source, func(t *testing.T) {
+		cases := []struct{ name, source string }{{"base", baseFile}, {"override", overrideFile}}
+		if syntax.countZero != "" {
+			cases = append(cases, struct{ name, source string }{"enabled by override", baseFile})
+		}
+		for _, tc := range cases {
+			t.Run(syntax.name+"/"+tc.name, func(t *testing.T) {
 				base, override := syntax.certificate, syntax.tags
 				line := syntax.firstArgumentLine
-				if source == overrideFile {
+				ref := ".|aws_acm_certificate.example"
+				switch tc.name {
+				case "override":
 					base, override = syntax.other, syntax.tags+syntax.separator+syntax.certificate
 					line++
+				case "enabled by override":
+					base += syntax.separator + syntax.countZero
+					override += syntax.separator + syntax.countOne
+					ref += "[0]"
 				}
 				params := terraformParams(writeRepo(t, map[string]string{
 					baseFile:          fmt.Sprintf(syntax.block, base),
@@ -470,12 +483,12 @@ func TestTerraformOverridePreservesCertificateFileExpression(t *testing.T) {
 					"certificate.pem": string(pem),
 				}))
 				inv, fingerprints := scanLinks(t, params, rule)
-				fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, source, "Terraform",
+				fingerprint := model.GetDatadogFingerprintHash(model.SCIInfo{}, tc.source, "Terraform",
 					"aws_acm_certificate", "example", rule.Query, "", "")
 				require.Equal(t, []string{fingerprint}, fingerprints)
-				require.Equal(t, []string{".|aws_acm_certificate.example"}, linkedRefs(inv)[fingerprint])
+				require.Equal(t, []string{ref}, linkedRefs(inv)[fingerprint])
 				loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
-				require.Equal(t, source, loc.ArtifactLocation.ArtifactURI)
+				require.Equal(t, tc.source, loc.ArtifactLocation.ArtifactURI)
 				require.Equal(t, line, loc.Region.StartLine)
 			})
 		}
