@@ -62,14 +62,19 @@ func structuredDocumentOccurrence(
 func legacyDocumentOccurrence(
 	platform string, occurrences []*model.ResourceOccurrence, searchKey string, line int,
 ) []*model.ResourceOccurrence {
-	if o := dottedLegacyOccurrence(occurrences, searchKey); o != nil {
-		return []*model.ResourceOccurrence{o}
+	if line > 0 {
+		if o := dottedLegacyOccurrence(occurrences, searchKey, line); o != nil {
+			return []*model.ResourceOccurrence{o}
+		}
 	}
 	parts, anchored := detector.LegacyPathComponents(searchKey)
 	for _, o := range occurrences {
 		if matchesLegacyPath(parts, o.StructuralPath) {
 			return []*model.ResourceOccurrence{o}
 		}
+	}
+	if o := dottedLegacyOccurrence(occurrences, searchKey, 0); o != nil {
+		return []*model.ResourceOccurrence{o}
 	}
 	if len(parts) == 0 || anchored ||
 		(platform == platforms.CloudFormation && slices.Equal(parts, []string{"Resources"})) {
@@ -84,9 +89,9 @@ func legacyDocumentOccurrence(
 }
 
 // dottedLegacyOccurrence recovers a literal keyed entry from an unescaped
-// legacy path. Prefer the longest entry when another name is its prefix.
-// Explicit bracket and brace selectors still use the structural matcher.
-func dottedLegacyOccurrence(occurrences []*model.ResourceOccurrence, searchKey string) *model.ResourceOccurrence {
+// legacy path. Prefer the longest entry whose written span holds line.
+// A zero line permits any matching entry when the path has no structural match.
+func dottedLegacyOccurrence(occurrences []*model.ResourceOccurrence, searchKey string, line int) *model.ResourceOccurrence {
 	collection, rest, _ := strings.Cut(searchKey, ".")
 	if !strings.Contains(rest, ".") {
 		return nil
@@ -100,6 +105,9 @@ func dottedLegacyOccurrence(occurrences []*model.ResourceOccurrence, searchKey s
 		}
 		name := path[1].Key
 		if len(name) <= longest || !strings.Contains(name, ".") {
+			continue
+		}
+		if line > 0 && !legacySpanContains(o, line) {
 			continue
 		}
 		tail, ok := strings.CutPrefix(rest, name)
@@ -134,8 +142,7 @@ func legacySourceOccurrence(occurrences []*model.ResourceOccurrence, line int) *
 	}
 	var match *model.ResourceOccurrence
 	for _, o := range occurrences {
-		start, end := o.LegacySource.Start.Line, o.LegacySource.End.Line
-		if start < 1 || line < start || line > end {
+		if !legacySpanContains(o, line) {
 			continue
 		}
 		if match != nil {
@@ -144,6 +151,11 @@ func legacySourceOccurrence(occurrences []*model.ResourceOccurrence, line int) *
 		match = o
 	}
 	return match
+}
+
+func legacySpanContains(o *model.ResourceOccurrence, line int) bool {
+	start := o.LegacySource.Start.Line
+	return start > 0 && line >= start && line <= o.LegacySource.End.Line
 }
 
 // Generated CloudFormation IDs share the collection's compatibility line.
