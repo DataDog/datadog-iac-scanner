@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -587,7 +588,29 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	queryContext.findings.recordDuplicates = c.inventory != nil
 
 	evalStart := time.Now()
-	vuls, moduleRaised, moduleSeverity, err := c.doRun(ctx, queryContext)
+	var vuls []model.Vulnerability
+	var moduleRaised int
+	var moduleSeverity model.Severity
+	if scopes := payloads.kubernetesScopes; scopes != nil && canonicalPlatformKey(query.Metadata.Platform) == platformKubernetes {
+		// Every Kubernetes rule runs once per render root, not only those
+		// relating documents; each run sees a subset of the documents, so the
+		// total cost stays close to one run over the whole payload.
+		for i := range scopes {
+			queryContext.payload = &scopes[i]
+			// Each scope decodes its own results: a finding set is single-use
+			// (findings empties it), so reinitialize it per scope.
+			queryContext.findings = newFindingSet(c.compactFindingsAtDecode, routing)
+			queryContext.findings.recordDuplicates = c.inventory != nil
+			v, _, _, runErr := c.doRun(ctx, queryContext)
+			if runErr != nil {
+				err = runErr
+				break
+			}
+			vuls = append(vuls, v...)
+		}
+	} else {
+		vuls, moduleRaised, moduleSeverity, err = c.doRun(ctx, queryContext)
+	}
 	evalDur := time.Since(evalStart)
 	contextLogger.Debug().Msgf("query timing: load=%s eval=%s query=%s",
 		loadDur.Round(time.Millisecond), evalDur.Round(time.Millisecond), queries[queryID].Query)
@@ -1975,6 +1998,10 @@ type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
 	index      *docIndex
+	// kubernetesScopes splits the Kubernetes payload by Kustomize render
+	// root when documents of several roots are scanned, so that a rule only
+	// relates documents deployed together; nil otherwise.
+	kubernetesScopes []ast.Value
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -2040,6 +2067,8 @@ func (c *Inspector) buildPlatformPayloads(
 		neededPlatforms[key] = true
 	}
 
+	// Read before conversion, which may release the document trees.
+	rootsPerDoc := renderRootsPerDoc(filesMap, allDocs)
 	terms := make([]*ast.Term, len(allDocs))
 	idxBuilder := newDocIndexBuilder(neededPlatforms)
 	cons := newPayloadHashCons()
@@ -2058,6 +2087,9 @@ func (c *Inspector) buildPlatformPayloads(
 
 	payloads, platformTerms := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
 	payloads.index = idxBuilder.finish(platformTerms)
+	if neededPlatforms[platformKubernetes] {
+		payloads.kubernetesScopes = kubernetesScopes(rootsPerDoc, terms, bucketsPerDoc, unknownDocs)
+	}
 	return payloads, nil
 }
 
@@ -3046,4 +3078,51 @@ func normalizeKeyExpr(expr hclsyntax.Expression) hclsyntax.Expression {
 	}
 
 	return expr
+}
+
+// kubernetesScopes builds one Kubernetes payload per render root, documents
+// scanned as written and of unknown platform forming their own scope. It
+// returns nil when there is a single scope.
+func kubernetesScopes(rootsPerDoc []string, terms []*ast.Term, bucketsPerDoc [][]string, unknownDocs []int) []ast.Value {
+	if rootsPerDoc == nil {
+		return nil
+	}
+	byScope := map[string][]*ast.Term{}
+	for i, keys := range bucketsPerDoc {
+		if slices.Contains(keys, platformKubernetes) {
+			byScope[rootsPerDoc[i]] = append(byScope[rootsPerDoc[i]], terms[i])
+		}
+	}
+	if len(byScope) < 2 && (len(byScope) == 0 || byScope[""] != nil) {
+		return nil
+	}
+	for _, idx := range unknownDocs {
+		byScope[""] = append(byScope[""], terms[idx])
+	}
+	roots := make([]string, 0, len(byScope))
+	for r := range byScope {
+		roots = append(roots, r)
+	}
+	sort.Strings(roots)
+	out := make([]ast.Value, 0, len(roots))
+	for _, r := range roots {
+		out = append(out, assembleDocumentPayload(byScope[r]))
+	}
+	return out
+}
+
+// renderRootsPerDoc returns each document's render root, nil when none has one.
+func renderRootsPerDoc(filesMap map[string]*model.FileMetadata, allDocs []interface{}) []string {
+	var roots []string
+	for i, d := range allDocs {
+		m, _ := d.(map[string]interface{})
+		id, _ := m["id"].(string)
+		if f := filesMap[id]; f != nil && f.RenderRoot != "" {
+			if roots == nil {
+				roots = make([]string, len(allDocs))
+			}
+			roots[i] = f.RenderRoot
+		}
+	}
+	return roots
 }
