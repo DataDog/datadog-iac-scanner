@@ -958,6 +958,43 @@ func TestInventoryLinksDocumentFindings(t *testing.T) {
 			require.Equal(t, 7, r.LineEnd, "the last entry ends with its collection")
 		}
 	}
+
+	t.Run("merged Compose service", func(t *testing.T) {
+		root := writeRepo(t, map[string]string{
+			"docker-compose.yml": "x-services: &services\n  _parsed_expressions_web:\n    image: nginx:1\n" +
+				"  clean:\n    image: alpine:3\nservices:\n  <<: *services\n",
+		})
+		rule := syntheticQuery("test-merged-service", "dockerCompose", "DockerCompose", `	svc := input.document[i].services[name]
+	svc.image == "nginx:1"
+	typ := "service"
+	key := sprintf("services.%s.image", [name])`)
+		params := documentParams(root)
+		params.Platform = []string{"DockerCompose"}
+		inv, fingerprints := scanLinks(t, params, rule)
+		require.Len(t, inv.Resources, 2)
+		require.Len(t, fingerprints, 1)
+		require.Equal(t, []string{"docker-compose.yml|services._parsed_expressions_web"}, linkedRefs(inv)[fingerprints[0]])
+	})
+
+	t.Run("Helm repeated list", func(t *testing.T) {
+		root := writeRepo(t, map[string]string{
+			"charts/app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 0.1.0\n",
+			"charts/app/templates/list.yaml": "apiVersion: v1\nkind: List\nitems:\n" +
+				"  - apiVersion: v1\n    kind: ConfigMap\n    metadata: {name: same}\n    data: {foo: clean}\n" +
+				"  - apiVersion: v1\n    kind: ConfigMap\n    metadata: {name: same}\n    data: {foo: flagged}\n",
+		})
+		rule := syntheticQuery("test-helm-member", "k8s", "Kubernetes", `	member := input.document[i].items[1]
+	member.data.foo == "flagged"
+	typ := member.kind
+	name := member.metadata.name
+	key := "items.1.data.foo"`)
+		params := documentParams(root)
+		params.Platform = []string{"Kubernetes"}
+		inv, fingerprints := scanLinks(t, params, rule)
+		require.Len(t, inv.Resources, 2)
+		require.Len(t, fingerprints, 1)
+		require.Equal(t, []string{"charts/app/templates/list.yaml|v1/ConfigMap//same#2"}, linkedRefs(inv)[fingerprints[0]])
+	})
 }
 
 func TestInventoryCountsUnlinkedFindings(t *testing.T) {
@@ -1038,7 +1075,7 @@ func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
 	key := sprintf("aws_s3_bucket[%s].bucket", [name])`)
 	public := syntheticQuery("test-tf-public", "terraform", "Terraform", `	input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
 	typ := "aws_s3_bucket"
-	key := sprintf("aws_s3_bucket[%s].acl", [name])`)
+	key := sprintf("aws_s3_bucket.{{%s}}.acl", [name])`)
 	inv, fingerprints := scanLinks(t, terraformParams(root), inventoryTestQuery, bucket, public)
 	require.NotEmpty(t, fingerprints)
 	require.Zero(t, inv.Stats.FindingsUnlinked, "every bucket finding belongs to a row")

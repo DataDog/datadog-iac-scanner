@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 
 	"github.com/stretchr/testify/require"
@@ -125,16 +126,15 @@ func TestBuildStatus(t *testing.T) {
 
 func TestBuildIsFinal(t *testing.T) {
 	c := NewCollector(t.TempDir())
-	for _, row := range []struct {
-		line     int
-		document string
-	}{{1, "first"}, {8, "second"}} {
-		c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//cm", Platform: platforms.Kubernetes, ResourceType: "ConfigMap",
-			ResourceName: "cm", File: "k8s/dup.yaml", LineStart: row.line, Completeness: CompletenessComplete,
-			DocumentID: row.document, ownsDocument: true})
+	var second *model.ResourceOccurrence
+	for _, line := range []int{1, 8} {
+		o := &model.ResourceOccurrence{ResourcePath: "v1/ConfigMap//cm", Platform: platforms.Kubernetes, ResourceType: "ConfigMap",
+			ResourceName: "cm", File: "k8s/dup.yaml", Source: model.ResourceLocation{Start: model.ResourceLine{Line: line}}}
+		row := ProjectResource(o)
+		c.AddResource(&row)
+		second = o
 	}
-	// Kept with the second document, located at the first one's line.
-	c.AddFinding(&Finding{Fingerprint: "kept-once", DocumentID: "second", Line: 1})
+	c.AddFinding(&Finding{Fingerprint: "kept-once", Occurrences: []*model.ResourceOccurrence{second}})
 
 	first := c.Build(testMetadata())
 	require.Equal(t, []FindingLink{{FindingFingerprint: "kept-once", ResourceRef: "k8s/dup.yaml|v1/ConfigMap//cm#2"}}, first.FindingLinks)
@@ -158,12 +158,14 @@ func TestBuildIsSortedAndDeduplicated(t *testing.T) {
 		{ResourceRef: ".|aws_s3_bucket.a", ResourcePath: "aws_s3_bucket.a", Platform: "terraform",
 			ResourceType: "aws_s3_bucket", ResourceName: "a", File: "main.tf", LineStart: 1, Completeness: CompletenessComplete},
 	}
+	a, b := &model.ResourceOccurrence{}, &model.ResourceOccurrence{}
+	rows[1].occurrence, rows[2].occurrence = b, a
 	for i := range rows {
 		c.AddResource(&rows[i])
 	}
-	c.AddFinding(&Finding{Fingerprint: "f2", File: "main.tf", BlockStart: 1})
-	c.AddFinding(&Finding{Fingerprint: "f1", File: "main.tf", BlockStart: 9})
-	c.AddFinding(&Finding{Fingerprint: "f1", File: "main.tf", BlockStart: 9})
+	c.AddFinding(&Finding{Fingerprint: "f2", Occurrences: []*model.ResourceOccurrence{a}})
+	c.AddFinding(&Finding{Fingerprint: "f1", Occurrences: []*model.ResourceOccurrence{b}})
+	c.AddFinding(&Finding{Fingerprint: "f1", Occurrences: []*model.ResourceOccurrence{b}})
 	c.AddUnresolvedSource(UnresolvedSource{Platform: "terraform", Source: "s", Reason: "timeout"})
 	c.AddUnresolvedSource(UnresolvedSource{Platform: "terraform", Source: "s", Reason: "timeout"})
 	c.AddFindingsUnlinked(2)
@@ -270,33 +272,34 @@ func TestSchemaAcceptsAFullRow(t *testing.T) {
 }
 
 func TestBuildMakesReferencesUnique(t *testing.T) {
-	row := func(line, documentIndex int, document string) *Resource {
-		return &Resource{ResourcePath: "v1/ConfigMap//cm", Platform: "kubernetes", ResourceType: "ConfigMap",
-			ResourceName: "cm", File: "k8s/dup.yaml", LineStart: line, Completeness: CompletenessComplete,
-			DocumentID: document, documentIndex: documentIndex, ownsDocument: true}
+	occurrences := make(map[string]*model.ResourceOccurrence)
+	row := func(file, name string, line, index int, document string) Resource {
+		o := &model.ResourceOccurrence{ResourcePath: "v1/ConfigMap//" + name, Platform: platforms.Kubernetes, ResourceType: "ConfigMap",
+			ResourceName: name, File: file, Source: model.ResourceLocation{Start: model.ResourceLine{Line: line}},
+			DocumentID: document, DocumentIndex: index}
+		occurrences[document] = o
+		return ProjectResource(o)
 	}
 	c := NewCollector(t.TempDir())
-	c.AddResource(row(8, 1, "second"))
-	c.AddResource(row(15, 2, "third"))
-	c.AddResource(row(1, 0, "first"))
-	// A reference that already ends like a suffix is not reused.
-	taken := row(20, 3, "taken")
-	taken.ResourceRef = "k8s/dup.yaml|v1/ConfigMap//cm#2"
-	c.AddResource(taken)
-	// Rows equal but for their document keep the order of the documents.
-	c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//same", Platform: "kubernetes", ResourceType: "ConfigMap",
-		ResourceName: "same", File: "chart/templates/cm.yaml", LineStart: 1, Completeness: CompletenessComplete,
-		DocumentID: "loop-1", documentIndex: 1, ownsDocument: true})
-	c.AddResource(&Resource{ResourcePath: "v1/ConfigMap//same", Platform: "kubernetes", ResourceType: "ConfigMap",
-		ResourceName: "same", File: "chart/templates/cm.yaml", LineStart: 1, Completeness: CompletenessComplete,
-		DocumentID: "loop-0", documentIndex: 0, ownsDocument: true})
-	for document, line := range map[string]int{"first": 1, "second": 8, "third": 15, "taken": 20, "loop-0": 1, "loop-1": 1} {
-		c.AddFinding(&Finding{Fingerprint: document, DocumentID: document, Line: line})
+	for _, r := range []Resource{
+		row("k8s/dup.yaml", "cm", 8, 1, "second"),
+		row("k8s/dup.yaml", "cm", 15, 2, "third"),
+		row("k8s/dup.yaml", "cm", 1, 0, "first"),
+		// Rows equal but for their document keep the order of the documents.
+		row("chart/templates/cm.yaml", "same", 1, 1, "loop-1"),
+		row("chart/templates/cm.yaml", "same", 1, 0, "loop-0"),
+	} {
+		c.AddResource(&r)
 	}
-	// A finding belongs to its document's row, whatever line its location
-	// detection gave: the rows' coordinates do not tell repeated rows apart.
-	c.AddFinding(&Finding{Fingerprint: "kept-once", DocumentID: "third", Line: 1})
-	c.AddFinding(&Finding{Fingerprint: "no-line", DocumentID: "second"})
+	// A reference that already ends like a suffix is not reused.
+	taken := row("k8s/dup.yaml", "cm", 20, 3, "taken")
+	taken.ResourceRef = "k8s/dup.yaml|v1/ConfigMap//cm#2"
+	c.AddResource(&taken)
+	for document, o := range occurrences {
+		c.AddFinding(&Finding{Fingerprint: document, Occurrences: []*model.ResourceOccurrence{o}})
+	}
+	c.AddFinding(&Finding{Fingerprint: "kept-once", Occurrences: []*model.ResourceOccurrence{occurrences["third"]}})
+	c.AddFinding(&Finding{Fingerprint: "no-line", Occurrences: []*model.ResourceOccurrence{occurrences["second"]}})
 
 	inv := c.Build(testMetadata())
 

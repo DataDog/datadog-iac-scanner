@@ -39,7 +39,7 @@ func TestUnqualifiedDataOverrideSource(t *testing.T) {
 	finding := terraformFindingSource(file, nil, "local_file[example].filename")
 	require.NotNil(t, finding)
 	require.Equal(t, "override", finding.SourceFileID)
-	require.Equal(t, "data.local_file.example", finding.InventoryBlock)
+	require.Equal(t, key, finding.Block)
 	require.Nil(t, terraformFindingSource(file, nil, "resource.local_file[example].filename"))
 
 	file.TerraformOverrides = withUnqualifiedDataOverrides(sources, model.Document{"resource": blocks, "data": blocks})
@@ -223,6 +223,7 @@ resource "aws_s3_bucket" "replica" {
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
+		nil,
 	)
 
 	if len(docs) != 2 {

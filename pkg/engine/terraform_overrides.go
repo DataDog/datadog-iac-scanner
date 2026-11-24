@@ -228,13 +228,8 @@ func (o *terraformOverrides) setSource(
 ) {
 	decl := config.Declaration
 	line := decl.TypeRange.Start.Line
-	inventoryLine := line
-	if tfpath.IsJSONConfig(decl.TypeRange.Filename) {
-		inventoryLine = decl.Body.SrcRange.Start.Line
-	}
 	source := &model.TerraformOverrideSource{
 		DeclarationStart: model.ResourceLine{Line: line, Col: decl.TypeRange.Start.Column},
-		InventoryLine:    inventoryLine,
 		Fields:           make(map[string]string),
 	}
 	o.sourceFields(file.ID, config.Effective.Body, "", source.Fields)
@@ -289,13 +284,8 @@ func terraformFindingSource(
 		return nil
 	}
 	sourceID := source.Fields[field]
-	block := key.Type + "." + key.Name
-	if key.Kind == dataRoot {
-		block = dataTypePrefix + block
-	}
 	return &model.TerraformOverrideFinding{
-		SourceFileID: sourceID, DeclarationStart: source.DeclarationStart, InventoryLine: source.InventoryLine,
-		InventoryBlock: block,
+		SourceFileID: sourceID, DeclarationStart: source.DeclarationStart, Block: key,
 	}
 }
 

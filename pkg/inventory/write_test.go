@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -192,9 +193,11 @@ func TestEncodeIsTheJSONOfTheInventory(t *testing.T) {
 	c.AddUnresolvedSource(UnresolvedSource{Platform: "terraform", Source: "git::https://example.invalid/m.git?ref=a&depth=1", Reason: "network"})
 	c.AddResource(&Resource{ResourcePath: "aws_s3_bucket.a", Platform: "terraform", ResourceType: "aws_s3_bucket",
 		ResourceName: "a", File: "a.tf", LineStart: 1, LineEnd: 3, Completeness: CompletenessComplete, ModulePath: `[{"name":"x"}]`})
-	c.AddResource(&Resource{ResourcePath: "v1/Service//web", Platform: "kubernetes", ResourceType: "Service",
-		ResourceName: "web", File: "k.yaml", LineStart: 1, Completeness: CompletenessComplete, DocumentID: "doc", ownsDocument: true})
-	c.AddFinding(&Finding{Fingerprint: "f", DocumentID: "doc"})
+	o := &model.ResourceOccurrence{ResourcePath: "v1/Service//web", Platform: "kubernetes", ResourceType: "Service",
+		ResourceName: "web", File: "k.yaml", Source: model.ResourceLocation{Start: model.ResourceLine{Line: 1}}}
+	row := ProjectResource(o)
+	c.AddResource(&row)
+	c.AddFinding(&Finding{Fingerprint: "f", Occurrences: []*model.ResourceOccurrence{o}})
 	full := c.Build(testMetadata())
 	require.Len(t, full.FindingLinks, 1)
 	for _, inv := range []*Inventory{full, NewCollector(t.TempDir()).Build(testMetadata())} {

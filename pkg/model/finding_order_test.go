@@ -249,35 +249,38 @@ func TestCreateSummary_FilesOrderDoesNotDependOnInputOrder(t *testing.T) {
 	}
 }
 
-func TestFirstFindingPerIdentityRecording_KeepsWhereDuplicatesWereRaised(t *testing.T) {
-	for _, raised := range permutations(orderedFindings()) {
-		require.Nil(t, FirstFindingPerIdentity(slices.Clone(raised))[0].AlsoRaisedOn, "nothing is recorded by default")
-
+func TestFirstFindingPerIdentityRecording_KeepsOccurrencesOfDuplicates(t *testing.T) {
+	findings := orderedFindings()
+	require.Nil(t, FirstFindingPerIdentity(slices.Clone(findings))[0].ResourceOccurrences)
+	var expected []*ResourceOccurrence
+	for i := range findings {
+		if findings[i].FileName != "main.tf" {
+			continue
+		}
+		o := &ResourceOccurrence{DocumentID: findings[i].SearchKey}
+		findings[i].ResourceOccurrences = []*ResourceOccurrence{o}
+		expected = append(expected, o)
+	}
+	for _, raised := range permutations(findings) {
 		kept := FirstFindingPerIdentityRecording(raised)
 		require.Len(t, kept, 2)
 		byFile := map[string]Vulnerability{}
 		for i := range kept {
 			byFile[kept[i].FileName] = kept[i]
 		}
-		require.ElementsMatch(t, []RaisedOn{
-			{Line: 3, SearchKey: "aws_s3_bucket[b].policy"},
-			{Line: 7, SearchKey: "aws_s3_bucket[b].acl"},
-		}, byFile["main.tf"].AlsoRaisedOn, "the kept finding stands for the places of its duplicates")
-		require.Empty(t, byFile["main_override.tf"].AlsoRaisedOn)
+		require.ElementsMatch(t, expected, byFile["main.tf"].ResourceOccurrences)
+		require.Empty(t, byFile["main_override.tf"].ResourceOccurrences)
 	}
 
-	// A duplicate raised at the kept finding's own place adds nothing.
-	same := orderedFindings()[:1]
-	same = append(same, same[0])
-	require.Empty(t, FirstFindingPerIdentityRecording(same)[0].AlsoRaisedOn)
+	first := findings[0]
+	first.ResourceOccurrences = expected[:1]
+	same := []Vulnerability{first, first}
+	require.Equal(t, expected[:1], FirstFindingPerIdentityRecording(same)[0].ResourceOccurrences)
 
-	// Nor do the other instances of its module: their documents are named
-	// after the same file.
-	instances := orderedFindings()[:1]
-	for _, key := range []string{"a", "b", "c"} {
-		instance := instances[0]
-		instance.FileID = instances[0].FileID + "\x00" + key
-		instances = append(instances, instance)
-	}
-	require.Empty(t, FirstFindingPerIdentityRecording(instances)[0].AlsoRaisedOn)
+	// Module layers can carry different canonical declaration instances
+	// even when their SARIF identity is the same.
+	second := first
+	second.FileID += "\x00layer"
+	second.ResourceOccurrences = expected[1:2]
+	require.ElementsMatch(t, expected[:2], FirstFindingPerIdentityRecording([]Vulnerability{first, second})[0].ResourceOccurrences)
 }

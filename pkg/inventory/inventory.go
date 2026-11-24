@@ -135,33 +135,8 @@ type Resource struct {
 	// RootModule is the root module directory of a Terraform resource. It is
 	// part of the reference, not of the document.
 	RootModule string `json:"-"`
-	// DocumentID is the parsed document a row comes from, and ModuleCallChain
-	// the module calls of a Terraform row as findings name them. Both link
-	// findings to rows and are not written.
-	DocumentID      string `json:"-"`
-	ModuleCallChain string `json:"-"`
-	// Block is the Terraform block a row is an instance of, such as
-	// aws_s3_bucket.logs or data.aws_iam_policy_document.read. It tells
-	// apart blocks that start on one line, as in compact JSON configuration.
-	Block string `json:"-"`
-	// documentIndex is the document's position in its file. It orders rows
-	// that are otherwise equal, such as those a Helm loop renders.
-	documentIndex int
-	// searchKeyPrefix is how the search key of a finding on an entry of a
-	// keyed collection starts, such as Resources.<logical ID> or
-	// services.<name>, or on an object of a list, items.<index>.
-	searchKeyPrefix string
-	// ownsDocument marks the row that is its whole document, as a
-	// Kubernetes object or a Dockerfile is: every finding on the document
-	// belongs to it, wherever its line.
-	ownsDocument bool
-	// sharedLines marks a row whose lines are not its own, as for the
-	// objects of a list rendered from a Helm template: a finding belongs to
-	// it only through its search key.
-	sharedLines bool
-	// linkFallbackLine keeps the collection line for line-only matching
-	// when a generated CloudFormation row displays its loop's span.
-	linkFallbackLine int
+	// occurrence ties this row to the findings that affect it.
+	occurrence *model.ResourceOccurrence
 
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`

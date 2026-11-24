@@ -21,14 +21,13 @@ var (
 type MemoryStorage struct {
 	vulnerabilities []model.Vulnerability
 	allFiles        model.FileMetadatas
-	// recordDuplicates keeps, on each finding reported, where the findings
-	// of its identity it stands for were raised (see RecordDuplicates).
+	// recordDuplicates keeps all occurrence references for each finding
+	// identity (see RecordDuplicates).
 	recordDuplicates bool
 }
 
-// RecordDuplicates makes the storage keep, on each finding it reports, where
-// the findings of its identity that it drops were raised, for an inventory to
-// link the finding to all of them. Reports are unchanged.
+// RecordDuplicates keeps the occurrence references of dropped duplicates
+// on the reported finding, so the inventory can link all its resources.
 func (m *MemoryStorage) RecordDuplicates() {
 	memoryMu.Lock()
 	defer memoryMu.Unlock()

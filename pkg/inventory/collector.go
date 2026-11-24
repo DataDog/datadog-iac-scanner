@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
 // Metadata is what the scan knows about itself when the inventory is built.
@@ -316,10 +318,21 @@ func compareResources(a, b *Resource) int {
 		strings.Compare(a.OriginChartName, b.OriginChartName),
 		strings.Compare(a.OriginChartVersion, b.OriginChartVersion),
 		strings.Compare(a.OriginTemplate, b.OriginTemplate),
-		cmp.Compare(a.documentIndex, b.documentIndex),
-		// The objects of one list document, by their place in it.
-		strings.Compare(a.searchKeyPrefix, b.searchKeyPrefix),
+		compareRowOccurrences(a.occurrence, b.occurrence),
 	)
+}
+
+func compareRowOccurrences(a, b *model.ResourceOccurrence) int {
+	switch {
+	case a == b:
+		return 0
+	case a == nil:
+		return -1
+	case b == nil:
+		return 1
+	}
+	return cmp.Or(cmp.Compare(a.DocumentIndex, b.DocumentIndex),
+		model.CompareOccurrencePaths(a.StructuralPath, b.StructuralPath))
 }
 
 // uniqueRefs gives every sorted row its own reference: a row with the

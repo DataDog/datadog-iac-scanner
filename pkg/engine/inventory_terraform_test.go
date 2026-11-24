@@ -160,7 +160,7 @@ func TestInventoryPanicDoesNotReachModuleEvaluation(t *testing.T) {
 	sink := &panickingSink{}
 	inv := &terraformInventory{sink: sink, repoPath: t.TempDir()}
 	require.NotPanics(t, func() {
-		inv.addRoot(inv.repoPath, []tfeval.ResolvedResource{{Type: "aws_s3_bucket", Name: "b"}})
+		inv.addRoot(inv.repoPath, []tfeval.ResolvedResource{{Type: "aws_s3_bucket", Name: "b"}}, false)
 	}, "a panic in the inventory must not abort the evaluation findings depend on")
 	require.Equal(t, inventory.FailureTerraformPanic, sink.failure)
 }

@@ -995,6 +995,7 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			vCopy.ResourceOccurrences = callerOccurrences(vulns[i].ResourceOccurrences, ex.occurrences)
 			expanded = append(expanded, vCopy)
 		}
 	}

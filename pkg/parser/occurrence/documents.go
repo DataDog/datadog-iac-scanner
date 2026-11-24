@@ -4,7 +4,7 @@
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
 
-package inventory
+package occurrence
 
 import (
 	"cmp"
@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
@@ -23,12 +22,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Platform values of the document rows, the values findings carry.
-// DocumentResources gives the rows of the parsed documents of every
-// platform but Terraform, whose rows come from module evaluation, document by
-// document, so that they are never all held twice. The files of one path must
-// be in the order their parser returned them, as a scan stores them.
-func DocumentResources(ctx context.Context, files model.FileMetadatas, add func(*Resource)) {
+// Documents emits occurrences from parsed documents. Terraform occurrences
+// come from module evaluation. Documents of the same file must be in the
+// order their parser returned them.
+func Documents(ctx context.Context, files model.FileMetadatas, add func(*model.FileMetadata, *model.ResourceOccurrence)) {
 	e := documentEnumerator{ctx: ctx, charts: make(map[string]chartInfo)}
 	// One path at a time, so that only one decoded file is held at once. The
 	// documents of a path need not be next to each other in files, as
@@ -48,12 +45,11 @@ func DocumentResources(ctx context.Context, files model.FileMetadatas, add func(
 		} else {
 			index = 0
 		}
-		rows := e.documentRows(f, index)
+		rows := e.documentOccurrences(f, index)
 		for j := range rows {
-			// The findings raised on the document link to its rows.
 			rows[j].DocumentID = f.ID
-			rows[j].documentIndex = index
-			add(&rows[j])
+			rows[j].DocumentIndex = index
+			add(f, &rows[j])
 		}
 	}
 }
@@ -78,23 +74,21 @@ type yamlFile struct {
 
 type chartInfo struct{ name, version string }
 
-// documentRows returns the rows of the index-th document of f's file.
-func (e *documentEnumerator) documentRows(f *model.FileMetadata, index int) []Resource {
+// documentOccurrences returns the occurrences of the index-th document of f's file.
+func (e *documentEnumerator) documentOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
 	switch {
 	case f.Kind == model.KindDOCKER:
-		row := dockerfileResource(f)
-		row.ownsDocument = true
-		return []Resource{row}
+		return []model.ResourceOccurrence{dockerfileOccurrence(f)}
 	case f.Platform == platforms.Kubernetes:
-		return e.kubernetesRows(f, index)
+		return e.kubernetesOccurrences(f, index)
 	case f.Platform == platforms.CloudFormation:
-		return e.keyedRows(f, index, "Resources", lineInfoKey, cloudFormationRow)
+		return e.cloudFormationOccurrences(f, index)
 	case f.Platform == platforms.DockerCompose:
-		return e.keyedRows(f, index, "services", lineInfoKey, composeServiceRow)
+		return e.keyedOccurrences(f, index, "services", lineInfoKey, composeServiceOccurrence)
 	case f.Platform == platforms.CICD:
-		return e.keyedRows(f, index, "jobs", workflowParserKey, workflowJobRow)
+		return e.keyedOccurrences(f, index, "jobs", workflowParserKey, workflowJobOccurrence)
 	case f.Platform == platforms.Ansible:
-		return e.ansibleRows(f, index)
+		return e.ansibleOccurrences(f, index)
 	}
 	return nil
 }
@@ -108,17 +102,17 @@ type kubernetesObject struct {
 	node    *yaml.Node
 	span    lineRange
 	aligned bool
-	// path is how a search key names a list member (items.0), "" for the
-	// document.
-	path string
+	// path addresses a list member within the parsed document. The root
+	// object has an empty path.
+	path model.SourcePath
 	// apiVersion and kind are what a typed list gives a member that omits
 	// them.
 	apiVersion, kind string
 }
 
-// kubernetesRows returns the rows of a Kubernetes document: one for an
-// object, one per object of a list.
-func (e *documentEnumerator) kubernetesRows(f *model.FileMetadata, index int) []Resource {
+// kubernetesOccurrences returns one occurrence per object, including members
+// of list documents.
+func (e *documentEnumerator) kubernetesOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
 	object := kubernetesObject{fields: f.Document}
 	if node, span, found := e.documentNode(f, index); found {
 		object.node, object.span = node, span
@@ -126,20 +120,19 @@ func (e *documentEnumerator) kubernetesRows(f *model.FileMetadata, index int) []
 		kind, _ := f.Document["kind"].(string)
 		object.aligned = scalarValue(node, "kind") == kind
 	}
-	var rows []Resource
+	var rows []model.ResourceOccurrence
 	e.kubernetesObjects(f, &object, &rows)
 	return rows
 }
 
-// kubernetesObjects adds the rows of object: its own, or those of its
-// members when it is a list. Only lists hold separate objects: an object
-// nested in an object, such as a pod template, stays part of it.
-func (e *documentEnumerator) kubernetesObjects(f *model.FileMetadata, object *kubernetesObject, rows *[]Resource) {
+// kubernetesObjects visits objects recursively through lists. A nested
+// object such as a pod template stays part of its declaring resource.
+func (e *documentEnumerator) kubernetesObjects(f *model.FileMetadata, object *kubernetesObject, rows *[]model.ResourceOccurrence) {
 	apiVersion := cmp.Or(stringField(object.fields, "apiVersion"), object.apiVersion)
 	kind := cmp.Or(stringField(object.fields, "kind"), object.kind)
 	items, isList := kubernetesListItems(object.fields, kind)
 	if !isList {
-		if row, ok := e.kubernetesObjectRow(f, object, apiVersion, kind); ok {
+		if row, ok := e.kubernetesOccurrence(f, object, apiVersion, kind); ok {
 			*rows = append(*rows, row)
 		}
 		return
@@ -165,7 +158,7 @@ func (e *documentEnumerator) kubernetesObjects(f *model.FileMetadata, object *ku
 		}
 		member := kubernetesObject{
 			fields:     fields,
-			path:       strings.TrimPrefix(object.path+".items."+strconv.Itoa(i), "."),
+			path:       extendPath(object.path, model.PathSegment{Key: "items"}, model.PathSegment{Index: i, IsIndex: true}),
 			apiVersion: apiVersion,
 			kind:       memberKind,
 		}
@@ -176,10 +169,10 @@ func (e *documentEnumerator) kubernetesObjects(f *model.FileMetadata, object *ku
 	}
 }
 
-// kubernetesObjectRow returns the row of one object, if it has a name.
-func (e *documentEnumerator) kubernetesObjectRow(
+// kubernetesOccurrence records an object if it has a name.
+func (e *documentEnumerator) kubernetesOccurrence(
 	f *model.FileMetadata, object *kubernetesObject, apiVersion, kind string,
-) (Resource, bool) {
+) (model.ResourceOccurrence, bool) {
 	metadata, _ := object.fields["metadata"].(map[string]interface{})
 	name := e.metadataField(f, object, metadata, "name")
 	if name == "" {
@@ -187,31 +180,26 @@ func (e *documentEnumerator) kubernetesObjectRow(
 		name = e.metadataField(f, object, metadata, "generateName")
 	}
 	if apiVersion == "" || kind == "" || name == "" {
-		return Resource{}, false
+		return model.ResourceOccurrence{}, false
 	}
 	namespace := e.metadataField(f, object, metadata, "namespace")
-	row := Resource{
-		ResourcePath: apiVersion + "/" + kind + "/" + namespace + "/" + name,
-		Platform:     platforms.Kubernetes,
-		ResourceType: kind,
-		ResourceName: name,
-		File:         f.FilePath,
-		Completeness: CompletenessComplete,
-		// A list member answers to how a search key names it; the document
-		// is its only object.
-		searchKeyPrefix: object.path,
-		ownsDocument:    object.path == "",
+	row := model.ResourceOccurrence{
+		ResourcePath:   apiVersion + "/" + kind + "/" + namespace + "/" + name,
+		Platform:       platforms.Kubernetes,
+		ResourceType:   kind,
+		ResourceName:   name,
+		File:           f.FilePath,
+		StructuralPath: object.path,
 	}
 	switch {
 	case f.Kind == model.KindHELM:
-		row.LineStart = helmDocumentStart(f)
-		// Every object of a rendered list is at the template's line.
-		row.sharedLines = object.path != ""
+		row.Source = lineSource(helmDocumentStart(f), 0)
 		e.addHelmOrigin(&row, f)
 	case object.node != nil && object.aligned:
-		row.LineStart, row.LineEnd = object.span.start, object.span.end
+		row.Source = lineSource(object.span.start, object.span.end)
+		row.LegacySource = row.Source
 	default:
-		row.LineStart = e.firstKeyLine(f)
+		row.Source = lineSource(e.firstKeyLine(f), 0)
 	}
 	return row, true
 }
@@ -469,22 +457,23 @@ func helmDocumentStart(f *model.FileMetadata) int {
 
 // addHelmOrigin fills the origin of a document rendered from a chart: the
 // chart holding the template and the template's path in it.
-func (e *documentEnumerator) addHelmOrigin(row *Resource, f *model.FileMetadata) {
-	row.OriginGenerator = "helm"
+func (e *documentEnumerator) addHelmOrigin(row *model.ResourceOccurrence, f *model.FileMetadata) {
+	origin := &model.HelmResourceOrigin{}
+	row.Helm = origin
 	path := filepath.ToSlash(f.FilePath)
 	dir, rel, ok := splitChartPath(path)
 	if !ok {
 		return
 	}
-	row.OriginChartPath = filepath.FromSlash(dir)
-	row.OriginTemplate = rel
+	origin.ChartPath = filepath.FromSlash(dir)
+	origin.Template = rel
 	info, cached := e.charts[dir]
 	if !cached {
 		info = readChart(filepath.FromSlash(dir))
 		e.charts[dir] = info
 	}
-	row.OriginChartName = info.name
-	row.OriginChartVersion = info.version
+	origin.ChartName = info.name
+	origin.ChartVersion = info.version
 }
 
 // splitChartPath splits a template path into its chart directory and the
@@ -520,9 +509,9 @@ func readChart(dir string) chartInfo {
 	return info
 }
 
-// dockerfileResource is the one row of a Dockerfile, spanning its
+// dockerfileOccurrence is the one resource of a Dockerfile, spanning its
 // instructions.
-func dockerfileResource(f *model.FileMetadata) Resource {
+func dockerfileOccurrence(f *model.FileMetadata) model.ResourceOccurrence {
 	start, end := math.MaxInt, 0
 	var visit func(v interface{})
 	visit = func(v interface{}) {
@@ -545,15 +534,13 @@ func dockerfileResource(f *model.FileMetadata) Resource {
 	if start == math.MaxInt {
 		start, end = 1, 0
 	}
-	return Resource{
+	return model.ResourceOccurrence{
 		ResourcePath: "Dockerfile",
 		Platform:     platforms.Dockerfile,
 		ResourceType: "dockerfile",
 		ResourceName: filepath.Base(f.FilePath),
 		File:         f.FilePath,
-		LineStart:    start,
-		LineEnd:      end,
-		Completeness: CompletenessComplete,
+		Source:       lineSource(start, end),
 	}
 }
 
@@ -567,4 +554,19 @@ func numberValue(v interface{}) int {
 		return int(n)
 	}
 	return 0
+}
+
+func extendPath(base model.SourcePath, next ...model.PathSegment) model.SourcePath {
+	return append(slices.Clone(base), next...)
+}
+
+func lineSource(start, end int) model.ResourceLocation {
+	return model.ResourceLocation{Start: model.ResourceLine{Line: start}, End: model.ResourceLine{Line: end}}
+}
+
+func writtenSpan(span lineRange, known bool) model.ResourceLocation {
+	if !known {
+		return model.ResourceLocation{}
+	}
+	return lineSource(span.start, span.end)
 }

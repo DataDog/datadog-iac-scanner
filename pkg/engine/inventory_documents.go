@@ -12,6 +12,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/occurrence"
 )
 
 // inventoryDocuments reports the resources of the parsed documents of every
@@ -28,5 +29,9 @@ func (c *Inspector) inventoryDocuments(ctx context.Context, files model.FileMeta
 			c.inventory.Fail(inventory.FailureDocumentsPanic)
 		}
 	}()
-	inventory.DocumentResources(ctx, files, c.inventory.AddResource)
+	occurrence.Documents(ctx, files, func(file *model.FileMetadata, resource *model.ResourceOccurrence) {
+		file.ResourceOccurrences = append(file.ResourceOccurrences, resource)
+		row := inventory.ProjectResource(resource)
+		c.inventory.AddResource(&row)
+	})
 }

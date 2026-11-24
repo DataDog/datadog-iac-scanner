@@ -75,6 +75,20 @@ func splitSearchKeySegments(searchKey string) (split []string, extracted [][]str
 	return split, extracted
 }
 
+// LegacyPathComponents reads the structural components of a legacy result.
+// An anchor is a value selector at the start, such as name={{task}}.shell.
+func LegacyPathComponents(searchKey string) (parts []string, anchored bool) {
+	segments, extracted := splitSearchKeySegments(searchKey)
+	for i, segment := range segments {
+		key, _, hasValue := strings.Cut(segment, "=")
+		if i == 0 && hasValue {
+			anchored = true
+		}
+		parts = append(parts, expandBracketSegmentResolving(key, extracted)...)
+	}
+	return parts, anchored
+}
+
 // anchoredKeyPrefix holds the value anchors that select the array element a
 // search key points into.
 type anchoredKeyPrefix struct {
@@ -167,21 +181,26 @@ func hasNumericIndex(parts []string) bool {
 // expandBracketSegment expands the bracket groups of one path segment,
 // mirroring expandSearchKeyPath: "Statement[0]" → ["Statement", "0"].
 func expandBracketSegment(seg string) []string {
+	return expandBracketSegmentResolving(seg, nil)
+}
+
+func expandBracketSegmentResolving(seg string, extracted [][]string) []string {
 	var out []string
 	for seg != "" {
 		open := strings.Index(seg, "[")
 		if open < 0 {
-			out = append(out, seg)
+			out = append(out, resolvePlaceholders(seg, extracted))
 			break
 		}
 		if head := seg[:open]; head != "" {
-			out = append(out, head)
+			out = append(out, resolvePlaceholders(head, extracted))
 		}
 		closeIdx := findMatchingBracket(seg, open)
 		if closeIdx < 0 {
 			break
 		}
-		inner := strings.TrimSuffix(strings.TrimPrefix(seg[open+1:closeIdx], "{{"), "}}")
+		inner := resolvePlaceholders(seg[open+1:closeIdx], extracted)
+		inner = strings.TrimSuffix(strings.TrimPrefix(inner, "{{"), "}}")
 		inner = unquoteKey(inner)
 		if inner != "" {
 			out = append(out, inner)

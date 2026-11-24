@@ -203,9 +203,8 @@ func FirstFindingPerIdentity(findings []Vulnerability) []Vulnerability {
 	return firstFindingPerIdentity(findings, false)
 }
 
-// FirstFindingPerIdentityRecording is FirstFindingPerIdentity that also
-// records, on each kept finding, where the findings it drops were raised
-// (see RecordDuplicate).
+// FirstFindingPerIdentityRecording also gives the reporting winner the
+// union of the occurrence references carried by findings of its identity.
 func FirstFindingPerIdentityRecording(findings []Vulnerability) []Vulnerability {
 	return firstFindingPerIdentity(findings, true)
 }
@@ -213,21 +212,21 @@ func FirstFindingPerIdentityRecording(findings []Vulnerability) []Vulnerability 
 func firstFindingPerIdentity(findings []Vulnerability, record bool) []Vulnerability {
 	SortFindings(findings)
 	seen := make(map[[sha256.Size]byte]int, len(findings))
-	// The places of each identity with duplicates, by kept finding.
-	var places map[int]Places
+	// The occurrences of each identity with duplicates, by kept finding.
+	var occurrences map[int]OccurrenceSet
 	kept := findings[:0]
 	for i := range findings {
 		digest := sha256.Sum256([]byte(FindingIdentity(&findings[i])))
 		if k, duplicate := seen[digest]; duplicate {
-			if record {
-				if places == nil {
-					places = make(map[int]Places)
+			if record && len(findings[i].ResourceOccurrences) > 0 {
+				if occurrences == nil {
+					occurrences = make(map[int]OccurrenceSet)
 				}
-				p := places[k]
+				p := occurrences[k]
 				if p == nil {
-					p = Places{}
+					p = OccurrenceSet{}
 					p.Add(&kept[k])
-					places[k] = p
+					occurrences[k] = p
 				}
 				p.Add(&findings[i])
 			}
@@ -236,7 +235,7 @@ func firstFindingPerIdentity(findings []Vulnerability, record bool) []Vulnerabil
 		seen[digest] = len(kept)
 		kept = append(kept, findings[i])
 	}
-	for k, p := range places {
+	for k, p := range occurrences {
 		p.Assign(&kept[k])
 	}
 	clear(findings[len(kept):])

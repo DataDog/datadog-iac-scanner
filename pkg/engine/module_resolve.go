@@ -37,6 +37,7 @@ type extraCallerInfo struct {
 	callChain    string
 	docID        string
 	attributions map[string]*model.ModuleAttribution
+	occurrences  []*model.ResourceOccurrence
 }
 
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
@@ -491,7 +492,7 @@ func (m *rootMerge) merge(
 	}
 	// Every resource and data source of the root, before instantiation keeps
 	// only what rules can match.
-	m.inventory.addRoot(dir, resources)
+	occurrences := m.inventory.addRoot(dir, resources, true)
 	m.overrides.record(m.ctx, m.evaluator, resources)
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
@@ -500,7 +501,7 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions, occurrences)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -664,6 +665,19 @@ func scrubInstantiatedForUnresolvedDirs(
 	}
 }
 
+// terraformRootDirs returns the directories evaluated as roots. Their order
+// determines which document represents several callers with the same input.
+func terraformRootDirs(dirsWithTf, called map[string]bool) []string {
+	roots := make([]string, 0, len(dirsWithTf))
+	for dir := range dirsWithTf {
+		if !called[dir] {
+			roots = append(roots, dir)
+		}
+	}
+	sort.Strings(roots)
+	return roots
+}
+
 // resolveModuleDocuments resolves the scan's local modules, as described above
 // evaluateRootModules. When inv is not nil, every evaluated resource is also
 // reported to it.
@@ -683,6 +697,9 @@ func resolveModuleDocuments(
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
 		return moduleResolutionResult{}
+	}
+	if inv != nil {
+		inv.files = byAbsPath
 	}
 	// Evaluating a module tree is the expensive part, and it is pure waste when
 	// the repository declares nothing any rule can match by name. The block
@@ -726,17 +743,7 @@ func resolveModuleDocuments(
 	var syntheticFiles []*model.FileMetadata
 	var resourceCount int
 
-	// Roots are taken in a fixed order: which of several identical callers ends
-	// up owning a shared document decides that document's id, and ids reach
-	// finding fingerprints.
-	roots := make([]string, 0, len(dirsWithTf))
-	for dir := range dirsWithTf {
-		if staticCalledDirs[dir] {
-			continue // instantiated via a module call, not a root
-		}
-		roots = append(roots, dir)
-	}
-	sort.Strings(roots)
+	roots := terraformRootDirs(dirsWithTf, staticCalledDirs)
 
 	evaluatedRoots := roots
 	if onlyExternalCalls {
@@ -951,6 +958,7 @@ type docGroup struct {
 	layer         int
 	entries       []instantiatedResource
 	attributions  map[string]*model.ModuleAttribution
+	occurrences   []*model.ResourceOccurrence
 }
 
 // docContentKey identifies a document by its content. Two independent digests
@@ -989,6 +997,7 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
+	occurrences map[*tfeval.ResolvedResource]*model.ResourceOccurrence,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -1043,6 +1052,9 @@ func instantiatedDocs(
 		g.attributions[moduleAttributionKey(kind, r.DefLine, r.DefColumn)] =
 			attributions.attribution(r, repoPath, lookup)
 		g.entries = append(g.entries, entry)
+		if occurrence := occurrences[r]; occurrence != nil {
+			g.occurrences = append(g.occurrences, occurrence)
+		}
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
 		instantiated.add(fm.ID, kind, base)
@@ -1059,6 +1071,7 @@ func instantiatedDocs(
 				callChain:    g.callChain,
 				docID:        docID,
 				attributions: cloneModuleAttributions(g.attributions),
+				occurrences:  g.occurrences,
 			})
 			continue
 		}
@@ -1092,7 +1105,9 @@ func instantiatedDocs(
 			doc["data"] = data
 		}
 		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
+		file := newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions)
+		file.ResourceOccurrences = g.occurrences
+		synthetic = append(synthetic, file)
 	}
 	return docs, synthetic, resourceCount
 }
