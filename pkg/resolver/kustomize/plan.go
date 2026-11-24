@@ -36,12 +36,15 @@ type PlannedRoot struct {
 
 // Plan picks the top-level roots among dirs (kustomization directories):
 // those no other one references, that are not components and that are not
-// Helm charts. read returns a file's bytes and canonical maps a path to its
-// symlink-free form inside the repository, refusing anything outside, so a
-// dependency reached through a symlink matches the directory discovered by
-// its real path. Output is sorted by directory; each root's Dir keeps the
-// lexicographically smallest input path that maps to its node.
-func Plan(dirs, chartRoots []string, read func(string) ([]byte, error), canonical func(string) (string, bool)) []PlannedRoot {
+// Helm charts. deployed lists directories an in-repo Argo CD or Flux object
+// deploys as-is; they are rendered as roots even when referenced. read
+// returns a file's bytes and canonical maps a path to its symlink-free form
+// inside the repository, refusing anything outside, so a dependency reached
+// through a symlink matches the directory discovered by its real path.
+// Output is sorted by directory; each root's Dir keeps the lexicographically
+// smallest input path that maps to its node.
+func Plan(dirs, chartRoots, deployed []string, read func(string) ([]byte, error),
+	canonical func(string) (string, bool)) []PlannedRoot {
 	known := make(map[string]bool, len(dirs))
 	display := make(map[string]string, len(dirs))
 	for _, d := range dirs {
@@ -64,13 +67,13 @@ func Plan(dirs, chartRoots []string, read func(string) ([]byte, error), canonica
 	for d := range known {
 		kusts[d] = loadKustomization(d, read)
 	}
-	return selectRoots(known, display, charts, kusts, canonical)
+	return selectRoots(known, display, charts, kusts, canonical, deployed)
 }
 
 // selectRoots keeps the kustomization directories nothing references, that
 // are not components and that are not Helm charts, and plans each one.
 func selectRoots(known map[string]bool, display map[string]string, charts map[string]bool,
-	kusts map[string]*types.Kustomization, canonical func(string) (string, bool)) []PlannedRoot {
+	kusts map[string]*types.Kustomization, canonical func(string) (string, bool), deployed []string) []PlannedRoot {
 	referenced := map[string]bool{}
 	for d, k := range kusts {
 		for _, child := range canonicalChildren(d, k, canonical) {
@@ -79,9 +82,23 @@ func selectRoots(known map[string]bool, display map[string]string, charts map[st
 			}
 		}
 	}
+	forced := make(map[string]bool, len(deployed))
+	for _, d := range deployed {
+		if node, ok := canonical(d); ok {
+			forced[node] = true
+		}
+	}
+	return planRoots(kusts, known, referenced, charts, forced, display, canonical)
+}
+
+// planRoots renders a root for every kustomization not referenced, not a
+// chart and not a component — plus the forced (deployed) ones — and walks
+// each closure.
+func planRoots(kusts map[string]*types.Kustomization, known, referenced, charts, forced map[string]bool,
+	display map[string]string, canonical func(string) (string, bool)) []PlannedRoot {
 	var out []PlannedRoot
 	for node, k := range kusts {
-		if referenced[node] || charts[node] || (k != nil && k.Kind == types.ComponentKind) {
+		if (referenced[node] || charts[node] || (k != nil && k.Kind == types.ComponentKind)) && !forced[node] {
 			continue
 		}
 		root := PlannedRoot{Dir: display[node], Closure: map[string]Affixes{}}
