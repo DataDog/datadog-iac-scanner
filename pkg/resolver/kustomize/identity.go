@@ -16,6 +16,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+const (
+	jsonPatchCopy = "copy"
+	jsonPatchMove = "move"
+)
+
 // Identity is computed after source attribution is finalized. Ordinary objects
 // use their rendered group/kind, namespace and name, independent of where they
 // were written. Generated names lose only a proven content-hash suffix.
@@ -302,7 +307,7 @@ func (r *Renderer) patchIdentityEdits(kust string, patch types.Patch) identityEd
 	} // strategic merge
 	var edits identityEdits
 	for _, op := range ops {
-		if op.Op != "copy" && op.Op != "move" {
+		if op.Op != jsonPatchCopy && op.Op != jsonPatchMove {
 			continue
 		}
 		fields := identityAll
