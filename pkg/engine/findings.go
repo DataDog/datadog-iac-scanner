@@ -131,6 +131,7 @@ type findingRouting struct {
 	extras      map[string][]extraCallerInfo
 	moduleFiles map[string]*moduleFileCalls
 	callers     map[string]*model.FileMetadata
+	occurrences documentOccurrenceIndex
 	// external reports whether a path is an external module file, reported
 	// only through the calls that reach it. It may be nil.
 	external func(string) bool
@@ -164,7 +165,7 @@ func (r *findingRouting) route(
 	if r == nil {
 		return vulns
 	}
-	vulns = expandModuleFindings(vulns, r.extras)
+	vulns = expandModuleFindings(vulns, r.extras, r.occurrences)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
 	vulns = dropUnattributedExternalFindings(vulns, r.external)
 	return c.filterAtCallSites(ctx, vulns, r.callers)

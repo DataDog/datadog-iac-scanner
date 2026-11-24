@@ -16,33 +16,42 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 )
 
+func (q *QueryContext) occurrencesFor(documentID string) []*model.ResourceOccurrence {
+	if q.findings == nil || q.findings.routing == nil {
+		return nil
+	}
+	return q.findings.routing.occurrences[documentID]
+}
+
 // resolveResourceOccurrences is the inventory side of finding decoding. Use
 // the rule's document and path, since the location can explain the result
 // with source written in a different file.
 func resolveResourceOccurrences(
-	file *model.FileMetadata, path model.SourcePath, searchKey string, line int, override *model.TerraformOverrideFinding,
+	platform string, occurrences []*model.ResourceOccurrence, path model.SourcePath, searchKey string, line int,
+	override model.TerraformBlock,
 ) []*model.ResourceOccurrence {
-	occurrences := file.ResourceOccurrences
 	if len(occurrences) == 0 {
 		return nil
 	}
-	if file.Platform == platforms.Terraform {
-		if override != nil {
-			return terraformBlockOccurrences(occurrences, override.Block)
+	if platform == platforms.Terraform {
+		if override.Kind != "" {
+			return terraformBlockOccurrences(occurrences, override)
 		}
-		return terraformOccurrences(file, path, searchKey)
+		return terraformOccurrences(occurrences, path, searchKey)
 	}
 	if path != nil {
-		return structuredDocumentOccurrence(file, path)
+		return structuredDocumentOccurrence(platform, occurrences, path)
 	}
-	return legacyDocumentOccurrence(file, searchKey, line)
+	return legacyDocumentOccurrence(platform, occurrences, searchKey, line)
 }
 
-func structuredDocumentOccurrence(file *model.FileMetadata, path model.SourcePath) []*model.ResourceOccurrence {
-	if file.Platform == platforms.Ansible && len(path) > 0 && path[0].IsIndex {
+func structuredDocumentOccurrence(
+	platform string, occurrences []*model.ResourceOccurrence, path model.SourcePath,
+) []*model.ResourceOccurrence {
+	if platform == platforms.Ansible && len(path) > 0 && path[0].IsIndex {
 		path = append(model.SourcePath{{Key: "playbooks"}}, path...)
 	}
-	for _, o := range file.ResourceOccurrences {
+	for _, o := range occurrences {
 		if len(path) >= len(o.StructuralPath) && slices.Equal(path[:len(o.StructuralPath)], o.StructuralPath) {
 			return []*model.ResourceOccurrence{o}
 		}
@@ -50,8 +59,9 @@ func structuredDocumentOccurrence(file *model.FileMetadata, path model.SourcePat
 	return nil
 }
 
-func legacyDocumentOccurrence(file *model.FileMetadata, searchKey string, line int) []*model.ResourceOccurrence {
-	occurrences := file.ResourceOccurrences
+func legacyDocumentOccurrence(
+	platform string, occurrences []*model.ResourceOccurrence, searchKey string, line int,
+) []*model.ResourceOccurrence {
 	if o := dottedLegacyOccurrence(occurrences, searchKey); o != nil {
 		return []*model.ResourceOccurrence{o}
 	}
@@ -62,8 +72,8 @@ func legacyDocumentOccurrence(file *model.FileMetadata, searchKey string, line i
 		}
 	}
 	if len(parts) == 0 || anchored ||
-		(file.Platform == platforms.CloudFormation && slices.Equal(parts, []string{"Resources"})) {
-		if file.Platform == platforms.CloudFormation {
+		(platform == platforms.CloudFormation && slices.Equal(parts, []string{"Resources"})) {
+		if platform == platforms.CloudFormation {
 			return cloudFormationCollectionOccurrence(occurrences, line)
 		}
 		if o := legacySourceOccurrence(occurrences, line); o != nil {
@@ -153,7 +163,7 @@ func cloudFormationCollectionOccurrence(occurrences []*model.ResourceOccurrence,
 	return nil
 }
 
-func terraformOccurrences(file *model.FileMetadata, path model.SourcePath, key string) []*model.ResourceOccurrence {
+func terraformOccurrences(occurrences []*model.ResourceOccurrence, path model.SourcePath, key string) []*model.ResourceOccurrence {
 	block, _ := overrideFindingPath(path, key)
 	if path == nil {
 		// The dotted form can wrap the label just like the bracketed form.
@@ -163,10 +173,10 @@ func terraformOccurrences(file *model.FileMetadata, path model.SourcePath, key s
 	if block.Type == "" || block.Name == "" {
 		return nil
 	}
-	matched := terraformBlockOccurrences(file.ResourceOccurrences, block)
+	matched := terraformBlockOccurrences(occurrences, block)
 	if len(matched) == 0 && block.Kind == "" {
 		block.Kind = dataRoot
-		matched = terraformBlockOccurrences(file.ResourceOccurrences, block)
+		matched = terraformBlockOccurrences(occurrences, block)
 	}
 	return matched
 }

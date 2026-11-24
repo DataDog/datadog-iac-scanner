@@ -38,11 +38,12 @@ func (c *Inspector) SetInventory(sink InventorySink) {
 
 // terraformInventory turns evaluated Terraform resources into inventory rows.
 type terraformInventory struct {
-	sink     InventorySink
-	repoPath string
-	lookup   moduleProvenanceLookup
-	rootVars map[string]cty.Value
-	files    map[string]*model.FileMetadata
+	sink      InventorySink
+	repoPath  string
+	lookup    moduleProvenanceLookup
+	rootVars  map[string]cty.Value
+	files     map[string]*model.FileMetadata
+	documents documentOccurrenceIndex
 	// external reports a fetched module, which is not a root of the
 	// repository even when nothing in the scan calls it.
 	external func(string) bool
@@ -52,12 +53,15 @@ type terraformInventory struct {
 }
 
 // newTerraformInventory returns nil when the scan has no inventory.
-func (c *Inspector) newTerraformInventory(lookup moduleProvenanceLookup, external func(string) bool) *terraformInventory {
+func (c *Inspector) newTerraformInventory(
+	lookup moduleProvenanceLookup, external func(string) bool, documents documentOccurrenceIndex,
+) *terraformInventory {
 	if c.inventory == nil {
 		return nil
 	}
 	return &terraformInventory{
-		sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external, rootVars: c.terraformRootVars,
+		sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external,
+		rootVars: c.terraformRootVars, documents: documents,
 	}
 }
 
@@ -166,9 +170,12 @@ func (inv *terraformInventory) addRoot(
 		row := inventory.ProjectResource(occurrence)
 		inv.addModuleFields(&row, occurrence.Terraform.Attribution)
 		inv.sink.AddResource(&row)
+		if inv.documents == nil {
+			continue
+		}
 		if r.ModuleAddress == "" {
-			if file := inv.files[occurrence.File]; file != nil {
-				file.ResourceOccurrences = append(file.ResourceOccurrences, occurrence)
+			if id := occurrence.DocumentID; id != "" {
+				inv.documents[id] = append(inv.documents[id], occurrence)
 			}
 		} else if associateModuleDocuments {
 			if instances == nil {

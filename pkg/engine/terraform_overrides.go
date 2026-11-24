@@ -263,12 +263,12 @@ func (o *terraformOverrides) sourceFields(
 }
 
 // terraformFindingSource selects the source file for a finding on an effective
-// block. Both Rego result formats keep the declaration as the document ID.
+// block and returns the declaration key for inventory association.
 func terraformFindingSource(
 	file *model.FileMetadata, path model.SourcePath, searchKey string,
-) *model.TerraformOverrideFinding {
+) (*model.TerraformOverrideFinding, model.TerraformBlock) {
 	if len(file.TerraformOverrides) == 0 {
-		return nil
+		return nil, model.TerraformBlock{}
 	}
 	key, field := overrideFindingPath(path, searchKey)
 	source := file.TerraformOverrides[key]
@@ -281,12 +281,12 @@ func terraformFindingSource(
 		}
 	}
 	if source == nil {
-		return nil
+		return nil, model.TerraformBlock{}
 	}
 	sourceID := source.Fields[field]
 	return &model.TerraformOverrideFinding{
-		SourceFileID: sourceID, DeclarationStart: source.DeclarationStart, Block: key,
-	}
+		SourceFileID: sourceID, DeclarationStart: source.DeclarationStart,
+	}, key
 }
 
 func overrideFindingPath(path model.SourcePath, searchKey string) (block model.TerraformBlock, property string) {

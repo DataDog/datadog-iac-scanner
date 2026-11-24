@@ -355,9 +355,6 @@ type FileMetadata struct {
 	// written label and HCL instance suffix.
 	TerraformInstances map[TerraformInstanceKey]TerraformInstance  `json:"-"`
 	TerraformOverrides map[TerraformBlock]*TerraformOverrideSource `json:"-"`
-	// ResourceOccurrences associates rule paths in this document with
-	// declaration instances. Populated only for inventory scans.
-	ResourceOccurrences []*ResourceOccurrence `json:"-"`
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
@@ -392,7 +389,6 @@ type TerraformOverrideSource struct {
 type TerraformOverrideFinding struct {
 	SourceFileID     string
 	DeclarationStart ResourceLine
-	Block            TerraformBlock
 }
 
 // PlanResourceKey is a terraform plan -json resource section and document key.

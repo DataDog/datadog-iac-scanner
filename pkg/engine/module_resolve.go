@@ -37,7 +37,6 @@ type extraCallerInfo struct {
 	callChain    string
 	docID        string
 	attributions map[string]*model.ModuleAttribution
-	occurrences  []*model.ResourceOccurrence
 }
 
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
@@ -76,6 +75,7 @@ func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
 	targets *ruleTargets,
+	occurrences documentOccurrenceIndex,
 ) (
 	docs []model.Document,
 	syntheticFiles []*model.FileMetadata,
@@ -83,7 +83,7 @@ func (c *Inspector) instantiateLocalModules(
 	moduleFiles map[string]*moduleFileCalls,
 ) {
 	resolver := c.buildRemoteResolver()
-	res := c.resolveModulesSafely(ctx, files, resolver, targets)
+	res := c.resolveModulesSafely(ctx, files, resolver, targets, occurrences)
 	contextLogger := logger.FromContext(ctx)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
@@ -354,6 +354,7 @@ func (c *Inspector) resolveModulesSafely(
 	files model.FileMetadatas,
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
+	occurrences documentOccurrenceIndex,
 ) (res moduleResolutionResult) {
 	var inv *terraformInventory
 	defer func() {
@@ -372,7 +373,7 @@ func (c *Inspector) resolveModulesSafely(
 		externalModuleFile = c.isExternalModulePath
 	}
 	lookup := c.buildModuleProvenanceLookup()
-	inv = c.newTerraformInventory(lookup, externalModuleFile)
+	inv = c.newTerraformInventory(lookup, externalModuleFile, occurrences)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
 		externalModuleFile, inv, c.terraformRootVars,
@@ -493,6 +494,10 @@ func (m *rootMerge) merge(
 	// Every resource and data source of the root, before instantiation keeps
 	// only what rules can match.
 	occurrences := m.inventory.addRoot(dir, resources, true)
+	var occurrenceDocuments documentOccurrenceIndex
+	if len(occurrences) > 0 {
+		occurrenceDocuments = m.inventory.documents
+	}
 	m.overrides.record(m.ctx, m.evaluator, resources)
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
@@ -501,7 +506,8 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions, occurrences)
+		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup,
+		attributions, occurrences, occurrenceDocuments)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -958,7 +964,10 @@ type docGroup struct {
 	layer         int
 	entries       []instantiatedResource
 	attributions  map[string]*model.ModuleAttribution
-	occurrences   []*model.ResourceOccurrence
+}
+
+func (g *docGroup) documentID() string {
+	return g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
 }
 
 // docContentKey identifies a document by its content. Two independent digests
@@ -998,6 +1007,7 @@ func instantiatedDocs(
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
 	occurrences map[*tfeval.ResolvedResource]*model.ResourceOccurrence,
+	occurrenceDocuments documentOccurrenceIndex,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -1053,7 +1063,10 @@ func instantiatedDocs(
 			attributions.attribution(r, repoPath, lookup)
 		g.entries = append(g.entries, entry)
 		if occurrence := occurrences[r]; occurrence != nil {
-			g.occurrences = append(g.occurrences, occurrence)
+			// Deduplicated documents still need their own associations for
+			// findings cloned onto their callers.
+			id := g.documentID()
+			occurrenceDocuments[id] = append(occurrenceDocuments[id], occurrence)
 		}
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
@@ -1063,7 +1076,7 @@ func instantiatedDocs(
 
 	for _, key := range order {
 		g := groups[key]
-		docID := g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
+		docID := g.documentID()
 
 		contentKey := groupContentKey(g)
 		if primaryDocID, dup := seen[contentKey]; dup {
@@ -1071,7 +1084,6 @@ func instantiatedDocs(
 				callChain:    g.callChain,
 				docID:        docID,
 				attributions: cloneModuleAttributions(g.attributions),
-				occurrences:  g.occurrences,
 			})
 			continue
 		}
@@ -1105,9 +1117,7 @@ func instantiatedDocs(
 			doc["data"] = data
 		}
 		docs = append(docs, doc)
-		file := newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions)
-		file.ResourceOccurrences = g.occurrences
-		synthetic = append(synthetic, file)
+		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
 }
