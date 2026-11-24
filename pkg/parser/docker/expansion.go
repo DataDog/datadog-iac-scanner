@@ -16,8 +16,10 @@ import (
 // shell or the build command line may still provide them. Any word the lexer
 // would reject or rewrite is expanded by expandPlainRefs instead, which only
 // replaces known $NAME and ${NAME} references and keeps every other byte.
+//
+// Reading a variable can expand another declaration, so expansions nest. A
+// shell.Lex keeps its scanner state, so every expansion uses its own.
 type wordExpander struct {
-	lex    *shell.Lex
 	escape byte
 	raw    bool
 }
@@ -25,15 +27,19 @@ type wordExpander struct {
 // newWordExpander builds an expander for words whose quotes and escapes are
 // kept (raw, for commands that a shell reads later) or removed (declarations).
 func newWordExpander(escape rune, raw bool) *wordExpander {
-	lex := shell.NewLex(escape)
-	lex.RawQuotes = raw
-	lex.RawEscapes = raw
+	return &wordExpander{escape: byte(escape), raw: raw}
+}
+
+func (e *wordExpander) newLex() *shell.Lex {
+	lex := shell.NewLex(rune(e.escape))
+	lex.RawQuotes = e.raw
+	lex.RawEscapes = e.raw
 	lex.SkipUnsetEnv = true
-	return &wordExpander{lex: lex, escape: byte(escape), raw: raw}
+	return lex
 }
 
 // expandValues expands each value in place against scope and returns values.
-func expandValues(e *wordExpander, values []string, scope *variableScope) []string {
+func expandValues(e *wordExpander, values []string, scope environment) []string {
 	if e.raw && scope.empty() {
 		return values
 	}
@@ -53,9 +59,9 @@ func (e *wordExpander) mayReference(value string) bool {
 	return strings.ContainsAny(value, "$\\\"'`")
 }
 
-func (e *wordExpander) expand(value string, scope *variableScope) string {
+func (e *wordExpander) expand(value string, scope environment) string {
 	if e.lexerHandles(value, scope) {
-		if expanded, _, err := e.lex.ProcessWord(value, scope); err == nil {
+		if expanded, _, err := e.newLex().ProcessWord(value, scope); err == nil {
 			return expanded
 		}
 	}
@@ -73,7 +79,7 @@ func (e *wordExpander) expand(value string, scope *variableScope) string {
 //     rebuilt exactly and stays on this path.
 //
 // The scan ignores quoting, so it can only err towards the byte-preserving path.
-func (e *wordExpander) lexerHandles(value string, scope *variableScope) bool {
+func (e *wordExpander) lexerHandles(value string, scope environment) bool {
 	if !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || strings.HasPrefix(value, "\ufeff") {
 		return false
 	}
@@ -122,7 +128,7 @@ func parameterNameEnd(value string, start int) int {
 // single quotes in one linear pass. Every other byte stays as written: quotes,
 // escapes, operators, unknown names and invalid bytes. Substituted values are
 // never scanned again.
-func (e *wordExpander) expandPlainRefs(value string, scope *variableScope) string {
+func (e *wordExpander) expandPlainRefs(value string, scope environment) string {
 	var out strings.Builder
 	copied := 0
 	inSingle, inDouble := false, false

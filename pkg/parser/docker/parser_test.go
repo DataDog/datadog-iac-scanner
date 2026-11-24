@@ -203,18 +203,18 @@ ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
 }
 
 func TestVariableScope_DeclareArgs(t *testing.T) {
-	scope := newScope(nil)
+	scope := newScope()
 	lex := newWordExpander('\\', false)
-	got := scope.declareArgs(lex, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, newScope(map[string]string{"BARE": "global"}))
+	got := scope.declareArgs(lex, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, newTestScope(map[string]string{"BARE": "global"}))
 	require.Equal(t, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, got)
-	require.Equal(t, map[string]string{"ARG": "2", "NEXT": "2x", "BARE": "global"}, scope.vars)
+	require.Equal(t, map[string]string{"ARG": "2", "NEXT": "2x", "BARE": "global"}, scope.snapshot())
 }
 
 func TestVariableScope_DeclareEnvs(t *testing.T) {
-	scope := newScope(map[string]string{"K": "KEY", "V": "value"})
+	scope := newTestScope(map[string]string{"K": "KEY", "V": "value"})
 	got := scope.declareEnvs(newWordExpander('\\', false), []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="})
 	require.Equal(t, []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="}, got)
-	require.Equal(t, map[string]string{"ARG": "2", "KEY": "value", "K": "new", "V": "value"}, scope.vars)
+	require.Equal(t, map[string]string{"ARG": "2", "KEY": "value", "K": "new", "V": "value"}, scope.snapshot())
 }
 
 // Dockerfile instructions are case-insensitive: a lowercase FROM names its
@@ -273,7 +273,7 @@ func TestResolveArgsAndEnvs_WholeReferences(t *testing.T) {
 	args := map[string]string{"V": "1", "VERSION": "latest", "NESTED": "$VERSION", "EMPTY": ""}
 	values := []string{"$V $VERSION ${VERSION} $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN ${EMPTY} $NESTED"}
 	require.Equal(t, []string{"1 latest latest $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN  $VERSION"},
-		resolveArgsAndEnvs(values, newScope(args)))
+		resolveArgsAndEnvs(values, newTestScope(args)))
 }
 
 func TestParser_Parse_ChainedDeclarations(t *testing.T) {
@@ -420,4 +420,48 @@ func TestParser_Parse_StageChainSharesParentScope(t *testing.T) {
 	}
 	small, large := parse(1000), parse(4000)
 	require.Less(t, large, small*6, "4x the stages must not cost much more than 4x the memory")
+}
+
+// Declarations are expanded when read. A chain that doubles on every line costs
+// nothing while no instruction reads it, however large its value would be.
+func TestParser_Parse_UnreadDoublingChainIsFree(t *testing.T) {
+	var source strings.Builder
+	source.WriteString("FROM scratch\nARG A=x\n")
+	for i := 0; i < 60; i++ {
+		source.WriteString("ARG A=$A$A\n")
+	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	_, _, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+	runtime.ReadMemStats(&after)
+	require.NoError(t, err)
+	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(16<<20))
+}
+
+// A long chain of declarations that each refer to the previous one resolves
+// without recursing per link in the document, and every link resolves once.
+func TestParser_Parse_LongDeclarationChain(t *testing.T) {
+	const links = 20000
+	var source strings.Builder
+	source.WriteString("FROM scratch\nARG A=x\n")
+	for i := 0; i < links; i++ {
+		source.WriteString("ARG A=$A\n")
+	}
+	source.WriteString("RUN echo $A\n")
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+	require.NoError(t, err)
+	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+	last := stage[len(stage)-1].(map[string]interface{})
+	require.Equal(t, []interface{}{"echo x"}, last["Value"])
+}
+
+// Reading a variable expands its declaration in the middle of expanding the
+// word that read it, so the two expansions must not share lexer state.
+func TestParser_Parse_NestedDeclarationsExpandIndependently(t *testing.T) {
+	source := "FROM scratch\nARG A=x\nARG A=$A$A\nARG A=$A$A\nARG A=$A$A\nRUN echo $A\n"
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source), "Dockerfile", false, 0)
+	require.NoError(t, err)
+	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+	require.Equal(t, []interface{}{"echo xxxxxxxx"}, stage[len(stage)-1].(map[string]interface{})["Value"])
 }

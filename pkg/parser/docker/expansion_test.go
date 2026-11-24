@@ -42,7 +42,7 @@ func TestExpandValues_ValidWords(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := expandValues(newWordExpander(tt.escape, tt.raw), []string{tt.source}, newScope(scope))
+			got := expandValues(newWordExpander(tt.escape, tt.raw), []string{tt.source}, newTestScope(scope))
 			require.Equal(t, []string{tt.want}, got)
 		})
 	}
@@ -74,7 +74,7 @@ func TestExpandValues_FallbackOnMalformedOrBashSyntax(t *testing.T) {
 	for _, tt := range tests {
 		for _, raw := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/raw=%t", tt.name, raw), func(t *testing.T) {
-				got := expandValues(newWordExpander(tt.escape, raw), []string{tt.source}, newScope(scope))
+				got := expandValues(newWordExpander(tt.escape, raw), []string{tt.source}, newTestScope(scope))
 				require.Equal(t, []string{tt.want}, got)
 			})
 		}
@@ -92,7 +92,7 @@ func TestExpandValues_PreservesBadBytesWithoutDiagnostics(t *testing.T) {
 				"$BAD $H",
 				"echo it's \x00 $H",
 			} {
-				expandValues(newWordExpander('\\', raw), []string{value}, newScope(scope))
+				expandValues(newWordExpander('\\', raw), []string{value}, newTestScope(scope))
 			}
 		}
 		return
@@ -100,7 +100,7 @@ func TestExpandValues_PreservesBadBytesWithoutDiagnostics(t *testing.T) {
 
 	scope := map[string]string{"H": "hello"}
 	for _, bad := range []string{"\x00", "caf\xe9", "\xff\xc0\xaf"} {
-		got := expandValues(newWordExpander('\\', true), []string{"echo " + bad + " $H '$H'"}, newScope(scope))
+		got := expandValues(newWordExpander('\\', true), []string{"echo " + bad + " $H '$H'"}, newTestScope(scope))
 		require.Equal(t, []string{"echo " + bad + " hello '$H'"}, got)
 	}
 
@@ -121,7 +121,7 @@ func TestExpandValues_MalformedInputIsLinear(t *testing.T) {
 	scope := map[string]string{"H": "hello"}
 
 	start := time.Now()
-	got := expandValues(expander, []string{source}, newScope(scope))[0]
+	got := expandValues(expander, []string{source}, newTestScope(scope))[0]
 	elapsed := time.Since(start)
 
 	require.Less(t, elapsed, 100*time.Millisecond)
@@ -132,7 +132,7 @@ func TestExpandValues_MalformedInputIsLinear(t *testing.T) {
 // which changes it. Such words keep every byte as written, and the known
 // references around them are still expanded.
 func TestExpandValues_UnsetOperatorsKeepEveryByte(t *testing.T) {
-	scope := newScope(map[string]string{"H": "hello"})
+	scope := newTestScope(map[string]string{"H": "hello"})
 	for _, raw := range []bool{true, false} {
 		for _, ref := range []string{
 			`${UNKNOWN//a/b}`, `${UNKNOWN/a/b}`, `${UNKNOWN:-"a b"}`, `${UNKNOWN:-a\ b}`, `${UNKNOWN:-'q'}`,
@@ -147,6 +147,6 @@ func TestExpandValues_UnsetOperatorsKeepEveryByte(t *testing.T) {
 }
 
 func TestExpandValues_LeadingByteOrderMarkIsKept(t *testing.T) {
-	got := expandValues(newWordExpander('\\', true), []string{"\ufeff$H"}, newScope(map[string]string{"H": "hello"}))
+	got := expandValues(newWordExpander('\\', true), []string{"\ufeff$H"}, newTestScope(map[string]string{"H": "hello"}))
 	require.Equal(t, []string{"\ufeffhello"}, got)
 }
