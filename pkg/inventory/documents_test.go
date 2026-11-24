@@ -153,24 +153,11 @@ Parameters:
     Type: CommaDelimitedList
     Default: App
 `
-	ctx := context.Background()
-	p := &yamlparser.Parser{}
-	_, docs, _, _, err := p.Parse(model.WithLazyLineInfo(ctx), []byte(source), "stack.yaml", false, 1)
-	require.NoError(t, err)
-	require.Len(t, docs, 1)
-	resources, ok := docs[0]["Resources"].(map[string]interface{})
+	f := lazyCloudFormationFile(t, source)
+	resources, ok := f.Document["Resources"].(map[string]interface{})
 	require.True(t, ok)
 	require.Contains(t, resources, "Fn::ForEach::Unknown")
 	require.Contains(t, resources, "BucketGreen")
-	f := &model.FileMetadata{ID: "stack", FilePath: "stack.yaml", OriginalData: source,
-		Document: docs[0], Kind: model.KindYAML, Platform: platforms.CloudFormation}
-	f.SetLineInfoLoader(func(ctx context.Context, fm *model.FileMetadata) (map[string]interface{}, error) {
-		_, annotated, _, _, err := p.Parse(model.WithLineInfoOnly(ctx), []byte(fm.OriginalData), fm.FilePath, false, 1)
-		if err != nil {
-			return nil, err
-		}
-		return annotated[0], nil
-	})
 
 	collector := NewCollector(t.TempDir())
 	for _, row := range collectDocumentResources(model.FileMetadatas{f}) {
@@ -195,6 +182,36 @@ Parameters:
 		{FindingFingerprint: "green", ResourceRef: "stack.yaml|BucketGreen"},
 	}, inv.FindingLinks)
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
+
+	t.Run("flow-style loops on the same line", testCloudFormationForEachRowsOnSameLine)
+}
+
+func testCloudFormationForEachRowsOnSameLine(t *testing.T) {
+	// Both loop keys start on line 3. Only the second spans later lines.
+	const source = `Transform: AWS::LanguageExtensions
+Resources: {
+  "Fn::ForEach::Buckets": [Name, !Ref Names, {"Bucket${Name}": {Type: "AWS::S3::Bucket"}}], "Fn::ForEach::Queues": [
+    Name, !Ref Names, {"Queue${Name}": {
+      Type: "AWS::SQS::Queue"
+    }}
+  ]
+}
+Parameters:
+  Names:
+    Type: CommaDelimitedList
+    Default: Blue
+`
+	f := lazyCloudFormationFile(t, source)
+	require.Nil(t, f.LineInfoDocument)
+	rows := collectDocumentResources(model.FileMetadatas{f})
+	require.Nil(t, f.LineInfoDocument, "inventory leaves the original line metadata unloaded")
+
+	require.Len(t, rows, 2)
+	got := make(map[string]lineRange, len(rows))
+	for _, row := range rows {
+		got[row.ResourcePath] = lineRange{row.LineStart, row.LineEnd}
+	}
+	require.Equal(t, map[string]lineRange{"BucketBlue": {3, 3}, "QueueBlue": {3, 3}}, got)
 }
 
 func TestCloudFormationJSONForEachRows(t *testing.T) {
@@ -290,6 +307,25 @@ func TestAnsibleSearchKeyPath(t *testing.T) {
 	} {
 		require.Equal(t, want, ansibleSearchKeyPath(path), path)
 	}
+}
+
+func lazyCloudFormationFile(t *testing.T, source string) *model.FileMetadata {
+	t.Helper()
+	ctx := context.Background()
+	p := &yamlparser.Parser{}
+	_, docs, _, _, err := p.Parse(model.WithLazyLineInfo(ctx), []byte(source), "stack.yaml", false, 1)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	f := &model.FileMetadata{ID: "stack", FilePath: "stack.yaml", OriginalData: source,
+		Document: docs[0], Kind: model.KindYAML, Platform: platforms.CloudFormation}
+	f.SetLineInfoLoader(func(ctx context.Context, fm *model.FileMetadata) (map[string]interface{}, error) {
+		_, annotated, _, _, err := p.Parse(model.WithLineInfoOnly(ctx), []byte(fm.OriginalData), fm.FilePath, false, 1)
+		if err != nil {
+			return nil, err
+		}
+		return annotated[0], nil
+	})
+	return f
 }
 
 // collectDocumentResources returns the rows DocumentResources gives.
