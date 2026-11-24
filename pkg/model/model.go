@@ -1151,6 +1151,8 @@ type KustomizeAttribution struct {
 	// ResourceID is the logical object within RenderRoot, independent of source
 	// attribution: "group/kind|namespace|name", or an explicit source fallback.
 	ResourceID string
+	// SourceDocumentIndex scopes line detection; -1 when unknown.
+	SourceDocumentIndex int
 }
 
 // KustomizeGenerator names the generator entry that produced an object.
