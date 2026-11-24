@@ -38,7 +38,10 @@ import (
 const (
 	DefaultMaxSourceBytes = 1 << 20 // 1 MiB of HCL source
 	maxSingleEntryDivisor = 4
-	evictSampleLimit      = 32
+	// Bound entry count too because empty and tiny files use AST memory without
+	// consuming enough source bytes to meaningfully constrain the cache.
+	minEntryBudgetBytes = 256
+	evictSampleLimit    = 32
 )
 
 type ctxKey struct{}
@@ -93,10 +96,11 @@ type cacheEntry struct {
 
 // Cache memoizes immutable *hcl.File parses within a bounded source-byte budget.
 type Cache struct {
-	maxBytes int
-	closed   atomic.Bool
-	hits     atomic.Int64
-	misses   atomic.Int64
+	maxBytes   int
+	maxEntries int
+	closed     atomic.Bool
+	hits       atomic.Int64
+	misses     atomic.Int64
 
 	mu         sync.RWMutex
 	entries    map[cacheKey]*cacheEntry
@@ -109,9 +113,14 @@ func New(maxSourceBytes int) *Cache {
 	if maxSourceBytes <= 0 {
 		maxSourceBytes = DefaultMaxSourceBytes
 	}
+	maxEntries := maxSourceBytes / minEntryBudgetBytes
+	if maxEntries < 1 {
+		maxEntries = 1
+	}
 	return &Cache{
-		maxBytes: maxSourceBytes,
-		entries:  make(map[cacheKey]*cacheEntry),
+		maxBytes:   maxSourceBytes,
+		maxEntries: maxEntries,
+		entries:    make(map[cacheKey]*cacheEntry),
 	}
 }
 
@@ -140,7 +149,20 @@ func (c *Cache) ParseConfig(src []byte, filename string) (*hcl.File, hcl.Diagnos
 
 	flightKey := cleanPath + "\x00" + strconv.Itoa(key.size) + "\x00" + strconv.FormatUint(key.hash, 16)
 	parsed := false
+	cacheHit := false
 	v, _, _ := c.flight.Do(flightKey, func() (any, error) {
+		// A caller can miss the first lookup, get descheduled, and enter
+		// singleflight after the previous parse has already completed. Recheck
+		// under the flight so that this gap does not trigger a duplicate parse.
+		c.mu.RLock()
+		if entry, ok := c.entries[key]; ok {
+			entry.hits.Add(1)
+			c.mu.RUnlock()
+			cacheHit = true
+			return entry, nil
+		}
+		c.mu.RUnlock()
+
 		parsed = true
 		file, diags := hclsyntax.ParseConfig(src, filename, hcl.InitialPos)
 		entry := &cacheEntry{
@@ -156,7 +178,10 @@ func (c *Cache) ParseConfig(src []byte, filename string) (*hcl.File, hcl.Diagnos
 	entry := v.(*cacheEntry)
 	if parsed {
 		c.misses.Add(1)
+	} else if cacheHit {
+		c.hits.Add(1)
 	} else {
+		// This caller shared the in-flight result with another caller.
 		entry.hits.Add(1)
 		c.hits.Add(1)
 	}
@@ -176,7 +201,7 @@ func (c *Cache) store(entry *cacheEntry) {
 	if _, exists := c.entries[entry.key]; exists {
 		return
 	}
-	for c.totalBytes+entry.sourceBytes > c.maxBytes && len(c.entries) > 0 {
+	for (c.totalBytes+entry.sourceBytes > c.maxBytes || len(c.entries) >= c.maxEntries) && len(c.entries) > 0 {
 		c.evictOneLocked()
 	}
 	c.entries[entry.key] = entry

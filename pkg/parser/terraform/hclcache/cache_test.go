@@ -52,10 +52,10 @@ func TestCacheReuseContentKeyAndClose(t *testing.T) {
 }
 
 func TestCacheEvictionAndOversizedBypass(t *testing.T) {
-	const maxBytes = 400
+	const maxBytes = 2048
 	c := New(maxBytes)
 
-	// Single entry exceeding maxBytes/4 (100 bytes) bypasses storage without evicting existing entries.
+	// Single entry exceeding maxBytes/4 (512 bytes) bypasses storage without evicting existing entries.
 	small := []byte(`variable "a" { default = "1" }`) // 30 bytes
 	hotFile, diags := c.ParseConfig(small, "/repo/hot.tf")
 	require.False(t, diags.HasErrors())
@@ -65,7 +65,7 @@ func TestCacheEvictionAndOversizedBypass(t *testing.T) {
 		require.Same(t, hotFile, again)
 	}
 
-	oversized := bytes.Repeat([]byte("# padding line\n"), 10) // 150 bytes > 100
+	oversized := bytes.Repeat([]byte("# padding line\n"), 40) // 600 bytes > 512
 	fBig, diags := c.ParseConfig(oversized, "/repo/big.tf")
 	require.False(t, diags.HasErrors())
 	require.NotNil(t, fBig)
@@ -83,6 +83,27 @@ func TestCacheEvictionAndOversizedBypass(t *testing.T) {
 	// Hot entry survived eviction while cold entries were recycled.
 	stillHot, _ := c.ParseConfig(small, "/repo/hot.tf")
 	require.Same(t, hotFile, stillHot)
+}
+
+func TestCacheBoundsEmptyFilesByEntryCount(t *testing.T) {
+	const maxBytes = 4096
+	c := New(maxBytes)
+
+	for i := range 40 {
+		f, diags := c.ParseConfig(nil, fmt.Sprintf("/repo/empty_%02d.tf", i))
+		require.False(t, diags.HasErrors())
+		require.NotNil(t, f)
+	}
+
+	stats := c.Stats()
+	require.LessOrEqual(t, stats.Entries, maxBytes/minEntryBudgetBytes)
+	require.Equal(t, 0, stats.SourceBytes)
+	// Repeated access to an empty file still benefits from the cache while its
+	// entry remains resident.
+	path := "/repo/empty_39.tf"
+	f1, _ := c.ParseConfig(nil, path)
+	f2, _ := c.ParseConfig(nil, path)
+	require.Same(t, f1, f2)
 }
 
 func TestCacheConcurrentSingleflightAndClose(t *testing.T) {
