@@ -97,4 +97,6 @@ func TestExcludedByContent(t *testing.T) {
 	// Registered non-Dockerfile extensions keep their own content policy.
 	require.True(t, ExcludedByContent("Dockerfile.yaml", []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: x\n")))
 	require.False(t, ExcludedByContent("Dockerfile.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\n")))
+	// Ansible template directories are skipped for Dockerfile candidates just like YAML.
+	require.True(t, ExcludedByContent("roles/web/templates/Dockerfile.j2", []byte("FROM {{ base_image }}\n")))
 }

@@ -128,6 +128,12 @@ func TestSupportedFiles_Entries(t *testing.T) {
 		got, ok := matchIDE(tt.name)
 		require.Equal(t, tt.wantMatched, ok, tt.name)
 		require.Equal(t, tt.wantPattern, got, tt.name)
+		// Keep IDE acceptance and content-check policy in step with scanner routing.
+		ext := utils.ExtensionFromPath(tt.name)
+		require.Equal(t, tt.wantMatched, utils.IsSupportedFileType(ext), tt.name)
+		if tt.wantMatched && tt.wantPattern != "Chart.yaml" {
+			require.Equal(t, byPattern[got].RequiresContentCheck, utils.NeedsContentCheck(ext), tt.name)
+		}
 	}
 }
 

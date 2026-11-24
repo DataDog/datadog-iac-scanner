@@ -115,6 +115,22 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	return fileContent, documents, ignoreLines, resolvedFiles, nil
 }
 
+// IsDockerfile reports whether content parses as a Dockerfile whose first
+// non-ARG instruction is a FROM with an image or stage argument.
+func IsDockerfile(content []byte) bool {
+	parsed, err := parser.Parse(bytes.NewReader(content))
+	if err != nil || parsed == nil || parsed.AST == nil {
+		return false
+	}
+	for _, node := range parsed.AST.Children {
+		if strings.EqualFold(node.Value, command.Arg) {
+			continue
+		}
+		return strings.EqualFold(node.Value, command.From) && node.Next != nil
+	}
+	return false
+}
+
 // GetKind returns the kind of the parser
 func (p *Parser) GetKind() model.FileKind {
 	return model.KindDOCKER

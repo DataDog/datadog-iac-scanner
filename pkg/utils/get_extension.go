@@ -6,7 +6,6 @@
 package utils
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -16,7 +15,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"golang.org/x/tools/godoc/util"
 )
 
 const tfvarsName = "tfvars"
@@ -81,44 +79,5 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 		return "", err
 	}
 
-	if ext := ExtensionFromPath(path); ext != "" {
-		return ext, nil
-	}
-
-	isText, err := isTextFile(ctx, fsys, path)
-	if err != nil {
-		return "", err
-	}
-	if isText {
-		err := fmt.Errorf("file %s does not have a supported extension", path)
-		contextLogger.Debug().Msg(err.Error())
-		return "", err
-	}
-
-	return "", nil
-}
-
-func isTextFile(ctx context.Context, fsys vfs.FS, path string) (bool, error) {
-	contextLogger := logger.FromContext(ctx)
-	info, err := fsys.Stat(path)
-	if err != nil {
-		contextLogger.Error().Msgf("failed to get file info: %s", err)
-		return false, err
-	}
-
-	if info.IsDir() {
-		return false, nil
-	}
-
-	content, err := fsys.ReadFile(filepath.Clean(path))
-	if err != nil {
-		contextLogger.Error().Msgf("failed to analyze file: %s", err)
-		return false, err
-	}
-
-	content = bytes.ReplaceAll(content, []byte("\r"), []byte(""))
-
-	isText := util.IsText(content)
-
-	return isText, nil
+	return ExtensionFromPath(path), nil
 }

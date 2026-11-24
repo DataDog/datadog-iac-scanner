@@ -20,10 +20,10 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
-	dockersource "github.com/DataDog/datadog-iac-scanner/pkg/dockerfile"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -594,6 +594,11 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
+	if utils.ContentCheckForFileType(ext) == utils.DockerfileContent && !a.isAvailableType(dockerfile) {
+		unwanted <- a.filePath
+		return
+	}
+
 	if a.maxFileSize >= 0 && !utils.NeedsContentCheck(ext) {
 		if info, err := os.Stat(a.filePath); err == nil {
 			if float64(info.Size())/float64(sizeMb) > float64(a.maxFileSize) {
@@ -608,11 +613,8 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 	}
 
 	content, ok, tooLarge := a.readClassifyContent(ctx, ext)
-	if tooLarge {
+	if tooLarge || !ok {
 		unwanted <- a.filePath
-		return
-	}
-	if !ok {
 		return
 	}
 
@@ -709,17 +711,30 @@ func (a *analyzerInfo) persistWorkerState(content []byte, platform string) {
 	}
 }
 
-func isDockerfile(ctx context.Context, fsys vfs.FS, path string, content []byte) bool {
-	if content == nil {
-		var err error
-		content, err = fsys.ReadFile(filepath.Clean(path))
-		if err != nil {
-			contextLogger := logger.FromContext(ctx)
-			contextLogger.Error().Msgf("failed to analyze file: %s", err)
-			return false
-		}
-	}
-	return dockersource.HasFrom(content)
+type contentValidator struct {
+	platform string
+	validate func(path string, content []byte) bool
+}
+
+var contentValidators = map[utils.ContentCheck]contentValidator{
+	utils.DockerfileContent: {
+		platform: dockerfile,
+		validate: func(path string, content []byte) bool {
+			return !isInsideAnsibleTemplatesDir(path) && dockerParser.IsDockerfile(content)
+		},
+	},
+	utils.AnsibleConfigContent: {
+		platform: ansible,
+		validate: func(_ string, content []byte) bool {
+			return looksLikeAnsibleConfig(content)
+		},
+	},
+	utils.AnsibleInventoryContent: {
+		platform: ansible,
+		validate: func(_ string, content []byte) bool {
+			return looksLikeAnsibleInventory(content)
+		},
+	},
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
@@ -873,22 +888,22 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	if err != nil {
 		return ""
 	}
-	switch utils.ContentCheckForFileType(ext) {
-	case utils.DockerfileContent:
-		if isDockerfile(ctx, fsys, path, content) {
-			return dockerfile
+	check := utils.ContentCheckForFileType(ext)
+	if v, ok := contentValidators[check]; ok {
+		if content == nil {
+			content, err = fsys.ReadFile(filepath.Clean(path))
+			if err != nil {
+				contextLogger := logger.FromContext(ctx)
+				contextLogger.Error().Msgf("failed to analyze file: %s", err)
+				return ""
+			}
+		}
+		if v.validate(path, content) {
+			return v.platform
 		}
 		return ""
-	case utils.AnsibleConfigContent:
-		if looksLikeAnsibleConfig(content) {
-			return ansible
-		}
-		return ""
-	case utils.AnsibleInventoryContent:
-		if looksLikeAnsibleInventory(content) {
-			return ansible
-		}
-		return ""
+	}
+	switch check {
 	case utils.YAMLContent, utils.PlatformContent:
 		return classifyByContent(ctx, fsys, path, content, ext, typesFlag, hc, scanFiles)
 	}
@@ -916,14 +931,11 @@ func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, enabled []string, kind
 // .ini that is not Ansible configuration or inventory, or service catalog YAML.
 // The analyzer leaves these out of a CLI scan; pushed files skip them the same way.
 func ExcludedByContent(path string, content []byte) bool {
-	switch utils.ContentCheckForFileType(utils.ExtensionFromPath(path)) {
-	case utils.DockerfileContent:
-		return !dockersource.HasFrom(content)
-	case utils.AnsibleConfigContent:
-		return !looksLikeAnsibleConfig(content)
-	case utils.AnsibleInventoryContent:
-		return !looksLikeAnsibleInventory(content)
-	case utils.YAMLContent:
+	check := utils.ContentCheckForFileType(utils.ExtensionFromPath(path))
+	if v, ok := contentValidators[check]; ok {
+		return !v.validate(path, content)
+	}
+	if check == utils.YAMLContent {
 		return isCatalogEntity(content)
 	}
 	return false
