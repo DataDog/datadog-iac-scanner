@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
 	"github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
@@ -55,13 +56,22 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	arguments := make([]Command, 0)
 	ignoreStruct := newIgnore()
 
-	args := make(map[string]string, 0)
-	envs := make(map[string]string, 0)
+	lineInfoOnly := iacparser.IsLineInfoOnly(ctx)
+	var lex, declarationLex *wordExpander
+	if !lineInfoOnly {
+		lex = newWordExpander(parsed.EscapeToken, true)
+		declarationLex = newWordExpander(parsed.EscapeToken, false)
+	}
+	stages := newStageScopes()
+	scope := stages.globals
 
 	for _, child := range parsed.AST.Children {
-		child.Value = strings.ToLower(strings.TrimSpace(child.Value))
-		if child.Value == "from" {
-			fromValue = strings.TrimPrefix(strings.TrimSpace(child.Original), "FROM ")
+		name := strings.ToLower(strings.TrimSpace(child.Value))
+		if name == command.From {
+			fromValue = fromArguments(child.Original)
+			if !lineInfoOnly {
+				scope = stages.enter(child, declarationLex)
+			}
 		}
 
 		if ignoreStruct.getIgnoreComments(child) {
@@ -70,35 +80,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 		ignoreStruct.ignoreBlock(child, fromValue)
 
-		cmd := Command{
-			Cmd:       child.Value,
-			Original:  strings.TrimSpace(child.Original),
-			Flags:     child.Flags,
-			StartLine: child.StartLine,
-			KicsLine:  child.StartLine,
-			EndLine:   child.EndLine,
-		}
+		cmd := commandFromNode(child)
 
-		if child.Next != nil && len(child.Next.Children) > 0 {
-			cmd.SubCmd = strings.ToLower(child.Next.Children[0].Value)
-			child = child.Next.Children[0]
-		}
-
-		cmd.JSON = child.Attributes["json"]
-		for n := child.Next; n != nil; n = n.Next {
-			cmd.Value = append(cmd.Value, n.Value)
-		}
-
-		if child.Value != "arg" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, args)
-		} else {
-			args = saveArgs(args, cmd.Value[0])
-		}
-
-		if child.Value != "env" {
-			cmd.Value = resolveArgsAndEnvs(cmd.Value, envs)
-		} else {
-			envs = saveEnvs(envs, cmd.Value)
+		// Source locations keep raw commands before rule-facing enrichment.
+		if !lineInfoOnly {
+			scope.expandCommand(&cmd, stages.globals, lex, declarationLex)
 		}
 
 		if fromValue == "" {
@@ -154,39 +140,37 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
-func resolveArgsAndEnvs(values []string, args map[string]string) []string {
-	for i := range values {
-		for arg := range args {
-			ref1 := fmt.Sprintf("${%s}", arg)
-			values[i] = strings.ReplaceAll(values[i], ref1, args[arg])
-			ref2 := fmt.Sprintf("$%s", arg)
-			values[i] = strings.ReplaceAll(values[i], ref2, args[arg])
-		}
+// commandFromNode keeps BuildKit's nested instruction and source boundaries.
+func commandFromNode(child *parser.Node) Command {
+	cmd := Command{
+		Cmd:       strings.ToLower(strings.TrimSpace(child.Value)),
+		Original:  strings.TrimSpace(child.Original),
+		Flags:     child.Flags,
+		StartLine: child.StartLine,
+		KicsLine:  child.StartLine,
+		EndLine:   child.EndLine,
 	}
 
-	return values
+	if child.Next != nil && len(child.Next.Children) > 0 {
+		cmd.SubCmd = strings.ToLower(child.Next.Children[0].Value)
+		child = child.Next.Children[0]
+	}
+
+	cmd.JSON = child.Attributes["json"]
+	for n := child.Next; n != nil; n = n.Next {
+		cmd.Value = append(cmd.Value, n.Value)
+	}
+
+	return cmd
 }
 
-func saveArgs(args map[string]string, argValue string) map[string]string {
-	value := strings.Split(argValue, "=")
-	if len(value) == 2 {
-		args[value[0]] = value[1]
+// fromArguments returns the raw arguments of a FROM instruction, including
+// flags and an optional alias. Non-instructions and keyword prefixes return "".
+func fromArguments(original string) string {
+	original = strings.TrimSpace(original)
+	end := strings.IndexAny(original, " \t\r\n\v\f")
+	if end < 0 || !strings.EqualFold(original[:end], command.From) {
+		return ""
 	}
-	if len(value) > 2 {
-		// to handle cases like ARG VAR=erereR=E
-		args[value[0]] = strings.Join(value[1:], "=")
-	}
-
-	return args
-}
-
-func saveEnvs(envs map[string]string, envValues []string) map[string]string {
-	// Multiple env variables may be defined in the same instruction
-	// Each env variable slice looks like ["name", "value", "="]
-	if len(envValues)%3 == 0 {
-		for i := 0; i < len(envValues); i += 3 {
-			envs[envValues[i]] = envValues[i+1]
-		}
-	}
-	return envs
+	return strings.TrimSpace(original[end:])
 }
