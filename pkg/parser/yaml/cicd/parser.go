@@ -13,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	shellparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/shell"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -23,35 +24,11 @@ type Parser struct {
 	FS vfs.FS
 }
 
-// ParsedCommand represents a parsed shell command
-type ParsedCommand struct {
-	Type     string          `json:"type"`    // "command", "pipeline", "redirected_statement"
-	Command  string          `json:"command"` // Command name (e.g., "echo", "cargo")
-	Args     []ParsedArg     `json:"args"`    // Command arguments
-	Redirect *ParsedRedirect `json:"redirect,omitempty"`
-	Pipeline []ParsedCommand `json:"pipeline,omitempty"`
-}
-
-// ParsedArg represents a command argument
-type ParsedArg struct {
-	Type  string `json:"type"`          // "literal", "expansion", "command_substitution"
-	Value string `json:"value"`         // The text content
-	Var   string `json:"var,omitempty"` // Variable name if type is expansion
-}
-
-// ParsedRedirect represents a file redirection
-type ParsedRedirect struct {
-	Operator string    `json:"operator"` // ">>", ">", etc.
-	Target   ParsedArg `json:"target"`   // Redirect target
-}
-
-// ParsedRun represents a fully parsed run block
-type ParsedRun struct {
-	Shell    string          `json:"shell"`           // "bash", "pwsh", etc.
-	Commands []ParsedCommand `json:"commands"`        // All commands found
-	ParseOK  bool            `json:"parse_ok"`        // Whether parsing succeeded
-	Error    error           `json:"error,omitempty"` // Parse error if any
-}
+// Keep the CI/CD rule-input types compatible while sharing shell parsing.
+type ParsedCommand = shellparser.ParsedCommand
+type ParsedArg = shellparser.ParsedArg
+type ParsedRedirect = shellparser.ParsedRedirect
+type ParsedRun = shellparser.ParsedRun
 
 // Span represents a text span
 type Span struct {
@@ -201,7 +178,7 @@ func parseRunBlocksInSteps(ctx context.Context, steps []interface{}) {
 			shell = shellVal
 		}
 
-		parsed := parseRunBlock(runScript, shell)
+		parsed := shellparser.Parse(runScript, shell)
 		if parsed.Error != nil {
 			contextLogger.Err(parsed.Error).Msg("Failed to parse shell expressions in run block")
 		}
