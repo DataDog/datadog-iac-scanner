@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/stretchr/testify/require"
@@ -70,6 +70,13 @@ func TestExpandValues_FallbackOnMalformedOrBashSyntax(t *testing.T) {
 		{"known plain ref inside operator operand", `${#H} ${A:-$H} ${A:-'$H'} ${A:-"$H"}`, '\\', `${#H} ${A:-hello} ${A:-'$H'} ${A:-"hello"}`},
 		{"non-plain operators on known var untouched", `${#H} ${H:-other} ${H/h/H}`, '\\', `${#H} ${H:-other} ${H/h/H}`},
 		{"single-pass in fallback", `${#H} $X ${X}`, '\\', `${#H} literal $H literal $H`},
+		{"bash substring expands variable operand", `${H:$H} ${H:0:$H}`, '\\', `${H:hello} ${H:0:hello}`},
+		{"bash substring preserves quote boundaries", `${H:"$H"} '$H'`, '\\', `${H:"hello"} '$H'`},
+		{"bash substring preserves single-quoted operand", `${H:'$H'} '$H'`, '\\', `${H:'$H'} '$H'`},
+		{"bash substring preserves escaped operand", `${H:\$H} '$H'`, '\\', `${H:\$H} '$H'`},
+		{"bash assign-default expands operand", `${H:=$H} ${H=$H}`, '\\', `${H:=hello} ${H=hello}`},
+		{"unsupported braced quotes stay balanced", `${"$H"} '$H' ${'$H'} '$H'`, '\\', `${"hello"} '$H' ${'$H'} '$H'`},
+		{"unsupported braced dollar preserves special param and expands trailing ref", `${$H} ${H$H}`, '\\', `${$H} ${Hhello}`},
 	}
 
 	for _, tt := range tests {
@@ -114,19 +121,27 @@ func TestExpandValues_PreservesBadBytesWithoutDiagnostics(t *testing.T) {
 	require.Empty(t, stderr.String(), "expansion must not write lexer diagnostics to stderr")
 }
 
+// Malformed words must scale linearly with input size (no quadratic quote-repair
+// rounds). Allocation scaling is checked rather than wall time so the test stays
+// deterministic under -race and on loaded CI runners.
 func TestExpandValues_MalformedInputIsLinear(t *testing.T) {
-	const size = 100 * 1024
 	pattern := `"it's ${A:-x} isn't $H `
-	source := "$H ${#BROKEN} " + strings.Repeat(pattern, size/len(pattern))
 	expander := newWordExpander('\\', true)
-	scope := map[string]string{"H": "hello"}
+	scope := newTestScope(map[string]string{"H": "hello"})
 
-	start := time.Now()
-	got := expandValues(expander, []string{source}, newTestScope(scope))[0]
-	elapsed := time.Since(start)
+	measure := func(size int) uint64 {
+		source := "$H ${#BROKEN} " + strings.Repeat(pattern, size/len(pattern))
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		got := expandValues(expander, []string{source}, scope)[0]
+		runtime.ReadMemStats(&after)
+		require.True(t, strings.HasPrefix(got, "hello ${#BROKEN} "))
+		return after.TotalAlloc - before.TotalAlloc
+	}
 
-	require.Less(t, elapsed, 100*time.Millisecond)
-	require.True(t, strings.HasPrefix(got, "hello ${#BROKEN} "))
+	small, large := measure(16<<10), measure(64<<10)
+	require.Less(t, large, small*6, "4x malformed input must not allocate quadratically")
 }
 
 // BuildKit rebuilds an unset reference with an operator from its parsed parts,

@@ -48,7 +48,8 @@ func expandValues(e *wordExpander, values []string, env *envNode) []string {
 			continue
 		}
 		scan := scanWord(value, e.escape)
-		if deps := unresolvedDeps(scan.refs, env); len(deps) > 0 {
+		plainOnly := !canUseLexer(value, scan, env)
+		if deps := unresolvedDeps(scan.refs, env, plainOnly); len(deps) > 0 {
 			resolveBindings(deps)
 		}
 		values[i] = e.expandResolved(value, scan, env)
@@ -297,6 +298,7 @@ func (s *wordScanner) scanBraced(pos int) int {
 		return nameStart + 1
 	case '{', ':':
 		s.result.syntaxErr = true
+		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
 		return nameStart
 	}
 
@@ -331,28 +333,34 @@ func (s *wordScanner) scanOperator(pos int, name string, nameEnd int, op byte) i
 		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '/'})
 		return next
 	case ':':
-		s.result.refs = append(s.result.refs, wordRef{start: pos, name: name})
 		if next >= len(s.value) {
 			s.result.syntaxErr = true
 			return len(s.value)
 		}
 		op2 := s.value[next]
-		if op2 != '+' && op2 != '-' && op2 != '?' {
-			s.result.syntaxErr = true
-			if op2 == '}' {
-				return next + 1
-			}
+		if op2 == '+' || op2 == '-' || op2 == '?' {
+			s.result.refs = append(s.result.refs, wordRef{start: pos, name: name})
+			s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
+			return next + 1
 		}
+		s.result.syntaxErr = true
+		if op2 == '}' {
+			return next + 1
+		}
+		// Keep the first operand byte (e.g. $, ", ', \) so fallback scanning
+		// preserves references and quote boundaries in unsupported : forms.
 		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
-		return next + 1
+		return next
 	case '+', '-', '?', '#', '%':
 		s.result.refs = append(s.result.refs, wordRef{start: pos, name: name})
 		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
 		return next
 	default:
+		// Reprocess the byte at nameEnd inside ctxParam so opening quotes,
+		// escapes, or $ references in unsupported forms stay balanced.
 		s.result.syntaxErr = true
 		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
-		return next
+		return nameEnd
 	}
 }
 

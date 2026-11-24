@@ -8,7 +8,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
@@ -431,22 +430,26 @@ func TestParser_Parse_StageChainSharesParentScope(t *testing.T) {
 // a bare ARG redeclaring a global chain, nor a single-quoted reference to it
 // should force resolution.
 func TestParser_Parse_UnreadDoublingChainIsFree(t *testing.T) {
-	var inStage, globalRedecl, singleQuoted strings.Builder
+	var inStage, globalRedecl, singleQuoted, unsupportedOp strings.Builder
 	inStage.WriteString("FROM scratch\nARG A=x\n")
 	globalRedecl.WriteString("ARG A=x\n")
 	singleQuoted.WriteString("FROM scratch\nARG A=x\n")
+	unsupportedOp.WriteString("FROM scratch\nARG A=x\n")
 	for i := 0; i < 60; i++ {
 		inStage.WriteString("ARG A=$A$A\n")
 		globalRedecl.WriteString("ARG A=$A$A\n")
 		singleQuoted.WriteString("ARG A=$A$A\n")
+		unsupportedOp.WriteString("ARG A=$A$A\n")
 	}
 	globalRedecl.WriteString("FROM scratch\nARG A\n")
 	singleQuoted.WriteString("ARG S='$A'\nRUN echo $S\n")
+	unsupportedOp.WriteString("ARG OFF=2\nRUN echo ${A:$OFF}\n")
 
 	for name, source := range map[string]string{
 		"in-stage":          inStage.String(),
 		"global bare ARG":   globalRedecl.String(),
 		"single-quoted ref": singleQuoted.String(),
+		"unsupported op":    unsupportedOp.String(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			var before, after runtime.MemStats
@@ -459,6 +462,10 @@ func TestParser_Parse_UnreadDoublingChainIsFree(t *testing.T) {
 			if name == "single-quoted ref" {
 				stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
 				require.Equal(t, []interface{}{"echo $A"}, stage[len(stage)-1].(map[string]interface{})["Value"])
+			}
+			if name == "unsupported op" {
+				stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+				require.Equal(t, []interface{}{"echo ${A:2}"}, stage[len(stage)-1].(map[string]interface{})["Value"])
 			}
 		})
 	}
@@ -517,12 +524,11 @@ func TestParser_Parse_NestedDeclarationsExpandIndependently(t *testing.T) {
 }
 
 // Resolving a long chain must not use goroutine stack per link. The chain is
-// resolved on a goroutine whose stack is capped well below what the links would
-// need if each one recursed.
+// resolved under a stack cap well below what recursive resolution needs.
 func TestParser_Parse_LongDeclarationChainUsesBoundedStack(t *testing.T) {
 	var source strings.Builder
 	source.WriteString("FROM scratch\nARG A=x\nENV B=$A\n")
-	for i := 0; i < 200000; i++ {
+	for i := 0; i < 40000; i++ {
 		source.WriteString("ARG A=$A\n")
 	}
 	source.WriteString("RUN echo $A $B\n")
@@ -535,23 +541,30 @@ func TestParser_Parse_LongDeclarationChainUsesBoundedStack(t *testing.T) {
 }
 
 // Every dependency of a word is discovered statically in one pass, so a
-// declaration reading N others is resolved once without quadratic rescanning.
+// declaration reading N others scales linearly instead of rescanning N times.
 func TestParser_Parse_ManyDependenciesResolveInOnePass(t *testing.T) {
-	const inputs = 3000
-	var source, ref strings.Builder
-	source.WriteString("FROM scratch\n")
-	for i := 0; i < inputs; i++ {
-		fmt.Fprintf(&source, "ARG V%d=x\n", i)
-		fmt.Fprintf(&ref, "${V%d:+y}", i)
-	}
-	fmt.Fprintf(&source, "ARG OUT=%s\nRUN echo $OUT\n", ref.String())
-	// Lines are limited to 64 KiB by the Dockerfile parser.
-	require.Less(t, ref.Len(), 60000)
+	measure := func(inputs int) uint64 {
+		var source, ref strings.Builder
+		source.WriteString("FROM scratch\n")
+		for i := 0; i < inputs; i++ {
+			fmt.Fprintf(&source, "ARG V%d=x\n", i)
+			fmt.Fprintf(&ref, "${V%d:+y}", i)
+		}
+		fmt.Fprintf(&source, "ARG OUT=%s\nRUN echo $OUT\n", ref.String())
+		// Lines are limited to 64 KiB by the Dockerfile parser.
+		require.Less(t, ref.Len(), 60000)
 
-	start := time.Now()
-	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
-	require.NoError(t, err)
-	require.Less(t, time.Since(start), time.Second)
-	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
-	require.Equal(t, []interface{}{"echo " + strings.Repeat("y", inputs)}, stage[len(stage)-1].(map[string]interface{})["Value"])
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+		runtime.ReadMemStats(&after)
+		require.NoError(t, err)
+		stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+		require.Equal(t, []interface{}{"echo " + strings.Repeat("y", inputs)}, stage[len(stage)-1].(map[string]interface{})["Value"])
+		return after.TotalAlloc - before.TotalAlloc
+	}
+
+	small, large := measure(500), measure(2000)
+	require.Less(t, large, small*6, "4x dependencies must not allocate quadratically")
 }

@@ -140,7 +140,8 @@ func resolveBindings(roots []*binding) {
 			top.pushed = true
 			if top.b.expander.mayReference(top.b.raw) {
 				top.scan = scanWord(top.b.raw, top.b.expander.escape)
-				for _, dep := range unresolvedDeps(top.scan.refs, top.b.env) {
+				plainOnly := !canUseLexer(top.b.raw, top.scan, top.b.env)
+				for _, dep := range unresolvedDeps(top.scan.refs, top.b.env, plainOnly) {
 					stack = append(stack, frame{b: dep})
 				}
 			}
@@ -159,13 +160,18 @@ func resolveBindings(roots []*binding) {
 }
 
 // unresolvedDeps returns the distinct unresolved bindings referenced by refs.
-func unresolvedDeps(refs []wordRef, env *envNode) []*binding {
+// When plainOnly is true, the word will take the plain-reference fallback, so
+// non-plain references are ignored and their bindings stay lazy.
+func unresolvedDeps(refs []wordRef, env *envNode, plainOnly bool) []*binding {
 	if env == nil || len(refs) == 0 {
 		return nil
 	}
 	var deps []*binding
 	var seen map[*binding]struct{}
 	for _, ref := range refs {
+		if plainOnly && (!ref.plain || !isIdentifierName(ref.name)) {
+			continue
+		}
 		dep, ok := env.get(ref.name)
 		if !ok || dep.done {
 			continue
