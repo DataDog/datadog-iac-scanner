@@ -31,12 +31,8 @@ func detectCloudFormationLoopLine(file *model.FileMetadata, searchKey string, ou
 	if len(path) < 2 {
 		return model.VulnerabilityLines{}, false
 	}
-	resources, _ := file.LineInfoDocument["Resources"].(map[string]interface{})
-	lines, _ := resources[lineInfoKey].(map[string]*model.LineObject)
-	marker := lines["_dd_"+path[1]]
-	// The parser gives a generated resource mapping its loop's three
-	// sequence-argument markers. A written resource mapping has no such array.
-	if _, mapping := resources[path[1]].(map[string]interface{}); !mapping || marker == nil || len(marker.Arr) != 3 {
+	loopLine, ok := model.CloudFormationResourceLoopLine(file.LineInfoDocument, path[1])
+	if !ok {
 		return model.VulnerabilityLines{}, false
 	}
 	if len(path) > 2 {
@@ -44,7 +40,7 @@ func detectCloudFormationLoopLine(file *model.FileMetadata, searchKey string, ou
 			return result, true
 		}
 	}
-	result, err := sourceLines(file, marker.Line, outputLines)
+	result, err := sourceLines(file, loopLine, outputLines)
 	return result, err == nil
 }
 

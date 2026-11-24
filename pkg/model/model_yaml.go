@@ -258,6 +258,20 @@ func expandForEachEntry(resources map[string]interface{}, spec interface{}, para
 	return true
 }
 
+// CloudFormationResourceLoopLine returns the written loop key line for a
+// generated resource in an annotated YAML document.
+func CloudFormationResourceLoopLine(doc map[string]interface{}, logicalID string) (int, bool) {
+	resources, _ := doc["Resources"].(map[string]interface{})
+	lines, _ := resources["_dd_lines"].(map[string]*LineObject)
+	marker := lines["_dd_"+logicalID]
+	// A generated resource mapping inherits its loop's three argument markers.
+	// A written resource mapping has no such array.
+	if _, mapping := resources[logicalID].(map[string]interface{}); !mapping || marker == nil || len(marker.Arr) != 3 {
+		return 0, false
+	}
+	return marker.Line, true
+}
+
 func parseForEachSpec(
 	raw interface{},
 	parameters map[string]interface{},

@@ -977,6 +977,32 @@ Resources:
 	}
 }
 
+func TestCloudFormationResourceLoopLine(t *testing.T) {
+	const source = `Transform: AWS::LanguageExtensions
+Resources:
+  Fn::ForEach::Buckets:
+    - Colour
+    - [Blue]
+    - Bucket${Colour}:
+        Type: AWS::S3::Bucket
+  WrittenBucket:
+    Type: AWS::S3::Bucket
+  Sequence: [One, Two, Three]
+`
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+	var doc Document
+	require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+
+	line, ok := CloudFormationResourceLoopLine(doc, "BucketBlue")
+	require.True(t, ok)
+	require.Equal(t, 3, line)
+	for _, id := range []string{"WrittenBucket", "Sequence", "MissingBucket"} {
+		_, ok := CloudFormationResourceLoopLine(doc, id)
+		require.False(t, ok, "resource %s", id)
+	}
+}
+
 func TestDocument_UnmarshalYAML_CloudFormationForEachDuplicateID(t *testing.T) {
 	ctx := context.Background()
 
