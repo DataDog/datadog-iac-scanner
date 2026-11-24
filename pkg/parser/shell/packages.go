@@ -56,14 +56,19 @@ const (
 	subcmdIn        = "in"
 	subcmdReinstall = "reinstall"
 	subcmdRm        = "rm"
+	optYes          = "--yes"
+	optAssumeYes    = "--assume-yes"
 )
 
 var (
-	versionPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`[A-Za-z0-9_+-]+[-:]\$.+`),
-		regexp.MustCompile(`[A-Za-z0-9_+-]+[:-](\d+.)+\d+`),
-		regexp.MustCompile(`[A-Za-z0-9_+-]+(\[[^]]+\])?~?=.+`),
+	aptApkZypperVersionPattern = regexp.MustCompile(`^[A-Za-z0-9_.+-]+~?=.+$`)
+	pipVersionPattern          = regexp.MustCompile(`^[A-Za-z0-9_.-]+(\[[^]]+\])?(===?|~=).+$`)
+	rpmVersionPatterns         = []*regexp.Regexp{
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-(\d+:)?(\d+\.)+\d+`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\$.+`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+=.+`),
 	}
+	gemVersionPattern      = regexp.MustCompile(`^[A-Za-z0-9_.-]+:(\d|\$).+`)
 	nonRegistryNodePackage = regexp.MustCompile(`^(git(\+|:|@)|https?://|ssh://|-|\./|\.\./|/|file:|link:|workspace:|github:)`)
 	pipExecutable          = regexp.MustCompile(`^pip[0-9.]*$`)
 	pythonExecutable       = regexp.MustCompile(`^python[0-9.]*$`)
@@ -77,9 +82,18 @@ func set(words string) map[string]bool {
 	return result
 }
 
-func versioned(arguments []Value, index int, _ []Option) bool {
-	for _, pattern := range versionPatterns {
-		if pattern.MatchString(arguments[index].Text) {
+func aptApkZypperPinned(arguments []Value, index int, _ []Option) bool {
+	return aptApkZypperVersionPattern.MatchString(arguments[index].Text)
+}
+
+func pipPinned(arguments []Value, index int, _ []Option) bool {
+	return pipVersionPattern.MatchString(arguments[index].Text)
+}
+
+func rpmPinned(arguments []Value, index int, _ []Option) bool {
+	text := arguments[index].Text
+	for _, pattern := range rpmVersionPatterns {
+		if pattern.MatchString(text) {
 			return true
 		}
 	}
@@ -90,28 +104,7 @@ func registryName(token string) bool {
 	return token != "" && (token[0] >= 'a' && token[0] <= 'z' || token[0] >= 'A' && token[0] <= 'Z' || token[0] >= '0' && token[0] <= '9')
 }
 
-func hasOption(options []Option, names ...string) bool {
-	for _, option := range options {
-		for _, name := range names {
-			if option.Name == name {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func bundles(options []Option, letter string) bool {
-	for _, option := range options {
-		short := strings.TrimPrefix(option.Name, "-")
-		if !strings.HasPrefix(option.Name, "--") && short != option.Name && strings.Contains(short, letter) && option.Value == "" {
-			return true
-		}
-	}
-	return false
-}
-
-func aptBool(value string) (val, ok bool) {
+func parseOptionBool(value string) (val, ok bool) {
 	switch strings.ToLower(value) {
 	case "", "true", "yes", "1":
 		return true, true
@@ -138,14 +131,14 @@ func aptQuietDelta(option Option) int {
 
 func aptAssumeYesOption(option Option) (val, ok bool) {
 	switch option.Name {
-	case "--yes", "--assume-yes":
-		return aptBool(option.Value)
+	case optYes, optAssumeYes:
+		return parseOptionBool(option.Value)
 	case "--no-yes", "--no-assume-yes":
 		return false, true
 	case "-o", "--option":
 		key, raw, found := strings.Cut(option.Value, "=")
 		if found && strings.EqualFold(key, "APT::Get::Assume-Yes") {
-			return aptBool(raw)
+			return parseOptionBool(raw)
 		}
 	default:
 		if !strings.HasPrefix(option.Name, "--") && strings.HasPrefix(option.Name, "-") &&
@@ -169,17 +162,43 @@ func aptAssumeYes(options []Option) bool {
 }
 
 func rpmAssumeYes(options []Option) bool {
-	return hasOption(options, "--assumeyes", "--assume-yes", "--yes", "-yes") || bundles(options, "y")
+	assumeYes := false
+	for _, option := range options {
+		switch option.Name {
+		case "--assumeyes", optAssumeYes, optYes, "-yes":
+			if val, ok := parseOptionBool(option.Value); ok {
+				assumeYes = val
+			}
+		case "--assumeno":
+			assumeYes = false
+		default:
+			if !strings.HasPrefix(option.Name, "--") && strings.HasPrefix(option.Name, "-") &&
+				option.Value == "" && strings.Contains(option.Name[1:], "y") {
+				assumeYes = true
+			}
+		}
+	}
+	return assumeYes
 }
 
 func zypperAssumeYes(options []Option) bool {
-	return hasOption(options, "-y", "--no-confirm", "--non-interactive", "-n")
+	assumeYes := false
+	for _, option := range options {
+		switch option.Name {
+		case "-y", "--no-confirm", "--non-interactive", "-n":
+			if val, ok := parseOptionBool(option.Value); ok {
+				assumeYes = val
+			}
+		}
+	}
+	return assumeYes
 }
 
 func never([]Option) bool { return false }
 
 func nodePackage(token string) bool {
-	return token != "" && !nonRegistryNodePackage.MatchString(token)
+	name, _, _ := strings.Cut(token, "@")
+	return token != "" && !strings.Contains(name, "/") && !nonRegistryNodePackage.MatchString(token)
 }
 
 func nodePinned(arguments []Value, index int, _ []Option) bool {
@@ -187,12 +206,13 @@ func nodePinned(arguments []Value, index int, _ []Option) bool {
 	if strings.HasPrefix(name, "@") {
 		_, name, _ = strings.Cut(name, "/")
 	}
-	return strings.Contains(name, "@")
+	_, version, hasAt := strings.Cut(name, "@")
+	return hasAt && version != ""
 }
 
-// gemPinned accepts a version given right after the gem it applies to.
-func gemPinned(arguments []Value, index int, options []Option) bool {
-	if versioned(arguments, index, options) {
+// gemPinned accepts a version given inline (name:1.0) or right after the gem it applies to.
+func gemPinned(arguments []Value, index int, _ []Option) bool {
+	if gemVersionPattern.MatchString(arguments[index].Text) {
 		return true
 	}
 	if index+1 >= len(arguments) {
@@ -216,8 +236,8 @@ var (
 			subcmdReinstall: actionInstall, "purge": actionRemove, "autoremove": actionRemove,
 			"dist-upgrade": actionUpgrade, "full-upgrade": actionUpgrade, "autoclean": actionClean,
 		},
-		values:  set("-o --option -c --config-file -t --target-release"),
-		operand: registryName, pinned: versioned, yes: aptAssumeYes,
+		values:  set("-o --option -c --config-file -t --target-release -a --host-architecture"),
+		operand: registryName, pinned: aptApkZypperPinned, yes: aptAssumeYes,
 	}
 	rpmGrammar = &managerGrammar{
 		actions: map[string]string{
@@ -227,14 +247,14 @@ var (
 			"erase": actionRemove, subcmdRm: actionRemove,
 		},
 		values:  set(rpmValues),
-		operand: registryName, pinned: versioned, yes: rpmAssumeYes,
+		operand: registryName, pinned: rpmPinned, yes: rpmAssumeYes,
 	}
 	grammars = map[string]*managerGrammar{
 		"apt-get": aptGrammar, "apt": aptGrammar, "aptitude": aptGrammar,
 		"apk": {
 			actions: map[string]string{subcmdAdd: actionInstall, "del": actionRemove},
 			values:  set("--virtual -t --repository -X --root -p --arch --keys-dir --cache-dir"),
-			operand: registryName, pinned: versioned, yes: never,
+			operand: registryName, pinned: aptApkZypperPinned, yes: never,
 		},
 		"yum": rpmGrammar, "dnf": rpmGrammar, "microdnf": rpmGrammar, "tdnf": rpmGrammar,
 		"zypper": {
@@ -244,19 +264,20 @@ var (
 			},
 			values: set("--repo -r --root -R --releasever --from --config -c --reposd-dir --cache-dir --raw-cache-dir " +
 				"--solv-cache-dir --pkg-cache-dir --type -t --userdata --plus-repo --download --download-dir --solver-focus"),
-			operand: registryName, pinned: versioned, yes: zypperAssumeYes,
+			operand: registryName, pinned: aptApkZypperPinned, yes: zypperAssumeYes,
 		},
 		pip: {
 			values: set("--index-url -i --extra-index-url --find-links -f --trusted-host --target -t --platform " +
 				"--python-version --python --implementation --abi --prefix --root --root-user-action --src --no-binary " +
-				"--only-binary --proxy --cert --client-cert --cache-dir --log --exists-action --report -r -c --requirement " +
+				"--only-binary --proxy --cert --client-cert --cache-dir --log --log-file --exists-action --report -r -c --requirement " +
 				"--constraint --upgrade-strategy --progress-bar --config-settings -C --global-option --group " +
-				"--keyring-provider --use-feature --use-deprecated --build-constraint --requirements-from-script -e --editable"),
-			operand: registryName, pinned: versioned, yes: never, editable: true,
+				"--keyring-provider --use-feature --use-deprecated --build-constraint --requirements-from-script " +
+				"-e --editable --timeout --default-timeout --retries"),
+			operand: registryName, pinned: pipPinned, yes: never, editable: true,
 		},
 		"npm": {
 			actions: map[string]string{"i": actionInstall, subcmdAdd: actionInstall},
-			values:  set(nodeValues + "--workspace -w --omit --include"),
+			values:  set(nodeValues + "--workspace -w --omit --include --location --os --cpu --libc"),
 			operand: nodePackage, pinned: nodePinned, yes: never,
 		},
 		"pnpm": {
@@ -315,21 +336,47 @@ func pythonPipOffset(args []Value) (offset int, ok bool) {
 			return 0, false
 		}
 		text := args[i].Text
-		switch {
-		case text == "-m":
-			if i+1 < len(args) && args[i+1].Known && pipExecutable.MatchString(args[i+1].Text) {
-				return i + 2, true
+		if text == "-" || text == optionEnd || !strings.HasPrefix(text, "-") {
+			return 0, false
+		}
+		if strings.HasPrefix(text, "--") {
+			if text == "--check-hash-based-pycs" {
+				i++
 			}
-			return 0, false
-		case strings.HasPrefix(text, "-m"):
-			return i + 1, pipExecutable.MatchString(text[2:])
-		case text == commandFlag || text == "-" || text == optionEnd || !strings.HasPrefix(text, "-"):
-			return 0, false
-		case text == "-W" || text == "-X" || text == "--check-hash-based-pycs":
+			continue
+		}
+		offset, done, consumedNext := pythonShortOption(text[1:], args, i)
+		if done {
+			return offset, offset > 0
+		}
+		if consumedNext {
 			i++
 		}
 	}
 	return 0, false
+}
+
+func pythonShortOption(flags string, args []Value, index int) (offset int, done, consumedNext bool) {
+	for pos, r := range flags {
+		switch r {
+		case 'm':
+			if rest := flags[pos+1:]; rest != "" {
+				if pipExecutable.MatchString(rest) {
+					return index + 1, true, false
+				}
+				return 0, true, false
+			}
+			if index+1 < len(args) && args[index+1].Known && pipExecutable.MatchString(args[index+1].Text) {
+				return index + 2, true, false
+			}
+			return 0, true, false
+		case 'c':
+			return 0, true, false
+		case 'W', 'X':
+			return 0, false, pos+1 == len(flags)
+		}
+	}
+	return 0, false, false
 }
 
 func (grammar *managerGrammar) read(arguments []Value, offset int) PackageCommand {

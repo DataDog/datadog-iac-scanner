@@ -87,6 +87,17 @@ func TestAnalyzeControlFlow(t *testing.T) {
 	require.Len(t, result.Pipelines, 1)
 	require.False(t, result.Pipelines[0].Pipefail)
 	require.True(t, result.Pipelines[0].Known)
+
+	result = Analyze("set -o pipefail | { curl x | sh; }", "bash")
+	require.Len(t, result.Pipelines, 2)
+	require.False(t, result.Pipelines[1].Pipefail)
+	require.True(t, result.Pipelines[1].Known)
+
+	result = Analyze("bash -c -- 'pip install flask'", "bash")
+	require.True(t, result.Complete, result.Diagnostics)
+	require.Len(t, result.PackageCommands, 1)
+	require.Equal(t, "pip", result.PackageCommands[0].Manager)
+	require.Equal(t, "install", result.PackageCommands[0].Action)
 }
 
 func TestAnalyzeCompleteness(t *testing.T) {
@@ -144,6 +155,11 @@ func TestAnalyzeSuccessPredecessors(t *testing.T) {
 			script: "! apt-get update && apt-get install curl",
 			want:   [][]int{nil, nil},
 		},
+		{
+			name:   "block ending in unknown status does not attribute success to earlier call",
+			script: "{ apt-get update; false || true; } && apt-get install curl",
+			want:   [][]int{nil, nil, nil, nil},
+		},
 	}
 
 	for _, tc := range tests {
@@ -160,8 +176,8 @@ func TestAnalyzeSuccessPredecessors(t *testing.T) {
 
 func TestAnalyzeOrderedPredecessors(t *testing.T) {
 	for _, tc := range []struct {
-		name, script string
-		want         [][]int
+		name, script, shell string
+		want                [][]int
 	}{
 		{
 			name:   "ordinary sequential cleanup is ordered",
@@ -189,13 +205,23 @@ func TestAnalyzeOrderedPredecessors(t *testing.T) {
 			want:   [][]int{nil, nil},
 		},
 		{
+			name:   "coprocesses are not ordered before subsequent calls",
+			script: "coproc { apt-get update; }; apt-get install curl",
+			shell:  "bash",
+			want:   [][]int{nil, nil},
+		},
+		{
 			name:   "conditional calls are not guaranteed predecessors of later commands",
 			script: "false && apt-get update; apt-get install curl",
 			want:   [][]int{nil, {0}, {0}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			facts := Analyze(tc.script, "sh")
+			shellName := tc.shell
+			if shellName == "" {
+				shellName = "sh"
+			}
+			facts := Analyze(tc.script, shellName)
 			require.True(t, facts.Complete, facts.Diagnostics)
 			require.Len(t, facts.Calls, len(tc.want))
 			for i, predecessors := range tc.want {
@@ -295,14 +321,16 @@ func TestAnalyzePackageCommands(t *testing.T) {
 		{"apt-get -qq install -o Dpkg::Options::=--force-confold curl=7.0 git", "apt-get", "install", true, true,
 			[]pkg{{"curl=7.0", true}, {"git", false}}},
 		{"apt-get install -y --no-install-recommends curl", "apt-get", "install", true, true, []pkg{{"curl", false}}},
-		{"apt-get install 7zip --assume-yes=false", "apt-get", "install", false, true, []pkg{{"7zip", false}}},
+		{"apt-get install libgtk-3-0 libpcre2-8-0 7zip --assume-yes=false", "apt-get", "install", false, true,
+			[]pkg{{"libgtk-3-0", false}, {"libpcre2-8-0", false}, {"7zip", false}}},
 		{"apt-get install -y --assume-yes=false curl", "apt-get", "install", false, true, []pkg{{"curl", false}}},
 		{"apk add --virtual .build gcc~=12", "apk", "install", false, true, []pkg{{"gcc~=12", true}}},
 		{"dnf --setopt=x=1 --enablerepo epel in -y nginx-1.2.3", "dnf", "install", true, true, []pkg{{"nginx-1.2.3", true}}},
 		{"zypper --non-interactive in vim", "zypper", "install", true, true, []pkg{{"vim", false}}},
+		{"pip --timeout 60 --retries 3 install requests", "pip", "install", false, true, []pkg{{"requests", false}}},
 		{"python3 -m pip install -r reqs.txt -e git+https://example.com/x.git 'requests[socks]==2.31.0'", "pip", "install", false, true,
 			[]pkg{{"git+https://example.com/x.git", false}, {"requests[socks]==2.31.0", true}}},
-		{"npm i --registry https://registry.example.com --omit dev @scope/a@1 git-rev-sync ./local https://example.com/pkg.tgz", "npm", "install", false, true,
+		{"npm i --registry https://registry.example.com --omit dev @scope/a@1 git-rev-sync user/repo ./local https://example.com/pkg.tgz", "npm", "install", false, true,
 			[]pkg{{"@scope/a@1", true}, {"git-rev-sync", false}}},
 		{"gem install rails -v 7.0 puma --version=6.0.0 rack -v3.0.0 rake", "gem", "install", false, true,
 			[]pkg{{"rails", true}, {"puma", true}, {"rack", true}, {"rake", false}}},
@@ -329,6 +357,7 @@ func TestAnalyzePackageCommands(t *testing.T) {
 	}
 	require.Empty(t, Analyze("f() { pip install x; }; echo pip install x", "sh").PackageCommands)
 	require.Empty(t, Analyze("python3 -c 'print(1)' -m pip install flask", "sh").PackageCommands)
+	require.Empty(t, Analyze("python3 -c'print(1)' -m pip install flask", "sh").PackageCommands)
 }
 
 func TestAnalyzePackageCleanupChainsAreOrdered(t *testing.T) {

@@ -432,9 +432,7 @@ func (b *factBuilder) script(script, shellName string, scope int, deferred, cond
 func (b *factBuilder) walkStmts(stmts []*syntax.Stmt, source string, scope int, deferred, conditional bool, depth, nesting int) int {
 	last := -1
 	for _, stmt := range stmts {
-		if result := b.walkStmt(stmt, source, scope, deferred, conditional, depth, nesting); result >= 0 {
-			last = result
-		}
+		last = b.walkStmt(stmt, source, scope, deferred, conditional, depth, nesting)
 	}
 	return last
 }
@@ -449,14 +447,14 @@ func (b *factBuilder) walkStmt(stmt *syntax.Stmt, source string, scope int, defe
 	}
 	b.nodes++
 	stmtScope := scope
-	if stmt.Background {
+	if stmt.Background || stmt.Coprocess {
 		stmtScope = b.scope(scope, "background")
 	}
 	for _, redir := range stmt.Redirs {
 		b.walkSubstitutions(redir, source, stmtScope, deferred, conditional, depth, nesting+1)
 	}
 	last := b.walkCmd(stmt.Cmd, source, stmtScope, deferred, conditional, depth, nesting+1)
-	if stmt.Background || stmt.Negated {
+	if stmt.Background || stmt.Coprocess || stmt.Negated {
 		return -1
 	}
 	return last
@@ -479,13 +477,15 @@ func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, defe
 		return b.walkCase(node, source, scope, deferred, conditional, depth, nesting)
 	case *syntax.Subshell:
 		subScope := b.scope(scope, "subshell")
-		return b.walkStmts(node.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
+		b.walkStmts(node.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
+		return -1
 	case *syntax.Block:
 		return b.walkStmts(node.Stmts, source, scope, deferred, conditional, depth, nesting+1)
 	case *syntax.FuncDecl:
 		b.defineFunction(node, scope, conditional)
 		fnScope := b.scope(scope, "function")
-		return b.walkStmt(node.Body, source, fnScope, true, conditional, depth, nesting+1)
+		b.walkStmt(node.Body, source, fnScope, true, conditional, depth, nesting+1)
+		return -1
 	case *syntax.CallExpr:
 		return b.walkCallExpr(node, source, scope, deferred, conditional, depth, nesting)
 	case *syntax.DeclClause:
@@ -497,7 +497,9 @@ func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, defe
 	case *syntax.TimeClause:
 		return b.walkStmt(node.Stmt, source, scope, deferred, conditional, depth, nesting+1)
 	case *syntax.CoprocClause:
-		return b.walkStmt(node.Stmt, source, scope, deferred, conditional, depth, nesting+1)
+		coprocScope := b.scope(scope, "coprocess")
+		b.walkStmt(node.Stmt, source, coprocScope, deferred, conditional, depth, nesting+1)
+		return -1
 	default:
 		b.walkSubstitutions(node, source, scope, deferred, conditional, depth, nesting+1)
 		return -1
@@ -512,8 +514,11 @@ func (b *factBuilder) walkBinaryCmd(node *syntax.BinaryCmd, source string, scope
 			Scope: pipeScope, Shell: options.shell, Pipefail: options.pipefail,
 			Known: options.known, Deferred: deferred, Span: b.nodeSpan(node),
 		})
-		stages := collectPipelineStages(node)
-		return b.walkStmts(stages, source, pipeScope, deferred, conditional, depth, nesting+1)
+		for _, stage := range collectPipelineStages(node) {
+			stageScope := b.scope(pipeScope, "pipeline_stage")
+			b.walkStmt(stage, source, stageScope, deferred, conditional, depth, nesting+1)
+		}
+		return -1
 	}
 	left := b.walkStmt(node.X, source, scope, deferred, conditional, depth, nesting+1)
 	firstRight := len(b.result.Calls)
@@ -556,13 +561,24 @@ func (b *factBuilder) walkConditionalScope(scope int, fn func(condScope int)) in
 
 func (b *factBuilder) walkIf(node *syntax.IfClause, source string, scope int, deferred, conditional bool, depth, nesting int) int {
 	return b.walkConditionalScope(scope, func(condScope int) {
+		initial := b.options[condScope]
+		changed := false
 		for cur, first := node, true; cur != nil; cur, first = cur.Else, false {
 			condConditional := true
 			if first {
 				condConditional = conditional
 			}
+			b.options[condScope] = initial
 			b.walkStmts(cur.Cond, source, condScope, deferred, condConditional, depth, nesting+1)
 			b.walkStmts(cur.Then, source, condScope, deferred, true, depth, nesting+1)
+			if b.options[condScope] != initial {
+				changed = true
+			}
+		}
+		if changed {
+			tainted := initial
+			tainted.known = false
+			b.options[condScope] = tainted
 		}
 	})
 }
@@ -760,12 +776,19 @@ func shellScriptIndex(words []Value, name string) int {
 	if name == suCommand {
 		return suScriptIndex(words)
 	}
+	hasCommand := false
 	for i := 1; i < len(words); i++ {
 		if !words[i].Known {
+			if hasCommand {
+				return i
+			}
 			return -1
 		}
 		option := words[i].Text
-		if option == optionEnd {
+		if option == optionEnd || option == "-" {
+			if hasCommand && i+1 < len(words) {
+				return i + 1
+			}
 			return -1
 		}
 		if shellValueOptions[option] {
@@ -773,12 +796,13 @@ func shellScriptIndex(words []Value, name string) int {
 			continue
 		}
 		if commandOption(option) {
-			if i+1 < len(words) {
-				return i + 1
-			}
-			return -1
+			hasCommand = true
+			continue
 		}
 		if !strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "+") {
+			if hasCommand {
+				return i
+			}
 			return -1
 		}
 	}
@@ -788,8 +812,14 @@ func shellScriptIndex(words []Value, name string) int {
 var shellValueOptions = map[string]bool{shellOptionValue: true, "+o": true, "-O": true, "+O": true, "--rcfile": true, "--init-file": true}
 
 func suScriptIndex(words []Value) int {
-	for i := 1; i+1 < len(words); i++ {
-		if words[i].Known && (words[i].Text == commandFlag || words[i].Text == "--command") {
+	for i := 1; i < len(words); i++ {
+		if !words[i].Known {
+			return -1
+		}
+		if words[i].Text == optionEnd {
+			return -1
+		}
+		if (words[i].Text == commandFlag || words[i].Text == "--command") && i+1 < len(words) {
 			return i + 1
 		}
 	}
