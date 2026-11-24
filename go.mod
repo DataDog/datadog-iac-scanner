@@ -44,7 +44,6 @@ require (
 	github.com/zclconf/go-cty-yaml v1.1.0
 	golang.org/x/net v0.62.0
 	golang.org/x/text v0.44.0
-	golang.org/x/tools/godoc v0.1.0-deprecated
 	gopkg.in/yaml.v3 v3.0.1
 	helm.sh/helm/v3 v3.20.2
 	k8s.io/api v0.35.1
