@@ -702,6 +702,7 @@ func resolveModuleDocuments(
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetExplicitRootVars(rootVars)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
+	evaluator.SetSkipRootResources(inv == nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}

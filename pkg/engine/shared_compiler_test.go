@@ -9,6 +9,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/stretchr/testify/require"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
@@ -371,4 +373,270 @@ func TestLoadSharedQueriesCache_ActiveWaiterRetriesCanceledLeader(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("active waiter did not retry after its singleflight leader was canceled")
 	}
+}
+
+// TestInspect_PrefilteredAndBatchedParity checks that static rule prefiltering,
+// document subsetting, and batched evaluation produce the same findings as
+// unbatched evaluation across single-resource, absent-resource, cross-document,
+// negated, and rule-argument queries.
+func TestInspect_PrefilteredAndBatchedParity(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.tf")
+	require.NoError(t, os.WriteFile(mainPath, []byte(`
+resource "aws_s3_bucket" "public" {
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "private" {
+  bucket = "ok"
+}
+`), 0o600))
+	otherPath := filepath.Join(root, "versioning.tf")
+	require.NoError(t, os.WriteFile(otherPath, []byte(`
+resource "aws_s3_bucket_versioning" "v" {
+  bucket = "private"
+}
+`), 0o600))
+
+	queries := []model.QueryMetadata{
+		{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		},
+		{
+			Query: "versioning_rule", Content: secondRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "versioning-rule"}, Aggregation: 1,
+		},
+		{
+			Query: "absent_rule", InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "absent-rule"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i, name
+	_ := input.document[i].resource.aws_redshift_cluster[name]
+	result := {"documentId": input.document[i].id, "searchKey": sprintf("aws_redshift_cluster[%s]", [name])}
+}`,
+		},
+		{
+			Query: "cross_doc_rule", InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "cross-doc-rule"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+has_versioning(bucket_name) if {
+	some j, vn
+	v := input.document[j].resource.aws_s3_bucket_versioning[vn]
+	v.bucket == bucket_name
+}
+DatadogPolicy contains result if {
+	some i, name
+	_ := input.document[i].resource.aws_s3_bucket[name]
+	not has_versioning(name)
+	result := {"documentId": input.document[i].id, "searchKey": sprintf("aws_s3_bucket[%s]", [name])}
+}`,
+		},
+		{
+			Query: "args_rule", InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "args-rule"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i, name
+	b := input.document[i].resource.aws_s3_bucket[name]
+	b.acl == input.arguments.bad_acl
+	result := {"documentId": input.document[i].id, "searchKey": sprintf("aws_s3_bucket[%s].acl", [name])}
+}`,
+		},
+	}
+
+	files := append(parseTerraform(t, mainPath), parseTerraform(t, otherPath)...)
+	ins := newTestInspector(t, inspectorOpts{
+		queries:    queries,
+		repoPath:   root,
+		vb:         DefaultVulnerabilityBuilder,
+		numWorkers: 2,
+	})
+	ins.ruleConfigs = map[string]config.IacRuleConfig{
+		"args-rule": {Arguments: map[string]interface{}{"bad_acl": "public-read"}},
+	}
+
+	got, err := ins.Inspect(context.Background(), "batched", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+
+	var gotIDs []string
+	for _, v := range got {
+		gotIDs = append(gotIDs, v.QueryID+":"+v.SearchKey)
+	}
+	sort.Strings(gotIDs)
+	require.Equal(t, []string{
+		"acl-rule:aws_s3_bucket[public].acl",
+		"args-rule:aws_s3_bucket[public].acl",
+		"cross-doc-rule:aws_s3_bucket[public]",
+		"versioning-rule:aws_s3_bucket[private]",
+		"versioning-rule:aws_s3_bucket[public]",
+	}, gotIDs)
+}
+
+// TestInspect_PrefilterParityAcrossRegoConstructs verifies that prefiltered and
+// batched evaluation produces the exact same findings and isolated failures as
+// unfiltered single-rule evaluation across diverse Rego constructs.
+func TestInspect_PrefilterParityAcrossRegoConstructs(t *testing.T) {
+	// Build a 10-way, 6-level shared DAG subtree (1M paths, 7 unique maps) so
+	// document indexing exercises shared-node memoization in linear time.
+	dagNode := map[string]interface{}{"leaf": true}
+	for range 6 {
+		children := make([]interface{}, 10)
+		for i := range children {
+			children[i] = dagNode
+		}
+		dagNode = map[string]interface{}{"refs": children}
+	}
+
+	deployFile := &model.FileMetadata{
+		ID: "doc-deploy", FilePath: "deploy.yaml", Kind: model.KindYAML, Platform: "kubernetes",
+		OriginalData: "kind: Deployment\nmetadata:\n  name: web\nspec:\n  _flag: true\n",
+		Document: model.Document{
+			"kind":     "Deployment",
+			"metadata": map[string]interface{}{"name": "web"},
+			"spec":     map[string]interface{}{"_flag": true, "shared": dagNode},
+		},
+	}
+	podFile := &model.FileMetadata{
+		ID: "doc-pod", FilePath: "pod.yaml", Kind: model.KindYAML, Platform: "kubernetes",
+		OriginalData: "kind: Pod\nmetadata:\n  name: helper\n",
+		Document: model.Document{
+			"kind":     "Pod",
+			"metadata": map[string]interface{}{"name": "helper"},
+		},
+	}
+	deployFile.SetLazyLines()
+	podFile.SetLazyLines()
+
+	queries := []model.QueryMetadata{
+		{
+			Query: "closure_cross_doc", InputData: "{}", Platform: "k8s",
+			Metadata: map[string]interface{}{"id": "closure-cross-doc"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i
+	d := input.document[i]
+	d.kind == "Deployment"
+	count([p | some i; p := input.document[i]; p.kind == "Pod"]) > 0
+	result := {"documentId": d.id, "searchKey": "kind"}
+}`,
+		},
+		{
+			Query: "input_import_rule", InputData: "{}", Platform: "k8s",
+			Metadata: map[string]interface{}{"id": "input-import"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+import input.document as docs
+DatadogPolicy contains result if {
+	some i
+	d := input.document[i]
+	d.kind == "Pod"
+	some j
+	docs[j].kind == "Deployment"
+	result := {"documentId": d.id, "searchKey": "kind"}
+}`,
+		},
+		{
+			Query: "with_override_rule", InputData: "{}", Platform: "k8s",
+			Metadata: map[string]interface{}{"id": "with-override"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i
+	d := input.document[i]
+	d.kind == "Pod"
+	input.document[0].kind == "Service" with input.document as [{"kind": "Service"}]
+	result := {"documentId": d.id, "searchKey": "kind"}
+}`,
+		},
+		{
+			Query: "shadowed_const_rule", InputData: "{}", Platform: "k8s",
+			Metadata: map[string]interface{}{"id": "shadowed-const"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+kinds := {"Deployment"}
+DatadogPolicy contains result if {
+	kinds := {"Pod"}
+	some i
+	d := input.document[i]
+	d.kind == kinds[_]
+	result := {"documentId": d.id, "searchKey": "kind"}
+}`,
+		},
+		{
+			Query: "object_head_rule", InputData: "{}", Platform: "k8s",
+			Metadata: map[string]interface{}{"id": "object-head"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+kinds["Pod"] := {"Service"}
+DatadogPolicy contains result if {
+	some i
+	d := input.document[i]
+	kinds[d.kind]
+	result := {"documentId": d.id, "searchKey": "kind"}
+}`,
+		},
+		{
+			Query: "underscore_alt_rule", InputData: "{}", Platform: "k8s",
+			Metadata: map[string]interface{}{"id": "underscore-alt"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i
+	d := input.document[i]
+	key := {"foo", "_flag"}[_]
+	d.spec[key] == true
+	result := {"documentId": d.id, "searchKey": "spec"}
+}`,
+		},
+		{
+			Query: "malformed_decode_rule", InputData: "{}", Platform: "k8s",
+			Metadata: map[string]interface{}{"id": "malformed-decode"}, Aggregation: 1,
+			Content: `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+	some i
+	d := input.document[i]
+	d.kind == "Pod"
+	result := {"documentId": d.id, "searchKey": "kind", "overrideKey": 42}
+}`,
+		},
+	}
+
+	run := func(coverage bool) ([]string, map[string]error) {
+		files := model.FileMetadatas{deployFile.ShallowCopy(), podFile.ShallowCopy()}
+		workers := 2
+		if coverage {
+			workers = 1
+		}
+		ins := newTestInspector(t, inspectorOpts{
+			queries:    queries,
+			vb:         DefaultVulnerabilityBuilder,
+			numWorkers: workers,
+		})
+		if coverage {
+			// Coverage mode disables prefiltering and batching, giving the baseline.
+			ins.EnableCoverageReport()
+		}
+		vulns, err := ins.Inspect(context.Background(), "parity", files, []string{"kubernetes"})
+		require.NoError(t, err)
+		var ids []string
+		for _, v := range vulns {
+			ids = append(ids, v.QueryID+":"+v.FileID)
+		}
+		sort.Strings(ids)
+		return ids, ins.GetFailedQueries()
+	}
+
+	baselineIDs, baselineFailed := run(true)
+	optimizedIDs, optimizedFailed := run(false)
+	require.Equal(t, baselineIDs, optimizedIDs)
+	require.Len(t, optimizedIDs, 6)
+	require.Contains(t, baselineFailed, "malformed_decode_rule")
+	require.Contains(t, optimizedFailed, "malformed_decode_rule")
 }

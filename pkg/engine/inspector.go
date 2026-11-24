@@ -95,6 +95,12 @@ type QueryLoader struct {
 	// compiled-query cache key, hashed once at load time instead of hashing
 	// ~82 KB of library text on every LoadQuery call. See preparedCacheKey.
 	platformKeyBases map[string]uint64
+	// commonReadsInput / genericReadsInput record whether the pre-parsed Rego
+	// libraries reference `input` directly (checked once at load time so
+	// single-document rule subsetting remains provably sound).
+	commonReadsInput    bool
+	genericReadsInput   map[string]bool
+	genericSubtreeFuncs map[string]map[string]map[string]bool
 }
 
 // preparedQueryCache caches compiled *rego.PreparedEvalQuery values across scans
@@ -390,6 +396,11 @@ type QueryContext struct {
 	// findings collects this rule's results. Nil when the context was not built
 	// for a scan; DecodeQueryResults then keeps every decoded finding.
 	findings *findingSet
+	// cachedFrameworks caches the per-query framework slice extracted from
+	// Query.Metadata.Metadata so decoding thousands of findings for one rule
+	// does not rebuild it per finding.
+	cachedFrameworks []model.Framework
+	frameworksCached bool
 }
 
 var (
@@ -523,8 +534,13 @@ type QueryResult struct {
 func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[string]*model.FileMetadata,
 	payloads platformPayloads, queries []model.QueryMetadata, queryID int,
 	modules []tfmodules.ParsedModule, baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
-	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting) QueryResult {
+	sharedQueries map[int]*rego.PreparedEvalQuery, routing *findingRouting, plan *ruleExecPlan) QueryResult {
 	contextLogger := logger.FromContext(ctx)
+
+	if plan != nil && plan.skip {
+		c.tracker.TrackQueryExecution(queries[queryID].Aggregation)
+		return QueryResult{queryID: queryID}
+	}
 
 	loadStart := time.Now()
 	// Prefer the shared-compiler query when one was prepared for this rule (rule
@@ -546,10 +562,15 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		Metadata: queries[queryID],
 	}
 
-	// Evaluate each query only against documents of its own platform. The
-	// payload is read-only, so sharing the per-platform ast.Value across workers
-	// is safe.
-	payload := selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	// Evaluate each query only against documents of its own platform (or a
+	// provably equivalent matching subset when static analysis narrowed it).
+	// The payload is read-only, so sharing ast.Value across workers is safe.
+	var payload ast.Value
+	if plan != nil && plan.subsetPayload != nil {
+		payload = plan.subsetPayload
+	} else {
+		payload = selectPlatformPayload(query.Metadata.Platform, payloads.byPlatform, payloads.full)
+	}
 	queryContext := &QueryContext{
 		Ctx:                     ctx,
 		scanID:                  scanID,
@@ -668,12 +689,22 @@ func (c *Inspector) Inspect(
 	baseStores := precomputeBaseStores(baseInputData)
 	baseDataHashes := hashBaseInputData(baseInputData)
 
+	// Plan static rule prefiltering and parse rules in parallel once so
+	// loadSharedQueries can reuse the parsed ASTs and skip compiling rules
+	// provably unmatchable against this scan's documents (when not caching
+	// or recording coverage).
+	var rulePlans []ruleExecPlan
+	if !c.enableCoverageReport {
+		rulePlans = c.QueryLoader.planQueries(ctx, queries, payloads.index, c.numWorkers)
+	}
+
 	// Co-compile all rules + libraries once per platform into a shared compiler
 	// (rules rewritten to unique packages) so the library AST is retained a single
 	// time. Rules missing from the returned map (parse/compile failures) fall back
 	// to isolated LoadQuery in the worker, so correctness is preserved even if
 	// shared compilation partially fails.
 	var sharedQueries map[int]*rego.PreparedEvalQuery
+	var batches []queryBatch
 	if c.useRulesCache {
 		var cacheHit bool
 		sharedQueries, cacheHit, err = c.QueryLoader.loadSharedQueriesCached(
@@ -683,15 +714,23 @@ func (c *Inspector) Inspect(
 		}
 		contextLogger.Info().Msgf("Shared compiler cache hit: %t", cacheHit)
 	} else {
-		sharedQueries = c.QueryLoader.loadSharedQueries(ctx, queries, baseStores)
+		canBatch := func(i int) bool {
+			return !c.hasRuleArguments(ctx, &queries[i])
+		}
+		sharedQueries, batches = c.QueryLoader.loadSharedQueriesWithBatches(
+			ctx, queries, baseStores, rulePlans, payloads, canBatch, c.QueryConcurrency())
+	}
+	batchedCount := 0
+	for _, b := range batches {
+		batchedCount += len(b.queryIDs)
 	}
 	contextLogger.Info().Msgf("%d/%d queries served from shared compiler",
-		len(sharedQueries), len(queries))
+		len(sharedQueries)+batchedCount, len(queries))
 
 	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
 
-	vulnerabilities, err := c.executeQueries(ctx, scanID, filesMap, payloads, queries,
-		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing)
+	vulnerabilities, err := c.executeQueriesWithPlans(ctx, scanID, filesMap, payloads, queries,
+		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, rulePlans, batches)
 	if err != nil {
 		return nil, err
 	}
@@ -746,6 +785,10 @@ func suppressAtCallSite(v *model.Vulnerability, attr *model.ModuleAttribution, c
 	}
 }
 
+// freeOSMemoryFileThreshold avoids running full STW GC + madvise on tiny
+// platform services (e.g. a handful of Dockerfiles on a multi-platform repo).
+const freeOSMemoryFileThreshold = 200
+
 // releasePostEvalFileData drops OriginalData and LinesOriginalData after eval
 // (detectors have run, line-info documents are lazily reparsed), reclaiming the
 // raw input content before the report phase.
@@ -756,13 +799,22 @@ func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetad
 	for _, f := range filesMap {
 		f.ReleasePostEvalData()
 	}
-	// FreeOSMemory runs a full collection before returning pages, so no
-	// separate runtime.GC() is needed here.
-	debug.FreeOSMemory()
+	if len(filesMap) >= freeOSMemoryFileThreshold {
+		debug.FreeOSMemory()
+	}
+}
+
+// ReleaseDetectorCaches drops per-scan parse caches held by line detectors once
+// all services have finished evaluating.
+func (c *Inspector) ReleaseDetectorCaches() {
+	if c == nil || !c.releasePostEvalData {
+		return
+	}
+	c.detector.ReleaseCaches()
 }
 
 // executeQueries runs all prepared queries concurrently and collects vulnerabilities.
-func (c *Inspector) executeQueries(
+func (c *Inspector) executeQueries( //nolint:unused // invoked directly by inspector_test.go
 	ctx context.Context,
 	scanID string,
 	filesMap map[string]*model.FileMetadata,
@@ -773,6 +825,93 @@ func (c *Inspector) executeQueries(
 	baseDataHashes map[string]uint64,
 	sharedQueries map[int]*rego.PreparedEvalQuery,
 	routing *findingRouting,
+) ([]model.Vulnerability, error) {
+	return c.executeQueriesWithPlans(ctx, scanID, filesMap, payloads, queries,
+		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, nil, nil)
+}
+
+type queryEvalUnit struct {
+	batchIdx int // >= 0 for a batch, -1 for a single query
+	queryID  int
+}
+
+func buildQueryEvalUnits(numQueries int, batches []queryBatch) []queryEvalUnit {
+	inBatch := make([]bool, numQueries)
+	for _, b := range batches {
+		for _, qid := range b.queryIDs {
+			inBatch[qid] = true
+		}
+	}
+	units := make([]queryEvalUnit, 0, len(batches)+numQueries)
+	for bi := range batches {
+		units = append(units, queryEvalUnit{batchIdx: bi, queryID: -1})
+	}
+	for i := range numQueries {
+		if !inBatch[i] {
+			units = append(units, queryEvalUnit{batchIdx: -1, queryID: i})
+		}
+	}
+	return units
+}
+
+func (c *Inspector) runQueryUnits(
+	ctx context.Context,
+	scanID string,
+	filesMap map[string]*model.FileMetadata,
+	payloads platformPayloads,
+	queries []model.QueryMetadata,
+	enrichedModules []tfmodules.ParsedModule,
+	baseStores map[string]storage.Store,
+	baseDataHashes map[string]uint64,
+	sharedQueries map[int]*rego.PreparedEvalQuery,
+	routing *findingRouting,
+	rulePlans []ruleExecPlan,
+	batches []queryBatch,
+	results []QueryResult,
+) error {
+	if len(batches) == 0 {
+		return utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
+			func(ctx context.Context, _ model.QueryMetadata, i int) error {
+				var plan *ruleExecPlan
+				if i < len(rulePlans) {
+					plan = &rulePlans[i]
+				}
+				results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i,
+					enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, plan)
+				return nil
+			})
+	}
+	units := buildQueryEvalUnits(len(queries), batches)
+	return utils.ForEach(ctx, units, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
+		func(ctx context.Context, u queryEvalUnit, _ int) error {
+			if u.batchIdx >= 0 {
+				c.evalQueryBatch(ctx, scanID, filesMap, payloads, queries, batches[u.batchIdx],
+					enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, rulePlans, results)
+				return nil
+			}
+			var plan *ruleExecPlan
+			if u.queryID < len(rulePlans) {
+				plan = &rulePlans[u.queryID]
+			}
+			results[u.queryID] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, u.queryID,
+				enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, plan)
+			return nil
+		})
+}
+
+func (c *Inspector) executeQueriesWithPlans(
+	ctx context.Context,
+	scanID string,
+	filesMap map[string]*model.FileMetadata,
+	payloads platformPayloads,
+	queries []model.QueryMetadata,
+	enrichedModules []tfmodules.ParsedModule,
+	baseStores map[string]storage.Store,
+	baseDataHashes map[string]uint64,
+	sharedQueries map[int]*rego.PreparedEvalQuery,
+	routing *findingRouting,
+	rulePlans []ruleExecPlan,
+	batches []queryBatch,
 ) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	vulnerabilities := make([]model.Vulnerability, 0)
@@ -799,19 +938,9 @@ func (c *Inspector) executeQueries(
 		}()
 	}
 
-	// Evaluate each query in parallel. Eval is CPU-bound (Rego), so the pool
-	// draws from the process-wide CPU budget: when this scan runs as one of N
-	// concurrent per-platform services, all their query pools share the same
-	// budget and cannot oversubscribe the machine. Results land in an
-	// index-aligned slice (no shared mutable state between workers); the actual
-	// aggregation happens serially below.
 	results := make([]QueryResult, len(queries))
-	err := utils.ForEach(ctx, queries, utils.PoolOptions{Workers: c.numWorkers, CPUBound: true},
-		func(ctx context.Context, _ model.QueryMetadata, i int) error {
-			results[i] = c.evalQuery(ctx, scanID, filesMap, payloads, queries, i, enrichedModules, baseStores, baseDataHashes,
-				sharedQueries, routing)
-			return nil
-		})
+	err := c.runQueryUnits(ctx, scanID, filesMap, payloads, queries,
+		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, rulePlans, batches, results)
 	// The closure never returns a non-nil error itself, so ForEach only reports
 	// context cancellation here; surfacing it keeps a canceled scan from being
 	// reported as a successful scan with partial/empty results.
@@ -1134,58 +1263,80 @@ func (c *Inspector) interfaceToPayloadValue(
 	case map[string]interface{}:
 		return c.mapToPayloadValue(ctx, v, cons)
 	case []interface{}:
-		pointer := reflect.ValueOf(v).Pointer()
-		if pointer != 0 {
-			if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
-				return memo.val, nil
-			}
-		}
-		terms := make([]*ast.Term, 0, len(v))
-		contentKey := hashConsBase
-		for _, raw := range v {
-			converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
-			if err != nil {
-				return nil, err
-			}
-			h, ok := cons.valHash[converted]
-			if !ok {
-				h = hashConsScalarKey(converted)
-				cons.valHash[converted] = h
-			}
-			contentKey = contentKey.mix(h)
-			terms = append(terms, cons.valueTerm(converted))
-		}
-		array := ast.NewArray(terms...)
-		// Same shallow verification as maps: a content-key hit requires the
-		// pointer-identical canonical element value at every index (see
-		// mapToPayloadValue).
-		if existing, ok := cons.lookupCanonicalArray(contentKey, terms); ok {
-			if pointer != 0 {
-				cons.setPointerMemo(pointer, v, existing)
-			}
-			return existing, nil
-		}
-		cons.valHash[array] = contentKey
-		cons.byContent[contentKey] = array
-		if pointer != 0 {
-			cons.setPointerMemo(pointer, v, array)
-		}
-		return array, nil
+		return c.sliceToPayloadValue(ctx, v, cons)
+	case string:
+		return c.stringToPayloadValue(ctx, v, cons), nil
+	case bool:
+		return ast.Boolean(v), nil
+	case nil:
+		return ast.Null{}, nil
 	default:
 		converted, err := ast.InterfaceToValue(value)
 		if err != nil {
 			return nil, err
 		}
-		// The jsonencode transform can return whole parsed objects; cache the
-		// result per input value so repeated strings convert once (the input
-		// scalars are content-deduplicated, so the cache key is cheap).
-		if transformed, ok := cons.jsonencodeCache[converted]; ok {
-			return transformed, nil
+		if s, ok := converted.(ast.String); ok {
+			return c.stringToPayloadValue(ctx, string(s), cons), nil
 		}
-		transformed := c.TransformJsonencodeInPayload(ctx, converted)
-		cons.jsonencodeCache[converted] = transformed
-		return transformed, nil
+		return converted, nil
 	}
+}
+
+func (c *Inspector) stringToPayloadValue(ctx context.Context, s string, cons *payloadHashCons) ast.Value {
+	converted := ast.String(s)
+	if !strings.Contains(s, "jsonencode(") {
+		return converted
+	}
+	if transformed, ok := cons.jsonencodeCache[converted]; ok {
+		return transformed
+	}
+	transformed := c.TransformJsonencodeInPayload(ctx, converted)
+	cons.jsonencodeCache[converted] = transformed
+	return transformed
+}
+
+func (c *Inspector) sliceToPayloadValue(
+	ctx context.Context,
+	v []interface{},
+	cons *payloadHashCons,
+) (ast.Value, error) {
+	pointer := reflect.ValueOf(v).Pointer()
+	if pointer != 0 {
+		if memo, ok := cons.byPointer[pointer]; ok && cons.pointerMemoMatches(memo, v) {
+			return memo.val, nil
+		}
+	}
+	terms := make([]*ast.Term, 0, len(v))
+	contentKey := hashConsBase
+	for _, raw := range v {
+		converted, err := c.interfaceToPayloadValue(ctx, raw, cons)
+		if err != nil {
+			return nil, err
+		}
+		h, ok := cons.valHash[converted]
+		if !ok {
+			h = hashConsScalarKey(converted)
+			cons.valHash[converted] = h
+		}
+		contentKey = contentKey.mix(h)
+		terms = append(terms, cons.valueTerm(converted))
+	}
+	array := ast.NewArray(terms...)
+	// Same shallow verification as maps: a content-key hit requires the
+	// pointer-identical canonical element value at every index (see
+	// mapToPayloadValue).
+	if existing, ok := cons.lookupCanonicalArray(contentKey, terms); ok {
+		if pointer != 0 {
+			cons.setPointerMemo(pointer, v, existing)
+		}
+		return existing, nil
+	}
+	cons.valHash[array] = contentKey
+	cons.byContent[contentKey] = array
+	if pointer != 0 {
+		cons.setPointerMemo(pointer, v, array)
+	}
+	return array, nil
 }
 
 // mapToPayloadValue converts a map node, hash-consing the result: children are
@@ -1236,18 +1387,18 @@ func (c *Inspector) mapToPayloadValue(
 	// release).
 	if existing, ok := cons.lookupCanonicalObject(contentKey, pairs); ok {
 		if pointer != 0 {
-			cons.setPointerMemo(pointer, v, existing)
+			cons.setMapPointerMemo(pointer, v, pairs, existing)
 		}
 		return existing, nil
 	}
-	object := ast.NewObject()
+	object := ast.NewObjectWithCapacity(len(pairs))
 	for _, p := range pairs {
 		object.Insert(cons.stringTerm(p.key), p.term)
 	}
 	cons.valHash[object] = contentKey
 	cons.byContent[contentKey] = object
 	if pointer != 0 {
-		cons.setPointerMemo(pointer, v, object)
+		cons.setMapPointerMemo(pointer, v, pairs, object)
 	}
 	return object, nil
 }
@@ -1328,6 +1479,25 @@ func newPayloadHashCons() *payloadHashCons {
 		strTerms:        make(map[string]*ast.Term),
 		jsonencodeCache: make(map[ast.Value]ast.Value),
 	}
+}
+
+// setMapPointerMemo computes the fingerprint directly from already-sorted pairs
+// so mapToPayloadValue does not allocate and sort map keys a second time.
+func (cons *payloadHashCons) setMapPointerMemo(
+	pointer uintptr,
+	v map[string]interface{},
+	sortedPairs []payloadChildPair,
+	val ast.Value,
+) {
+	fp := hashConsBase
+	for _, p := range sortedPairs {
+		id, ok := childIdentity(v[p.key])
+		if !ok {
+			return
+		}
+		fp = fp.mixString(p.key).mix(id)
+	}
+	cons.byPointer[pointer] = pointerMemo{val: val, fp: fp}
 }
 
 // setPointerMemo records the conversion of the source node at the given
@@ -1754,6 +1924,7 @@ func checkComment(line int, ignoreLines []int) bool {
 // Platform keys used to bucket documents and route queries to per-platform payloads.
 const (
 	platformCommon         = "common"
+	platformTerraform      = "terraform"
 	platformK8s            = "k8s"
 	platformKubernetes     = "kubernetes"
 	platformBicep          = "bicep"
@@ -1763,10 +1934,12 @@ const (
 	platformCloudFormation = "cloudformation"
 )
 
-// platformPayloads holds per-platform OPA input payloads built once per scan.
+// platformPayloads holds per-platform OPA input payloads built once per scan,
+// plus a per-platform document index for sound rule prefiltering and subsetting.
 type platformPayloads struct {
 	byPlatform map[string]ast.Value
 	full       ast.Value
+	index      *docIndex
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -1833,19 +2006,23 @@ func (c *Inspector) buildPlatformPayloads(
 	}
 
 	terms := make([]*ast.Term, len(allDocs))
+	idxBuilder := newDocIndexBuilder(neededPlatforms)
 	cons := newPayloadHashCons()
 	for i, doc := range allDocs {
+		idxBuilder.addDoc(doc, bucketsPerDoc[i])
 		v, err := c.interfaceToPayloadValue(ctx, doc, cons)
 		if err != nil {
 			return platformPayloads{}, err
 		}
 		terms[i] = ast.NewTerm(v)
+		allDocs[i] = nil
 		if c.releaseDocumentsAfterPayload {
 			releaseDocumentTree(i, filesMap, combinedDocs, moduleDocs)
 		}
 	}
 
-	payloads := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	payloads, platformTerms := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	payloads.index = idxBuilder.finish(platformTerms)
 	return payloads, nil
 }
 
@@ -1857,7 +2034,7 @@ func assemblePlatformPayloads(
 	unknownDocs []int,
 	neededPlatforms map[string]bool,
 	needFullPayload bool,
-) platformPayloads {
+) (out platformPayloads, resolvedLists map[string][]*ast.Term) {
 	platformLists := make(map[string][]*ast.Term, len(neededPlatforms))
 	for i, keys := range bucketsPerDoc {
 		for _, key := range keys {
@@ -1866,9 +2043,10 @@ func assemblePlatformPayloads(
 			}
 		}
 	}
-	out := platformPayloads{
+	out = platformPayloads{
 		byPlatform: make(map[string]ast.Value, len(neededPlatforms)),
 	}
+	resolvedLists = make(map[string][]*ast.Term, len(neededPlatforms))
 	for key := range neededPlatforms {
 		list := platformLists[key]
 		if len(unknownDocs) > 0 {
@@ -1879,6 +2057,7 @@ func assemblePlatformPayloads(
 			}
 			list = combined
 		}
+		resolvedLists[key] = list
 		pv := assembleDocumentPayload(list)
 		out.byPlatform[key] = pv
 		if needFullPayload &&
@@ -1893,7 +2072,7 @@ func assemblePlatformPayloads(
 		out.full = assembleDocumentPayload(terms)
 	}
 
-	return out
+	return out, resolvedLists
 }
 
 // assembleDocumentPayload wraps a document term list in the
@@ -2026,6 +2205,8 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 	}
 
 	parsedGeneric := make(map[string]*ast.Module, len(platformLibraries))
+	genericReadsInput := make(map[string]bool, len(platformLibraries))
+	genericSubtreeFuncs := make(map[string]map[string]map[string]bool, len(platformLibraries))
 	platformKeyBases := make(map[string]uint64, len(platformLibraries))
 	for platform, lib := range platformLibraries {
 		mod, parseErr := ast.ParseModuleWithOpts("Generic", lib.LibraryCode,
@@ -2034,6 +2215,10 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 			return QueryLoader{}, errors.Wrapf(parseErr, "failed to parse Generic Rego library for platform %s", platform)
 		}
 		parsedGeneric[platform] = mod
+		genericReadsInput[platform] = moduleReadsInput(mod)
+		if canonicalPlatformKey(platform) == platformKubernetes {
+			genericSubtreeFuncs[platform] = extractLibSubtreeFuncs(mod)
+		}
 		platformKeyBases[platform] = hashFields(
 			commonLibrary.LibraryCode,
 			commonLibrary.LibraryInputData,
@@ -2043,13 +2228,16 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 	}
 
 	return QueryLoader{
-		commonLibrary:     commonLibrary,
-		platformLibraries: platformLibraries,
-		querySum:          sum,
-		QueriesMetadata:   queries,
-		parsedCommon:      parsedCommon,
-		parsedGeneric:     parsedGeneric,
-		platformKeyBases:  platformKeyBases,
+		commonLibrary:       commonLibrary,
+		platformLibraries:   platformLibraries,
+		querySum:            sum,
+		QueriesMetadata:     queries,
+		parsedCommon:        parsedCommon,
+		parsedGeneric:       parsedGeneric,
+		platformKeyBases:    platformKeyBases,
+		commonReadsInput:    moduleReadsInput(parsedCommon),
+		genericReadsInput:   genericReadsInput,
+		genericSubtreeFuncs: genericSubtreeFuncs,
 	}, nil
 }
 
@@ -2085,7 +2273,11 @@ func (q *QueryLoader) buildMergedInputData(query *model.QueryMetadata,
 func (q *QueryLoader) precomputeBaseInputData(modules []tfmodules.ParsedModule) map[string]string {
 	base := make(map[string]string, len(q.platformLibraries))
 	for platform := range q.platformLibraries {
-		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform}, modules)
+		var platModules []tfmodules.ParsedModule
+		if canonicalPlatformKey(platform) == platformTerraform {
+			platModules = modules
+		}
+		data, err := q.buildMergedInputData(&model.QueryMetadata{Platform: platform}, platModules)
 		if err != nil {
 			continue
 		}
@@ -2213,18 +2405,139 @@ var pkgDatadogDecl = regexp.MustCompile(`(?m)^(\s*)package\s+datadog\b`)
 // preserving the isolated path's "skip and continue" behavior. Rule identity,
 // findings, and SARIF are unaffected: the package rename is internal to
 // compilation and never reaches QueryMetadata or the emitted result payload.
+// ruleExecPlan holds the pre-parsed AST (for shared compilation) and the
+// sound prefilter decision for one query in a scan.
+type ruleExecPlan struct {
+	mod           *ast.Module
+	parseFailed   bool
+	isPartialSet  bool
+	subsetPayload ast.Value
+	subsetKey     string
+	skip          bool
+}
+
+// planQueries parses every query module in parallel once, analyzes its static
+// document requirements against docIdx, and resolves whether the query can be
+// skipped or evaluated against a provably equivalent document subset.
+func (q *QueryLoader) planQueries(
+	ctx context.Context,
+	queries []model.QueryMetadata,
+	docIdx *docIndex,
+	numWorkers int,
+) []ruleExecPlan {
+	if len(queries) == 0 {
+		return nil
+	}
+	plans := make([]ruleExecPlan, len(queries))
+	_ = utils.ForEach(ctx, queries, utils.PoolOptions{Workers: numWorkers, CPUBound: true},
+		func(_ context.Context, _ model.QueryMetadata, i int) error {
+			query := &queries[i]
+			renamed := pkgDatadogDecl.ReplaceAllString(query.Content, fmt.Sprintf("${1}package datadog.q%d", i))
+			mod, parseErr := ast.ParseModuleWithOpts(query.Query, renamed,
+				ast.ParserOptions{RegoVersion: ast.RegoV1})
+			if parseErr != nil {
+				plans[i].parseFailed = true
+				return nil
+			}
+			plans[i].mod = mod
+			plans[i].isPartialSet = isPartialSetPolicy(mod)
+			if docIdx != nil {
+				libReadsInput := q.commonReadsInput || q.genericReadsInput[query.Platform]
+				filter := analyzeRuleFilter(mod, query.Platform, libReadsInput, q.genericSubtreeFuncs[query.Platform])
+				plans[i].subsetPayload, plans[i].subsetKey, plans[i].skip = filter.resolve(docIdx)
+			}
+			return nil
+		})
+	return plans
+}
+
 func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.QueryMetadata,
 	baseStores map[string]storage.Store) map[int]*rego.PreparedEvalQuery {
+	prepared, _ := q.loadSharedQueriesWithBatches(ctx, queries, baseStores, nil, platformPayloads{}, nil, 1)
+	return prepared
+}
+
+func (q *QueryLoader) buildSharedPlatformModules(
+	ctx context.Context,
+	platform string,
+	platformLib source.RegoLibraries,
+	indices []int,
+	queries []model.QueryMetadata,
+	plans []ruleExecPlan,
+) (modules map[string]*ast.Module, queryPath map[int]string) {
+	contextLogger := logger.FromContext(ctx)
+	modules = map[string]*ast.Module{
+		"Common":  q.parsedCommon,
+		"Generic": q.parsedGeneric[platform],
+	}
+	if modules["Common"] == nil {
+		modules["Common"], _ = ast.ParseModuleWithOpts("Common", q.commonLibrary.LibraryCode,
+			ast.ParserOptions{RegoVersion: ast.RegoV1})
+	}
+	if modules["Generic"] == nil {
+		modules["Generic"], _ = ast.ParseModuleWithOpts("Generic", platformLib.LibraryCode,
+			ast.ParserOptions{RegoVersion: ast.RegoV1})
+	}
+	queryPath = make(map[int]string, len(indices))
+	for _, i := range indices {
+		if !source.IsEmptyInputData(queries[i].InputData) {
+			continue
+		}
+		mod, ok := parseOrTakePlannedModule(ctx, i, &queries[i], plans)
+		if !ok {
+			contextLogger.Warn().Msgf("shared compile: rule %s failed to parse, skipping", queries[i].Query)
+			continue
+		}
+		modules[fmt.Sprintf("rule%d", i)] = mod
+		queryPath[i] = fmt.Sprintf("data.datadog.q%d.DatadogPolicy", i)
+	}
+	return modules, queryPath
+}
+
+func parseOrTakePlannedModule(
+	ctx context.Context,
+	i int,
+	query *model.QueryMetadata,
+	plans []ruleExecPlan,
+) (*ast.Module, bool) {
+	if i < len(plans) && (plans[i].mod != nil || plans[i].parseFailed) {
+		if plans[i].parseFailed {
+			return nil, false
+		}
+		mod := plans[i].mod
+		plans[i].mod = nil
+		return mod, true
+	}
+	renamed := pkgDatadogDecl.ReplaceAllString(query.Content, fmt.Sprintf("${1}package datadog.q%d", i))
+	mod, parseErr := ast.ParseModuleWithOpts(query.Query, renamed, ast.ParserOptions{RegoVersion: ast.RegoV1})
+	if parseErr != nil {
+		contextLogger := logger.FromContext(ctx)
+		contextLogger.Warn().Err(parseErr).Msgf("shared compile: rule %s failed to parse, skipping", query.Query)
+		return nil, false
+	}
+	return mod, true
+}
+
+func (q *QueryLoader) loadSharedQueriesWithBatches(
+	ctx context.Context,
+	queries []model.QueryMetadata,
+	baseStores map[string]storage.Store,
+	plans []ruleExecPlan,
+	payloads platformPayloads,
+	canBatch func(int) bool,
+	numWorkers int,
+) (prepared map[int]*rego.PreparedEvalQuery, allBatches []queryBatch) {
 	contextLogger := logger.FromContext(ctx)
 
-	// Group query indices by platform: one shared compiler is built per platform
-	// because libraries and the base store are platform-specific.
 	indicesByPlatform := make(map[string][]int)
 	for i := range queries {
+		if i < len(plans) && plans[i].skip {
+			continue
+		}
 		indicesByPlatform[queries[i].Platform] = append(indicesByPlatform[queries[i].Platform], i)
 	}
 
-	prepared := make(map[int]*rego.PreparedEvalQuery, len(queries))
+	prepared = make(map[int]*rego.PreparedEvalQuery, len(queries))
 	for platform, indices := range indicesByPlatform {
 		store, ok := baseStores[platform]
 		if !ok {
@@ -2237,78 +2550,65 @@ func (q *QueryLoader) loadSharedQueries(ctx context.Context, queries []model.Que
 			continue
 		}
 
-		// Parse libraries + every rule (renamed) into one module set. A rule that
-		// fails to parse is dropped here, individually, BEFORE the shared compile —
-		// so one malformed rule cannot fail the whole batch at the parse stage.
-		modules := map[string]*ast.Module{
-			"Common":  q.parsedCommon,
-			"Generic": q.parsedGeneric[platform],
-		}
-		if modules["Common"] == nil {
-			modules["Common"], _ = ast.ParseModuleWithOpts("Common", q.commonLibrary.LibraryCode,
-				ast.ParserOptions{RegoVersion: ast.RegoV1})
-		}
-		if modules["Generic"] == nil {
-			modules["Generic"], _ = ast.ParseModuleWithOpts("Generic", platformLib.LibraryCode,
-				ast.ParserOptions{RegoVersion: ast.RegoV1})
-		}
-		// queryPath maps each surviving rule index to its unique query path.
-		queryPath := make(map[int]string, len(indices))
-		for _, i := range indices {
-			// A rule with custom InputData needs a per-query store that merges that
-			// data; the shared path can only offer the per-platform base store
-			// (built without any rule's InputData). Skip such rules here so the
-			// worker falls back to the isolated LoadQuery, which builds the correct
-			// store. Without this, a rule whose Rego reads its inputData would run
-			// as if that data were absent (wrong findings / false negatives).
-			if !source.IsEmptyInputData(queries[i].InputData) {
-				continue
-			}
-			renamed := pkgDatadogDecl.ReplaceAllString(queries[i].Content, fmt.Sprintf("${1}package datadog.q%d", i))
-			mod, parseErr := ast.ParseModuleWithOpts(queries[i].Query, renamed,
-				ast.ParserOptions{RegoVersion: ast.RegoV1})
-			if parseErr != nil {
-				contextLogger.Warn().Err(parseErr).Msgf("shared compile: rule %s failed to parse, skipping", queries[i].Query)
-				continue
-			}
-			modules[fmt.Sprintf("rule%d", i)] = mod
-			queryPath[i] = fmt.Sprintf("data.datadog.q%d.DatadogPolicy", i)
+		modules, queryPath := q.buildSharedPlatformModules(ctx, platform, platformLib, indices, queries, plans)
+		if len(queryPath) == 0 {
+			continue
 		}
 
 		compiler := ast.NewCompiler().WithCapabilities(safeCapabilities())
 		compiler.Compile(modules)
 		if compiler.Failed() {
-			// A rule that parsed but failed semantic compilation poisons the whole
-			// batch. Fall back to isolated compilation for this platform's rules so
-			// correctness is never sacrificed for the memory optimization.
 			contextLogger.Warn().Msgf("shared compile failed for platform %s (%v); falling back to isolated compilation",
 				platform, compiler.Errors)
 			continue
 		}
 
-		// Prepare each rule's eval query against the one shared compiler. They all
-		// reference the same compiled library AST, so it is retained once.
-		for _, i := range indices {
-			path, ok := queryPath[i]
-			if !ok {
-				continue // rule was dropped at parse stage
-			}
-			pq, prepErr := rego.New(
-				rego.Query(fmt.Sprintf("result = %s", path)),
-				rego.SetRegoVersion(ast.RegoV1),
-				rego.Compiler(compiler),
-				rego.Store(store),
-				rego.UnsafeBuiltins(unsafeRegoFunctions),
-			).PrepareForEval(ctx)
-			if prepErr != nil {
-				contextLogger.Warn().Err(prepErr).Msgf("shared compile: failed to prepare rule %s, skipping", queries[i].Query)
-				continue
-			}
-			p := pq
-			prepared[i] = &p
+		var batched map[int]bool
+		if canBatch != nil && len(plans) > 0 {
+			var platBatches []queryBatch
+			platBatches, batched = buildQueryBatches(
+				ctx, compiler, store, indices, queryPath, plans, queries, payloads, canBatch, numWorkers)
+			allBatches = append(allBatches, platBatches...)
 		}
+
+		prepareUnbatchedSharedQueries(ctx, compiler, store, indices, queryPath, batched, queries, prepared)
 	}
-	return prepared
+	return prepared, allBatches
+}
+
+func prepareUnbatchedSharedQueries(
+	ctx context.Context,
+	compiler *ast.Compiler,
+	store storage.Store,
+	indices []int,
+	queryPath map[int]string,
+	batched map[int]bool,
+	queries []model.QueryMetadata,
+	prepared map[int]*rego.PreparedEvalQuery,
+) {
+	contextLogger := logger.FromContext(ctx)
+	for _, i := range indices {
+		if batched[i] {
+			continue
+		}
+		path, ok := queryPath[i]
+		if !ok {
+			continue
+		}
+		pq, prepErr := rego.New(
+			rego.Query(fmt.Sprintf("result = %s", path)),
+			rego.SetRegoVersion(ast.RegoV1),
+			rego.Compiler(compiler),
+			rego.Store(store),
+			rego.UnsafeBuiltins(unsafeRegoFunctions),
+		).PrepareForEval(ctx)
+		if prepErr != nil {
+			contextLogger.Warn().Err(prepErr).Msgf("shared compile: failed to prepare rule %s, skipping", queries[i].Query)
+			continue
+		}
+		p := pq
+		prepared[i] = &p
+	}
 }
 
 // loadSharedQueriesCached returns the latest matching co-compiled ruleset.

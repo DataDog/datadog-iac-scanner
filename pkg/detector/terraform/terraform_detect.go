@@ -20,6 +20,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"golang.org/x/sync/singleflight"
 )
 
 const strBlockBody = "block-body"
@@ -37,6 +38,8 @@ const blockTypeData = "data"
 type DetectKindLine struct {
 	// hclCache maps file path → *hclsyntax.Body, populated on first parse.
 	hclCache sync.Map
+	// hclSF deduplicates concurrent parses of the same file across decode workers.
+	hclSF singleflight.Group
 	// blockLines memoizes the source lines of repeated blocks, which every
 	// finding indexing one of them would otherwise reread in full.
 	blockLines blockLinesMemo
@@ -64,6 +67,27 @@ func blockKey(blockType string, labels ...string) string {
 	return blockType + "\x00" + strings.Join(labels, "\x00")
 }
 
+// ReleaseCaches drops the per-scan HCL parse and block lookup caches once
+// evaluation finishes, reclaiming their heap before report generation.
+func (d *DetectKindLine) ReleaseCaches() {
+	clearSyncMap := func(m *sync.Map) {
+		m.Range(func(k, _ any) bool {
+			m.Delete(k)
+			return true
+		})
+	}
+	clearSyncMap(&d.hclCache)
+	clearSyncMap(&d.namedBlocks)
+	clearSyncMap(&d.dynamicExpansions)
+	clearSyncMap(&d.sourceBodies)
+	clearSyncMap(&d.sourceObjects)
+	clearSyncMap(&d.sourceText)
+	clearSyncMap(&d.sourceInsertions)
+	d.blockLines.mu.Lock()
+	d.blockLines.entries = nil
+	d.blockLines.mu.Unlock()
+}
+
 // blocksByName returns the index of body's top-level blocks, built once.
 func (d *DetectKindLine) blocksByName(body *hclsyntax.Body) namedBlocks {
 	if cached, ok := d.namedBlocks.Load(body); ok {
@@ -84,16 +108,25 @@ func (d *DetectKindLine) cachedParseBody(src, filePath string) (*hclsyntax.Body,
 	if cached, ok := d.hclCache.Load(filePath); ok {
 		return cached.(*hclsyntax.Body), nil
 	}
-	hclFile, diagnostics := hclsyntax.ParseConfig([]byte(src), filePath, hcl.InitialPos)
-	if diagnostics.HasErrors() {
-		return nil, fmt.Errorf("failed to parse HCL: %v", diagnostics.Errs())
+	v, err, _ := d.hclSF.Do(filePath, func() (interface{}, error) {
+		if cached, ok := d.hclCache.Load(filePath); ok {
+			return cached.(*hclsyntax.Body), nil
+		}
+		hclFile, diagnostics := hclsyntax.ParseConfig([]byte(src), filePath, hcl.InitialPos)
+		if diagnostics.HasErrors() {
+			return nil, fmt.Errorf("failed to parse HCL: %v", diagnostics.Errs())
+		}
+		body, ok := hclFile.Body.(*hclsyntax.Body)
+		if !ok {
+			return nil, fmt.Errorf("unexpected HCL body type")
+		}
+		d.hclCache.Store(filePath, body)
+		return body, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	body, ok := hclFile.Body.(*hclsyntax.Body)
-	if !ok {
-		return nil, fmt.Errorf("unexpected HCL body type")
-	}
-	d.hclCache.Store(filePath, body)
-	return body, nil
+	return v.(*hclsyntax.Body), nil
 }
 
 const undetectedVulnerabilityLine = -1

@@ -130,6 +130,7 @@ resource "example" "this" {
   provisioner "local-exec" { command = "base-one" }
   provisioner "remote-exec" { inline = ["base-two"] }
 }
+
 resource "example" "sibling" {}
 `,
 		"a_override.tf": `
@@ -170,6 +171,23 @@ resource "example" "this" {
 	require.Equal(t, filepath.Join(dir, "a_override.tf"), overrides[0].Contributions[0].TypeRange.Filename)
 	require.Equal(t, filepath.Join(dir, "z_override.tf"), overrides[0].Contributions[1].TypeRange.Filename)
 	require.Same(t, overrides[0].Declaration.Body, r.DeclarationBody)
+}
+
+func TestSkipRootResourcesKeepsEffectiveOverrides(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "module", map[string]string{
+		"variables.tf":    `variable "value" { default = "base" }`,
+		"resource.tf":     `resource "example" "this" { value = var.value }`,
+		"override.tf":     "// kics_terraform_vars: selected.tfvars\nresource \"example\" \"this\" { value = var.value }",
+		"selected.tfvars": `value = "selected"`,
+	})
+	e := New()
+	e.SetSkipRootResources(true)
+	worker := e.Fork()
+	resources, _, _, err := worker.EvaluateModule(t.Context(), dir, nil)
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	require.Equal(t, cty.StringVal("selected"), resources[0].Attributes["value"])
+	require.NotNil(t, resources[0].DeclarationBody)
 }
 
 func TestResourceOverridesExpandInsideCalledModule(t *testing.T) {

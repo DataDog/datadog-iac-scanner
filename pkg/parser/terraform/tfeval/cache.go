@@ -28,11 +28,13 @@ import (
 // module reached by N distinct paths evaluate N times for identical results.
 // rootDir remains because path.root can affect evaluated values. Callers re-stamp
 // the address and chain onto cached results.
+// canSkipRoot separates callers that may omit root resources and outputs.
 type evalCacheKey struct {
 	dir         string
 	rootDir     string
 	packageRoot string
 	inputs      inputsDigest
+	canSkipRoot bool
 }
 
 // evalCacheEntry holds a module evaluation and its native effects. Entries with

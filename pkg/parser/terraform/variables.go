@@ -6,6 +6,7 @@
 package terraform
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"path/filepath"
@@ -87,6 +88,11 @@ func getInputVariablesFromJSONFile(ctx context.Context, fsys vfs.FS, filename st
 	return variables, nil
 }
 
+var (
+	variableBlockMarker = []byte("variable")
+	localsBlockMarker   = []byte("locals")
+)
+
 // getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
 func getInputVariablesAndLocalsFromFile(
 	ctx context.Context, fsys vfs.FS, filename string, merge variableDefaultMerge,
@@ -94,10 +100,20 @@ func getInputVariablesAndLocalsFromFile(
 	if tfpath.IsJSONConfig(filename) {
 		return extractVarsAndLocalsFromJSON(ctx, fsys, filename, merge)
 	}
-	body, err := parseHCLBody(ctx, fsys, filename)
+	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
 	if err != nil {
 		return nil, nil, err
 	}
+	// A .tf/.tofu file without "variable" or "locals" cannot declare variable
+	// or locals blocks, skipping a redundant full HCL parse for resource files.
+	if !bytes.Contains(src, variableBlockMarker) && !bytes.Contains(src, localsBlockMarker) {
+		return nil, nil, nil
+	}
+	parsedFile, diags := hclsyntax.ParseConfig(src, filename, hcl.InitialPos)
+	if diags.HasErrors() {
+		return nil, nil, diags
+	}
+	body, _ := parsedFile.Body.(*hclsyntax.Body)
 	return extractInputVariables(body, filename, merge), extractLocals(body), nil
 }
 

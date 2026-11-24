@@ -281,23 +281,30 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		return nil, nil, nil, nil, err
 	}
 
-	ignore, err := comment.ParseComments(resolved, path)
-	if err != nil {
-		contextLogger.Err(err).Msg("failed to parse comments")
+	lineInfoOnly := model.IsLineInfoOnly(ctx)
+	var linesToIgnore []int
+	if !lineInfoOnly {
+		ignore, err := comment.ParseComments(resolved, path)
+		if err != nil {
+			contextLogger.Err(err).Msg("failed to parse comments")
+		}
+		linesToIgnore = comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 	}
-
-	linesToIgnore := comment.GetIgnoreLines(ignore, file.Body.(*hclsyntax.Body))
 
 	fc, parseErr := p.convertFunc(ctx, file, inputVariables, converter.Options{
-		BaseDir: filepath.Dir(path),
-		FS:      p.fsys,
+		BaseDir:      filepath.Dir(path),
+		FS:           p.fsys,
+		SkipLineInfo: model.IsLazyLineInfo(ctx),
 	})
-	json, err := p.addExtraInfo(ctx, []model.Document{fc}, path)
-	if err != nil {
-		return []byte{}, json, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed terraform parse")
+	docs := []model.Document{fc}
+	if !lineInfoOnly {
+		docs, err = p.addExtraInfo(ctx, docs, path)
+		if err != nil {
+			return []byte{}, docs, []int{}, map[string]model.ResolvedFile{}, errors.Wrap(err, "failed terraform parse")
+		}
 	}
 
-	return resolved, json, linesToIgnore, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
+	return resolved, docs, linesToIgnore, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
 }
 
 // SupportedExtensions returns Terraform/OpenTofu extensions.

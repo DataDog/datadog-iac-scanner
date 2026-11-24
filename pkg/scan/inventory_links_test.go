@@ -60,17 +60,8 @@ func scanLinks(t *testing.T, params *Parameters, queries ...model.QueryMetadata)
 
 func scanLinksWithContext(t *testing.T, ctx context.Context, params *Parameters, queries ...model.QueryMetadata) (*inventory.Inventory, []string) {
 	t.Helper()
-	params.OutputPath = t.TempDir()
-	params.OutputName = "result"
-	params.ReportFormats = []string{"sarif"}
 	params.InventoryPath = filepath.Join(t.TempDir(), "inventory.json")
-	c, err := NewClient(ctx, params, &consolePrinter.Printer{})
-	require.NoError(t, err)
-	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
-		return &stubQuerySource{queries: queries}, nil
-	}
-	_, err = c.PerformScan(ctx)
-	require.NoError(t, err)
+	scanWithRules(t, ctx, params, queries...)
 
 	data, err := os.ReadFile(params.InventoryPath)
 	require.NoError(t, err)
@@ -82,6 +73,20 @@ func scanLinksWithContext(t *testing.T, ctx context.Context, params *Parameters,
 		fingerprints = append(fingerprints, r.PartialFingerprints.DatadogFingerprint)
 	}
 	return &inv, fingerprints
+}
+
+func scanWithRules(t *testing.T, ctx context.Context, params *Parameters, queries ...model.QueryMetadata) {
+	t.Helper()
+	params.OutputPath = t.TempDir()
+	params.OutputName = "result"
+	params.ReportFormats = []string{"sarif"}
+	c, err := NewClient(ctx, params, &consolePrinter.Printer{})
+	require.NoError(t, err)
+	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
+		return &stubQuerySource{queries: queries}, nil
+	}
+	_, err = c.PerformScan(ctx)
+	require.NoError(t, err)
 }
 
 func readSARIFRun(t *testing.T, params *Parameters) reportmodel.SarifRun {
@@ -203,8 +208,9 @@ resource "aws_s3_bucket" "disabled_each" {
 	input.document[i].resource.aws_s3_bucket[name]
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket[%s]", [name])`)
+	queries := []model.QueryMetadata{terraformPublicACLRule, privateOrMissing, missing, siblings, absent}
 	params := terraformParams(root)
-	inv, _ := scanLinks(t, params, terraformPublicACLRule, privateOrMissing, missing, siblings, absent)
+	inv, _ := scanLinks(t, params, queries...)
 	require.Len(t, inv.Resources, 2)
 	require.Contains(t, rowsByPath(inv), "aws_s3_bucket.example")
 	require.Contains(t, rowsByPath(inv), "aws_s3_bucket.sibling")
@@ -226,6 +232,9 @@ resource "aws_s3_bucket" "disabled_each" {
 			t.Fatalf("unexpected finding %s", result.ResultRuleID)
 		}
 	}
+	withoutInventory := terraformParams(root)
+	scanWithRules(t, t.Context(), withoutInventory, queries...)
+	require.ElementsMatch(t, results, readSARIFRun(t, withoutInventory).Results)
 }
 
 func TestTerraformOverrideUsesSelectedRootVariables(t *testing.T) {

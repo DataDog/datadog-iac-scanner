@@ -72,6 +72,24 @@ func (d *DetectLine) DetectLine(ctx context.Context, file *model.FileMetadata, s
 	return d.defaultDetector.DetectLine(ctx, file, searchKey, d.outputLines)
 }
 
+// cacheReleaser is implemented by kind detectors that cache parsed ASTs or
+// indexes during a scan and can release them once evaluation finishes.
+type cacheReleaser interface {
+	ReleaseCaches()
+}
+
+// ReleaseCaches drops per-scan parse caches held by registered kind detectors.
+func (d *DetectLine) ReleaseCaches() {
+	if d == nil {
+		return
+	}
+	for _, det := range d.detectors {
+		if r, ok := det.(cacheReleaser); ok {
+			r.ReleaseCaches()
+		}
+	}
+}
+
 // ForkSourceResolver shares the registered kind handlers and immutable settings,
 // but gives one decode context its own bounded written-source cache. Configure
 // handlers before forking; a fork must not be copied by value.

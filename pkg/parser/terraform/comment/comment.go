@@ -6,6 +6,7 @@
 package comment
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -120,6 +121,17 @@ func checkBlockRange(block *hcl.Block, position hcl.Pos) bool {
 
 // ParseComments parses the comments and returns the dd-iac-scan commands
 func ParseComments(src []byte, filename string) (Ignore, error) {
+	// Fast path: an HCL file with no '#', '//', or '/*' bytes cannot contain
+	// any comment tokens, avoiding a second full LexConfig pass over the file.
+	if bytes.IndexByte(src, '#') < 0 &&
+		!bytes.Contains(src, []byte("//")) &&
+		!bytes.Contains(src, []byte("/*")) {
+		return Ignore{
+			model.IgnoreLine:    {},
+			model.IgnoreBlock:   {},
+			model.IgnoreComment: {},
+		}, nil
+	}
 	comments, diags := hclsyntax.LexConfig(src, filename, hcl.Pos{Line: 0, Column: 0})
 	if diags != nil && diags.HasErrors() {
 		return Ignore{}, diags.Errs()[0]
