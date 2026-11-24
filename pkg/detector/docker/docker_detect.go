@@ -296,7 +296,7 @@ func (s *instructionKeySearch) collectStageOptions(flat instructionOptions, k, s
 			flat = s.stageInstructionOptions(flat, k, stage, state.normCandidates[normStart:state.normCursor], end, next, &state.normScore)
 		}
 	}
-	if !key.instFirst || (key.rawSecond == "" && !hasCompleteSuffix(flat[offset:], len(s.keys)-k)) {
+	if !key.instFirst || (key.rawSecond == "" && (k > 0 || !hasCompleteSuffix(flat[offset:], len(s.keys)-k))) {
 		flat = s.collectStageLiterals(flat, offset, k, stage, end, next, state)
 	}
 	return flat
@@ -321,8 +321,8 @@ func (s *instructionKeySearch) collectStageLiterals(flat instructionOptions, off
 		return flat
 	}
 	instCount := len(flat) - offset
-	flat = s.stageLiteralOptions(flat, k, stage, state.rawCandidates[rawStart:state.rawCursor], end, next, &state.rawScore)
-	if instCount > 0 && len(flat)-offset > instCount {
+	flat = s.stageLiteralOptions(flat, offset, k, stage, state.rawCandidates[rawStart:state.rawCursor], end, next, &state.rawScore)
+	if k > 0 && instCount > 0 && len(flat)-offset > instCount {
 		slices.SortFunc(flat[offset:], func(a, b instructionOption) int { return a.line - b.line })
 	}
 	return flat
@@ -427,13 +427,13 @@ func (s *instructionKeySearch) stageInstructionOptions(options instructionOption
 	return options
 }
 
-func (s *instructionKeySearch) stageLiteralOptions(options instructionOptions, k, stage int, candidates []int,
+func (s *instructionKeySearch) stageLiteralOptions(options instructionOptions, offset, k, stage int, candidates []int,
 	end int, next *instructionLayer, score *instructionScore) instructionOptions {
 	key := &s.keys[k]
-	offset := len(options)
 	for i := 0; i < len(candidates) && candidates[i] < end; i++ {
 		line := candidates[i]
-		if key.instFirst && startsAtInstruction(s.lines[line], key.normFirst) {
+		if (key.from && stage >= 0 && line == s.starts[stage]) ||
+			(key.instFirst && startsAtInstruction(s.lines[line], key.normFirst)) {
 			continue
 		}
 		distance, start, finish, matched := score.match(key.rawFirst, key.rawSecond, s.lines, line)

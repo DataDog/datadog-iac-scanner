@@ -335,6 +335,8 @@ func TestDetectDockerLine_LowercaseInstructions(t *testing.T) {
 		{"earlier stage instruction does not suppress literal", "FROM busybox\nADD user /app\nFROM alpine\nRUN add user --disabled-password app\n", "FROM={{alpine}}.{{add user}}", "RUN add user --disabled-password app", 4},
 		{"earlier FROM stage does not suppress FROM-looking literal", "FROM coffee\nRUN echo hi\nFROM alpine\nRUN echo FROM coffee\n", "FROM={{alpine}}.{{FROM coffee}}", "RUN echo FROM coffee", 4},
 		{"same-stage literal completes longer key before later instruction", "FROM alpine\nRUN add user --disabled-password app\nEXPOSE 22\nADD user /app\n", "FROM={{alpine}}.{{add user}}.{{EXPOSE 22}}", "EXPOSE 22", 3},
+		{"root literal completes longer key before later instruction", "FROM alpine\nRUN add user --disabled-password app\nEXPOSE 22\nADD user /app\n", "{{add user}}.{{EXPOSE 22}}", "EXPOSE 22", 3},
+		{"earlier same-stage instruction does not suppress literal after preceding key", "FROM alpine\nADD user /early\nRUN echo marker\nRUN add user --disabled-password app\nEXPOSE 22\n", "FROM={{alpine}}.RUN={{echo marker}}.{{add user}}.{{EXPOSE 22}}", "EXPOSE 22", 5},
 		{"repeated stage prefers instruction boundary over quoted literal", "FROM alpine\nRUN echo \"RUN apt-get update\"\nFROM alpine\nrun apt-get update\n", "FROM={{alpine}}.{{RUN apt-get update}}", "run apt-get update", 4},
 		{"select second stage", "FROM alpine\nRUN echo hi\nFROM busybox\nrun apt-get update\n", "FROM={{busybox}}.{{RUN apt-get update}}", "run apt-get update", 4},
 		{"literal must stay in stage", "FROM alpine\nRUN echo hi\nFROM busybox\nRUN echo needle\n", "FROM={{alpine}}.{{needle}}", "FROM alpine", 1},
