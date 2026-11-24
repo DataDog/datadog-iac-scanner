@@ -1,0 +1,14 @@
+{
+  "id": "test-kubernetes-secret-with-data",
+  "legacyId": "00000000-0000-4000-8000-00000000c1de",
+  "queryName": "Secret with data (test)",
+  "severity": "HIGH",
+  "category": "Insecure Configurations",
+  "descriptionText": "Test-only rule reporting every Secret that carries data.",
+  "descriptionUrl": "https://docs.datadoghq.com/",
+  "platform": "Kubernetes",
+  "descriptionID": "c0dec0df",
+  "cwe": "200",
+  "providerUrl": "https://kubernetes.io/docs/concepts/configuration/secret/",
+  "cloudProvider": ""
+}

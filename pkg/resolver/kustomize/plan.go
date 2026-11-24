@@ -28,6 +28,10 @@ type PlannedRoot struct {
 	// steps counts the nodes visited and the edges examined while planning
 	// the root's closure.
 	steps int
+	// Files are the paths the kustomizations of Closure list that are not
+	// kustomization directories themselves: manifests, patches and generator
+	// sources, wherever they live.
+	Files []string
 }
 
 // Plan picks the top-level roots among dirs (kustomization directories):
@@ -84,9 +88,33 @@ func selectRoots(known map[string]bool, display map[string]string, charts map[st
 		if !planClosure(node, kusts, known, canonical, root.Closure, &root.steps) {
 			root.Skip = ReasonPlanSkip
 		}
+		root.Files = closureFiles(root.Closure, kusts, canonical)
 		out = append(out, root)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
+	return out
+}
+
+// closureFiles lists the files the kustomizations of closure reference,
+// canonicalized inside the repository: an entry that escapes it is dropped.
+func closureFiles(closure map[string]Affixes, kusts map[string]*types.Kustomization,
+	canonical func(string) (string, bool)) []string {
+	var out []string
+	for d := range closure {
+		k := kusts[d]
+		if k == nil {
+			continue
+		}
+		for _, p := range kustomizationPaths(k) {
+			if p == "" {
+				continue
+			}
+			if f, ok := canonical(filepath.Join(d, filepath.FromSlash(p))); ok {
+				out = append(out, f)
+			}
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
