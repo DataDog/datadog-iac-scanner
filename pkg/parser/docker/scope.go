@@ -67,11 +67,13 @@ func (b *binding) tryResolve() []*binding {
 }
 
 // tracker is an environment that never resolves a declaration itself. A read of
-// one that is not resolved yet is recorded and reported as unset, and the
-// caller discards that expansion and retries once the declaration is resolved.
+// one that is not resolved yet is recorded and reported as present with an
+// empty value, so a single pass discovers every dependency of the word. The
+// caller discards that expansion and retries once they are resolved.
 type tracker struct {
 	view    view
 	pending []*binding
+	seen    map[*binding]struct{}
 }
 
 func (t *tracker) Get(name string) (string, bool) {
@@ -80,8 +82,14 @@ func (t *tracker) Get(name string) (string, bool) {
 		return "", false
 	}
 	if !b.done {
-		t.pending = append(t.pending, b)
-		return "", false
+		if _, dup := t.seen[b]; !dup {
+			if t.seen == nil {
+				t.seen = map[*binding]struct{}{}
+			}
+			t.seen[b] = struct{}{}
+			t.pending = append(t.pending, b)
+		}
+		return "", true
 	}
 	return b.value, true
 }

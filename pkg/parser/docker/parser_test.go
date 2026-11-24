@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
@@ -483,4 +484,26 @@ func TestParser_Parse_LongDeclarationChainUsesBoundedStack(t *testing.T) {
 	require.NoError(t, err)
 	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
 	require.Equal(t, []interface{}{"echo x x"}, stage[len(stage)-1].(map[string]interface{})["Value"])
+}
+
+// Every dependency of a word is found in one pass, so a declaration reading N
+// others is not rescanned N times.
+func TestParser_Parse_ManyDependenciesResolveInOnePass(t *testing.T) {
+	const inputs = 3000
+	var source, ref strings.Builder
+	source.WriteString("FROM scratch\n")
+	for i := 0; i < inputs; i++ {
+		fmt.Fprintf(&source, "ARG V%d=x\n", i)
+		fmt.Fprintf(&ref, "${V%d:+y}", i)
+	}
+	fmt.Fprintf(&source, "ARG OUT=%s\nRUN echo $OUT\n", ref.String())
+	// Lines are limited to 64 KiB by the Dockerfile parser.
+	require.Less(t, ref.Len(), 60000)
+
+	start := time.Now()
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+	require.NoError(t, err)
+	require.Less(t, time.Since(start), time.Second)
+	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+	require.Equal(t, []interface{}{"echo " + strings.Repeat("y", inputs)}, stage[len(stage)-1].(map[string]interface{})["Value"])
 }
