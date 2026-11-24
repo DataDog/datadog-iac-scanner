@@ -306,7 +306,10 @@ type Ruleset struct {
 
 // Rule defines the structure of a rule that's stored in Datadog.
 type Rule struct {
-	ID                string         `jsonapi:"primary,iac_rule" json:"id"`
+	ID string `jsonapi:"primary,iac_rule" json:"id"`
+	// DefaultRuleID identifies the canonical CSPM concept implemented by this
+	// IaC rule. It is separate from ID, which remains the scanner rule identity.
+	DefaultRuleID     string         `jsonapi:"attribute" json:"default_rule_id,omitempty"`
 	Name              string         `jsonapi:"attribute" json:"name"`
 	LegacyId          *string        `jsonapi:"attribute" json:"legacy_id,omitempty"`
 	LegacyIds         []string       `jsonapi:"attribute" json:"legacy_ids,omitempty"`

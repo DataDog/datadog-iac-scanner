@@ -76,6 +76,7 @@ func TestGetDefaultRuleset(t *testing.T) {
 	rules := []*Rule{
 		{
 			ID:               "dockerfile-gcp-rule-1",
+			DefaultRuleID:    "cspm-default-rule-1",
 			Name:             "rule-1",
 			LegacyId:         nil,
 			ShortDescription: "short 1",

@@ -34,6 +34,7 @@ type sarifProperties map[string]interface{}
 type ruleMetadata struct {
 	legacyQueryID    string
 	queryID          string
+	defaultRuleID    string
 	queryName        string
 	queryDescription string
 	queryURI         string
@@ -408,6 +409,9 @@ func (sr *sarifReport) buildSarifRule(queryMetadata *ruleMetadata, cisMetadata r
 				"cisTitle": cisMetadata.title,
 			}
 		}
+		if queryMetadata.defaultRuleID != "" {
+			rule.RuleProperties["defaultRuleId"] = queryMetadata.defaultRuleID
+		}
 
 		sr.Runs[0].Tool.Driver.Rules = append(sr.Runs[0].Tool.Driver.Rules, rule)
 		index = len(sr.Runs[0].Tool.Driver.Rules) - 1
@@ -452,6 +456,7 @@ func (sr *sarifReport) BuildSarifIssue(ctx context.Context, issue *model.QueryRe
 	if len(issue.Files) > 0 {
 		metadata := ruleMetadata{
 			queryID:          issue.QueryID,
+			defaultRuleID:    issue.DefaultRuleID,
 			legacyQueryID:    issue.LegacyQueryID,
 			queryName:        issue.QueryName,
 			queryDescription: issue.Description,

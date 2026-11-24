@@ -254,6 +254,9 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 		Aggregation:  1,
 		Experimental: rule.IsTesting,
 	}
+	if rule.DefaultRuleID != "" {
+		out.Metadata["defaultRuleId"] = rule.DefaultRuleID
+	}
 	setStringPtr(out.Metadata, "legacyId", rule.LegacyId)
 	if len(rule.LegacyIds) > 0 {
 		out.Metadata["legacyIds"] = rule.LegacyIds

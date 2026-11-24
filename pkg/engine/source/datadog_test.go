@@ -373,6 +373,17 @@ func TestConvertRuleIncludesArgumentsInMetadata(t *testing.T) {
 	}, query.Metadata["arguments"])
 }
 
+func TestConvertRuleCarriesCanonicalDefaultRuleIDSeparately(t *testing.T) {
+	rule := &datadog.Rule{
+		ID:            "terraform-rule-id",
+		DefaultRuleID: "cspm-default-rule-id",
+	}
+
+	query := ConvertRule(rule)
+	require.Equal(t, "terraform-rule-id", query.Metadata["id"])
+	require.Equal(t, "cspm-default-rule-id", query.Metadata["defaultRuleId"])
+}
+
 // TestConvertRuleCarriesLegacyIdsInMetadata checks that the legacy_ids
 // entries of an API rule reach the query metadata next to legacyId.
 func TestConvertRuleCarriesLegacyIdsInMetadata(t *testing.T) {

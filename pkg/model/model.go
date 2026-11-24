@@ -947,11 +947,13 @@ type QueryMetadata struct {
 // Vulnerability is a representation of a detected vulnerability in scanned files
 // after running a query
 type Vulnerability struct {
-	ID                    int              `json:"id"`
-	ScanID                string           `db:"scan_id" json:"-"`
-	FileID                string           `db:"file_id" json:"-"`
-	FileName              string           `db:"file_name" json:"fileName"`
-	QueryID               string           `db:"query_id" json:"queryID"`
+	ID       int    `json:"id"`
+	ScanID   string `db:"scan_id" json:"-"`
+	FileID   string `db:"file_id" json:"-"`
+	FileName string `db:"file_name" json:"fileName"`
+	QueryID  string `db:"query_id" json:"queryID"`
+	// DefaultRuleID is the canonical CSPM concept; QueryID remains the IaC rule identity.
+	DefaultRuleID         string           `json:"defaultRuleId,omitempty"`
 	LegacyQueryID         string           `db:"legacy_query_id" json:"legacyQueryID"`
 	LegacyQueryIDs        []string         `db:"legacy_query_ids" json:"legacyQueryIDs,omitempty"`
 	QueryName             string           `db:"query_name" json:"queryName"`
