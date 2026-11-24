@@ -159,6 +159,9 @@ type Resource struct {
 	// objects of a list rendered from a Helm template: a finding belongs to
 	// it only through its search key.
 	sharedLines bool
+	// linkFallbackLine keeps the collection line for line-only matching
+	// when a generated CloudFormation row displays its loop's span.
+	linkFallbackLine int
 
 	ResourcePath string `json:"resource_path"`
 	Platform     string `json:"platform"`

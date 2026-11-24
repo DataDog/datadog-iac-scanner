@@ -10,9 +10,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
-
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	jsonparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
+	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/stretchr/testify/require"
 )
 
@@ -112,6 +113,115 @@ func TestKeyedRowsSearchKeyPrefix(t *testing.T) {
 		"services.web.api": "services.{{web.api}}",
 		"Queue":            "Resources.Queue",
 	}, prefixes, "a key with a dot is written within {{ }}, as search keys write it")
+}
+
+func TestCloudFormationForEachRows(t *testing.T) {
+	const source = `Transform: AWS::LanguageExtensions
+Resources:
+  Fn::ForEach::Buckets:
+    - Name
+    - !Ref Names
+    - Bucket${Name}:
+        Type: AWS::S3::Bucket
+
+  Plain:
+    Type: AWS::SQS::Queue
+  Fn::ForEach::Regions:
+    - Region
+    - !Ref Regions
+    - Fn::ForEach::Tiers${Region}:
+        - Tier
+        - !Ref Tiers
+        - Archive${Region}${Tier}:
+            Type: AWS::S3::Bucket
+  Fn::ForEach::Unknown:
+    - Name
+    - !Ref NoDefault
+    - Missing${Name}:
+        Type: AWS::S3::Bucket
+Outputs:
+  Name:
+    Value: plain
+Parameters:
+  Names:
+    Type: CommaDelimitedList
+    Default: Blue,Green
+  Regions:
+    Type: CommaDelimitedList
+    Default: East,West
+  Tiers:
+    Type: CommaDelimitedList
+    Default: App
+`
+	ctx := context.Background()
+	p := &yamlparser.Parser{}
+	_, docs, _, _, err := p.Parse(model.WithLazyLineInfo(ctx), []byte(source), "stack.yaml", false, 1)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	resources, ok := docs[0]["Resources"].(map[string]interface{})
+	require.True(t, ok)
+	require.Contains(t, resources, "Fn::ForEach::Unknown")
+	require.Contains(t, resources, "BucketGreen")
+	f := &model.FileMetadata{ID: "stack", FilePath: "stack.yaml", OriginalData: source,
+		Document: docs[0], Kind: model.KindYAML, Platform: platforms.CloudFormation}
+	f.SetLineInfoLoader(func(ctx context.Context, fm *model.FileMetadata) (map[string]interface{}, error) {
+		_, annotated, _, _, err := p.Parse(model.WithLineInfoOnly(ctx), []byte(fm.OriginalData), fm.FilePath, false, 1)
+		if err != nil {
+			return nil, err
+		}
+		return annotated[0], nil
+	})
+
+	collector := NewCollector(t.TempDir())
+	for _, row := range collectDocumentResources(model.FileMetadatas{f}) {
+		collector.AddResource(&row)
+	}
+	collector.AddFinding(&Finding{Fingerprint: "green", DocumentID: f.ID,
+		SearchKey: "Resources.BucketGreen.Type", Line: 3})
+	collector.AddFinding(&Finding{Fingerprint: "collection", DocumentID: f.ID, SearchKey: "Resources", Line: 2})
+	collector.AddFinding(&Finding{Fingerprint: "loop", DocumentID: f.ID, SearchKey: "Resources", Line: 3})
+	inv := collector.Build(testMetadata())
+
+	got := make(map[string]lineRange)
+	for _, row := range inv.Resources {
+		got[row.ResourcePath] = lineRange{row.LineStart, row.LineEnd}
+	}
+	require.Equal(t, map[string]lineRange{
+		"BucketBlue": {3, 7}, "BucketGreen": {3, 7}, "Plain": {9, 10},
+		"ArchiveEastApp": {11, 18}, "ArchiveWestApp": {11, 18},
+	}, got)
+	require.Equal(t, []FindingLink{
+		{FindingFingerprint: "collection", ResourceRef: "stack.yaml|ArchiveEastApp"},
+		{FindingFingerprint: "green", ResourceRef: "stack.yaml|BucketGreen"},
+	}, inv.FindingLinks)
+	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
+}
+
+func TestCloudFormationJSONForEachRows(t *testing.T) {
+	const source = `{
+  "Transform": "AWS::LanguageExtensions",
+  "Resources": {
+    "Fn::ForEach::Buckets": ["Name", ["Blue", "Green"], {
+      "Bucket${Name}": {"Type": "AWS::S3::Bucket"}
+    }],
+    "Plain": {"Type": "AWS::SQS::Queue"}
+  },
+  "Outputs": {}
+}
+`
+	p := &jsonparser.Parser{}
+	_, docs, _, _, err := p.Parse(context.Background(), []byte(source), "stack.json", false, 1)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	resources, ok := docs[0]["Resources"].(map[string]interface{})
+	require.True(t, ok)
+	require.Contains(t, resources, "Fn::ForEach::Buckets")
+	rows := collectDocumentResources(model.FileMetadatas{
+		{ID: "stack", FilePath: "stack.json", OriginalData: source,
+			Document: docs[0], Kind: model.KindJSON, Platform: platforms.CloudFormation},
+	})
+	require.Len(t, rows, 1)
+	require.Equal(t, "Plain", rows[0].ResourcePath)
 }
 
 func TestKubernetesListDocuments(t *testing.T) {

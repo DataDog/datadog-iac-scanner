@@ -51,6 +51,7 @@ func (e *documentEnumerator) keyedRows(
 	}
 
 	rows := make([]Resource, 0, len(keys))
+	var generated []int
 	for _, key := range keys {
 		if parserKey(key, entries) {
 			continue
@@ -68,10 +69,55 @@ func (e *documentEnumerator) keyedRows(
 			// An entry the file does not spell, such as one a Compose
 			// override adds, is placed at its collection.
 			row.LineStart = collectionLine
+			if f.Platform == platforms.CloudFormation {
+				generated = append(generated, len(rows))
+			}
 		}
 		rows = append(rows, row)
 	}
+	if len(generated) > 0 {
+		e.placeCloudFormationLoopRows(f, spans, rows, generated)
+	}
 	return rows
+}
+
+func (e *documentEnumerator) placeCloudFormationLoopRows(
+	f *model.FileMetadata, spans map[string]lineRange, rows []Resource, generated []int,
+) {
+	loops := make(map[int]lineRange)
+	for key, span := range spans {
+		if strings.HasPrefix(key, "Fn::ForEach::") {
+			if previous, ok := loops[span.start]; ok {
+				// Flow-style keys can share a line. Use only the lines
+				// common to both spans when the metadata cannot distinguish them.
+				span.end = min(span.end, previous.end)
+			}
+			loops[span.start] = span
+		}
+	}
+	if len(loops) == 0 {
+		return
+	}
+
+	// Scan documents omit line metadata. Load it on demand without leaving
+	// the annotated tree in the scan's file metadata.
+	annotated := f.ShallowCopy()
+	defer annotated.DiscardLineInfoDocument()
+	_ = annotated.UseLineInfoDocument(e.ctx, func(doc map[string]interface{}) error {
+		resources, _ := doc["Resources"].(map[string]interface{})
+		lines, _ := resources["_dd_lines"].(map[string]*model.LineObject)
+		for _, i := range generated {
+			row := &rows[i]
+			// Expansion copies the outer loop's key line to each generated ID.
+			if line := lines["_dd_"+row.ResourcePath]; line != nil {
+				if span, ok := loops[line.Line]; ok {
+					row.linkFallbackLine = row.LineStart
+					row.LineStart, row.LineEnd = span.start, span.end
+				}
+			}
+		}
+		return nil
+	})
 }
 
 // mappingEntry returns the key and value nodes of key in a mapping node.
