@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
@@ -466,7 +467,7 @@ func parseLocalDataFile(
 	if tfpath.IsJSONConfig(tfFile) {
 		return jsonLocalDataFile(ctx, content, tfFile, wantsData, wantsLocals)
 	}
-	parsedFile, diags := hclsyntax.ParseConfig(content, tfFile, hcl.InitialPos)
+	parsedFile, diags := hclcache.ParseConfig(ctx, content, tfFile)
 	if parsedFile == nil || diags.HasErrors() {
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Debug().Msgf("Error trying to parse file %s for data source.", tfFile)
