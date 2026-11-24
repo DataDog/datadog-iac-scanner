@@ -3,6 +3,9 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -200,18 +203,18 @@ ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
 }
 
 func TestVariableScope_DeclareArgs(t *testing.T) {
-	scope := variableScope{}
+	scope := newScope(nil)
 	lex := newWordExpander('\\', false)
-	got := scope.declareArgs(lex, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, variableScope{"BARE": "global"})
-	require.Equal(t, []string{"ARG=2", "NEXT=2x", "BARE"}, got)
-	require.Equal(t, variableScope{"ARG": "2", "NEXT": "2x", "BARE": "global"}, scope)
+	got := scope.declareArgs(lex, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, newScope(map[string]string{"BARE": "global"}))
+	require.Equal(t, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, got)
+	require.Equal(t, map[string]string{"ARG": "2", "NEXT": "2x", "BARE": "global"}, scope.vars)
 }
 
 func TestVariableScope_DeclareEnvs(t *testing.T) {
-	scope := variableScope{"K": "KEY", "V": "value"}
+	scope := newScope(map[string]string{"K": "KEY", "V": "value"})
 	got := scope.declareEnvs(newWordExpander('\\', false), []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="})
-	require.Equal(t, []string{"ARG", "2", "=", "KEY", "value", "=", "K", "new", "="}, got)
-	require.Equal(t, variableScope{"ARG": "2", "KEY": "value", "K": "new", "V": "value"}, scope)
+	require.Equal(t, []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="}, got)
+	require.Equal(t, map[string]string{"ARG": "2", "KEY": "value", "K": "new", "V": "value"}, scope.vars)
 }
 
 // Dockerfile instructions are case-insensitive: a lowercase FROM names its
@@ -270,7 +273,7 @@ func TestResolveArgsAndEnvs_WholeReferences(t *testing.T) {
 	args := map[string]string{"V": "1", "VERSION": "latest", "NESTED": "$VERSION", "EMPTY": ""}
 	values := []string{"$V $VERSION ${VERSION} $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN ${EMPTY} $NESTED"}
 	require.Equal(t, []string{"1 latest latest $VERSION_SUFFIX ${UNKNOWN} $UNKNOWN  $VERSION"},
-		resolveArgsAndEnvs(values, args))
+		resolveArgsAndEnvs(values, newScope(args)))
 }
 
 func TestParser_Parse_ChainedDeclarations(t *testing.T) {
@@ -293,7 +296,7 @@ func TestParser_Parse_ChainedDeclarations(t *testing.T) {
 			if tt.name == "ARG" {
 				args := docs[0]["args"].([]interface{})
 				arg := args[1].(map[string]interface{})
-				require.Equal(t, []interface{}{"IMAGE=alpine:latest"}, arg["Value"])
+				require.Equal(t, []interface{}{"IMAGE=$BASE"}, arg["Value"])
 				require.Equal(t, "ARG IMAGE=$BASE", arg["Original"], "source text remains available to line detection")
 			}
 		})
@@ -314,15 +317,15 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		{"known ARG required and alternate", "FROM alpine\nARG X=known\nRUN ${X:?need} ${X:+alternate}\n", map[int][]string{3: {"known alternate"}}},
 		{"unset runtime shell default stays intact", "FROM alpine\nRUN A=2; echo ${A:-1} $?\n", map[int][]string{2: {"A=2; echo ${A:-1} $?"}}},
 		{"shell quoting and defaults", "FROM alpine\nARG V=1\nRUN echo \\$V '$V' \"$V\" ${V:-d}\n", map[int][]string{3: {`echo \$V '$V' "1" 1`}}},
-		{"quoted declaration values", "FROM alpine\nARG V=1\nENV A=\"$V words\" LITERAL='$V' ESCAPED=\\$V\nRUN echo $A $LITERAL $ESCAPED\n", map[int][]string{3: {"A", "1 words", "=", "LITERAL", "$V", "=", "ESCAPED", "$V", "="}, 4: {"echo 1 words $V $V"}}},
+		{"quoted declaration values", "FROM alpine\nARG V=1\nENV A=\"$V words\" LITERAL='$V' ESCAPED=\\$V\nRUN echo $A $LITERAL $ESCAPED\n", map[int][]string{3: {"A", "\"$V words\"", "=", "LITERAL", "'$V'", "=", "ESCAPED", "\\$V", "="}, 4: {"echo 1 words $V $V"}}},
 		{"escape directive in expansion", "# escape=`\nFROM alpine\nARG V=1\nRUN echo `$V $V\n", map[int][]string{4: {"echo `$V 1"}}},
 		{"unsupported bash expansion falls back locally", "FROM alpine\nARG H=hello\nRUN echo ${#H} $H\n", map[int][]string{3: {"echo ${#H} hello"}}},
 		{"unmatched apostrophe starts literal context", "FROM alpine\nARG H=hello\nRUN echo $H it's $H\n", map[int][]string{3: {"echo hello it's $H"}}},
-		{"resolved declarations", "ARG V=1\nFROM alpine\nARG V\nENV A=$V\nARG B=$A\nRUN echo $B\n", map[int][]string{4: {"A", "1", "="}, 5: {"B=1"}, 6: {"echo 1"}}},
+		{"resolved declarations", "ARG V=1\nFROM alpine\nARG V\nENV A=$V\nARG B=$A\nRUN echo $B\n", map[int][]string{4: {"A", "$V", "="}, 5: {"B=$A"}, 6: {"echo 1"}}},
 		{"ENV overrides ARG", "FROM alpine\nARG V=1\nENV V=2\nRUN echo $V ${V}\n", map[int][]string{4: {"echo 2 2"}}},
 		{"later ARG overrides ENV, last write wins", "FROM alpine\nENV V=2\nARG V=1\nRUN echo $V\n", map[int][]string{4: {"echo 1"}}},
-		{"ENV default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nENV NEXT=$V\nRUN echo $NEXT\n", map[int][]string{4: {"NEXT", "2", "="}, 5: {"echo 2"}}},
-		{"ENV expands keys before saving", "FROM alpine\nARG NAME=PORT\nENV ${NAME}=22\nEXPOSE $PORT\n", map[int][]string{3: {"PORT", "22", "="}, 4: {"22"}}},
+		{"ENV default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nENV NEXT=$V\nRUN echo $NEXT\n", map[int][]string{4: {"NEXT", "$V", "="}, 5: {"echo 2"}}},
+		{"ENV expands keys before saving", "FROM alpine\nARG NAME=PORT\nENV ${NAME}=22\nEXPOSE $PORT\n", map[int][]string{3: {"${NAME}", "22", "="}, 4: {"22"}}},
 		{"ARG default uses effective scope", "FROM alpine\nARG V=1\nENV V=2\nARG NEXT=$V\nRUN echo $NEXT\n", map[int][]string{5: {"echo 2"}}},
 		{"global ARG only in FROM", "ARG V=alpine\nFROM $V\nRUN echo $V\n", map[int][]string{2: {"alpine"}, 3: {"echo $V"}}},
 		{"global ARG redeclared", "ARG V=alpine\nFROM $V\nARG V\nRUN echo $V\n", map[int][]string{4: {"echo alpine"}}},
@@ -337,6 +340,7 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		{"derived stage does not leak into its parent", "FROM alpine AS base\nENV V=base\nFROM base AS child\nENV V=child\nFROM alpine AS other\nRUN echo $V\n", map[int][]string{6: {"echo $V"}}},
 		{"unset default stays visible", "FROM alpine:${TAG:-latest}\nRUN echo ${TAG:-latest}\n", map[int][]string{1: {"alpine:${TAG:-latest}"}, 2: {"echo ${TAG:-latest}"}}},
 		{"unset global replacement keeps both slashes", "FROM alpine\nARG H=hello\nRUN echo ${UNKNOWN//a/b} $H\n", map[int][]string{3: {"echo ${UNKNOWN//a/b} hello"}}},
+		{"ENV keeps a reference to a variable set by the same instruction", "FROM alpine\nENV A=1\nENV A=2 B=$A\nRUN echo $A $B\n", map[int][]string{3: {"A", "2", "=", "B", "$A", "="}, 4: {"echo 2 1"}}},
 		{"legacy ENV form", "FROM alpine\nENV PORT 22\nEXPOSE $PORT\n", map[int][]string{3: {"22"}}},
 		{"sibling stages are isolated", "FROM alpine AS base\nENV V=base\nFROM base AS left\nENV V=left\nFROM base AS right\nRUN echo $V\n", map[int][]string{6: {"echo base"}}},
 		{"ONBUILD declaration is deferred", "FROM alpine\nENV V=local\nONBUILD ENV V=child\nRUN echo $V\n", map[int][]string{4: {"echo local"}}},
@@ -363,7 +367,7 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 	}
 }
 
-func resolveArgsAndEnvs(values []string, scope variableScope) []string {
+func resolveArgsAndEnvs(values []string, scope *variableScope) []string {
 	return expandValues(newWordExpander('\\', true), values, scope)
 }
 
@@ -385,4 +389,35 @@ func TestParser_Parse_LineInfoOnlySkipsExpansion(t *testing.T) {
 	commands := docs[0]["command"].(map[string]interface{})["$BASE"].([]interface{})
 	require.Equal(t, []interface{}{"$BASE"}, commands[0].(map[string]interface{})["Value"])
 	require.Equal(t, []interface{}{"echo $V"}, commands[2].(map[string]interface{})["Value"])
+}
+
+// A chain of stages shares its parents' bindings. Copying them would make the
+// memory quadratic in the number of stages, so doubling the chain must roughly
+// double the allocation.
+func TestParser_Parse_StageChainSharesParentScope(t *testing.T) {
+	parse := func(stages int) uint64 {
+		var source strings.Builder
+		source.WriteString("FROM alpine AS s0\nENV V0=0\n")
+		for i := 1; i <= stages; i++ {
+			fmt.Fprintf(&source, "FROM s%d AS s%d\nENV V%d=%d\n", i-1, i, i, i)
+		}
+		fmt.Fprintf(&source, "RUN echo $V0 $V%d\n", stages)
+
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+		runtime.ReadMemStats(&after)
+		require.NoError(t, err)
+		for _, stage := range docs[0]["command"].(map[string]interface{}) {
+			for _, c := range stage.([]interface{}) {
+				if cmd := c.(map[string]interface{}); cmd["Cmd"] == "run" {
+					require.Equal(t, []interface{}{fmt.Sprintf("echo 0 %d", stages)}, cmd["Value"])
+				}
+			}
+		}
+		return after.TotalAlloc - before.TotalAlloc
+	}
+	small, large := parse(1000), parse(4000)
+	require.Less(t, large, small*6, "4x the stages must not cost much more than 4x the memory")
 }

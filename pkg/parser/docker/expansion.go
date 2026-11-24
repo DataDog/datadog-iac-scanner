@@ -33,8 +33,8 @@ func newWordExpander(escape rune, raw bool) *wordExpander {
 }
 
 // expandValues expands each value in place against scope and returns values.
-func expandValues(e *wordExpander, values []string, scope variableScope) []string {
-	if e.raw && len(scope) == 0 {
+func expandValues(e *wordExpander, values []string, scope *variableScope) []string {
+	if e.raw && scope.empty() {
 		return values
 	}
 	for i, value := range values {
@@ -53,7 +53,7 @@ func (e *wordExpander) mayReference(value string) bool {
 	return strings.ContainsAny(value, "$\\\"'`")
 }
 
-func (e *wordExpander) expand(value string, scope variableScope) string {
+func (e *wordExpander) expand(value string, scope *variableScope) string {
 	if e.lexerHandles(value, scope) {
 		if expanded, _, err := e.lex.ProcessWord(value, scope); err == nil {
 			return expanded
@@ -73,7 +73,7 @@ func (e *wordExpander) expand(value string, scope variableScope) string {
 //     rebuilt exactly and stays on this path.
 //
 // The scan ignores quoting, so it can only err towards the byte-preserving path.
-func (e *wordExpander) lexerHandles(value string, scope variableScope) bool {
+func (e *wordExpander) lexerHandles(value string, scope *variableScope) bool {
 	if !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || strings.HasPrefix(value, "\ufeff") {
 		return false
 	}
@@ -84,7 +84,7 @@ func (e *wordExpander) lexerHandles(value string, scope variableScope) bool {
 		nameStart := pos + 2
 		nameEnd := parameterNameEnd(value, nameStart)
 		plain := nameEnd < len(value) && value[nameEnd] == '}'
-		if _, known := scope[value[nameStart:nameEnd]]; !plain && !known {
+		if _, known := scope.Get(value[nameStart:nameEnd]); !plain && !known {
 			return false
 		}
 		pos++
@@ -122,7 +122,7 @@ func parameterNameEnd(value string, start int) int {
 // single quotes in one linear pass. Every other byte stays as written: quotes,
 // escapes, operators, unknown names and invalid bytes. Substituted values are
 // never scanned again.
-func (e *wordExpander) expandPlainRefs(value string, scope variableScope) string {
+func (e *wordExpander) expandPlainRefs(value string, scope *variableScope) string {
 	var out strings.Builder
 	copied := 0
 	inSingle, inDouble := false, false
@@ -152,7 +152,7 @@ func (e *wordExpander) expandPlainRefs(value string, scope variableScope) string
 				pos++
 				continue
 			}
-			if replacement, known := scope[name]; known {
+			if replacement, known := scope.Get(name); known {
 				out.WriteString(value[copied:pos])
 				out.WriteString(replacement)
 				copied = end
