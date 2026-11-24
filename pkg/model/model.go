@@ -167,6 +167,9 @@ type lineInfoState struct {
 	// retention, when set, keeps the file's tree loaded across decode passes
 	// (see LineInfoRetention) instead of discarding it after each use.
 	retention *LineInfoRetention
+	// optional marks a lazy reparser of an already-parsed document: findings
+	// whose line detection never consults LineInfoDocument may skip loading it.
+	optional bool
 }
 
 // lineInfoGroup is the line-info tree shared by the copies of one source file.
@@ -351,7 +354,8 @@ type FileMetadata struct {
 	TerraformScope *TerraformScope `json:"-"`
 	// TerraformInstances maps document keys for expanded blocks to their
 	// written label and HCL instance suffix.
-	TerraformInstances map[TerraformInstanceKey]TerraformInstance `json:"-"`
+	TerraformInstances map[TerraformInstanceKey]TerraformInstance  `json:"-"`
+	TerraformOverrides map[TerraformBlock]*TerraformOverrideSource `json:"-"`
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
@@ -374,6 +378,23 @@ type TerraformBlock struct {
 	Kind, Type, Name string
 }
 
+// TerraformOverrideSource maps effective Terraform fields to the files that
+// supplied them and identifies the declaration in the document being scanned.
+type TerraformOverrideSource struct {
+	DeclarationStart ResourceLine
+	InventoryLine    int
+	Fields           map[string]string
+}
+
+// TerraformOverrideFinding separates the location explaining a finding from
+// that of its declaration, which identifies the affected inventory block.
+type TerraformOverrideFinding struct {
+	SourceFileID     string
+	DeclarationStart ResourceLine
+	InventoryLine    int
+	InventoryBlock   string
+}
+
 // PlanResourceKey is a terraform plan -json resource section and document key.
 type PlanResourceKey struct {
 	Section, Key string
@@ -387,6 +408,62 @@ type TerraformScope struct {
 	ModuleAddress string
 	Blocks        map[TerraformBlock]bool
 	PlanAddresses map[PlanResourceKey]string
+}
+
+// SetLineInfoOptional marks a lazy line-info loader as an on-demand reparse
+// of an already-parsed document, allowing findings that never consult
+// LineInfoDocument to skip reconstruction. Call after SetLineInfoLoader.
+func (f *FileMetadata) SetLineInfoOptional() {
+	if f.lineInfo != nil {
+		f.lineInfo.optional = true
+	}
+}
+
+// LineInfoOptional reports whether f's lazy line-info loader may be skipped
+// for findings that do not read LineInfoDocument.
+func (f *FileMetadata) LineInfoOptional() bool {
+	return f.lineInfo != nil && f.lineInfo.optional
+}
+
+// WithoutLineInfoView returns a view of f with no LineInfoDocument or lazy
+// loader, without reading f.LineInfoDocument (safe alongside concurrent
+// UseLineInfoDocument / DiscardLineInfoDocument calls on f). It shares
+// f.linesLazy so Lines() and substring caches remain shared. When f has no
+// lazy loader, f is returned unchanged.
+func (f *FileMetadata) WithoutLineInfoView() *FileMetadata {
+	if f.lineInfo == nil {
+		return f
+	}
+	var linesOrig *[]string
+	if f.linesLazy == nil {
+		linesOrig = f.LinesOriginalData
+	}
+	return &FileMetadata{
+		ID:                  f.ID,
+		ScanID:              f.ScanID,
+		Document:            f.Document,
+		OriginalData:        f.OriginalData,
+		LinesOriginalData:   linesOrig,
+		linesLazy:           f.linesLazy,
+		Kind:                f.Kind,
+		FilePath:            f.FilePath,
+		Commands:            f.Commands,
+		LinesIgnore:         f.LinesIgnore,
+		ResolvedFiles:       f.ResolvedFiles,
+		IsMinified:          f.IsMinified,
+		HelmID:              f.HelmID,
+		IDInfo:              f.IDInfo,
+		HelmAttribution:     f.HelmAttribution,
+		SourceDocumentIndex: f.SourceDocumentIndex,
+		Reported:            f.Reported,
+		Archive:             f.Archive,
+		ModuleCallChain:     f.ModuleCallChain,
+		ModuleAttributions:  f.ModuleAttributions,
+		TerraformScope:      f.TerraformScope,
+		TerraformInstances:  f.TerraformInstances,
+		TerraformOverrides:  f.TerraformOverrides,
+		Platform:            f.Platform,
+	}
 }
 
 // SetLineInfoLoader configures on-demand reconstruction of LineInfoDocument.
@@ -428,7 +505,7 @@ func cloneLineInfoState(src *lineInfoState) *lineInfoState {
 		group = src.copies
 		src.mu.Unlock()
 	}
-	return &lineInfoState{loader: src.loader, group: group}
+	return &lineInfoState{loader: src.loader, group: group, optional: src.optional}
 }
 
 // LineInfoShareKey identifies the line-info tree f reads: copies of one source
@@ -926,7 +1003,8 @@ type Vulnerability struct {
 	// kept one finding per identity, when the scan keeps them (see
 	// RecordDuplicate): an inventory links the kept finding to every
 	// resource it stands for.
-	AlsoRaisedOn []RaisedOn `json:"-"`
+	AlsoRaisedOn      []RaisedOn                `json:"-"`
+	TerraformOverride *TerraformOverrideFinding `json:"-"`
 }
 
 // RaisedOn is where a finding was raised: its document, line and search
@@ -936,6 +1014,7 @@ type RaisedOn struct {
 	Line       int
 	SearchKey  string
 	BlockStart int
+	Block      string
 }
 
 // raisedOn is where v was raised. A module instance's document is named
@@ -943,7 +1022,12 @@ type RaisedOn struct {
 // module instantiated many times adds nothing to the findings it raises.
 func (v *Vulnerability) raisedOn() RaisedOn {
 	fileID, _, _ := strings.Cut(v.FileID, "\x00")
-	return RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
+	place := RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
+	if v.TerraformOverride != nil {
+		place.BlockStart = v.TerraformOverride.InventoryLine
+		place.Block = v.TerraformOverride.InventoryBlock
+	}
+	return place
 }
 
 // Places gathers where the findings of one identity were raised, once each,
@@ -1323,6 +1407,18 @@ type ResolvedFile struct {
 	Path         string
 	Content      []byte
 	LinesContent *[]string
+}
+
+// ParseOutput is what a parser returns for a file, as Parse does, plus whether
+// the file parsed as a Terraform plan.
+type ParseOutput struct {
+	Resolved      []byte
+	Documents     []Document
+	IgnoreLines   []int
+	ResolvedFiles map[string]ResolvedFile
+	// TerraformPlan is false for content that only looks like a plan and falls
+	// back to plain documents, though such content keeps the plan kind.
+	TerraformPlan bool
 }
 
 type SarifResourceLocation struct {

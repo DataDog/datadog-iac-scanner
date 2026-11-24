@@ -138,6 +138,7 @@ func sameNames(a, b []string) bool {
 // attributeReads is the line range of an attribute, or of a dynamic block's
 // header, with the module inputs its value reads.
 type attributeReads struct {
+	filename  string
 	lineStart int
 	lineEnd   int
 	reads     inputReads
@@ -197,6 +198,9 @@ func (t *moduleAttributionCache) resourceArguments(r *tfeval.ResolvedResource, r
 	args := make([]model.ModuleArgument, 0, len(attrs))
 	for i := range attrs {
 		arg := model.ModuleArgument{LineStart: attrs[i].lineStart, LineEnd: attrs[i].lineEnd}
+		if r.DeclarationBody != nil {
+			arg.Filename = attrs[i].filename
+		}
 		if attrs[i].module {
 			arg.Control = model.ArgumentControlModule
 		} else if location, ok := t.traceCallArgument(r.CallChain, attrs[i].reads, rootCallFile, r.Scope); ok {
@@ -480,12 +484,13 @@ func (a *valueAnalyzer) collectBody(body *hclsyntax.Body, out *[]attributeReads)
 			continue
 		}
 		*out = append(*out, attributeReads{
+			filename:  attr.SrcRange.Filename,
 			lineStart: attr.SrcRange.Start.Line,
 			lineEnd:   attr.SrcRange.End.Line,
 			reads:     reads,
 		})
 		if !isForEach {
-			a.collectItems(attr.Expr, out)
+			a.collectItems(attr.Expr, attr.SrcRange.Filename, out)
 		}
 	}
 	for _, block := range body.Blocks {
@@ -500,23 +505,23 @@ func (a *valueAnalyzer) collectBody(body *hclsyntax.Body, out *[]attributeReads)
 // collectItems records the items of a value spread over several lines, each
 // on lines of its own, so a finding on one is attributed by what that item
 // reads and not by the whole value.
-func (a *valueAnalyzer) collectItems(expr hclsyntax.Expression, out *[]attributeReads) {
+func (a *valueAnalyzer) collectItems(expr hclsyntax.Expression, filename string, out *[]attributeReads) {
 	type item struct {
 		key, value hclsyntax.Expression
 	}
 	var items []item
 	switch e := expr.(type) {
 	case *hclsyntax.ParenthesesExpr:
-		a.collectItems(e.Expression, out)
+		a.collectItems(e.Expression, filename, out)
 		return
 	case *hclsyntax.FunctionCallExpr:
 		for _, arg := range e.Args {
-			a.collectItems(arg, out)
+			a.collectItems(arg, filename, out)
 		}
 		return
 	case *hclsyntax.ConditionalExpr:
-		a.collectItems(e.TrueResult, out)
-		a.collectItems(e.FalseResult, out)
+		a.collectItems(e.TrueResult, filename, out)
+		a.collectItems(e.FalseResult, filename, out)
 		return
 	case *hclsyntax.ObjectConsExpr:
 		for _, it := range e.Items {
@@ -549,12 +554,13 @@ func (a *valueAnalyzer) collectItems(expr hclsyntax.Expression, out *[]attribute
 		}
 		reads.add(a.reads(it.value))
 		*out = append(*out, attributeReads{
+			filename:  filename,
 			lineStart: start,
 			lineEnd:   it.value.Range().End.Line,
 			reads:     reads,
 			module:    reads.empty(),
 		})
-		a.collectItems(it.value, out)
+		a.collectItems(it.value, filename, out)
 	}
 }
 
@@ -584,7 +590,9 @@ func (a *valueAnalyzer) collectDynamic(block *hclsyntax.Block, out *[]attributeR
 		header.add(a.reads(attr.Expr).shared())
 	}
 	if !header.empty() {
-		*out = append(*out, attributeReads{lineStart: block.TypeRange.Start.Line, lineEnd: headerEnd, reads: header})
+		*out = append(*out, attributeReads{
+			filename: block.TypeRange.Filename, lineStart: block.TypeRange.Start.Line, lineEnd: headerEnd, reads: header,
+		})
 	}
 	depth := len(a.iterators)
 	a.iterators = append(a.iterators, iteratorReads{name: name, reads: reads})

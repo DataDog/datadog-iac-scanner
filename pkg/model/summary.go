@@ -53,7 +53,8 @@ type VulnerableFile struct {
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
 	// FileID is the document the finding was raised on (Vulnerability.FileID).
-	FileID string `json:"-"`
+	FileID            string                    `json:"-"`
+	TerraformOverride *TerraformOverrideFinding `json:"-"`
 	// AlsoRaisedOn is where else the finding was raised before the scan kept
 	// one finding per identity (Vulnerability.AlsoRaisedOn).
 	AlsoRaisedOn []RaisedOn `json:"-"`
@@ -100,6 +101,7 @@ type Counters struct {
 	TotalQueries           int `json:"queries_total"`
 	FailedToExecuteQueries int `json:"queries_failed_to_execute"`
 	FoundResources         int `json:"resources_found"`
+	TerraformPlans         int `json:"-"`
 }
 
 // Times represents an object that contains the start and end time of the scan
@@ -411,6 +413,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
 			FileID:                   item.FileID,
+			TerraformOverride:        item.TerraformOverride,
 			AlsoRaisedOn:             item.AlsoRaisedOn,
 		})
 

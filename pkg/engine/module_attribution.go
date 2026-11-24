@@ -712,6 +712,9 @@ func moduleAttributionForResource(
 		return nil
 	}
 	line, col := v.BlockLocation.Start.Line, v.BlockLocation.Start.Col
+	if override := v.TerraformOverride; override != nil {
+		line, col = override.DeclarationStart.Line, override.DeclarationStart.Col
+	}
 	attr, ok := attrs[moduleAttributionKey(v.ResourceType, line, col)]
 	if !ok && !strings.HasPrefix(v.ResourceType, dataTypePrefix) {
 		// A data rule may name its type without the prefix; the block's
@@ -725,27 +728,35 @@ func moduleAttributionForResource(
 	if clone == nil {
 		return nil
 	}
-	// The narrowest range holding the line decides: an item of a multi-line
-	// value is set by what it reads, not by the rest of the value.
+	if arg := moduleArgumentAt(clone.Arguments, v.FileName, v.Line); arg != nil {
+		clone.ArgumentControl = arg.Control
+		if arg.Control == model.ArgumentControlCaller {
+			clone.CallSite = arg.CallSite
+		}
+	}
+	clone.Arguments = nil
+	if override := v.TerraformOverride; override != nil && override.SourceFileID != "" {
+		clone.ModuleCodeLocation.Filename = pathpkg.Join(pathpkg.Dir(clone.ModuleCodeLocation.Filename), filepath.Base(v.FileName))
+	}
+	narrowCodeLocation(&clone.ModuleCodeLocation, v)
+	return clone
+}
+
+// The narrowest range holding the line decides who controls the value.
+// Overridden blocks can contain arguments from several files.
+func moduleArgumentAt(args []model.ModuleArgument, filename string, line int) *model.ModuleArgument {
 	var narrowest *model.ModuleArgument
-	for i := range clone.Arguments {
-		arg := &clone.Arguments[i]
-		if v.Line < arg.LineStart || v.Line > arg.LineEnd {
+	for i := range args {
+		arg := &args[i]
+		if line < arg.LineStart || line > arg.LineEnd ||
+			(arg.Filename != "" && filepath.Base(arg.Filename) != filepath.Base(filename)) {
 			continue
 		}
 		if narrowest == nil || arg.LineEnd-arg.LineStart < narrowest.LineEnd-narrowest.LineStart {
 			narrowest = arg
 		}
 	}
-	if narrowest != nil {
-		clone.ArgumentControl = narrowest.Control
-		if narrowest.Control == model.ArgumentControlCaller {
-			clone.CallSite = narrowest.CallSite
-		}
-	}
-	clone.Arguments = nil
-	narrowCodeLocation(&clone.ModuleCodeLocation, v)
-	return clone
+	return narrowest
 }
 
 // narrowCodeLocation narrows the module code location to the region reports

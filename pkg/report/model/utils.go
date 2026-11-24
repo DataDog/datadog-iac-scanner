@@ -67,6 +67,10 @@ func GetScannedFilesCountTag(scannedFiles int) string {
 	return fmt.Sprintf(scannedFileCountTag, scannedFiles)
 }
 
+func GetTerraformPlanCountTag(terraformPlans int) string {
+	return fmt.Sprintf(terraformPlanCountTag, terraformPlans)
+}
+
 func GetPlatformTag(platform string) string {
 	return fmt.Sprintf(platformTag, platform)
 }

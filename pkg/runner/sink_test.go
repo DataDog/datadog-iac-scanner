@@ -574,6 +574,7 @@ type noopTracker struct{}
 
 func (noopTracker) TrackFileFound(_ string)            {}
 func (noopTracker) TrackFileParse(_ string)            {}
+func (noopTracker) TrackTerraformPlanParse(_ string)   {}
 func (noopTracker) TrackFileFoundCountLines(_ int)     {}
 func (noopTracker) TrackFileParseCountLines(_ int)     {}
 func (noopTracker) TrackFileIgnoreCountLines(_ int)    {}

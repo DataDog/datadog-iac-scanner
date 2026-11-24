@@ -381,7 +381,7 @@ module "leaf" {source="../leaf"}`})
 				Locals: parsed.localExprs, localGraph: parsed.locals, static: parsed.static,
 				evalCtx: evalCtx, sources: parsed.sources,
 			}
-			data := newModuleData(evaluator, parsed.sources, parsed.locals, parsed.static, "", nil)
+			data := newModuleData(evaluator, &parsed, "", nil, nil)
 			identity, err := evaluator.moduleDirectoryIdentity(t.Context(), stack)
 			require.NoError(t, err)
 			visiting := map[string]bool{identity: true}

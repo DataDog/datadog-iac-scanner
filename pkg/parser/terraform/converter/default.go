@@ -32,11 +32,12 @@ type VariableMap map[string]cty.Value
 // This file is attributed to https://github.com/tmccombs/hcl2json.
 // convertBlock() is manipulated for combining the both blocks and labels for one given resource.
 
-// Options controls filesystem-backed function evaluation during conversion.
+// Options controls filesystem-backed function evaluation and line-info output during conversion.
 type Options struct {
-	BaseDir string
-	RootDir string
-	FS      vfs.FS
+	BaseDir      string
+	RootDir      string
+	FS           vfs.FS
+	SkipLineInfo bool
 }
 
 // Convert an hcl File to a toJson serializable object.
@@ -50,6 +51,7 @@ func Convert(ctx context.Context, file *hcl.File, inputVariables VariableMap, op
 		variables[name] = value
 	}
 	c := newConverter(file.Bytes, variables, functions.EvalFuncsWithRoot(opts.BaseDir, opts.RootDir, opts.FS))
+	c.skipLineInfo = opts.SkipLineInfo
 	body, err := c.convertBody(ctx, file.Body.(*hclsyntax.Body), 0)
 
 	if err != nil {
@@ -70,9 +72,10 @@ var DefaultConverted = func(ctx context.Context, file *hcl.File, inputVariables 
 }
 
 type converter struct {
-	bytes     []byte
-	inputVars VariableMap
-	renderer  *partial.Renderer
+	bytes        []byte
+	inputVars    VariableMap
+	renderer     *partial.Renderer
+	skipLineInfo bool
 }
 
 func newConverter(src []byte, variables VariableMap, funcs map[string]function.Function) converter {
@@ -91,73 +94,95 @@ func (c *converter) rangeSource(r hcl.Range) string {
 }
 
 func (c *converter) convertBody(ctx context.Context, body *hclsyntax.Body, defLine int) (model.Document, error) {
-	var err error
-	countValue := body.Attributes["count"]
-	count := -1
-
-	if countValue != nil {
-		value, diags := countValue.Expr.Value(c.renderer.Ctx)
-		if !diags.HasErrors() {
-			if intValue, ok := ctyutil.LiteralInt(value); ok {
-				count = intValue
-			}
-		}
-	}
-
-	if count == 0 {
+	if c.bodyHasZeroCount(body) {
 		return nil, nil
 	}
 
-	out := make(model.Document)
-	ddLines := make(map[string]model.LineObject)
-	// set line info for the body
-	ddLines["_dd__default"] = model.LineObject{
-		Line: defLine,
+	out := make(model.Document, len(body.Attributes)+len(body.Blocks)+1)
+	var ddLines map[string]model.LineObject
+	if !c.skipLineInfo {
+		ddLines = make(map[string]model.LineObject, len(body.Attributes)+len(body.Blocks)+1)
+		ddLines["_dd__default"] = model.LineObject{Line: defLine}
 	}
 
-	if body.Attributes != nil {
-		for key, value := range body.Attributes {
-			out[key], err = c.convertExpression(value.Expr)
-			// set line info for the body value
+	if err := c.convertBodyAttributes(body, out, ddLines); err != nil {
+		return nil, err
+	}
+	if err := c.convertBodyBlocks(ctx, body, out, ddLines); err != nil {
+		return nil, err
+	}
+
+	if !c.skipLineInfo {
+		out["_dd_lines"] = ddLines
+	}
+
+	return out, nil
+}
+
+func (c *converter) bodyHasZeroCount(body *hclsyntax.Body) bool {
+	countValue := body.Attributes["count"]
+	if countValue == nil {
+		return false
+	}
+	value, diags := countValue.Expr.Value(c.renderer.Ctx)
+	if diags.HasErrors() {
+		return false
+	}
+	intValue, ok := ctyutil.LiteralInt(value)
+	return ok && intValue == 0
+}
+
+func (c *converter) convertBodyAttributes(body *hclsyntax.Body, out model.Document, ddLines map[string]model.LineObject) error {
+	for key, value := range body.Attributes {
+		val, err := c.convertExpression(value.Expr)
+		if err != nil {
+			return err
+		}
+		out[key] = val
+		if ddLines != nil {
 			ddLines["_dd_"+key] = model.LineObject{
 				Line: value.SrcRange.Start.Line,
 				Arr:  c.getArrLines(value.Expr),
 			}
-			if err != nil {
-				return nil, err
-			}
 		}
 	}
+	return nil
+}
 
+func (c *converter) convertBodyBlocks(
+	ctx context.Context,
+	body *hclsyntax.Body,
+	out model.Document,
+	ddLines map[string]model.LineObject,
+) error {
 	for _, block := range body.Blocks {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return err
 		}
 		if dynamicblock.Is(block) {
 			expanded, err := c.convertDynamicBlock(ctx, block, out)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if expanded {
-				ddLines["_dd_"+dynamicblock.GeneratedType(block)] = model.LineObject{
-					Line: block.TypeRange.Start.Line,
+				if ddLines != nil {
+					ddLines["_dd_"+dynamicblock.GeneratedType(block)] = model.LineObject{
+						Line: block.TypeRange.Start.Line,
+					}
 				}
 				continue
 			}
 		}
-		// set line info for block
-		ddLines["_dd_"+block.Type] = model.LineObject{
-			Line: block.TypeRange.Start.Line,
+		if ddLines != nil {
+			ddLines["_dd_"+block.Type] = model.LineObject{
+				Line: block.TypeRange.Start.Line,
+			}
 		}
-		err = c.convertBlock(ctx, block, out, block.TypeRange.Start.Line)
-		if err != nil {
-			return nil, err
+		if err := c.convertBlock(ctx, block, out, block.TypeRange.Start.Line); err != nil {
+			return err
 		}
 	}
-
-	out["_dd_lines"] = ddLines
-
-	return out, nil
+	return nil
 }
 
 // getArrLines will get line information for the array elements

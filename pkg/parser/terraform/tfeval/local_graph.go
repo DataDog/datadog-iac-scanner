@@ -68,10 +68,12 @@ type localDeps struct {
 	resources bool
 	modules   bool
 	data      bool
+	vars      bool
 }
 
 func (d localDeps) or(o localDeps) localDeps {
-	return localDeps{resources: d.resources || o.resources, modules: d.modules || o.modules, data: d.data || o.data}
+	return localDeps{resources: d.resources || o.resources, modules: d.modules || o.modules, data: d.data || o.data,
+		vars: d.vars || o.vars}
 }
 
 // newLocalGraph builds the graph of a module's locals and data blocks.
@@ -114,6 +116,7 @@ func (g *localGraph) noteReads(resourceTypes map[string]struct{}) []localDeps {
 			direct[i].resources = direct[i].resources || resource
 			direct[i].modules = direct[i].modules || root == blockTypeModule
 			direct[i].data = direct[i].data || root == blockTypeData
+			direct[i].vars = direct[i].vars || root == rootVar
 			if root != rootLocal {
 				continue
 			}

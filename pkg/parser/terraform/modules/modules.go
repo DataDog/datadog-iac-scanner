@@ -271,7 +271,15 @@ func constantString(expr hclsyntax.Expression) (string, bool) {
 // time a given content hash is seen: repositories commonly hold byte-identical
 // .tf files in many directories. Caching the extract instead of the parsed body
 // keeps the cache small enough to live for the whole scan.
+var emptyFileExtract = &fileExtract{}
+
 func extractForContent(cache *sync.Map, content, filePath string) (*fileExtract, hcl.Diagnostics) {
+	if !tfpath.IsJSONConfig(filePath) &&
+		!strings.Contains(content, "module") &&
+		!strings.Contains(content, "locals") &&
+		!strings.Contains(content, "variable") {
+		return emptyFileExtract, nil
+	}
 	key := contentKey{len: len(content), hash: xxhash.Sum64String(content)}
 	if cached, ok := cache.Load(key); ok {
 		return cached.(*fileExtract), nil

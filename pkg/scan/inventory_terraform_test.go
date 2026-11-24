@@ -118,10 +118,21 @@ func rowsByPath(inv *inventory.Inventory) map[string]inventory.Resource {
 
 func TestInventoryTerraformRows(t *testing.T) {
 	root := writeRepo(t, map[string]string{
-		"infra/main.tf":                 inventoryRootTF,
+		"infra/main.tf": inventoryRootTF + `
+resource "aws_s3_bucket" "disabled_by_override" {
+  count = 2
+  bucket = "disabled"
+}
+`,
 		"infra/modules/logging/main.tf": inventoryModuleTF,
-		// An override restates a block; it stays one row.
-		"infra/override.tf": "resource \"aws_s3_bucket\" \"extra\" {\n  bucket = \"overridden\"\n}\n",
+		"infra/override.tf": `
+resource "aws_s3_bucket" "extra" {
+  bucket = "overridden"
+}
+resource "aws_s3_bucket" "disabled_by_override" {
+  count = 0
+}
+`,
 	})
 	inv := scanInventory(t, terraformParams(root))
 	rows := rowsByPath(inv)

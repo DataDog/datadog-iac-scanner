@@ -7,6 +7,7 @@
 package tfeval
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/fs"
@@ -34,12 +35,12 @@ const blockTypeModule = "module"
 
 // reservedModuleAttrs are module-block keys that are not passed as inputs.
 var reservedModuleAttrs = map[string]bool{
-	"source":     true,
-	"version":    true,
-	"providers":  true,
-	"count":      true,
-	"for_each":   true,
-	"depends_on": true,
+	"source":         true,
+	"version":        true,
+	"providers":      true,
+	"count":          true,
+	"for_each":       true,
+	metaArgDependsOn: true,
 }
 
 // parseDir parses HCL and JSON config in dir (non-recursively) and returns
@@ -80,6 +81,196 @@ func parseDir(
 		}
 	}
 	return bodies, sources, nil
+}
+
+// rootNonResourceMarkers are HCL block keywords that a root directory's module
+// calls can depend on even when root resources themselves are not emitted.
+var rootNonResourceMarkers = [...][]byte{
+	[]byte("module"),
+	[]byte("variable"),
+	[]byte("locals"),
+	[]byte("data"),
+	[]byte("terraform"),
+}
+
+func mayAffectRootModules(src []byte, path string) bool {
+	if tfpath.IsJSONConfig(path) {
+		return true
+	}
+	for _, m := range rootNonResourceMarkers {
+		if bytes.Contains(src, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// knownNonResourceRoots are Terraform traversal root names that do not refer to
+// managed resource blocks in the current directory.
+var knownNonResourceRoots = map[string]bool{
+	rootVar:       true,
+	rootLocal:     true,
+	blockTypeData: true,
+	"module":      true,
+	rootPath:      true,
+	rootTerraform: true,
+	rootEach:      true,
+	metaArgCount:  true,
+	"self":        true,
+}
+
+func exprMayReferenceManagedResource(expr hclsyntax.Expression) bool {
+	if expr == nil {
+		return false
+	}
+	for _, t := range expr.Variables() {
+		if !knownNonResourceRoots[t.RootName()] {
+			return true
+		}
+	}
+	return false
+}
+
+func bodyMayReferenceManagedResource(body *hclsyntax.Body) bool {
+	if body == nil {
+		return false
+	}
+	for _, attr := range body.Attributes {
+		if exprMayReferenceManagedResource(attr.Expr) {
+			return true
+		}
+	}
+	for _, b := range body.Blocks {
+		if bodyMayReferenceManagedResource(b.Body) {
+			return true
+		}
+	}
+	return false
+}
+
+func rootNeedsDeferredResourceFiles(
+	modules []*hclsyntax.Block,
+	localExprs map[string]hclsyntax.Expression,
+	dataBlocks []*hclsyntax.Block,
+) bool {
+	for _, mb := range modules {
+		if bodyMayReferenceManagedResource(mb.Body) {
+			return true
+		}
+	}
+	for _, expr := range localExprs {
+		if exprMayReferenceManagedResource(expr) {
+			return true
+		}
+	}
+	for _, db := range dataBlocks {
+		if bodyMayReferenceManagedResource(db.Body) {
+			return true
+		}
+	}
+	return false
+}
+
+type rootFileSlot struct {
+	path     string
+	src      []byte
+	body     *hclsyntax.Body
+	deferred bool
+}
+
+func readRootFileSlots(
+	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
+) (slots []rootFileSlot, deferredCount int, err error) {
+	if fsys == nil {
+		fsys = vfs.Default()
+	}
+	entries, err := fsys.ReadDir(dir)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	selected := tfmodules.SelectConfigEntries(entries, dir, allow, "")
+	sort.Slice(selected, func(i, j int) bool { return selected[i].Name() < selected[j].Name() })
+	selected = tfpath.OrderOverrideLast(selected, func(entry fs.DirEntry) string { return entry.Name() })
+
+	slots = make([]rootFileSlot, 0, len(selected))
+	for _, entry := range selected {
+		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
+		if !ok {
+			continue
+		}
+		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
+		if rErr != nil {
+			continue
+		}
+		if !mayAffectRootModules(src, path) {
+			slots = append(slots, rootFileSlot{path: path, src: src, deferred: true})
+			deferredCount++
+			continue
+		}
+		if body, ok := parseConfigBody(src, path); ok {
+			slots = append(slots, rootFileSlot{path: path, src: src, body: body})
+		}
+	}
+	return slots, deferredCount, nil
+}
+
+func assembleRootSlots(slots []rootFileSlot, parseDeferred bool) (bodies []*hclsyntax.Body, sources map[string][]byte) {
+	bodies = make([]*hclsyntax.Body, 0, len(slots))
+	sources = make(map[string][]byte, len(slots))
+	for i := range slots {
+		if parseDeferred && slots[i].deferred {
+			if body, ok := parseConfigBody(slots[i].src, slots[i].path); ok {
+				slots[i].body = body
+			}
+		}
+		if slots[i].body != nil {
+			bodies = append(bodies, slots[i].body)
+			sources[slots[i].path] = slots[i].src
+		}
+	}
+	return bodies, sources
+}
+
+// parseRootDirForModules parses a root directory when root resources will not
+// be emitted (only child module calls matter). Files containing only resource /
+// output / provider blocks are deferred and only parsed if any module, locals,
+// or data block may reference a managed resource.
+func (e *Evaluator) parseRootDirForModules(ctx context.Context, dir, packageRoot string) dirParse {
+	slots, deferredCount, err := readRootFileSlots(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	if err != nil {
+		return dirParse{err: err}
+	}
+	for _, slot := range slots {
+		if tfpath.IsOverrideFile(slot.path) {
+			// An override can need a base from a deferred file, including a
+			// resource with no references from other root expressions.
+			return e.parseDir(ctx, dir, packageRoot)
+		}
+	}
+
+	bodies, sources := assembleRootSlots(slots, false)
+	varDecls, localExprs, modules, resources, outputs := collectBlocks(bodies)
+	dataBlocks := collectDataBlocks(bodies)
+	if deferredCount > 0 && len(modules) > 0 && rootNeedsDeferredResourceFiles(modules, localExprs, dataBlocks) {
+		bodies, sources = assembleRootSlots(slots, true)
+		varDecls, localExprs, modules, resources, outputs = collectBlocks(bodies)
+		dataBlocks = collectDataBlocks(bodies)
+	}
+
+	dp := dirParse{
+		bodies:     bodies,
+		sources:    sources,
+		varDecls:   varDecls,
+		localExprs: localExprs,
+		modules:    modules,
+		resources:  resources,
+		outputs:    outputs,
+	}
+	dp.resourceTypes = declaredResourceTypes(dp.resources)
+	dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, dataBlocks)
+	dp.static = newDirStatic(&dp)
+	return dp
 }
 
 func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
@@ -272,7 +463,9 @@ func resolveLocalDir(callerDir, source string) string {
 // LoadRootVars reads the variable definitions files Terraform loads on its own
 // from dir (see tfpath.AutoloadedVarFiles) and returns a variable map for use as
 // root-module inputs, reading through the evaluator's filesystem. Later files
-// override earlier ones. Files that fail to read or parse are silently skipped.
+// override earlier ones. When an effective resource or data override needs
+// evaluator-rendered values, explicitly selected inputs take precedence.
+// Files that fail to read or parse are silently skipped.
 // Only files listed in dir are read: MemFS records ReadFile misses as
 // escalation signals, so absent files must not be probed.
 func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
@@ -304,6 +497,9 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 				out[attrName] = v
 			}
 		}
+	}
+	if len(e.explicitRootVars) != 0 && len(e.ResourceOverrides(ctx, dir)) != 0 {
+		maps.Copy(out, e.explicitRootVars)
 	}
 	return out
 }

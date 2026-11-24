@@ -162,6 +162,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		s.storeSharedParse(s.internContentBytes(*content), &documents, sharedDocs)
 	}
 	s.Tracker.TrackFileParse(filename)
+	if documents.TerraformPlan {
+		s.Tracker.TrackTerraformPlanParse(filename)
+	}
 
 	s.Tracker.TrackFileParseCountLines(documents.CountLines - len(documents.IgnoreLines))
 	s.Tracker.TrackFileIgnoreCountLines(len(documents.IgnoreLines))
@@ -230,6 +233,7 @@ func (s *Service) sinkDocument(
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
 		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+	file.SetLineInfoOptional()
 	if documents.Kind == model.KindTerraformPlan {
 		file.SetLineInfoRetention(s.planLineInfoRetention())
 		if !s.LineInfoPayload {
@@ -274,6 +278,7 @@ func (s *Service) sinkSharedParse(
 		}
 		file.SetLineInfoLoader(newLineInfoLoader(
 			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+		file.SetLineInfoOptional()
 		file.SetLazyLines()
 		s.saveToFile(ctx, &file)
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // InventorySink receives the resources a scan's inventory lists.
@@ -41,6 +42,7 @@ type terraformInventory struct {
 	sink     InventorySink
 	repoPath string
 	lookup   moduleProvenanceLookup
+	rootVars map[string]cty.Value
 	// external reports a fetched module, which is not a root of the
 	// repository even when nothing in the scan calls it.
 	external func(string) bool
@@ -54,7 +56,9 @@ func (c *Inspector) newTerraformInventory(lookup moduleProvenanceLookup, externa
 	if c.inventory == nil {
 		return nil
 	}
-	return &terraformInventory{sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external}
+	return &terraformInventory{
+		sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external, rootVars: c.terraformRootVars,
+	}
 }
 
 // fail marks the inventory as unusable.
@@ -116,6 +120,7 @@ func (inv *terraformInventory) withEvaluator(
 	}()
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
+	evaluator.SetExplicitRootVars(inv.rootVars)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
@@ -154,7 +159,8 @@ func (inv *terraformInventory) addRoot(dir string, resources []tfeval.ResolvedRe
 	seen := make(map[string]bool, len(resources))
 	for i := range resources {
 		row := inv.row(dir, &resources[i], attributions)
-		// An override file restates a block of the same module.
+		// Guard against duplicate addresses in invalid configurations, such
+		// as two ordinary files declaring the same resource.
 		if seen[row.ResourcePath] {
 			continue
 		}
@@ -205,15 +211,19 @@ func (inv *terraformInventory) row(
 // the brace of its own object, which its body's range gives, and ends at its
 // last attribute.
 func jsonBlockLines(r *tfeval.ResolvedResource) (start, end int) {
-	if r.Body == nil || r.Body.SrcRange.Start.Line < 1 {
+	body := r.Body
+	if r.DeclarationBody != nil {
+		body = r.DeclarationBody
+	}
+	if body == nil || body.SrcRange.Start.Line < 1 {
 		return r.DefLine, 0
 	}
-	start = r.Body.SrcRange.Start.Line
+	start = body.SrcRange.Start.Line
 	end = start
-	for _, attr := range r.Body.Attributes {
+	for _, attr := range body.Attributes {
 		end = max(end, attr.SrcRange.End.Line)
 	}
-	for _, block := range r.Body.Blocks {
+	for _, block := range body.Blocks {
 		end = max(end, block.Range().End.Line)
 	}
 	return start, end

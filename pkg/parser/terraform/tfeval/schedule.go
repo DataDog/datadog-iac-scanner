@@ -324,18 +324,38 @@ func (s *resourceSchedule) local(v int, ctx *hcl.EvalContext) {
 
 func (s *resourceSchedule) evaluate(unit int) {
 	b := s.graph.blocks[unit]
-	ctx := s.context(s.graph.edges[unit], s.graph.locals[unit])
+	overrides := s.scope.overrideInputs.forBody(b.Body)
+	dependencies := s.graph.edges[unit]
+	if overrides != nil {
+		// A file selection can re-evaluate a local data source and needs the
+		// already scheduled dependencies that originally produced that value.
+		dependencies = dependencyClosure(s.graph.edges, dependencies)
+	}
+	ctx := s.context(dependencies, s.graph.locals[unit])
 	if b.Type == scheduledResource {
-		s.resources[unit] = s.e.expandBlock(s.ctx, b, ctx, s.addr, s.chain, false)
+		s.resources[unit] = s.e.expandBlock(s.ctx, b, ctx, s.addr, s.chain, false, overrides)
 		s.exposed[unit] = s.resources[unit]
 		return
 	}
-	inputs := blockEvalInputs(b, ctx)
-	cached, exists := s.data.evalCache[b]
-	if !exists || !sameCtyValues(cached.inputs, inputs) {
-		cached = s.data.evalBlock(s.ctx, b, ctx, inputs)
-	}
+	cached := s.data.evaluateBlock(s.ctx, b, ctx)
 	s.resources[unit], s.exposed[unit] = cached.instances, cached.exposed
+}
+
+func dependencyClosure(edges [][]int, dependencies []int) []int {
+	seen := make(map[int]bool)
+	pending := slices.Clone(dependencies)
+	var result []int
+	for len(pending) != 0 {
+		unit := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if !seen[unit] {
+			seen[unit] = true
+			result = append(result, unit)
+			pending = append(pending, edges[unit]...)
+		}
+	}
+	slices.Sort(result)
+	return result
 }
 
 func (s *resourceSchedule) cycle(component []int) {
@@ -360,7 +380,7 @@ func (s *resourceSchedule) cycle(component []int) {
 			copyBody.Attributes[name] = &copyAttr
 		}
 		copyBlock.Body = &copyBody
-		rs := s.e.expandBlock(s.ctx, &copyBlock, s.base, s.addr, s.chain, b.Type == blockTypeData)
+		rs := s.e.expandBlock(s.ctx, &copyBlock, s.base, s.addr, s.chain, b.Type == blockTypeData, nil)
 		for i := range rs {
 			rs[i].Body = b.Body
 			for name := range rs[i].Attributes {

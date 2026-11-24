@@ -30,6 +30,31 @@ func docFileID(id interface{}) string {
 	return strings.SplitN(s, "\x00", 2)[0]
 }
 
+func TestUnqualifiedDataOverrideSource(t *testing.T) {
+	source := &model.TerraformOverrideSource{Fields: map[string]string{"filename": "override"}}
+	key := model.TerraformBlock{Kind: "data", Type: "local_file", Name: "example"}
+	sources := map[model.TerraformBlock]*model.TerraformOverrideSource{key: source}
+	blocks := model.Document{"local_file": model.Document{"example": model.Document{}}}
+	file := &model.FileMetadata{TerraformOverrides: withUnqualifiedDataOverrides(sources, model.Document{"data": blocks})}
+	finding := terraformFindingSource(file, nil, "local_file[example].filename")
+	require.NotNil(t, finding)
+	require.Equal(t, "override", finding.SourceFileID)
+	require.Equal(t, "data.local_file.example", finding.InventoryBlock)
+	require.Nil(t, terraformFindingSource(file, nil, "resource.local_file[example].filename"))
+
+	file.TerraformOverrides = withUnqualifiedDataOverrides(sources, model.Document{"resource": blocks, "data": blocks})
+	require.Nil(t, terraformFindingSource(file, nil, "local_file[example].filename"))
+	require.NotNil(t, terraformFindingSource(file, nil, "data.local_file[example].filename"))
+}
+
+func TestTerraformLegacyPath(t *testing.T) {
+	path := model.SourcePath{{Key: "data"}, {Key: "local_file"}, {Key: "example"}, {Key: "filename"}}
+	for length := range 3 {
+		require.Empty(t, terraformLegacyPath(path[:length]))
+	}
+	require.Equal(t, "data.local_file[{{example}}].filename", terraformLegacyPath(path))
+}
+
 // writeFile creates dir/name with content and returns the absolute path.
 func writeFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
@@ -281,7 +306,7 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated,
 		map[string]bool{}, map[string]bool{}, map[string]bool{},
-		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil,
+		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil, nil,
 	)
 
 	if evaluator.LocalMemoSize() != 0 {
