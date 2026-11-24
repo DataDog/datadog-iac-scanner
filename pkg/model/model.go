@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -186,7 +187,8 @@ type lineInfoGroup struct {
 // linesLazyState guards the one-time computation of LinesOriginalData from
 // OriginalData. Behind a pointer so FileMetadata copies stay copylocks-clean.
 type linesLazyState struct {
-	once sync.Once
+	once           sync.Once
+	detectionViews sync.Map // caller-chosen transformation key -> *detectionView
 
 	// lines holds the split computed by the first Lines() caller, so module
 	// instances (ShallowCopy of one source file) reuse it instead of each
@@ -567,6 +569,48 @@ func (f *FileMetadata) Lines() []string {
 	return *f.LinesOriginalData
 }
 
+type detectionView struct {
+	once     sync.Once
+	lines    []string
+	viewOnce sync.Once
+	file     atomic.Pointer[FileMetadata]
+}
+
+// DetectionLines caches a read-only transformation under a caller-chosen key.
+// Different preparations must use distinct keys and must not mutate source lines.
+// Safe for concurrent findings when lazy lines are enabled.
+func (f *FileMetadata) DetectionLines(key string, prepare func([]string) []string) []string {
+	return f.preparedDetection(key, prepare).lines
+}
+
+func (f *FileMetadata) preparedDetection(key string, prepare func([]string) []string) *detectionView {
+	if f.linesLazy == nil {
+		return &detectionView{lines: prepare(f.Lines())}
+	}
+	cached, ok := f.linesLazy.detectionViews.Load(key)
+	if !ok {
+		cached, _ = f.linesLazy.detectionViews.LoadOrStore(key, &detectionView{})
+	}
+	view := cached.(*detectionView)
+	view.once.Do(func() { view.lines = prepare(f.Lines()) })
+	return view
+}
+
+// DetectionView returns the keyed transformed lines with their own cached line
+// indexes. The view and its lines are read-only and safe for concurrent findings.
+func (f *FileMetadata) DetectionView(key string, prepare func([]string) []string) *FileMetadata {
+	view := f.preparedDetection(key, prepare)
+	if file := view.file.Load(); file != nil {
+		return file
+	}
+	view.viewOnce.Do(func() {
+		file := &FileMetadata{FilePath: f.FilePath, Kind: f.Kind, LinesOriginalData: &view.lines}
+		file.SetLazyLines()
+		view.file.Store(file)
+	})
+	return view.file.Load()
+}
+
 // LinesContaining returns the indexes of Lines() that contain sub, in
 // ascending order, memoized per file. ok is false when the file has no lazy
 // line state to cache on; callers then scan the lines themselves.
@@ -610,7 +654,7 @@ func (f *FileMetadata) LinesContaining(sub string) (indexes []int, ok bool) {
 
 // ReleaseSubstringIndex drops the suffix array and starts its miss count over.
 // Cached matches stay. Copies of one source share the array, so releasing it
-// on any copy releases it for all of them.
+// on any copy releases it for all of them, including cached detection views.
 func (f *FileMetadata) ReleaseSubstringIndex() {
 	st := f.linesLazy
 	if st == nil {
@@ -620,28 +664,36 @@ func (f *FileMetadata) ReleaseSubstringIndex() {
 	st.index = nil
 	st.scans = 0
 	st.matchMu.Unlock()
+	st.detectionViews.Range(func(_, value any) bool {
+		if view := value.(*detectionView).file.Load(); view != nil {
+			view.ReleaseSubstringIndex()
+		}
+		return true
+	})
 }
 
 // LinesMatching returns the indexes of Lines() for which pred reports true, in
 // ascending order, memoized per file under name. pred must always give the same
-// answer for a given name. ok is false when the file has no lazy line state to
-// cache on; callers then scan the lines themselves.
-func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int, ok bool) {
+// answer for a given name. Without lazy line state, indexes are computed directly.
+func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (indexes []int) {
 	st := f.linesLazy
-	if st == nil {
-		return nil, false
-	}
 	lines := f.Lines()
-	st.matchMu.Lock()
-	indexes, ok = st.predMatches[name]
-	st.matchMu.Unlock()
-	if ok {
-		return indexes, true
+	if st != nil {
+		st.matchMu.Lock()
+		var ok bool
+		indexes, ok = st.predMatches[name]
+		st.matchMu.Unlock()
+		if ok {
+			return indexes
+		}
 	}
 	for i, line := range lines {
 		if pred(line) {
 			indexes = append(indexes, i)
 		}
+	}
+	if st == nil {
+		return indexes
 	}
 	st.matchMu.Lock()
 	if st.predMatches == nil {
@@ -649,7 +701,7 @@ func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (
 	}
 	st.predMatches[name] = indexes
 	st.matchMu.Unlock()
-	return indexes, true
+	return indexes
 }
 
 // ReleasePostEvalData drops OriginalData and LinesOriginalData after eval —

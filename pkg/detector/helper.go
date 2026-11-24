@@ -346,7 +346,7 @@ func (d *DefaultDetectLineResponse) candidateLines(str1, str2 string, kind model
 	}
 	var blocks []int
 	if kind == model.KindYAML {
-		blocks, _ = d.File.LinesMatching("yamlBlockScalar", startsYAMLBlockScalar)
+		blocks = d.File.LinesMatching("yamlBlockScalar", startsYAMLBlockScalar)
 	}
 	if len(byStr2)+len(blocks) < len(byStr1) {
 		return byStr2, blocks, true
@@ -383,6 +383,13 @@ func startsYAMLBlockScalar(raw string) bool {
 
 func mayStartYAMLBlockScalar(line string) bool {
 	return strings.IndexByte(line, ':') >= 0 && strings.ContainsAny(line, "|>\\")
+}
+
+// MatchLine scores one physical line without selecting among alternatives.
+// Ordered detectors can use the shared scoring while exploring complete keys.
+func MatchLine(first, second string, lines []string, line int, kind model.FileKind) (
+	distance int, start, end model.ResourceLine, matched bool) {
+	return checkLine(first, second, lines, line, kind)
 }
 
 // checkLine scores lines[startLine] against str1 and str2; ok is false when the line does not match.
