@@ -239,13 +239,13 @@ func expandForEachEntry(resources map[string]interface{}, spec interface{}, para
 		bindings := map[string]string{varName: item}
 		for logicalID, resourceValue := range templateMap {
 			resolvedLogicalID := replaceForEachVars(logicalID, bindings)
-			if _, exists := resources[resolvedLogicalID]; exists {
+			value := substituteForEachBindings(resourceValue, bindings)
+			// Try each nested directive even if an earlier unresolved
+			// iteration occupies the same key.
+			if strings.HasPrefix(resolvedLogicalID, "Fn::ForEach::") && expandForEachEntry(resources, value, parameters, lines, source) {
 				continue
 			}
-			value := substituteForEachBindings(resourceValue, bindings)
-			// Expand a nested directive in this iteration. Its name can be
-			// identical across iterations even when its generated IDs differ.
-			if strings.HasPrefix(resolvedLogicalID, "Fn::ForEach::") && expandForEachEntry(resources, value, parameters, lines, source) {
+			if _, exists := resources[resolvedLogicalID]; exists {
 				continue
 			}
 			resources[resolvedLogicalID] = value

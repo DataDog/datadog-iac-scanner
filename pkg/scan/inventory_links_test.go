@@ -1190,6 +1190,47 @@ Resources:
 	}
 }
 
+func TestInventoryCloudFormationForEachUnresolvedNestedCollection(t *testing.T) {
+	const stack = `Transform: AWS::LanguageExtensions
+Resources:
+  Fn::ForEach::Colours:
+    - Colour
+    - [Blue, Green]
+    - Fn::ForEach::Names:
+        - Name
+        - !Ref ${Colour}Names
+        - ${Colour}${Name}Bucket:
+            Type: AWS::S3::Bucket
+Parameters:
+  BlueNames:
+    Type: CommaDelimitedList
+  GreenNames:
+    Type: CommaDelimitedList
+    Default: Web
+`
+	query := syntheticQuery("test-cfn-nested-loop", "cloudFormation", "CloudFormation", `	resource := input.document[i].Resources[logical]
+	typ := resource.Type
+	typ == "AWS::S3::Bucket"
+	name := logical
+	key := sprintf("Resources.%s.Type", [logical])`)
+	root := writeRepo(t, map[string]string{"stack.yaml": stack})
+	params := documentParams(root)
+	params.Platform = []string{"CloudFormation"}
+	inv, fingerprints := scanLinks(t, params, query)
+
+	require.Len(t, inv.Resources, 1)
+	row := inv.Resources[0]
+	require.Equal(t, "GreenWebBucket", row.ResourcePath)
+	require.Equal(t, 3, row.LineStart)
+	require.Equal(t, 10, row.LineEnd)
+	require.Len(t, fingerprints, 1)
+	require.Equal(t, []string{"stack.yaml|GreenWebBucket"}, linkedRefs(inv)[fingerprints[0]])
+	findings := readSARIFRun(t, params).Results
+	require.Len(t, findings, 1)
+	require.Len(t, findings[0].ResultLocations, 1)
+	require.Equal(t, 10, findings[0].ResultLocations[0].PhysicalLocation.Region.StartLine)
+}
+
 func TestInventoryDeduplicatedFindingsKeepEveryResource(t *testing.T) {
 	// The rule names a bucket by its BucketName, which both share: the scan
 	// reports one finding for the two.

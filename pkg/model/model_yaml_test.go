@@ -8,6 +8,7 @@ package model
 import (
 	"context"
 	json "encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -1110,6 +1111,44 @@ Resources:
 
 	for k := range resources {
 		require.False(t, strings.HasPrefix(k, "Fn::ForEach::"), "unexpected ForEach key: %s", k)
+	}
+}
+
+func TestDocument_UnmarshalYAML_CloudFormationForEachUnresolvedNestedCollection(t *testing.T) {
+	const source = `Transform: AWS::LanguageExtensions
+Parameters:
+  BlueNames:
+    Type: CommaDelimitedList
+  GreenNames:
+    Type: CommaDelimitedList
+    Default: Web
+  RedNames:
+    Type: CommaDelimitedList
+Resources:
+  Fn::ForEach::Colours:
+    - Colour
+    - [%s]
+    - Fn::ForEach::Names:
+        - Name
+        - !Ref ${Colour}Names
+        - ${Colour}${Name}Bucket:
+            Type: AWS::S3::Bucket
+`
+	for _, colours := range []string{"Blue, Green, Red", "Green, Blue, Red"} {
+		t.Run(colours, func(t *testing.T) {
+			var root yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(fmt.Sprintf(source, colours)), &root))
+			var doc Document
+			require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+			resources := doc["Resources"].(map[string]interface{})
+			require.Contains(t, resources, "GreenWebBucket")
+			require.Len(t, resources, 3, "one bucket, the unresolved directive and line metadata")
+			unresolved := resources["Fn::ForEach::Names"].([]interface{})
+			require.Equal(t, map[string]interface{}{"Ref": "BlueNames"}, stripDDLines(unresolved[1]))
+			lines := resources["_dd_lines"].(map[string]*LineObject)
+			require.Same(t, lines["_dd_Fn::ForEach::Names"], lines["_dd_GreenWebBucket"])
+			require.Equal(t, 11, lines["_dd_GreenWebBucket"].Line)
+		})
 	}
 }
 
