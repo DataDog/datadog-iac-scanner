@@ -439,6 +439,17 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					(gitIgnore.MatchesPath(trimmed) ||
 						(singleFilePath && gitIgnore.MatchesParentDir(trimmed)))
 			}
+			skipByScope := func(p, trimmed string) bool {
+				if gitIgnored(trimmed) {
+					norm := filepath.ToSlash(p)
+					ignoreFiles = append(ignoreFiles, norm)
+					a.Exc = append(a.Exc, norm)
+					excMatcher.AddExactFile(norm)
+					return true
+				}
+				return excMatcher.Match(p) || !isIncluded(p)
+			}
+
 			inScope := func(p string, ignored bool) bool {
 				return !ignored && !excMatcher.Match(p) && isIncluded(p)
 			}
@@ -498,6 +509,10 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
+			if a.CollectKustomizeRoots && skipByScope(path, trimmedPath) {
+				return nil
+			}
+
 			ext := utils.ExtensionFromPath(path)
 			if ext == "" {
 				return nil
@@ -514,15 +529,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return nil
 			}
 
-			if gitIgnored(trimmedPath) {
-				norm := filepath.ToSlash(path)
-				ignoreFiles = append(ignoreFiles, norm)
-				a.Exc = append(a.Exc, norm)
-				excMatcher.AddExactFile(norm)
-				return nil
-			}
-
-			if excMatcher.Match(path) || !isIncluded(path) {
+			if skipByScope(path, trimmedPath) {
 				return nil
 			}
 
@@ -596,6 +603,9 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	unwantedPaths = append(unwantedPaths, projectConfigFiles...)
 	returnAnalyzedPaths.Types = availableTypes
 	returnAnalyzedPaths.Exc = unwantedPaths
+	// True scope rules only: the walk's own exclusions (gitignore, exclude,
+	// config files), never the content a parser could not classify.
+	returnAnalyzedPaths.ScopeExcludes = append([]string(nil), a.Exc...)
 	returnAnalyzedPaths.ExpectedLOC = loc
 
 	fp := make(map[string]string, len(files))
