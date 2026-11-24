@@ -131,11 +131,22 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 			out = make([]model.Vulnerability, i, len(vulns)+len(file.calls))
 			copy(out, vulns[:i])
 		}
+		var occurrencesByCall map[string][]*model.ResourceOccurrence
+		if len(v.ResourceOccurrences) > 0 {
+			occurrencesByCall = make(map[string][]*model.ResourceOccurrence, min(len(file.calls), len(v.ResourceOccurrences)))
+			for _, occurrence := range v.ResourceOccurrences {
+				if terraform := occurrence.Terraform; terraform != nil {
+					key := terraform.CallChainKey
+					occurrencesByCall[key] = append(occurrencesByCall[key], occurrence)
+				}
+			}
+		}
 		for j := range file.calls {
 			call := &file.calls[j]
 			attributed := *v
 			attributed.ModuleCallChain = call.callChain
 			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
+			attributed.ResourceOccurrences = occurrencesByCall[call.callChain]
 			out = append(out, attributed)
 		}
 	}

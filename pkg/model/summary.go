@@ -53,11 +53,9 @@ type VulnerableFile struct {
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
 	// FileID is the document the finding was raised on (Vulnerability.FileID).
-	FileID            string                    `json:"-"`
-	TerraformOverride *TerraformOverrideFinding `json:"-"`
-	// AlsoRaisedOn is where else the finding was raised before the scan kept
-	// one finding per identity (Vulnerability.AlsoRaisedOn).
-	AlsoRaisedOn []RaisedOn `json:"-"`
+	FileID string `json:"-"`
+	// ResourceOccurrences carries the declarations the reported finding represents.
+	ResourceOccurrences []*ResourceOccurrence `json:"-"`
 }
 
 // QueryResult contains a query that tested positive ID, name, severity and a list of files that tested vulnerable
@@ -413,8 +411,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
 			FileID:                   item.FileID,
-			TerraformOverride:        item.TerraformOverride,
-			AlsoRaisedOn:             item.AlsoRaisedOn,
+			ResourceOccurrences:      item.ResourceOccurrences,
 		})
 
 		filePaths[resolvedPath] = item.FileName

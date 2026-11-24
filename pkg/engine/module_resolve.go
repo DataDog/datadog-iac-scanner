@@ -75,6 +75,7 @@ func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
 	targets *ruleTargets,
+	occurrences documentOccurrenceIndex,
 ) (
 	docs []model.Document,
 	syntheticFiles []*model.FileMetadata,
@@ -82,7 +83,7 @@ func (c *Inspector) instantiateLocalModules(
 	moduleFiles map[string]*moduleFileCalls,
 ) {
 	resolver := c.buildRemoteResolver()
-	res := c.resolveModulesSafely(ctx, files, resolver, targets)
+	res := c.resolveModulesSafely(ctx, files, resolver, targets, occurrences)
 	contextLogger := logger.FromContext(ctx)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
@@ -353,6 +354,7 @@ func (c *Inspector) resolveModulesSafely(
 	files model.FileMetadatas,
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
+	occurrences documentOccurrenceIndex,
 ) (res moduleResolutionResult) {
 	var inv *terraformInventory
 	defer func() {
@@ -371,7 +373,7 @@ func (c *Inspector) resolveModulesSafely(
 		externalModuleFile = c.isExternalModulePath
 	}
 	lookup := c.buildModuleProvenanceLookup()
-	inv = c.newTerraformInventory(lookup, externalModuleFile)
+	inv = c.newTerraformInventory(lookup, externalModuleFile, occurrences)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
 		externalModuleFile, inv, c.terraformRootVars,
@@ -491,7 +493,11 @@ func (m *rootMerge) merge(
 	}
 	// Every resource and data source of the root, before instantiation keeps
 	// only what rules can match.
-	m.inventory.addRoot(dir, resources)
+	occurrences := m.inventory.addRoot(dir, resources, true, m.targets)
+	var occurrenceDocuments documentOccurrenceIndex
+	if len(occurrences) > 0 {
+		occurrenceDocuments = m.inventory.documents
+	}
 	m.overrides.record(m.ctx, m.evaluator, resources)
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
@@ -500,7 +506,8 @@ func (m *rootMerge) merge(
 	}
 	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
-		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup, attributions)
+		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup,
+		attributions, occurrences, occurrenceDocuments)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -664,6 +671,19 @@ func scrubInstantiatedForUnresolvedDirs(
 	}
 }
 
+// terraformRootDirs returns the directories evaluated as roots. Their order
+// determines which document represents several callers with the same input.
+func terraformRootDirs(dirsWithTf, called map[string]bool) []string {
+	roots := make([]string, 0, len(dirsWithTf))
+	for dir := range dirsWithTf {
+		if !called[dir] {
+			roots = append(roots, dir)
+		}
+	}
+	sort.Strings(roots)
+	return roots
+}
+
 // resolveModuleDocuments resolves the scan's local modules, as described above
 // evaluateRootModules. When inv is not nil, every evaluated resource is also
 // reported to it.
@@ -683,6 +703,9 @@ func resolveModuleDocuments(
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
 		return moduleResolutionResult{}
+	}
+	if inv != nil {
+		inv.files = byAbsPath
 	}
 	// Evaluating a module tree is the expensive part, and it is pure waste when
 	// the repository declares nothing any rule can match by name. The block
@@ -726,17 +749,7 @@ func resolveModuleDocuments(
 	var syntheticFiles []*model.FileMetadata
 	var resourceCount int
 
-	// Roots are taken in a fixed order: which of several identical callers ends
-	// up owning a shared document decides that document's id, and ids reach
-	// finding fingerprints.
-	roots := make([]string, 0, len(dirsWithTf))
-	for dir := range dirsWithTf {
-		if staticCalledDirs[dir] {
-			continue // instantiated via a module call, not a root
-		}
-		roots = append(roots, dir)
-	}
-	sort.Strings(roots)
+	roots := terraformRootDirs(dirsWithTf, staticCalledDirs)
 
 	evaluatedRoots := roots
 	if onlyExternalCalls {
@@ -953,6 +966,10 @@ type docGroup struct {
 	attributions  map[string]*model.ModuleAttribution
 }
 
+func (g *docGroup) documentID() string {
+	return g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
+}
+
 // docContentKey identifies a document by its content. Two independent digests
 // keep the collision probability negligible across the hundreds of thousands of
 // documents a large repository resolves: a collision would silently merge two
@@ -989,6 +1006,8 @@ func instantiatedDocs(
 	instantiated instantiatedIndex,
 	lookup moduleProvenanceLookup,
 	attributions *moduleAttributionCache,
+	occurrences map[*tfeval.ResolvedResource]*model.ResourceOccurrence,
+	occurrenceDocuments documentOccurrenceIndex,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -1043,6 +1062,12 @@ func instantiatedDocs(
 		g.attributions[moduleAttributionKey(kind, r.DefLine, r.DefColumn)] =
 			attributions.attribution(r, repoPath, lookup)
 		g.entries = append(g.entries, entry)
+		if occurrence := occurrences[r]; occurrence != nil {
+			// Deduplicated documents still need their own associations for
+			// findings cloned onto their callers.
+			id := g.documentID()
+			occurrenceDocuments[id] = append(occurrenceDocuments[id], occurrence)
+		}
 		// Recorded before deduplication: a document that dedupes away still
 		// covers its resource, through a finding cloned onto its call site.
 		instantiated.add(fm.ID, kind, base)
@@ -1051,7 +1076,7 @@ func instantiatedDocs(
 
 	for _, key := range order {
 		g := groups[key]
-		docID := g.fm.ID + "\x00" + g.callChain + "\x00" + strconv.Itoa(g.layer)
+		docID := g.documentID()
 
 		contentKey := groupContentKey(g)
 		if primaryDocID, dup := seen[contentKey]; dup {

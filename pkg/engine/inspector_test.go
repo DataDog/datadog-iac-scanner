@@ -1778,7 +1778,7 @@ func TestExecuteQueries_CanceledContextReturnsError(t *testing.T) {
 
 func TestExpandModuleFindings_NoExtrasUnchanged(t *testing.T) {
 	vulns := []model.Vulnerability{{FileID: "primary", QueryName: "rule-a"}}
-	got := expandModuleFindings(vulns, nil)
+	got := expandModuleFindings(vulns, nil, nil)
 	require.Equal(t, vulns, got)
 }
 
@@ -1788,13 +1788,17 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 	extras := map[string][]extraCallerInfo{
 		primaryID: {{callChain: "stack-b|module.app", docID: extraID}},
 	}
+	path := model.SourcePath{{Key: "resource"}, {Key: "aws_s3_bucket"}, {Key: "this"}}
+	primary := &model.ResourceOccurrence{DocumentID: "primary", StructuralPath: path}
+	extra := &model.ResourceOccurrence{DocumentID: "extra", StructuralPath: path}
 	vulns := []model.Vulnerability{{
-		FileID:    primaryID,
-		FileName:  "modules/app/main.tf",
-		Line:      5,
-		QueryName: "rule-a",
+		FileID:              primaryID,
+		FileName:            "modules/app/main.tf",
+		Line:                5,
+		QueryName:           "rule-a",
+		ResourceOccurrences: []*model.ResourceOccurrence{primary},
 	}}
-	got := expandModuleFindings(vulns, extras)
+	got := expandModuleFindings(vulns, extras, documentOccurrenceIndex{extraID: {extra}})
 	require.Len(t, got, 2)
 	require.Equal(t, primaryID, got[0].FileID)
 	require.Equal(t, extraID, got[1].FileID)
@@ -1802,6 +1806,8 @@ func TestExpandModuleFindings_ClonesPerExtraCaller(t *testing.T) {
 	require.Equal(t, got[0].Line, got[1].Line)
 	require.Equal(t, got[0].FileName, got[1].FileName)
 	require.Equal(t, got[0].QueryName, got[1].QueryName)
+	require.Equal(t, []*model.ResourceOccurrence{primary}, got[0].ResourceOccurrences)
+	require.Equal(t, []*model.ResourceOccurrence{extra}, got[1].ResourceOccurrences)
 }
 
 func TestInspectorExternalModulePathBypassesRulePathFilter(t *testing.T) {

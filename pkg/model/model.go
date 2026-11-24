@@ -6,7 +6,6 @@
 package model
 
 import (
-	"cmp"
 	"context"
 	"index/suffixarray"
 	"regexp"
@@ -382,7 +381,6 @@ type TerraformBlock struct {
 // supplied them and identifies the declaration in the document being scanned.
 type TerraformOverrideSource struct {
 	DeclarationStart ResourceLine
-	InventoryLine    int
 	Fields           map[string]string
 }
 
@@ -391,8 +389,6 @@ type TerraformOverrideSource struct {
 type TerraformOverrideFinding struct {
 	SourceFileID     string
 	DeclarationStart ResourceLine
-	InventoryLine    int
-	InventoryBlock   string
 }
 
 // PlanResourceKey is a terraform plan -json resource section and document key.
@@ -999,65 +995,10 @@ type Vulnerability struct {
 	// (FileName) is never rewritten, so reports that read the file from disk
 	// keep working.
 	OrderPath string `json:"-"`
-	// AlsoRaisedOn holds where else the scan raised this finding before it
-	// kept one finding per identity, when the scan keeps them (see
-	// RecordDuplicate): an inventory links the kept finding to every
-	// resource it stands for.
-	AlsoRaisedOn      []RaisedOn                `json:"-"`
-	TerraformOverride *TerraformOverrideFinding `json:"-"`
-}
-
-// RaisedOn is where a finding was raised: its document, line and search
-// key, and the first line of its Terraform block.
-type RaisedOn struct {
-	FileID     string
-	Line       int
-	SearchKey  string
-	BlockStart int
-	Block      string
-}
-
-// raisedOn is where v was raised. A module instance's document is named
-// after its file's: the instances of a module are one place, so that a
-// module instantiated many times adds nothing to the findings it raises.
-func (v *Vulnerability) raisedOn() RaisedOn {
-	fileID, _, _ := strings.Cut(v.FileID, "\x00")
-	place := RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
-	if v.TerraformOverride != nil {
-		place.BlockStart = v.TerraformOverride.InventoryLine
-		place.Block = v.TerraformOverride.InventoryBlock
-	}
-	return place
-}
-
-// Places gathers where the findings of one identity were raised, once each,
-// whichever of them the scan keeps: the set grows with every finding of the
-// identity, and Assign gives the result to the kept one once, at the end.
-type Places map[RaisedOn]struct{}
-
-// Add adds where v was raised, and the places v already stood for.
-func (p Places) Add(v *Vulnerability) {
-	p[v.raisedOn()] = struct{}{}
-	for _, place := range v.AlsoRaisedOn {
-		p[place] = struct{}{}
-	}
-}
-
-// Assign sets on kept, the finding of the identity the scan reports, the
-// other places of the set, in a stable order.
-func (p Places) Assign(kept *Vulnerability) {
-	here := kept.raisedOn()
-	var also []RaisedOn
-	for place := range p {
-		if place != here {
-			also = append(also, place)
-		}
-	}
-	slices.SortFunc(also, func(a, b RaisedOn) int {
-		return cmp.Or(strings.Compare(a.FileID, b.FileID), cmp.Compare(a.Line, b.Line),
-			strings.Compare(a.SearchKey, b.SearchKey), cmp.Compare(a.BlockStart, b.BlockStart))
-	})
-	kept.AlsoRaisedOn = also
+	// ResourceOccurrences records every declaration instance this finding
+	// represents when inventory is enabled.
+	ResourceOccurrences []*ResourceOccurrence     `json:"-"`
+	TerraformOverride   *TerraformOverrideFinding `json:"-"`
 }
 
 // Identity returns the file and line text that tell v apart from other

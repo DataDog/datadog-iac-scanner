@@ -4,16 +4,17 @@
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
 
-package inventory
+package occurrence
 
 import (
 	"context"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	jsonparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
-	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,7 +86,7 @@ func TestDocumentResourcesInterleavedFiles(t *testing.T) {
 	lines := make(map[string]lineRange)
 	for _, r := range collectDocumentResources(files) {
 		require.Equal(t, r.DocumentID, r.ResourceName)
-		lines[r.DocumentID] = lineRange{r.LineStart, r.LineEnd}
+		lines[r.DocumentID] = lineRange{r.Source.Start.Line, r.Source.End.Line}
 	}
 	require.Equal(t, map[string]lineRange{
 		"a0": {1, 4}, "a1": {6, 9},
@@ -93,7 +94,7 @@ func TestDocumentResourcesInterleavedFiles(t *testing.T) {
 	}, lines, "each document gets its own lines")
 }
 
-func TestKeyedRowsSearchKeyPrefix(t *testing.T) {
+func TestKeyedOccurrencePaths(t *testing.T) {
 	compose := "services:\n  web:\n    image: nginx\n  web.api:\n    image: api\n"
 	stack := "Resources:\n  Queue:\n    Type: AWS::SQS::Queue\n"
 	files := model.FileMetadatas{
@@ -104,15 +105,15 @@ func TestKeyedRowsSearchKeyPrefix(t *testing.T) {
 			Document: model.Document{"Resources": map[string]interface{}{
 				"Queue": map[string]interface{}{"Type": "AWS::SQS::Queue"}}}},
 	}
-	prefixes := make(map[string]string)
+	paths := make(map[string]model.SourcePath)
 	for _, r := range collectDocumentResources(files) {
-		prefixes[r.ResourcePath] = r.searchKeyPrefix
+		paths[r.ResourcePath] = r.StructuralPath
 	}
-	require.Equal(t, map[string]string{
-		"services.web":     "services.web",
-		"services.web.api": "services.{{web.api}}",
-		"Queue":            "Resources.Queue",
-	}, prefixes, "a key with a dot is written within {{ }}, as search keys write it")
+	require.Equal(t, map[string]model.SourcePath{
+		"services.web":     {{Key: "services"}, {Key: "web"}},
+		"services.web.api": {{Key: "services"}, {Key: "web.api"}},
+		"Queue":            {{Key: "Resources"}, {Key: "Queue"}},
+	}, paths, "a key with a dot occupies one path segment")
 }
 
 func TestCloudFormationForEachRows(t *testing.T) {
@@ -159,30 +160,21 @@ Parameters:
 	require.Contains(t, resources, "Fn::ForEach::Unknown")
 	require.Contains(t, resources, "BucketGreen")
 
-	collector := NewCollector(t.TempDir())
-	for _, row := range collectDocumentResources(model.FileMetadatas{f}) {
-		collector.AddResource(&row)
-	}
-	collector.AddFinding(&Finding{Fingerprint: "green", DocumentID: f.ID,
-		SearchKey: "Resources.BucketGreen.Type", Line: 3})
-	collector.AddFinding(&Finding{Fingerprint: "collection", DocumentID: f.ID, SearchKey: "Resources", Line: 2})
-	collector.AddFinding(&Finding{Fingerprint: "loop", DocumentID: f.ID, SearchKey: "Resources", Line: 3})
-	inv := collector.Build(testMetadata())
+	rows := collectDocumentResources(model.FileMetadatas{f})
 
 	got := make(map[string]lineRange)
-	for _, row := range inv.Resources {
-		got[row.ResourcePath] = lineRange{row.LineStart, row.LineEnd}
+	for _, row := range rows {
+		got[row.ResourcePath] = lineRange{row.Source.Start.Line, row.Source.End.Line}
 	}
 	require.Equal(t, map[string]lineRange{
 		"BucketBlue": {3, 7}, "BucketGreen": {3, 7}, "Plain": {9, 10},
 		"ArchiveEastApp": {11, 18}, "ArchiveWestApp": {11, 18},
 	}, got)
-	require.Equal(t, []FindingLink{
-		{FindingFingerprint: "collection", ResourceRef: "stack.yaml|ArchiveEastApp"},
-		{FindingFingerprint: "green", ResourceRef: "stack.yaml|BucketGreen"},
-	}, inv.FindingLinks)
-	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
-
+	for _, row := range rows {
+		if row.ResourcePath != "Plain" {
+			require.Equal(t, 2, row.LegacyCollectionLine)
+		}
+	}
 	t.Run("flow-style loops on the same line", testCloudFormationForEachRowsOnSameLine)
 }
 
@@ -209,7 +201,7 @@ Parameters:
 	require.Len(t, rows, 2)
 	got := make(map[string]lineRange, len(rows))
 	for _, row := range rows {
-		got[row.ResourcePath] = lineRange{row.LineStart, row.LineEnd}
+		got[row.ResourcePath] = lineRange{row.Source.Start.Line, row.Source.End.Line}
 	}
 	require.Equal(t, map[string]lineRange{"BucketBlue": {3, 3}, "QueueBlue": {3, 3}}, got)
 }
@@ -265,21 +257,23 @@ func TestKubernetesListDocuments(t *testing.T) {
 			Document: model.Document{"apiVersion": "acme.io/v1", "kind": "AllowList",
 				"metadata": map[string]interface{}{"name": "trusted"}, "items": []interface{}{"foo"}}},
 	}
-	type row struct {
-		prefix      string
-		owns, share bool
+	item := func(i int) model.SourcePath {
+		return model.SourcePath{{Key: "items"}, {Index: i, IsIndex: true}}
 	}
-	got := make(map[string]row)
+	got := make(map[string]model.SourcePath)
 	for _, r := range collectDocumentResources(files) {
-		got[r.File+"|"+r.ResourcePath] = row{r.searchKeyPrefix, r.ownsDocument, r.sharedLines}
+		got[r.File+"|"+r.ResourcePath] = r.StructuralPath
+		if r.Helm != nil {
+			require.Zero(t, r.LegacySource.Start.Line, "rendered list members lack distinct written spans")
+		}
 	}
-	require.Equal(t, map[string]row{
-		"k8s/list.yaml|v1/ConfigMap//settings":         {prefix: "items.0"},
-		"chart/templates/list.yaml|v1/ConfigMap//a":    {prefix: "items.0", share: true},
-		"chart/templates/list.yaml|v1/Service//b":      {prefix: "items.1", share: true},
-		"k8s/allow.yaml|acme.io/v1/AllowList//trusted": {owns: true},
-		"k8s/pods.yaml|v1/Pod//web":                    {prefix: "items.0"},
-		"k8s/nested.yaml|v1/ConfigMap//inner":          {prefix: "items.0.items.0"},
+	require.Equal(t, map[string]model.SourcePath{
+		"k8s/list.yaml|v1/ConfigMap//settings":         item(0),
+		"chart/templates/list.yaml|v1/ConfigMap//a":    item(0),
+		"chart/templates/list.yaml|v1/Service//b":      item(1),
+		"k8s/allow.yaml|acme.io/v1/AllowList//trusted": nil,
+		"k8s/pods.yaml|v1/Pod//web":                    item(0),
+		"k8s/nested.yaml|v1/ConfigMap//inner":          append(item(0), item(0)...),
 	}, got)
 }
 
@@ -296,17 +290,22 @@ func TestCommentStart(t *testing.T) {
 	}
 }
 
-func TestAnsibleSearchKeyPath(t *testing.T) {
-	for path, want := range map[string]string{
-		"tasks[2]":                    "playbooks.2",
-		"tasks[2].block[0]":           "playbooks.2.block.0",
-		"plays[0].tasks[1]":           "playbooks.0.tasks.1",
-		"plays[1].handlers[0]":        "playbooks.1.handlers.0",
-		"plays[0].pre_tasks[3]":       "playbooks.0.pre_tasks.3",
-		"plays[0].tasks[1].rescue[2]": "playbooks.0.tasks.1.rescue.2",
-	} {
-		require.Equal(t, want, ansibleSearchKeyPath(path), path)
+func TestAnsibleTaskPaths(t *testing.T) {
+	f := &model.FileMetadata{FilePath: "site.yaml", Platform: platforms.Ansible,
+		Document: model.Document{"playbooks": []interface{}{map[string]interface{}{
+			"hosts": "all",
+			"tasks": []interface{}{
+				map[string]interface{}{"shell": "echo one"},
+				map[string]interface{}{"block": []interface{}{map[string]interface{}{"shell": "echo two"}}},
+			},
+		}}},
 	}
+	rows := collectDocumentResources(model.FileMetadatas{f})
+	require.Len(t, rows, 2)
+	require.Equal(t, model.SourcePath{{Key: "playbooks"}, {Index: 0, IsIndex: true},
+		{Key: "tasks"}, {Index: 0, IsIndex: true}}, rows[0].StructuralPath)
+	require.Equal(t, model.SourcePath{{Key: "playbooks"}, {Index: 0, IsIndex: true},
+		{Key: "tasks"}, {Index: 1, IsIndex: true}, {Key: "block"}, {Index: 0, IsIndex: true}}, rows[1].StructuralPath)
 }
 
 func lazyCloudFormationFile(t *testing.T, source string) *model.FileMetadata {
@@ -328,9 +327,9 @@ func lazyCloudFormationFile(t *testing.T, source string) *model.FileMetadata {
 	return f
 }
 
-// collectDocumentResources returns the rows DocumentResources gives.
-func collectDocumentResources(files model.FileMetadatas) []Resource {
-	var rows []Resource
-	DocumentResources(context.Background(), files, func(r *Resource) { rows = append(rows, *r) })
+// collectDocumentResources collects the parsed occurrences.
+func collectDocumentResources(files model.FileMetadatas) []model.ResourceOccurrence {
+	var rows []model.ResourceOccurrence
+	Documents(context.Background(), files, func(_ *model.FileMetadata, r *model.ResourceOccurrence) { rows = append(rows, *r) })
 	return rows
 }

@@ -298,6 +298,55 @@ func TestInventoryTerraformRootsSkippedForExternalCalls(t *testing.T) {
 	require.Equal(t, "other|random_id.other", rows["random_id.other"].ResourceRef)
 }
 
+func TestInventoryLinksFetchedModuleResourcesScannedAsWritten(t *testing.T) {
+	root := writeRepo(t, nil)
+	moduleDir, manifestPath := writeRemoteModuleFixture(t, root)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`
+module "vpc" {
+  source   = "terraform-aws-modules/vpc/aws"
+  version  = "5.0.0"
+  for_each = toset(["prod", "staging"])
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(moduleDir, "main.tf"), []byte(`
+resource "aws_s3_bucket" "bucket" {
+  tags = { test = "fixture" }
+}
+
+resource "aws_sns_topic" "topic" {
+  count = 2
+}
+`), 0o644))
+	generic := syntheticQuery("test-untagged", "terraform", "Terraform", `	some typ, resources in input.document[i].resource
+	some name, resource in resources
+	not resource.tags
+	key := sprintf("%s[%s]", [typ, name])`)
+	params := terraformParams(root)
+	params.TerraformModules = TerraformModulesOn
+	params.RemoteModulesManifestPath = manifestPath
+	params.NetworkIsolation = true
+
+	inv, fingerprints := scanLinks(t, params, inventoryTestQuery, generic)
+	require.Len(t, fingerprints, 4)
+	require.Len(t, inv.Resources, 6)
+	refs := linkedRefs(inv)
+	var linked [][]string
+	for _, fp := range fingerprints {
+		linked = append(linked, refs[fp])
+	}
+	require.ElementsMatch(t, [][]string{
+		{`.|module.vpc["prod"].aws_s3_bucket.bucket`},
+		{`.|module.vpc["staging"].aws_s3_bucket.bucket`},
+		{`.|module.vpc["prod"].aws_sns_topic.topic[0]`, `.|module.vpc["prod"].aws_sns_topic.topic[1]`},
+		{`.|module.vpc["staging"].aws_sns_topic.topic[0]`, `.|module.vpc["staging"].aws_sns_topic.topic[1]`},
+	}, linked)
+
+	withInventory := readSARIFRun(t, params).Results
+	params.InventoryPath = ""
+	scanWithRules(t, context.Background(), params, inventoryTestQuery, generic)
+	require.Equal(t, withInventory, readSARIFRun(t, params).Results)
+}
+
 func TestInventoryTerraformUnresolvedModule(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"main.tf": "module \"missing\" {\n  source  = \"terraform-aws-modules/missing/aws\"\n  version = \"1.0.0\"\n}\n\nresource \"aws_s3_bucket\" \"b\" {}\n",

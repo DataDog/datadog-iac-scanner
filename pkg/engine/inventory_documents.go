@@ -12,14 +12,18 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/occurrence"
 )
 
-// inventoryDocuments reports the resources of the parsed documents of every
-// platform but Terraform. It runs before anything rewrites or releases the
-// documents. A panic fails the inventory rather than the scan.
-func (c *Inspector) inventoryDocuments(ctx context.Context, files model.FileMetadatas) {
+// documentOccurrenceIndex belongs to one Inspect call. It is only allocated
+// for inventory scans and becomes read-only before query decoding starts.
+type documentOccurrenceIndex map[string][]*model.ResourceOccurrence
+
+// inventoryDocuments indexes parsed non-Terraform occurrences before anything
+// rewrites or releases the documents. A panic fails the inventory.
+func (c *Inspector) inventoryDocuments(ctx context.Context, files model.FileMetadatas) (index documentOccurrenceIndex) {
 	if c.inventory == nil {
-		return
+		return nil
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -28,5 +32,11 @@ func (c *Inspector) inventoryDocuments(ctx context.Context, files model.FileMeta
 			c.inventory.Fail(inventory.FailureDocumentsPanic)
 		}
 	}()
-	inventory.DocumentResources(ctx, files, c.inventory.AddResource)
+	index = make(documentOccurrenceIndex)
+	occurrence.Documents(ctx, files, func(file *model.FileMetadata, resource *model.ResourceOccurrence) {
+		index[file.ID] = append(index[file.ID], resource)
+		row := inventory.ProjectResource(resource)
+		c.inventory.AddResource(&row)
+	})
+	return index
 }

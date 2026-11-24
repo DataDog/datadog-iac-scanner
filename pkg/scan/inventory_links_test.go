@@ -958,6 +958,83 @@ func TestInventoryLinksDocumentFindings(t *testing.T) {
 			require.Equal(t, 7, r.LineEnd, "the last entry ends with its collection")
 		}
 	}
+
+	t.Run("merged Compose service", func(t *testing.T) {
+		root := writeRepo(t, map[string]string{
+			"docker-compose.yml": "x-services: &services\n  _parsed_expressions_web:\n    image: nginx:1\n" +
+				"  clean:\n    image: alpine:3\nservices:\n  <<: *services\n",
+		})
+		rule := syntheticQuery("test-merged-service", "dockerCompose", "DockerCompose", `	svc := input.document[i].services[name]
+	svc.image == "nginx:1"
+	typ := "service"
+	key := sprintf("services.%s.image", [name])`)
+		params := documentParams(root)
+		params.Platform = []string{"DockerCompose"}
+		inv, fingerprints := scanLinks(t, params, rule)
+		require.Len(t, inv.Resources, 2)
+		require.Len(t, fingerprints, 1)
+		require.Equal(t, []string{"docker-compose.yml|services._parsed_expressions_web"}, linkedRefs(inv)[fingerprints[0]])
+	})
+
+	t.Run("dotted Compose service", func(t *testing.T) {
+		root := writeRepo(t, map[string]string{
+			"docker-compose.yml": "services:\n  web.api:\n    image: nginx:1\n  clean:\n    image: alpine:3\n",
+		})
+		rule := syntheticQuery("test-dotted-service", "dockerCompose", "DockerCompose", `	svc := input.document[i].services[name]
+	svc.image == "nginx:1"
+	typ := "service"
+	key := sprintf("services.%s.image", [name])`)
+		params := documentParams(root)
+		params.Platform = []string{"DockerCompose"}
+		inv, fingerprints := scanLinks(t, params, rule)
+		require.Len(t, inv.Resources, 2)
+		require.Len(t, fingerprints, 1)
+		require.Equal(t, []string{"docker-compose.yml|services.web.api"}, linkedRefs(inv)[fingerprints[0]])
+		require.Zero(t, inv.Stats.FindingsUnlinked)
+	})
+
+	t.Run("Compose property matching a dotted service name", func(t *testing.T) {
+		rule := syntheticQuery("test-compose-environment", "dockerCompose", "DockerCompose", `	svc := input.document[i].services[name]
+	svc.environment.DB_PASSWORD == "example-value"
+	typ := "service"
+	key := sprintf("services.%s.environment", [name])`)
+		for _, fixture := range []struct{ name, compose string }{
+			{"block", "services:\n  web:\n    environment: {DB_PASSWORD: example-value}\n" +
+				"  web.environment:\n    image: alpine:3\n"},
+			{"flow", "services: {web: {environment: {DB_PASSWORD: example-value}}, web.environment: {image: alpine:3}}\n"},
+		} {
+			t.Run(fixture.name, func(t *testing.T) {
+				root := writeRepo(t, map[string]string{"docker-compose.yml": fixture.compose})
+				params := documentParams(root)
+				params.Platform = []string{"DockerCompose"}
+
+				inv, fingerprints := scanLinks(t, params, rule)
+				require.Len(t, inv.Resources, 2)
+				require.Len(t, fingerprints, 1)
+				require.Equal(t, []string{"docker-compose.yml|services.web"}, linkedRefs(inv)[fingerprints[0]])
+			})
+		}
+	})
+
+	t.Run("Helm repeated list", func(t *testing.T) {
+		root := writeRepo(t, map[string]string{
+			"charts/app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 0.1.0\n",
+			"charts/app/templates/list.yaml": "apiVersion: v1\nkind: List\nitems:\n" +
+				"  - apiVersion: v1\n    kind: ConfigMap\n    metadata: {name: same}\n    data: {foo: clean}\n" +
+				"  - apiVersion: v1\n    kind: ConfigMap\n    metadata: {name: same}\n    data: {foo: flagged}\n",
+		})
+		rule := syntheticQuery("test-helm-member", "k8s", "Kubernetes", `	member := input.document[i].items[1]
+	member.data.foo == "flagged"
+	typ := member.kind
+	name := member.metadata.name
+	key := "items.1.data.foo"`)
+		params := documentParams(root)
+		params.Platform = []string{"Kubernetes"}
+		inv, fingerprints := scanLinks(t, params, rule)
+		require.Len(t, inv.Resources, 2)
+		require.Len(t, fingerprints, 1)
+		require.Equal(t, []string{"charts/app/templates/list.yaml|v1/ConfigMap//same#2"}, linkedRefs(inv)[fingerprints[0]])
+	})
 }
 
 func TestInventoryCountsUnlinkedFindings(t *testing.T) {
@@ -971,6 +1048,37 @@ func TestInventoryCountsUnlinkedFindings(t *testing.T) {
 	require.Len(t, fingerprints, 1)
 	require.Empty(t, inv.FindingLinks, "a variable is not a resource")
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
+}
+
+func TestInventoryLinksKubernetesListMemberWithDottedSelector(t *testing.T) {
+	root := writeRepo(t, map[string]string{"k8s/list.yaml": `apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: clean
+    data:
+      foo: clean
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: flagged
+    data:
+      foo: flagged
+`})
+	rule := syntheticQuery("test-k8s-list-member", "k8s", "Kubernetes", `	member := input.document[i].items[_]
+	member.data.foo == "flagged"
+	typ := member.kind
+	name := member.metadata.name
+	key := sprintf("metadata.name={{%s}}.data.foo", [name])`)
+	params := documentParams(root)
+	params.Platform = []string{"Kubernetes"}
+
+	inv, fingerprints := scanLinks(t, params, rule)
+	require.Len(t, inv.Resources, 2)
+	require.Len(t, fingerprints, 1)
+	require.Equal(t, []string{"k8s/list.yaml|v1/ConfigMap//flagged"}, linkedRefs(inv)[fingerprints[0]])
 }
 
 func TestInventoryDuplicateDocumentsGetTheirOwnRows(t *testing.T) {
@@ -1038,7 +1146,7 @@ func TestInventoryLinksTerraformJSONFindings(t *testing.T) {
 	key := sprintf("aws_s3_bucket[%s].bucket", [name])`)
 	public := syntheticQuery("test-tf-public", "terraform", "Terraform", `	input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
 	typ := "aws_s3_bucket"
-	key := sprintf("aws_s3_bucket[%s].acl", [name])`)
+	key := sprintf("aws_s3_bucket.{{%s}}.acl", [name])`)
 	inv, fingerprints := scanLinks(t, terraformParams(root), inventoryTestQuery, bucket, public)
 	require.NotEmpty(t, fingerprints)
 	require.Zero(t, inv.Stats.FindingsUnlinked, "every bucket finding belongs to a row")

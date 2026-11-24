@@ -36,15 +36,18 @@ func TestUnqualifiedDataOverrideSource(t *testing.T) {
 	sources := map[model.TerraformBlock]*model.TerraformOverrideSource{key: source}
 	blocks := model.Document{"local_file": model.Document{"example": model.Document{}}}
 	file := &model.FileMetadata{TerraformOverrides: withUnqualifiedDataOverrides(sources, model.Document{"data": blocks})}
-	finding := terraformFindingSource(file, nil, "local_file[example].filename")
+	finding, declaration := terraformFindingSource(file, nil, "local_file[example].filename")
 	require.NotNil(t, finding)
 	require.Equal(t, "override", finding.SourceFileID)
-	require.Equal(t, "data.local_file.example", finding.InventoryBlock)
-	require.Nil(t, terraformFindingSource(file, nil, "resource.local_file[example].filename"))
+	require.Equal(t, key, declaration)
+	finding, _ = terraformFindingSource(file, nil, "resource.local_file[example].filename")
+	require.Nil(t, finding)
 
 	file.TerraformOverrides = withUnqualifiedDataOverrides(sources, model.Document{"resource": blocks, "data": blocks})
-	require.Nil(t, terraformFindingSource(file, nil, "local_file[example].filename"))
-	require.NotNil(t, terraformFindingSource(file, nil, "data.local_file[example].filename"))
+	finding, _ = terraformFindingSource(file, nil, "local_file[example].filename")
+	require.Nil(t, finding)
+	finding, _ = terraformFindingSource(file, nil, "data.local_file[example].filename")
+	require.NotNil(t, finding)
 }
 
 func TestTerraformLegacyPath(t *testing.T) {
@@ -223,6 +226,8 @@ resource "aws_s3_bucket" "replica" {
 		make(instantiatedIndex),
 		nil,
 		newModuleAttributionCache(),
+		nil,
+		nil,
 	)
 
 	if len(docs) != 2 {
@@ -1276,7 +1281,7 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
+	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {

@@ -9,6 +9,7 @@ import (
 	"context"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -212,6 +213,30 @@ func TestAttributeModuleFileFindings(t *testing.T) {
 
 	unchanged := []model.Vulnerability{{FileID: "stack-a"}}
 	require.Equal(t, &unchanged[0], &attributeModuleFileFindings(unchanged, files)[0], "nothing is copied when nothing is attributed")
+}
+
+func BenchmarkAttributeModuleFileFindings(b *testing.B) {
+	for _, callerCount := range []int{128, 512, 2048} {
+		b.Run(strconv.Itoa(callerCount), func(b *testing.B) {
+			calls := make([]moduleCall, callerCount)
+			occurrences := make([]*model.ResourceOccurrence, callerCount)
+			attribution := &model.ModuleAttribution{}
+			for i := range calls {
+				chain := "main.tf|module.topic[" + strconv.Itoa(i) + "]"
+				calls[i] = moduleCall{callChain: chain, attribution: attribution}
+				occurrences[i] = &model.ResourceOccurrence{
+					Terraform: &model.TerraformResourceOccurrence{CallChainKey: chain},
+				}
+			}
+			files := map[string]*moduleFileCalls{"module": {calls: calls, name: "main.tf"}}
+			findings := []model.Vulnerability{{FileID: "module", ResourceOccurrences: occurrences}}
+
+			b.ReportAllocs()
+			for b.Loop() {
+				attributeModuleFileFindings(findings, files)
+			}
+		})
+	}
 }
 
 func TestRootsReachingKeepsRootsCallingTargetDirectories(t *testing.T) {

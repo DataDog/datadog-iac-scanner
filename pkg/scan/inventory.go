@@ -274,7 +274,7 @@ func (c *Client) finishInventory(ctx context.Context, results *Results, summary 
 		return &InventoryMetadata{Status: InventoryFailed, Reason: reason}
 	}
 	c.recordManifest(run, files)
-	recordFindings(run.collector, files, summary)
+	recordFindings(run.collector, summary)
 	// A resource of a fetched module is named after where the module came
 	// from, as in the reports.
 	run.collector.SetPathResolver(func(path string) string {
@@ -391,15 +391,9 @@ func recordFailedRenders(run *inventoryRun, charts map[string]bool) {
 
 // recordFindings gives the collector every finding the SARIF report holds,
 // to link them to their rows.
-func recordFindings(collector *inventory.Collector, files model.FileMetadatas, summary *model.Summary) {
+func recordFindings(collector *inventory.Collector, summary *model.Summary) {
 	if summary == nil {
 		return
-	}
-	paths := make(map[string]string, len(files))
-	for _, f := range files {
-		if f != nil {
-			paths[f.ID] = f.FilePath
-		}
 	}
 	for i := range summary.Queries {
 		for j := range summary.Queries[i].Files {
@@ -408,27 +402,10 @@ func recordFindings(collector *inventory.Collector, files model.FileMetadatas, s
 			if vf.ResourceLocation.Start.Line < 1 || vf.ResourceLocation.End.Line < 1 {
 				continue
 			}
-			// The finding stands for every place its identity was raised.
-			place := model.RaisedOn{FileID: vf.FileID, Line: vf.Line, SearchKey: vf.SearchKey, BlockStart: vf.BlockLocation.Start.Line}
-			if vf.TerraformOverride != nil {
-				place.BlockStart = vf.TerraformOverride.InventoryLine
-				place.Block = vf.TerraformOverride.InventoryBlock
-			}
-			places := append([]model.RaisedOn{place}, vf.AlsoRaisedOn...)
-			for _, place := range places {
-				// A module instance's document is named after its file's.
-				fileID, _, _ := strings.Cut(place.FileID, "\x00")
-				collector.AddFinding(&inventory.Finding{
-					Fingerprint:     vf.Fingerprint,
-					DocumentID:      place.FileID,
-					File:            paths[fileID],
-					Line:            place.Line,
-					SearchKey:       place.SearchKey,
-					BlockStart:      place.BlockStart,
-					Block:           place.Block,
-					ModuleCallChain: vf.ModuleCallChain,
-				})
-			}
+			collector.AddFinding(&inventory.Finding{
+				Fingerprint: vf.Fingerprint,
+				Occurrences: vf.ResourceOccurrences,
+			})
 		}
 	}
 }

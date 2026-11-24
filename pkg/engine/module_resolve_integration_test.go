@@ -246,7 +246,7 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
-	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...))
+	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...), nil)
 
 	out := logs.String()
 	if !strings.Contains(out, "tfeval: module instantiation summary") {
@@ -265,7 +265,6 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 		t.Fatalf("expected no warn for an untruncated instantiation, got %q", out)
 	}
 }
-
 
 // Two roots call the same module with the same inputs: expect two findings and two distinct ModuleCallChain values.
 func TestInspect_TwoCallersGetDistinctCallChains(t *testing.T) {

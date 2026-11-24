@@ -4,7 +4,7 @@
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
 
-package inventory
+package occurrence
 
 import (
 	"fmt"
@@ -17,18 +17,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Platform values of the keyed rows, the values findings carry.
-// keyedRows returns one row per entry of a top-level collection of a
-// document, such as CloudFormation Resources or Compose services. An entry
-// spans from its key to the line before the next entry, or to the document's
-// end for the last one.
-func (e *documentEnumerator) keyedRows(
+// keyedOccurrences records each entry of a top-level collection.
+func (e *documentEnumerator) keyedOccurrences(
 	f *model.FileMetadata, index int, collection string, parserKey parserKeys,
-	newRow func(key string, value interface{}) (Resource, bool),
-) []Resource {
+	newRow func(key string, value interface{}) (model.ResourceOccurrence, bool),
+) []model.ResourceOccurrence {
+	rows, _ := e.keyedCollection(f, index, collection, parserKey, newRow)
+	return rows
+}
+
+func (e *documentEnumerator) keyedCollection(
+	f *model.FileMetadata, index int, collection string, parserKey parserKeys,
+	newRow func(key string, value interface{}) (model.ResourceOccurrence, bool),
+) (rows []model.ResourceOccurrence, spans map[string]lineRange) {
 	entries, _ := f.Document[collection].(map[string]interface{})
 	if len(entries) == 0 {
-		return nil
+		return nil, nil
 	}
 	keys := make([]string, 0, len(entries))
 	for key := range entries {
@@ -38,7 +42,6 @@ func (e *documentEnumerator) keyedRows(
 
 	node, doc, found := e.documentNode(f, index)
 	collectionLine := 1
-	var spans map[string]lineRange
 	if found {
 		if keyNode, value := mappingEntry(node, collection); value != nil {
 			collectionLine = keyNode.Line
@@ -50,8 +53,7 @@ func (e *documentEnumerator) keyedRows(
 		}
 	}
 
-	rows := make([]Resource, 0, len(keys))
-	var generated []int
+	rows = make([]model.ResourceOccurrence, 0, len(keys))
 	for _, key := range keys {
 		if parserKey(key, entries) {
 			continue
@@ -61,63 +63,58 @@ func (e *documentEnumerator) keyedRows(
 			continue
 		}
 		row.File = f.FilePath
-		row.Completeness = CompletenessComplete
-		row.searchKeyPrefix = collection + "." + searchKeySegment(key)
+		row.StructuralPath = model.SourcePath{{Key: collection}, {Key: key}}
 		if span, ok := spans[key]; ok {
-			row.LineStart, row.LineEnd = span.start, span.end
+			row.Source = lineSource(span.start, span.end)
+			row.LegacySource = row.Source
 		} else {
 			// An entry the file does not spell, such as one a Compose
 			// override adds, is placed at its collection.
-			row.LineStart = collectionLine
+			row.Source = lineSource(collectionLine, 0)
 			if f.Platform == platforms.CloudFormation {
-				generated = append(generated, len(rows))
+				row.LegacyCollectionLine = collectionLine
 			}
 		}
 		rows = append(rows, row)
 	}
-	if len(generated) > 0 {
-		e.placeCloudFormationLoopRows(f, spans, rows, generated)
-	}
-	return rows
+	return rows, spans
 }
 
-func (e *documentEnumerator) placeCloudFormationLoopRows(
-	f *model.FileMetadata, spans map[string]lineRange, rows []Resource, generated []int,
-) {
+func (e *documentEnumerator) cloudFormationOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
+	rows, spans := e.keyedCollection(f, index, "Resources", lineInfoKey, cloudFormationOccurrence)
 	loops := make(map[int]lineRange)
 	for key, span := range spans {
 		if strings.HasPrefix(key, "Fn::ForEach::") {
-			if previous, ok := loops[span.start]; ok {
-				// Flow-style keys can share a line. Use only the lines
-				// common to both spans when the metadata cannot distinguish them.
-				span.end = min(span.end, previous.end)
+			if prev, ok := loops[span.start]; ok {
+				span.end = min(span.end, prev.end)
 			}
 			loops[span.start] = span
 		}
 	}
-	if len(loops) == 0 {
-		return
+	if len(loops) == 0 || len(rows) == 0 {
+		return rows
 	}
-
-	// Scan documents omit line metadata. Load it on demand without leaving
-	// the annotated tree in the scan's file metadata.
+	// The expansion copies the outer loop's key line to every generated ID.
+	// Keep its collection line for legacy results and display the loop span.
 	annotated := f.ShallowCopy()
 	defer annotated.DiscardLineInfoDocument()
 	_ = annotated.UseLineInfoDocument(e.ctx, func(doc map[string]interface{}) error {
 		resources, _ := doc["Resources"].(map[string]interface{})
 		lines, _ := resources["_dd_lines"].(map[string]*model.LineObject)
-		for _, i := range generated {
+		for i := range rows {
 			row := &rows[i]
-			// Expansion copies the outer loop's key line to each generated ID.
+			if _, written := spans[row.ResourcePath]; written {
+				continue
+			}
 			if line := lines["_dd_"+row.ResourcePath]; line != nil {
 				if span, ok := loops[line.Line]; ok {
-					row.linkFallbackLine = row.LineStart
-					row.LineStart, row.LineEnd = span.start, span.end
+					row.Source = lineSource(span.start, span.end)
 				}
 			}
 		}
 		return nil
 	})
+	return rows
 }
 
 // mappingEntry returns the key and value nodes of key in a mapping node.
@@ -177,15 +174,6 @@ func trimEnd(start, end int, lines []string) int {
 	return max(end, start)
 }
 
-// searchKeySegment writes a key as search keys do: within {{ }} when it holds
-// a character that separates or qualifies path segments.
-func searchKeySegment(key string) string {
-	if strings.ContainsAny(key, ".=/") {
-		return "{{" + key + "}}"
-	}
-	return key
-}
-
 // parserKeys reports a key of a collection that its platform's parser added,
 // rather than an entry the configuration declares. Any other key is an
 // entry, whatever its name and however it got there, a YAML merge included.
@@ -219,17 +207,17 @@ func workflowParserKey(key string, entries map[string]interface{}) bool {
 	return false
 }
 
-func cloudFormationRow(key string, value interface{}) (Resource, bool) {
+func cloudFormationOccurrence(key string, value interface{}) (model.ResourceOccurrence, bool) {
 	if strings.HasPrefix(key, "Fn::ForEach::") {
 		// A loop the parser could not expand: not a resource.
-		return Resource{}, false
+		return model.ResourceOccurrence{}, false
 	}
 	resource, _ := value.(map[string]interface{})
 	typ, _ := resource["Type"].(string)
 	if typ == "" {
-		return Resource{}, false
+		return model.ResourceOccurrence{}, false
 	}
-	return Resource{
+	return model.ResourceOccurrence{
 		ResourcePath: key,
 		Platform:     platforms.CloudFormation,
 		ResourceType: typ,
@@ -251,8 +239,8 @@ func cloudFormationName(logicalID, typ string, resource map[string]interface{}) 
 	return logicalID
 }
 
-func composeServiceRow(key string, _ interface{}) (Resource, bool) {
-	return Resource{
+func composeServiceOccurrence(key string, _ interface{}) (model.ResourceOccurrence, bool) {
+	return model.ResourceOccurrence{
 		ResourcePath: "services." + key,
 		Platform:     platforms.DockerCompose,
 		ResourceType: "docker_compose_service",
@@ -260,8 +248,8 @@ func composeServiceRow(key string, _ interface{}) (Resource, bool) {
 	}, true
 }
 
-func workflowJobRow(key string, _ interface{}) (Resource, bool) {
-	return Resource{
+func workflowJobOccurrence(key string, _ interface{}) (model.ResourceOccurrence, bool) {
+	return model.ResourceOccurrence{
 		ResourcePath: "jobs." + key,
 		Platform:     platforms.CICD,
 		ResourceType: "github_actions_job",
@@ -303,12 +291,12 @@ var ansibleKeywords = map[string]bool{
 	"listen": true,
 }
 
-// ansibleRows returns one row per task of a playbook or task file, across
+// ansibleOccurrences records each task of a playbook or task file, across
 // every play and its pre_tasks, tasks, post_tasks and handlers, blocks
 // included. A list of mappings with no play is a task file only under a
 // tasks or handlers directory, as in a role: the scanner classifies many
 // other YAML lists as Ansible.
-func (e *documentEnumerator) ansibleRows(f *model.FileMetadata, index int) []Resource {
+func (e *documentEnumerator) ansibleOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
 	items, _ := f.Document["playbooks"].([]interface{})
 	if len(items) == 0 {
 		return nil
@@ -318,12 +306,12 @@ func (e *documentEnumerator) ansibleRows(f *model.FileMetadata, index int) []Res
 		node = nil
 	}
 	lines := e.yamlFile(f).lines
-	var rows []Resource
+	var rows []model.ResourceOccurrence
 	if !isAnsiblePlaybook(items) {
 		if !isAnsibleTaskFile(f.FilePath) {
 			return nil
 		}
-		e.addAnsibleTasks(&rows, f, ansibleTasks, items, node, doc.end, lines)
+		e.addAnsibleTasks(&rows, f, ansibleTasks, model.SourcePath{{Key: "playbooks"}}, items, node, doc.end, lines)
 		return rows
 	}
 	plays := itemSpans(node, doc.end, lines)
@@ -341,7 +329,8 @@ func (e *documentEnumerator) ansibleRows(f *model.FileMetadata, index int) []Res
 				continue
 			}
 			_, sectionNode := mappingEntry(playNode, section)
-			e.addAnsibleTasks(&rows, f, fmt.Sprintf("plays[%d].%s", i, section), tasks, sectionNode,
+			e.addAnsibleTasks(&rows, f, fmt.Sprintf("plays[%d].%s", i, section),
+				model.SourcePath{{Key: "playbooks"}, {Index: i, IsIndex: true}, {Key: section}}, tasks, sectionNode,
 				sectionEnd(sections, section, bound), lines)
 		}
 	}
@@ -370,7 +359,7 @@ func isAnsiblePlaybook(items []interface{}) bool {
 }
 
 func (e *documentEnumerator) addAnsibleTasks(
-	rows *[]Resource, f *model.FileMetadata, prefix string, tasks []interface{},
+	rows *[]model.ResourceOccurrence, f *model.FileMetadata, prefix string, base model.SourcePath, tasks []interface{},
 	sequence *yaml.Node, bound int, lines []string,
 ) {
 	spans := itemSpans(sequence, bound, lines)
@@ -380,48 +369,33 @@ func (e *documentEnumerator) addAnsibleTasks(
 			continue
 		}
 		path := fmt.Sprintf("%s[%d]", prefix, j)
+		structuralPath := extendPath(base, model.PathSegment{Index: j, IsIndex: true})
 		span := lineRange{start: 1}
 		var taskNode *yaml.Node
 		if j < len(spans) {
 			span, taskNode = spans[j], sequence.Content[j]
 		}
-		if nested := e.addAnsibleBlock(rows, f, path, task, taskNode, span.end, lines); nested {
+		if nested := e.addAnsibleBlock(rows, f, path, structuralPath, task, taskNode, span.end, lines); nested {
 			continue
 		}
 		module := ansibleModule(task)
 		name, _ := task["name"].(string)
-		*rows = append(*rows, Resource{
-			ResourcePath: path,
-			Platform:     platforms.Ansible,
-			ResourceType: module,
-			ResourceName: firstNonEmpty(name, module),
-			File:         f.FilePath,
-			LineStart:    span.start,
-			LineEnd:      span.end,
-			Completeness: CompletenessComplete,
-			// A search key can name the task by its place in the document.
-			searchKeyPrefix: ansibleSearchKeyPath(path),
+		*rows = append(*rows, model.ResourceOccurrence{
+			ResourcePath:   path,
+			Platform:       platforms.Ansible,
+			ResourceType:   module,
+			ResourceName:   firstNonEmpty(name, module),
+			File:           f.FilePath,
+			Source:         lineSource(span.start, span.end),
+			StructuralPath: structuralPath,
+			LegacySource:   writtenSpan(span, taskNode != nil),
 		})
 	}
 }
 
-// ansibleSearchKeyPath writes a task's path as a search key names its place
-// in the parsed document, which holds the plays, or a task file's tasks,
-// under playbooks: plays[0].tasks[1].block[0] is playbooks.0.tasks.1.block.0
-// and, in a task file, tasks[2] is playbooks.2.
-func ansibleSearchKeyPath(path string) string {
-	for _, head := range []string{"plays", ansibleTasks} {
-		if rest, ok := strings.CutPrefix(path, head+"["); ok {
-			path = "playbooks[" + rest
-			break
-		}
-	}
-	return strings.NewReplacer("[", ".", "]", "").Replace(path)
-}
-
 // addAnsibleBlock lists the tasks of a block and reports whether task is one.
 func (e *documentEnumerator) addAnsibleBlock(
-	rows *[]Resource, f *model.FileMetadata, path string, task map[string]interface{},
+	rows *[]model.ResourceOccurrence, f *model.FileMetadata, path string, base model.SourcePath, task map[string]interface{},
 	taskNode *yaml.Node, bound int, lines []string,
 ) bool {
 	isBlock := false
@@ -433,7 +407,8 @@ func (e *documentEnumerator) addAnsibleBlock(
 		}
 		isBlock = true
 		_, sectionNode := mappingEntry(taskNode, section)
-		e.addAnsibleTasks(rows, f, path+"."+section, tasks, sectionNode, sectionEnd(sections, section, bound), lines)
+		e.addAnsibleTasks(rows, f, path+"."+section, extendPath(base, model.PathSegment{Key: section}),
+			tasks, sectionNode, sectionEnd(sections, section, bound), lines)
 	}
 	return isBlock
 }

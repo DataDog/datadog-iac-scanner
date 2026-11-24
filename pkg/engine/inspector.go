@@ -606,7 +606,7 @@ func (c *Inspector) Inspect(
 	contextLogger.Debug().Msg("engine.Inspect()")
 
 	queries := c.getQueriesByPlat(platforms)
-	c.inventoryDocuments(ctx, files)
+	occurrences := c.inventoryDocuments(ctx, files)
 
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
@@ -614,7 +614,7 @@ func (c *Inspector) Inspect(
 	var syntheticFiles []*model.FileMetadata
 	if shouldInstantiateLocalModules(platforms, files) {
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets)
+		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets, occurrences)
 		// A canceled scan must not scan the modules that were evaluated only in
 		// part; instantiateLocalModules mutates nothing in that case.
 		if err := ctx.Err(); err != nil {
@@ -728,6 +728,7 @@ func (c *Inspector) Inspect(
 		len(sharedQueries)+batchedCount, len(queries))
 
 	routing := newFindingRouting(moduleExtras, moduleFiles, files, c.repoPath, c.isExternalModulePath)
+	routing.occurrences = occurrences
 
 	vulnerabilities, err := c.executeQueriesWithPlans(ctx, scanID, filesMap, payloads, queries,
 		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, rulePlans, batches)
@@ -983,7 +984,9 @@ func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas
 
 // expandModuleFindings clones findings from deduplicated OPA docs back to each
 // extra caller, so every call-site gets its own fingerprint/file attribution.
-func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extraCallerInfo) []model.Vulnerability {
+func expandModuleFindings(
+	vulns []model.Vulnerability, extras map[string][]extraCallerInfo, occurrences documentOccurrenceIndex,
+) []model.Vulnerability {
 	if len(extras) == 0 {
 		return vulns
 	}
@@ -995,6 +998,9 @@ func expandModuleFindings(vulns []model.Vulnerability, extras map[string][]extra
 			vCopy.ModuleCallChain = ex.callChain
 			vCopy.FileID = ex.docID
 			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			if occurrences != nil {
+				vCopy.ResourceOccurrences = callerOccurrences(vulns[i].ResourceOccurrences, occurrences[ex.docID])
+			}
 			expanded = append(expanded, vCopy)
 		}
 	}

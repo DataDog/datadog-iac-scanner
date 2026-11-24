@@ -10,7 +10,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"sort"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
@@ -39,10 +38,12 @@ func (c *Inspector) SetInventory(sink InventorySink) {
 
 // terraformInventory turns evaluated Terraform resources into inventory rows.
 type terraformInventory struct {
-	sink     InventorySink
-	repoPath string
-	lookup   moduleProvenanceLookup
-	rootVars map[string]cty.Value
+	sink      InventorySink
+	repoPath  string
+	lookup    moduleProvenanceLookup
+	rootVars  map[string]cty.Value
+	files     map[string]*model.FileMetadata
+	documents documentOccurrenceIndex
 	// external reports a fetched module, which is not a root of the
 	// repository even when nothing in the scan calls it.
 	external func(string) bool
@@ -52,12 +53,15 @@ type terraformInventory struct {
 }
 
 // newTerraformInventory returns nil when the scan has no inventory.
-func (c *Inspector) newTerraformInventory(lookup moduleProvenanceLookup, external func(string) bool) *terraformInventory {
+func (c *Inspector) newTerraformInventory(
+	lookup moduleProvenanceLookup, external func(string) bool, documents documentOccurrenceIndex,
+) *terraformInventory {
 	if c.inventory == nil {
 		return nil
 	}
 	return &terraformInventory{
-		sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external, rootVars: c.terraformRootVars,
+		sink: c.inventory, repoPath: c.repoPath, lookup: lookup, external: external,
+		rootVars: c.terraformRootVars, documents: documents,
 	}
 }
 
@@ -79,14 +83,7 @@ func (inv *terraformInventory) evaluateAllRoots(
 	}
 	inv.withEvaluator(ctx, fsys, mergeAllow, resolver, func(evaluator *tfeval.Evaluator) {
 		called, _ := discoverStaticCalls(ctx, evaluator, filesByDir, dirsWithTf, inv.repoPath, resolver, false)
-		roots := make([]string, 0, len(dirsWithTf))
-		for dir := range dirsWithTf {
-			if !called[dir] {
-				roots = append(roots, dir)
-			}
-		}
-		sort.Strings(roots)
-		inv.evaluate(ctx, evaluator, roots)
+		inv.evaluate(ctx, evaluator, terraformRootDirs(dirsWithTf, called))
 	})
 }
 
@@ -138,7 +135,7 @@ func (inv *terraformInventory) evaluate(ctx context.Context, evaluator *tfeval.E
 		evaluator.ReleaseEvalCache()
 		evaluator.ForgetRootParse(dir)
 		if err == nil {
-			inv.addRoot(dir, resources)
+			inv.addRoot(dir, resources, false, nil)
 		}
 	}
 }
@@ -146,9 +143,11 @@ func (inv *terraformInventory) evaluate(ctx context.Context, evaluator *tfeval.E
 // addRoot reports the resources of one evaluated root module, once per
 // address. It runs inside the module evaluation findings depend on, so it
 // keeps its own attribution cache and a panic in it fails the inventory only.
-func (inv *terraformInventory) addRoot(dir string, resources []tfeval.ResolvedResource) {
+func (inv *terraformInventory) addRoot(
+	dir string, resources []tfeval.ResolvedResource, associateModuleDocuments bool, targets *ruleTargets,
+) map[*tfeval.ResolvedResource]*model.ResourceOccurrence {
 	if inv == nil || (inv.external != nil && inv.external(dir)) {
-		return
+		return nil
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -157,53 +156,111 @@ func (inv *terraformInventory) addRoot(dir string, resources []tfeval.ResolvedRe
 	}()
 	attributions := newModuleAttributionCache()
 	seen := make(map[string]bool, len(resources))
+	var instances map[*tfeval.ResolvedResource]*model.ResourceOccurrence
 	for i := range resources {
-		row := inv.row(dir, &resources[i], attributions)
+		r := &resources[i]
+		moduleCall, address, complete := r.PartialAddress()
 		// Guard against duplicate addresses in invalid configurations, such
 		// as two ordinary files declaring the same resource.
-		if seen[row.ResourcePath] {
+		if seen[address] {
 			continue
 		}
-		seen[row.ResourcePath] = true
+		seen[address] = true
+		occurrence := inv.occurrence(dir, r, moduleCall, address, complete, attributions)
+		row := inventory.ProjectResource(occurrence)
+		inv.addModuleFields(&row, occurrence.Terraform.Attribution)
 		inv.sink.AddResource(&row)
+		if inv.documents == nil {
+			continue
+		}
+		switch {
+		case r.ModuleAddress == "":
+			inv.associateWrittenOccurrence(r, occurrence)
+		case !associateModuleDocuments:
+			continue
+		case targets.matches(r.Type):
+			if instances == nil {
+				instances = make(map[*tfeval.ResolvedResource]*model.ResourceOccurrence)
+			}
+			instances[r] = occurrence
+		default:
+			inv.associateWrittenOccurrence(r, occurrence)
+		}
 	}
+	return instances
 }
 
-func (inv *terraformInventory) row(
-	root string, r *tfeval.ResolvedResource, attributions *moduleAttributionCache,
-) inventory.Resource {
-	// The address findings use when complete, else as much of it as is known.
-	moduleCall, path, complete := r.PartialAddress()
-	row := inventory.Resource{
-		RootModule:   root,
-		ResourcePath: path,
-		Platform:     platforms.Terraform,
-		ResourceType: r.Type,
-		ResourceName: tfeval.ResourceBaseName(r.Name),
-		Provider:     terraformProvider(r),
-		File:         absPath(r.DefinedIn, inv.repoPath),
-		LineStart:    r.DefLine,
-		ModuleCall:   moduleCall,
-		Completeness: inventory.CompletenessComplete,
-		// As findings name the module calls, to link them to the row.
-		ModuleCallChain: callChainKey(r, inv.repoPath),
-		Block:           terraformBlock(r),
+// associateWrittenOccurrence indexes root declarations and external module
+// resources that generic rules can still match in the original document.
+func (inv *terraformInventory) associateWrittenOccurrence(r *tfeval.ResolvedResource, occurrence *model.ResourceOccurrence) {
+	id := occurrence.DocumentID
+	if id == "" {
+		return
 	}
-	if !complete {
-		row.Completeness = inventory.CompletenessInstanceUnresolved
+	if r.ModuleAddress != "" {
+		if inv.external == nil || !inv.external(occurrence.File) {
+			return
+		}
+		occurrence.Terraform.CallChainKey = callChainKey(r, inv.repoPath)
 	}
+	inv.documents[id] = append(inv.documents[id], occurrence)
+}
+
+func (inv *terraformInventory) occurrence(
+	root string, r *tfeval.ResolvedResource, moduleCall, address string, complete bool,
+	attributions *moduleAttributionCache,
+) *model.ResourceOccurrence {
+	file := absPath(r.DefinedIn, inv.repoPath)
+	kind, name := terraformResourceBlock, tfeval.ResourceBaseName(r.Name)
+	if r.Data {
+		kind = dataRoot
+	}
+	o := &model.ResourceOccurrence{
+		StructuralPath: model.SourcePath{{Key: kind}, {Key: r.Type}, {Key: name}},
+		Platform:       platforms.Terraform,
+		ResourceType:   r.Type,
+		ResourceName:   name,
+		Provider:       terraformProvider(r),
+		File:           file,
+		Terraform: &model.TerraformResourceOccurrence{
+			Root:        root,
+			Address:     address,
+			ModuleCall:  moduleCall,
+			Complete:    complete,
+			CallChain:   occurrenceCallChain(r.CallChain),
+			Attribution: callAttribution(r.CallChain, file, inv.repoPath, inv.lookup, attributions),
+		},
+	}
+	if document := inv.files[file]; document != nil {
+		o.DocumentID = document.ID
+	}
+	start := model.ResourceLine{Line: r.DefLine, Col: r.DefColumn}
+	end := model.ResourceLine{Line: max(r.DefEndLine, r.DefLine), Col: r.DefEndColumn}
 	if strings.HasSuffix(r.DefinedIn, ".json") {
-		row.LineStart, row.LineEnd = jsonBlockLines(r)
-	} else {
-		row.LineEnd = max(r.DefEndLine, r.DefLine)
-		row.ColumnStart = r.DefColumn
-		row.ColumnEnd = r.DefEndColumn
+		first, last := jsonBlockLines(r)
+		start, end = model.ResourceLine{Line: first}, model.ResourceLine{Line: last}
 	}
-	// The module calls and the module's package, as the SARIF module property
-	// gives them, without the per-finding locations and arguments.
-	attr := callAttribution(r.CallChain, absPath(r.DefinedIn, inv.repoPath), inv.repoPath, inv.lookup, attributions)
-	inv.addModuleFields(&row, attr)
-	return row
+	o.Source = model.ResourceLocation{Start: start, End: end}
+	return o
+}
+
+func occurrenceCallChain(chain []tfeval.CallSite) []model.TerraformCallSite {
+	if len(chain) == 0 {
+		return nil
+	}
+	hops := make([]model.TerraformCallSite, len(chain))
+	for i := range chain {
+		call := &chain[i]
+		hops[i] = model.TerraformCallSite{
+			Name: call.ModuleName, Source: call.Source, Version: call.Version,
+			InstanceKey: call.InstanceKey, File: call.CalledFrom,
+			Range: model.ResourceLocation{
+				Start: model.ResourceLine{Line: call.CalledLine, Col: call.CalledColumn},
+				End:   model.ResourceLine{Line: call.CalledEndLine, Col: call.CalledEndColumn},
+			},
+		}
+	}
+	return hops
 }
 
 // jsonBlockLines returns the lines of a block of JSON configuration. Every
@@ -263,16 +320,6 @@ func (inv *terraformInventory) intern(s string) string {
 	}
 	inv.modulePaths[s] = s
 	return s
-}
-
-// terraformBlock names the block r is an instance of: its type and name,
-// after data. for a data source.
-func terraformBlock(r *tfeval.ResolvedResource) string {
-	block := r.Type + "." + tfeval.ResourceBaseName(r.Name)
-	if r.Data {
-		block = "data." + block
-	}
-	return block
 }
 
 // terraformProvider returns the provider a resource declares with its
