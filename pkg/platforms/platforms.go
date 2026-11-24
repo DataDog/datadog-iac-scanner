@@ -26,4 +26,8 @@ const (
 	Dockerfile     = "dockerfile"
 	Kubernetes     = "kubernetes"
 	Terraform      = "terraform"
+
+	// Extension-routed platforms outside the default Supported list.
+	Bicep = "bicep"
+	GRPC  = "grpc"
 )

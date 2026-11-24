@@ -24,6 +24,10 @@ func TestMemorySourceProvider_FiltersByExtension(t *testing.T) {
 		"infra/notes.md":  []byte("md-content"),
 		"k8s/deploy.yaml": []byte("yaml-content"),
 		"Dockerfile":      []byte("FROM scratch"),
+		"dockerfile":      []byte("FROM alpine"),
+		"app.DOCKERFILE":  []byte("FROM alpine"),
+		"Dockerfile.prod": []byte("FROM alpine"),
+		"Dockerfile.yaml": []byte("yaml-dockerfile"),
 	})
 	p := NewMemorySourceProvider(mem, mem.Paths(), nil, nil)
 
@@ -32,14 +36,17 @@ func TestMemorySourceProvider_FiltersByExtension(t *testing.T) {
 		t.Errorf("with .tf only, emitted %v, want just infra/main.tf", got)
 	}
 
-	gotDocker := collect(t, p, model.Extensions{"Dockerfile": {}})
-	if len(gotDocker) != 1 || gotDocker["Dockerfile"] != "FROM scratch" {
-		t.Errorf("with Dockerfile only, emitted %v, want just Dockerfile", gotDocker)
-	}
+	gotDocker := collect(t, p, model.Extensions{"Dockerfile": {}, ".dockerfile": {}, utils.PossibleDockerfile: {}})
+	require.Equal(t, map[string]string{
+		"Dockerfile":      "FROM scratch",
+		"dockerfile":      "FROM alpine",
+		"app.DOCKERFILE":  "FROM alpine",
+		"Dockerfile.prod": "FROM alpine",
+	}, gotDocker)
 
 	gotMulti := collect(t, p, model.Extensions{".tf": {}, ".yaml": {}})
-	if len(gotMulti) != 2 {
-		t.Errorf("with .tf+.yaml, emitted %v, want 2 files", gotMulti)
+	if len(gotMulti) != 3 {
+		t.Errorf("with .tf+.yaml, emitted %v, want 3 files", gotMulti)
 	}
 }
 

@@ -82,4 +82,19 @@ func TestExcludedByContent(t *testing.T) {
 	require.True(t, ExcludedByContent("service.datadog.yaml", []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: x\n")))
 	require.False(t, ExcludedByContent("deploy.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\n")))
 	require.False(t, ExcludedByContent("main.tf", []byte("[metadata]\n")))
+
+	// Dockerfile candidates require a valid FROM header; unambiguous Dockerfile names do not.
+	require.False(t, ExcludedByContent("Dockerfile.prod", []byte("FROM scratch\nCOPY a /a\n")))
+	require.False(t, ExcludedByContent("DOCKERFILE.DEV", []byte("ARG BASE=alpine\nFROM $BASE\n")))
+	require.True(t, ExcludedByContent("Dockerfile.prod", []byte("notes mentioning FROM and RUN\n")))
+	require.True(t, ExcludedByContent("Dockerfile.txt", []byte("plain text\n")))
+	require.False(t, ExcludedByContent("app.debian", []byte("FROM debian:bookworm\n")))
+	require.True(t, ExcludedByContent("notes.debian", []byte("not a dockerfile\n")))
+	require.False(t, ExcludedByContent("app.ubi8", []byte("FROM registry.access.redhat.com/ubi8\n")))
+	require.True(t, ExcludedByContent("notes.ubi8", []byte("not a dockerfile\n")))
+	require.False(t, ExcludedByContent("Dockerfile", []byte("not parsed yet\n")))
+	require.False(t, ExcludedByContent("app.DOCKERFILE", []byte("not parsed yet\n")))
+	// Registered non-Dockerfile extensions keep their own content policy.
+	require.True(t, ExcludedByContent("Dockerfile.yaml", []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: x\n")))
+	require.False(t, ExcludedByContent("Dockerfile.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\n")))
 }
