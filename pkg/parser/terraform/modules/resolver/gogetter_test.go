@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -418,6 +419,97 @@ func TestGoGetterResolveCoalescesConcurrentFetches(t *testing.T) {
 	if got := cfg.fetchCount.Load(); got != 1 {
 		t.Fatalf("expected exactly 1 fetch for %d concurrent identical resolves, got %d", n, got)
 	}
+}
+
+// A package root and one of its subdirectories at the same version share a
+// cache entry, but each call must get the directory it selected, even when
+// the two fetches are in flight at the same time.
+func TestGoGetterResolveConcurrentRootAndSubdirKeepTheirOwnPaths(t *testing.T) {
+	var moduleArchive bytes.Buffer
+	zipWriter := zip.NewWriter(&moduleArchive)
+	for name, body := range map[string]string{
+		"main.tf":              "resource \"r\" \"root\" {}\n",
+		"modules/http/main.tf": "module \"root\" {\n  source = \"../../\"\n}\n",
+	} {
+		file, err := zipWriter.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Hold the first download until a second one arrives, or until the
+	// second caller has had time to join the first fetch, so that the two
+	// resolutions overlap.
+	firstRequest := make(chan struct{})
+	secondRequest := make(chan struct{})
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		switch requests.Add(1) {
+		case 1:
+			close(firstRequest)
+			select {
+			case <-secondRequest:
+			case <-time.After(500 * time.Millisecond):
+			}
+		case 2:
+			close(secondRequest)
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(moduleArchive.Bytes())
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := newHTTPDestinationPolicy(nil)
+	policy.lookupNetIP = func(context.Context, string, string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	}
+	policy.dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+	}
+
+	cfg := NewGoGetterConfig()
+	cfg.Cache = &moduleCache{dir: t.TempDir()}
+	cfg.TmpDir = t.TempDir()
+	cfg.httpClient = newPolicyHTTPClientWithPolicy(time.Second, policy)
+	r := NewGoGetterResolver(cfg)
+
+	pkg := "http://modules.example:" + port + "/module.zip"
+	ref := "?ref=" + strings.Repeat("a", gitSHALength)
+	rootSource := pkg + ref
+	subdirSource := pkg + "//modules/http" + ref
+	if !cacheableModule(rootSource, "") || !cacheableModule(subdirSource, "") {
+		t.Fatal("test setup: sources are not cacheable")
+	}
+
+	var root, subdir Resolution
+	var rootErr, subdirErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		root, rootErr = r.Resolve(t.Context(), &tfmodules.ParsedModule{Source: rootSource, Name: "root", FileName: "main.tf"})
+	}()
+	<-firstRequest
+	go func() {
+		defer wg.Done()
+		subdir, subdirErr = r.Resolve(t.Context(), &tfmodules.ParsedModule{Source: subdirSource, Name: "http", FileName: "main.tf"})
+	}()
+	wg.Wait()
+
+	require.NoError(t, rootErr)
+	require.NoError(t, subdirErr)
+	require.Equal(t, filepath.Clean(root.PackageRoot), filepath.Clean(root.LocalPath), "root call got another directory")
+	require.Equal(t, filepath.Join(subdir.PackageRoot, "modules", "http"), filepath.Clean(subdir.LocalPath),
+		"subdirectory call got another directory")
 }
 
 type stubGitResolver struct {
