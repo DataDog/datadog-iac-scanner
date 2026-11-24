@@ -23,10 +23,11 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	dockerParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
+	dockerparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/pkg/errors"
 )
 
@@ -720,7 +721,7 @@ var contentValidators = map[utils.ContentCheck]contentValidator{
 	utils.DockerfileContent: {
 		platform: dockerfile,
 		validate: func(path string, content []byte) bool {
-			return !isInsideAnsibleTemplatesDir(path) && dockerParser.IsDockerfile(content)
+			return !isInsideAnsibleTemplatesDir(path) && isDockerfileContent(content)
 		},
 	},
 	utils.AnsibleConfigContent: {
@@ -735,6 +736,22 @@ var contentValidators = map[utils.ContentCheck]contentValidator{
 			return looksLikeAnsibleInventory(content)
 		},
 	},
+}
+
+// isDockerfileContent reports whether content parses as a Dockerfile whose
+// first non-ARG instruction is a FROM with an image or stage argument.
+func isDockerfileContent(content []byte) bool {
+	parsed, err := dockerparser.Parse(bytes.NewReader(content))
+	if err != nil || parsed == nil || parsed.AST == nil {
+		return false
+	}
+	for _, node := range parsed.AST.Children {
+		if strings.EqualFold(node.Value, command.Arg) {
+			continue
+		}
+		return strings.EqualFold(node.Value, command.From) && node.Next != nil
+	}
+	return false
 }
 
 // overrides k8s match when all regexs passes for azureresourcemanager key and extension is set to json
