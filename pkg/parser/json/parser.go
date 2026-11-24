@@ -50,9 +50,19 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	resolved, resolvedFiles, err = p.Resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	out, err := p.ParsePlan(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+	return out.Resolved, out.Documents, out.IgnoreLines, out.ResolvedFiles, err
+}
+
+// ParsePlan is Parse that also reports whether the file parsed as a Terraform
+// plan. TerraformPlan is false for content that only looks like a plan, which
+// falls back to a plain JSON document while keeping the plan kind (see
+// KindForContent).
+func (p *Parser) ParsePlan(ctx context.Context, fileContent []byte, filePath string,
+	resolveReferences bool, maxResolverDepth int) (model.ParseOutput, error) {
+	resolved, resolvedFiles, err := p.Resolve(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return model.ParseOutput{}, err
 	}
 
 	r := model.Document{}
@@ -60,25 +70,28 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	if err != nil {
 		var r []model.Document
 		err = json.Unmarshal(resolved, &r)
-		return nil, r, nil, resolvedFiles, err
+		return model.ParseOutput{Documents: r, ResolvedFiles: resolvedFiles}, err
 	}
 
 	jLine := initializeJSONLine(resolved)
 	jsonDoc := jLine.setLineInfo(r)
+	out := model.ParseOutput{Resolved: resolved, Documents: []model.Document{jsonDoc}, ResolvedFiles: resolvedFiles}
 
 	if !looksLikeTerraformPlan(fileContent) {
 		// JSON is not a tf plan
-		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
+		return out, nil
 	}
 
 	// Try to parse JSON as Terraform plan
 	tfPlan, err := parseTFPlan(jsonDoc)
 	if err != nil {
 		// Fallback to regular json
-		return resolved, []model.Document{jsonDoc}, nil, resolvedFiles, nil
+		return out, nil
 	}
 
-	return resolved, []model.Document{tfPlan}, nil, resolvedFiles, nil
+	out.Documents = []model.Document{tfPlan}
+	out.TerraformPlan = true
+	return out, nil
 }
 
 // ParseLineInfo returns the line-info documents of a Terraform plan. Line

@@ -100,6 +100,7 @@ type Counters struct {
 	TotalQueries           int `json:"queries_total"`
 	FailedToExecuteQueries int `json:"queries_failed_to_execute"`
 	FoundResources         int `json:"resources_found"`
+	TerraformPlans         int `json:"-"`
 }
 
 // Times represents an object that contains the start and end time of the scan

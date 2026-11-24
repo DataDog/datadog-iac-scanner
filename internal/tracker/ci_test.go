@@ -188,3 +188,11 @@ func TestTrackFileOutcomes(t *testing.T) {
 	require.Zero(t, c.FoundFiles)
 	require.Zero(t, c.ParsedFiles)
 }
+
+func TestCITracker_TrackTerraformPlanParse(t *testing.T) {
+	c := &CITracker{}
+	c.TrackTerraformPlanParse("a.tfplan.json")
+	c.TrackTerraformPlanParse("b.tfplan.json")
+	c.TrackTerraformPlanParse("a.tfplan.json")
+	require.Equal(t, 2, c.ParsedTerraformPlans)
+}

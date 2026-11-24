@@ -1383,6 +1383,18 @@ type ResolvedFile struct {
 	LinesContent *[]string
 }
 
+// ParseOutput is what a parser returns for a file, as Parse does, plus whether
+// the file parsed as a Terraform plan.
+type ParseOutput struct {
+	Resolved      []byte
+	Documents     []Document
+	IgnoreLines   []int
+	ResolvedFiles map[string]ResolvedFile
+	// TerraformPlan is false for content that only looks like a plan and falls
+	// back to plain documents, though such content keeps the plan kind.
+	TerraformPlan bool
+}
+
 type SarifResourceLocation struct {
 	Line int `json:"line"`
 	Col  int `json:"col"`

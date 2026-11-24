@@ -222,6 +222,7 @@ const (
 	platformTag              = "DATADOG_PLATFORM:%s"
 	providerTag              = "DATADOG_PROVIDER:%s"
 	scannedFileCountTag      = "DATADOG_SCANNED_FILE_COUNT:%d"
+	terraformPlanCountTag    = "DATADOG_TERRAFORM_PLAN_COUNT:%d"
 
 	DOCKERFILE = "Dockerfile"
 )
@@ -684,6 +685,10 @@ func (sr *sarifReport) AddTags(ctx context.Context, summary *model.Summary, diff
 	diffAwareEnabledTag := GetDiffAwareEnabledTag(*diffAware)
 
 	tagsToAppend = append(tagsToAppend, executionTimeTag, scannedFileCountTag, diffAwareEnabledTag)
+
+	if summary.TerraformPlans > 0 {
+		tagsToAppend = append(tagsToAppend, GetTerraformPlanCountTag(summary.TerraformPlans))
+	}
 
 	if diffAware.Enabled {
 		if diffAware.BaseSha == "" || diffAware.Files == "" || diffAware.ConfigDigest == "" {

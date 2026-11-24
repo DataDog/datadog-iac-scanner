@@ -25,7 +25,8 @@ type contentKindParser interface {
 
 // lineInfoParser is an optional parser capability to build the documents of
 // a line-info reparse (see WithLineInfoOnly) for less than a full parse. ok
-// is false when the content needs a full parse.
+// is false when the content needs a full parse, and true only for a Terraform
+// plan.
 type lineInfoParser interface {
 	ParseLineInfo(content []byte, filePath string) (documents []model.Document, ok bool)
 }
@@ -39,9 +40,17 @@ type lineInfoSectionParser interface {
 
 // unannotatedParser is an optional parser capability to build documents
 // without line markers, for parses marked WithLazyLineInfo. ok is false when
-// the content needs a full parse.
+// the content needs a full parse, and true only for a Terraform plan.
 type unannotatedParser interface {
 	ParseUnannotated(content []byte, filePath string) (documents []model.Document, ok bool)
+}
+
+// planParser is an optional parser capability to parse like Parse while
+// reporting whether the content parsed as a Terraform plan. Content can keep
+// the plan kind and still fall back to plain documents, so the kind alone does
+// not tell.
+type planParser interface {
+	ParsePlan(ctx context.Context, fileContent []byte, filename string, _ bool, _ int) (model.ParseOutput, error)
 }
 
 // directoryDependentParser is an optional parser capability declaring that the
@@ -162,6 +171,10 @@ type ParsedDocument struct {
 	CountLines    int
 	ResolvedFiles map[string]model.ResolvedFile
 	IsMinified    bool
+	// TerraformPlan marks a file the parser parsed as a Terraform plan. It is
+	// false for content that only looks like a plan and falls back to plain
+	// documents, though such content keeps the plan kind.
+	TerraformPlan bool
 	// DirectoryDependent marks parses whose output depends on sibling files
 	// (see directoryDependentParser); the runner must not share them across
 	// files with identical content.
@@ -251,17 +264,20 @@ func (c *Parser) parseContent(
 	fileContent = utils.DecryptAnsibleVault(ctx, fileContent, utils.GetVaultPassword())
 
 	if lp, ok := c.Parsers.(lineInfoParser); ok && IsLineInfoOnly(ctx) && !IsLineInfoExport(ctx) {
-		// A line-info reparse only reads the documents.
+		// A line-info reparse only reads the documents. Only a Terraform plan
+		// parses for line info alone.
 		if docs, ok := lp.ParseLineInfo(fileContent, filePath); ok {
-			return ParsedDocument{Docs: docs, Kind: c.contentKind(fileContent), IsMinified: isMinified}, nil
+			return ParsedDocument{
+				Docs: docs, Kind: c.contentKind(fileContent), IsMinified: isMinified, TerraformPlan: true,
+			}, nil
 		}
 	}
 
-	resolved, obj, igLines, resolvedFiles, err := c.parseDocuments(
-		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+	out, err := c.parseDocuments(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
 	if err != nil {
 		return ParsedDocument{}, err
 	}
+	resolved := out.Resolved
 
 	// Terraform resolves checkout symlink placeholders to source bytes while
 	// retaining the logical filename. Keep that source for detection and snippets.
@@ -286,13 +302,14 @@ func (c *Parser) parseContent(
 	}
 
 	return ParsedDocument{
-		Docs:               obj,
+		Docs:               out.Documents,
 		Kind:               kind,
 		Content:            cont,
-		IgnoreLines:        igLines,
+		IgnoreLines:        out.IgnoreLines,
 		CountLines:         bytes.Count(resolved, []byte{'\n'}) + 1,
-		ResolvedFiles:      resolvedFiles,
+		ResolvedFiles:      out.ResolvedFiles,
 		IsMinified:         isMinified,
+		TerraformPlan:      out.TerraformPlan,
 		DirectoryDependent: directoryDependent,
 	}, nil
 }
@@ -307,20 +324,30 @@ func (c *Parser) ParseLineInfoSection(filePath string, content []byte, name stri
 }
 
 // parseDocuments parses fileContent with the parser, without line markers
-// when the parse is marked WithLazyLineInfo and the parser can.
+// when the parse is marked WithLazyLineInfo and the parser can. The output's
+// TerraformPlan reports whether the content parsed as a Terraform plan.
 func (c *Parser) parseDocuments(
 	ctx context.Context,
 	fileContent []byte,
 	filePath string,
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
-) (resolved []byte, docs []model.Document, ignoreLines []int, resolvedFiles map[string]model.ResolvedFile, err error) {
+) (model.ParseOutput, error) {
 	if up, ok := c.Parsers.(unannotatedParser); ok && IsLazyLineInfo(ctx) {
 		if docs, ok := up.ParseUnannotated(fileContent, filePath); ok {
-			return fileContent, docs, nil, map[string]model.ResolvedFile{}, nil
+			return model.ParseOutput{
+				Resolved: fileContent, Documents: docs, ResolvedFiles: map[string]model.ResolvedFile{}, TerraformPlan: true,
+			}, nil
 		}
 	}
-	return c.Parsers.Parse(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+	if pp, ok := c.Parsers.(planParser); ok {
+		return pp.ParsePlan(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+	}
+	resolved, docs, ignoreLines, resolvedFiles, err := c.Parsers.Parse(
+		ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+	return model.ParseOutput{
+		Resolved: resolved, Documents: docs, IgnoreLines: ignoreLines, ResolvedFiles: resolvedFiles,
+	}, err
 }
 
 // contentKind returns the parser's kind, refined for content when the
