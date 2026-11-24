@@ -129,6 +129,7 @@ func (s *Service) storeResolvedFiles(
 				file.SetLineInfoLoader(newHelmLineInfoLoader(
 					s.Parser, rfile, ownedRenderedContent, docIdx,
 					openAPIResolveReferences, isMinified, maxResolverDepth))
+				file.SetLineInfoOptional()
 			}
 			s.saveToFile(ctx, &file)
 			if n := len(storedPaths); n == 0 || storedPaths[n-1] != rfile.FileName {

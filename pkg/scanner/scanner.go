@@ -103,29 +103,73 @@ func liveHeapAfterGC() uint64 {
 	return ms.HeapAlloc
 }
 
-// StartScan will run concurrent scans by parser
+// sequentialScanFileThreshold is the minimum total file count across services
+// at which StartScan runs parser services sequentially to avoid overlapping
+// per-platform OPA payloads, compilers, and detector caches in peak RSS.
+// Below this threshold, services run concurrently so small multi-platform
+// scans overlap their single-threaded setup phases.
+const sequentialScanFileThreshold = 300
+
+// StartScan will run scans by parser
 func StartScan(ctx context.Context, scanID string, services serviceSlice) error {
 	defer metrics.Metric.Stop()
 	defer memwatch.Sample(ctx, memwatch.PhaseStartScan)
 	metrics.Metric.Start("start_scan")
 	contextLogger := logger.FromContext(ctx)
-	var wg sync.WaitGroup
-	wgDone := make(chan bool)
-	errCh := make(chan error)
 
 	contextLogger.Info().Msgf("Starting scan with id: %s", scanID)
 
 	total := services.GetQueriesLength()
 	contextLogger.Info().Msgf("Got %d queries", total)
 
+	totalFiles := services.TotalFiles()
+
 	// GC pressure relief for large scans, gated on measured live heap.
-	if services.TotalFiles() > evalGcFileThreshold && liveHeapAfterGC() > evalGcHeapBytes {
+	if totalFiles > evalGcFileThreshold && liveHeapAfterGC() > evalGcHeapBytes {
 		previous := debug.SetGCPercent(reducedEvalGCPercent)
 		defer debug.SetGCPercent(previous)
 		for _, service := range services {
 			service.Inspector.SetEvalGcRelief(true)
 		}
 	}
+
+	if len(services) > 1 && totalFiles >= sequentialScanFileThreshold {
+		return runServicesSequentially(ctx, scanID, services)
+	}
+	return runServicesConcurrently(ctx, scanID, services)
+}
+
+func runServicesSequentially(ctx context.Context, scanID string, services serviceSlice) error {
+	var wg sync.WaitGroup
+	for _, service := range services {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		serviceErrCh := make(chan error, 1)
+		wg.Add(1)
+		service.StartScan(ctx, scanID, serviceErrCh, &wg)
+		wg.Wait()
+		if service.Inspector != nil {
+			service.Inspector.ReleaseDetectorCaches()
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		select {
+		case err := <-serviceErrCh:
+			if err != nil {
+				return err
+			}
+		default:
+		}
+	}
+	return nil
+}
+
+func runServicesConcurrently(ctx context.Context, scanID string, services serviceSlice) error {
+	var wg sync.WaitGroup
+	wgDone := make(chan bool)
+	errCh := make(chan error)
 
 	workersCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -145,9 +189,24 @@ func StartScan(ctx context.Context, scanID string, services serviceSlice) error 
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-wgDone:
+		releaseDetectorCaches(services)
 		return nil
 	case err := <-errCh:
 		return err
+	}
+}
+
+func releaseDetectorCaches(services serviceSlice) {
+	seen := make(map[interface{}]struct{}, len(services))
+	for _, service := range services {
+		if service == nil || service.Inspector == nil {
+			continue
+		}
+		if _, ok := seen[service.Inspector]; ok {
+			continue
+		}
+		seen[service.Inspector] = struct{}{}
+		service.Inspector.ReleaseDetectorCaches()
 	}
 }
 
