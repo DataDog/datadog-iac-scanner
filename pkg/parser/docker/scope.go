@@ -31,18 +31,63 @@ type binding struct {
 	done  bool
 }
 
+// resolve returns the value, expanding the declarations it depends on first.
+// Dependencies are resolved from an explicit stack, so the depth of a chain of
+// declarations costs heap, not goroutine stack.
 func (b *binding) resolve() string {
-	if !b.done {
-		if b.alias != "" {
-			b.value, _ = b.env.Get(b.alias)
-		} else {
-			b.value = expandValues(b.expander, []string{b.raw}, b.env)[0]
+	stack := []*binding{b}
+	for len(stack) > 0 {
+		top := stack[len(stack)-1]
+		if top.done {
+			stack = stack[:len(stack)-1]
+			continue
 		}
-		b.done = true
-		b.env = view{} // The environment is no longer needed.
+		if pending := top.tryResolve(); len(pending) > 0 {
+			stack = append(stack, pending...)
+		}
 	}
 	return b.value
 }
+
+// tryResolve expands the binding if every declaration it reads is already
+// resolved. Otherwise it resolves nothing and returns the ones still needed.
+func (b *binding) tryResolve() []*binding {
+	reads := &tracker{view: b.env}
+	if b.alias != "" {
+		b.value, _ = reads.Get(b.alias)
+	} else {
+		b.value = expandValues(b.expander, []string{b.raw}, reads)[0]
+	}
+	if len(reads.pending) > 0 {
+		return reads.pending
+	}
+	b.done = true
+	b.env = view{} // The environment is no longer needed.
+	return nil
+}
+
+// tracker is an environment that never resolves a declaration itself. A read of
+// one that is not resolved yet is recorded and reported as unset, and the
+// caller discards that expansion and retries once the declaration is resolved.
+type tracker struct {
+	view    view
+	pending []*binding
+}
+
+func (t *tracker) Get(name string) (string, bool) {
+	b, ok := t.view.lookup(name)
+	if !ok {
+		return "", false
+	}
+	if !b.done {
+		t.pending = append(t.pending, b)
+		return "", false
+	}
+	return b.value, true
+}
+
+func (t *tracker) Keys() []string { return t.view.Keys() }
+func (t *tracker) empty() bool    { return t.view.empty() }
 
 // variableScope is the build environment of one stage. It follows BuildKit,
 // where ARG and ENV write to a single environment: the last write wins, and a

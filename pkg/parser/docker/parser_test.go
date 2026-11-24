@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -464,4 +465,22 @@ func TestParser_Parse_NestedDeclarationsExpandIndependently(t *testing.T) {
 	require.NoError(t, err)
 	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
 	require.Equal(t, []interface{}{"echo xxxxxxxx"}, stage[len(stage)-1].(map[string]interface{})["Value"])
+}
+
+// Resolving a long chain must not use goroutine stack per link. The chain is
+// resolved on a goroutine whose stack is capped well below what the links would
+// need if each one recursed.
+func TestParser_Parse_LongDeclarationChainUsesBoundedStack(t *testing.T) {
+	var source strings.Builder
+	source.WriteString("FROM scratch\nARG A=x\nENV B=$A\n")
+	for i := 0; i < 200000; i++ {
+		source.WriteString("ARG A=$A\n")
+	}
+	source.WriteString("RUN echo $A $B\n")
+	old := debug.SetMaxStack(8 << 20)
+	defer debug.SetMaxStack(old)
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+	require.NoError(t, err)
+	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+	require.Equal(t, []interface{}{"echo x x"}, stage[len(stage)-1].(map[string]interface{})["Value"])
 }
