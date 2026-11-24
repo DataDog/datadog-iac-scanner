@@ -53,6 +53,9 @@ type TerraformResourceOccurrence struct {
 	Complete    bool
 	CallChain   []TerraformCallSite
 	Attribution *ModuleAttribution
+	// CallChainKey identifies the caller for an occurrence associated with
+	// an external module document scanned as written.
+	CallChainKey string
 }
 
 // TerraformCallSite keeps the evaluator's typed call provenance without the

@@ -135,7 +135,7 @@ func (inv *terraformInventory) evaluate(ctx context.Context, evaluator *tfeval.E
 		evaluator.ReleaseEvalCache()
 		evaluator.ForgetRootParse(dir)
 		if err == nil {
-			inv.addRoot(dir, resources, false)
+			inv.addRoot(dir, resources, false, nil)
 		}
 	}
 }
@@ -144,7 +144,7 @@ func (inv *terraformInventory) evaluate(ctx context.Context, evaluator *tfeval.E
 // address. It runs inside the module evaluation findings depend on, so it
 // keeps its own attribution cache and a panic in it fails the inventory only.
 func (inv *terraformInventory) addRoot(
-	dir string, resources []tfeval.ResolvedResource, associateModuleDocuments bool,
+	dir string, resources []tfeval.ResolvedResource, associateModuleDocuments bool, targets *ruleTargets,
 ) map[*tfeval.ResolvedResource]*model.ResourceOccurrence {
 	if inv == nil || (inv.external != nil && inv.external(dir)) {
 		return nil
@@ -173,18 +173,37 @@ func (inv *terraformInventory) addRoot(
 		if inv.documents == nil {
 			continue
 		}
-		if r.ModuleAddress == "" {
-			if id := occurrence.DocumentID; id != "" {
-				inv.documents[id] = append(inv.documents[id], occurrence)
-			}
-		} else if associateModuleDocuments {
+		switch {
+		case r.ModuleAddress == "":
+			inv.associateWrittenOccurrence(r, occurrence)
+		case !associateModuleDocuments:
+			continue
+		case targets.matches(r.Type):
 			if instances == nil {
 				instances = make(map[*tfeval.ResolvedResource]*model.ResourceOccurrence)
 			}
 			instances[r] = occurrence
+		default:
+			inv.associateWrittenOccurrence(r, occurrence)
 		}
 	}
 	return instances
+}
+
+// associateWrittenOccurrence indexes root declarations and external module
+// resources that generic rules can still match in the original document.
+func (inv *terraformInventory) associateWrittenOccurrence(r *tfeval.ResolvedResource, occurrence *model.ResourceOccurrence) {
+	id := occurrence.DocumentID
+	if id == "" {
+		return
+	}
+	if r.ModuleAddress != "" {
+		if inv.external == nil || !inv.external(occurrence.File) {
+			return
+		}
+		occurrence.Terraform.CallChainKey = callChainKey(r, inv.repoPath)
+	}
+	inv.documents[id] = append(inv.documents[id], occurrence)
 }
 
 func (inv *terraformInventory) occurrence(

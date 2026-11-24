@@ -1027,6 +1027,37 @@ func TestInventoryCountsUnlinkedFindings(t *testing.T) {
 	require.Equal(t, 1, inv.Stats.FindingsUnlinked)
 }
 
+func TestInventoryLinksKubernetesListMemberWithDottedSelector(t *testing.T) {
+	root := writeRepo(t, map[string]string{"k8s/list.yaml": `apiVersion: v1
+kind: List
+items:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: clean
+    data:
+      foo: clean
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: flagged
+    data:
+      foo: flagged
+`})
+	rule := syntheticQuery("test-k8s-list-member", "k8s", "Kubernetes", `	member := input.document[i].items[_]
+	member.data.foo == "flagged"
+	typ := member.kind
+	name := member.metadata.name
+	key := sprintf("metadata.name={{%s}}.data.foo", [name])`)
+	params := documentParams(root)
+	params.Platform = []string{"Kubernetes"}
+
+	inv, fingerprints := scanLinks(t, params, rule)
+	require.Len(t, inv.Resources, 2)
+	require.Len(t, fingerprints, 1)
+	require.Equal(t, []string{"k8s/list.yaml|v1/ConfigMap//flagged"}, linkedRefs(inv)[fingerprints[0]])
+}
+
 func TestInventoryDuplicateDocumentsGetTheirOwnRows(t *testing.T) {
 	dup := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  a: \"1\"\n---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\ndata:\n  b: \"2\"\n"
 	root := writeRepo(t, map[string]string{"k8s/dup.yaml": dup})

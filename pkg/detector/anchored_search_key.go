@@ -76,14 +76,15 @@ func splitSearchKeySegments(searchKey string) (split []string, extracted [][]str
 }
 
 // LegacyPathComponents reads the structural components of a legacy result.
-// An anchor is a value selector at the start, such as name={{task}}.shell.
+// Value selectors can follow a dotted key, such as metadata.name={{pod}}.spec.
 func LegacyPathComponents(searchKey string) (parts []string, anchored bool) {
 	segments, extracted := splitSearchKeySegments(searchKey)
 	for i, segment := range segments {
-		if i == 0 {
-			// The leading value anchor is outside brackets. An equals sign
-			// in a bracket selector or a later segment is part of the key.
-			if j := strings.IndexAny(segment, "=["); j >= 0 && segment[j] == '=' {
+		// The selector is outside brackets. After the first segment its
+		// value must be wrapped, so literal equals signs stay in the key.
+		if j := strings.IndexAny(segment, "=["); j >= 0 && segment[j] == '=' {
+			value := segment[j+1:]
+			if i == 0 || (strings.HasPrefix(value, "{{") && strings.HasSuffix(value, "}}")) {
 				segment, anchored = segment[:j], true
 			}
 		}

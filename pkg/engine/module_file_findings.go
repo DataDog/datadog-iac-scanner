@@ -136,6 +136,7 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 			attributed := *v
 			attributed.ModuleCallChain = call.callChain
 			attributed.ModuleAttribution = moduleFileAttribution(call.attribution, file.name, v)
+			attributed.ResourceOccurrences = call.resourceOccurrences(v.ResourceOccurrences)
 			out = append(out, attributed)
 		}
 	}
@@ -143,6 +144,18 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 		return vulns
 	}
 	return out
+}
+
+// resourceOccurrences keeps the instances reached by this call only. Findings
+// on the original document can initially match instances from several calls.
+func (call *moduleCall) resourceOccurrences(occurrences []*model.ResourceOccurrence) []*model.ResourceOccurrence {
+	var matched []*model.ResourceOccurrence
+	for _, occurrence := range occurrences {
+		if occurrence.Terraform != nil && occurrence.Terraform.CallChainKey == call.callChain {
+			matched = append(matched, occurrence)
+		}
+	}
+	return matched
 }
 
 // dropUnattributedExternalFindings removes the findings on an external module

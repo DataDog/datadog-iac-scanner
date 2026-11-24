@@ -493,7 +493,7 @@ func (m *rootMerge) merge(
 	}
 	// Every resource and data source of the root, before instantiation keeps
 	// only what rules can match.
-	occurrences := m.inventory.addRoot(dir, resources, true)
+	occurrences := m.inventory.addRoot(dir, resources, true, m.targets)
 	var occurrenceDocuments documentOccurrenceIndex
 	if len(occurrences) > 0 {
 		occurrenceDocuments = m.inventory.documents

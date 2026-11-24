@@ -69,13 +69,19 @@ func TestResolveAnchoredPath(t *testing.T) {
 }
 
 func TestLegacyPathComponentsPreservesEqualsInKeys(t *testing.T) {
-	for _, key := range []string{"labels.a=b.value", `labels["a=b"].value`, "labels.{{a=b}}.value"} {
+	for _, key := range []string{"labels.a=b.value", `labels["a=b"].value`, "labels.{{a=b}}.value", "labels[a={{b}}].value"} {
 		parts, anchored := LegacyPathComponents(key)
 		assert.Equal(t, []string{"labels", "a=b", "value"}, parts, key)
 		assert.False(t, anchored, key)
 	}
 	parts, anchored := LegacyPathComponents("name={{task-a}}.labels.a=b")
 	assert.Equal(t, []string{"name", "labels", "a=b"}, parts)
+	assert.True(t, anchored)
+}
+
+func TestLegacyPathComponentsRecognisesDottedValueSelector(t *testing.T) {
+	parts, anchored := LegacyPathComponents("metadata.name={{cm}}.data.foo")
+	assert.Equal(t, []string{"metadata", "name", "data", "foo"}, parts)
 	assert.True(t, anchored)
 }
 
