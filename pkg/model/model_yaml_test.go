@@ -921,40 +921,59 @@ func TestDocument_UnmarshalYAML_CloudFormationForEachNoTransform(t *testing.T) {
 }
 
 func TestDocument_UnmarshalYAML_CloudFormationForEachLineMetadata(t *testing.T) {
-	ctx := context.Background()
-
-	src := []byte(`Transform: AWS::LanguageExtensions
+	const header = `Transform: AWS::LanguageExtensions
 Parameters:
-  Instances:
+  Names:
     Type: CommaDelimitedList
-    Default: "0"
+    Default: Blue,Green
 Resources:
-  Fn::ForEach::RDSInstances:
-    - Identifier
-    - !Ref Instances
-    - RDSInstance${Identifier}:
-        Type: AWS::RDS::DBInstance
-`)
+  Fn::ForEach::Buckets:
+    - Name
+`
+	const template = `    - Bucket${Name}:
+        Type: AWS::S3::Bucket
+        Properties:
+          BucketName: !Sub logs-${Name}
+`
 
-	var root yaml.Node
-	require.NoError(t, yaml.Unmarshal(src, &root))
-	require.Len(t, root.Content, 1)
+	for _, tc := range []struct {
+		name         string
+		collection   string
+		templateLine int
+	}{
+		{"flow-style literal", "    - [Blue, Green]\n", 10},
+		{"block-style literal", "    -\n      - Blue\n      - Green\n", 12},
+		{"parameter reference", "    - !Ref Names\n", 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var root yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(header+tc.collection+template), &root))
+			require.Len(t, root.Content, 1)
 
-	doc := &Document{}
-	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
-
-	raw, err := json.Marshal(doc)
-	require.NoError(t, err)
-	var parsed map[string]interface{}
-	require.NoError(t, json.Unmarshal(raw, &parsed))
-
-	resources := parsed["Resources"].(map[string]interface{})
-	resourceLines := resources["_dd_lines"].(map[string]interface{})
-
-	// Expanded resource inherits line info from the ForEach key.
-	require.Contains(t, resourceLines, "_dd_RDSInstance0")
-	// Stale ForEach entry is removed.
-	require.NotContains(t, resourceLines, "_dd_Fn::ForEach::RDSInstances")
+			var doc Document
+			require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+			resources := doc["Resources"].(map[string]interface{})
+			require.Len(t, resources, 3, "two buckets and line metadata")
+			require.NotContains(t, resources, "Fn::ForEach::Buckets")
+			resourceLines := resources["_dd_lines"].(map[string]*LineObject)
+			require.NotContains(t, resourceLines, "_dd_Fn::ForEach::Buckets")
+			for _, name := range []string{"Blue", "Green"} {
+				id := "Bucket" + name
+				require.Contains(t, resources, id)
+				bucket := resources[id].(map[string]interface{})
+				require.Equal(t, "AWS::S3::Bucket", bucket["Type"])
+				props := bucket["Properties"].(map[string]interface{})
+				require.Equal(t, map[string]interface{}{"Fn::Sub": "logs-" + name}, stripDDLines(props["BucketName"]))
+				lines := resourceLines["_dd_"+id]
+				require.NotNil(t, lines)
+				require.Equal(t, 7, lines.Line, "loop key line")
+				require.Len(t, lines.Arr, 3, "loop argument metadata")
+				templateLines := lines.Arr[2]["_dd_Bucket${Name}"]
+				require.NotNil(t, templateLines)
+				require.Equal(t, tc.templateLine, templateLines.Line)
+			}
+		})
+	}
 }
 
 func TestDocument_UnmarshalYAML_CloudFormationForEachDuplicateID(t *testing.T) {

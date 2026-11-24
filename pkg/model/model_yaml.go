@@ -312,6 +312,10 @@ func resolveForEachCollection(expr interface{}, parameters map[string]interface{
 	case []interface{}:
 		return normalizeForEachDefault(v), true
 	case map[string]interface{}:
+		// The YAML decoder wraps nested sequences in a playbooks map.
+		if items, ok := v["playbooks"].([]interface{}); ok && len(v) == 1 {
+			return normalizeForEachDefault(items), true
+		}
 		refName, ok := v["Ref"].(string)
 		if !ok || refName == "" {
 			return nil, false

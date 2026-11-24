@@ -1126,6 +1126,57 @@ func TestInventoryLinksAnsibleFindings(t *testing.T) {
 	require.Zero(t, inv.Stats.FindingsUnlinked)
 }
 
+func TestInventoryCloudFormationForEachCollections(t *testing.T) {
+	const header = `Transform: AWS::LanguageExtensions
+Resources:
+  Fn::ForEach::Buckets:
+    - Name
+`
+	const template = `    - Bucket${Name}:
+        Type: AWS::S3::Bucket
+Parameters:
+  Names:
+    Type: CommaDelimitedList
+    Default: Blue,Green
+`
+	bucket := syntheticQuery("test-cfn-loop-bucket", "cloudFormation", "CloudFormation", `	resource := input.document[i].Resources[logical]
+	typ := resource.Type
+	typ == "AWS::S3::Bucket"
+	name := logical
+	key := sprintf("Resources.%s.Type", [logical])`)
+
+	for _, tc := range []struct {
+		name       string
+		collection string
+		loopEnd    int
+	}{
+		{"flow-style literal", "    - [Blue, Green]\n", 7},
+		{"block-style literal", "    -\n      - Blue\n      - Green\n", 9},
+		{"parameter reference", "    - !Ref Names\n", 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeRepo(t, map[string]string{"stack.yaml": header + tc.collection + template})
+			params := documentParams(root)
+			params.Platform = []string{"CloudFormation"}
+			inv, fingerprints := scanLinks(t, params, bucket)
+
+			require.Len(t, inv.Resources, 2)
+			rows := rowsByPath(inv)
+			for _, id := range []string{"BucketBlue", "BucketGreen"} {
+				require.Contains(t, rows, id)
+				require.Equal(t, "AWS::S3::Bucket", rows[id].ResourceType)
+				require.Equal(t, 3, rows[id].LineStart)
+				require.Equal(t, tc.loopEnd, rows[id].LineEnd)
+			}
+			require.Len(t, fingerprints, 2)
+			require.NotEqual(t, fingerprints[0], fingerprints[1])
+			refs := linkedRefs(inv)
+			require.ElementsMatch(t, [][]string{{"stack.yaml|BucketBlue"}, {"stack.yaml|BucketGreen"}},
+				[][]string{refs[fingerprints[0]], refs[fingerprints[1]]})
+		})
+	}
+}
+
 func TestInventoryDeduplicatedFindingsKeepEveryResource(t *testing.T) {
 	// The rule names a bucket by its BucketName, which both share: the scan
 	// reports one finding for the two.
