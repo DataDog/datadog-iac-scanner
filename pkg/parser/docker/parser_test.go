@@ -598,3 +598,31 @@ func TestParser_Parse_GrowingChainReleasesIntermediateValues(t *testing.T) {
 	// resolveBindings; with zeroing, intermediate bindings are collected early.
 	require.Less(t, after.HeapInuse, before.HeapInuse+(80<<20))
 }
+
+// Deeply nested ${A-...} across continuation lines must not crash the process
+// with a stack overflow inside BuildKit's recursive shell.Lex.
+func TestParser_Parse_DeepNestingDoesNotOverflowStack(t *testing.T) {
+	const levels = 15000
+	const chunk = 500
+	var source strings.Builder
+	source.WriteString("FROM alpine\nARG A=x\nRUN echo ")
+	for i := 0; i < levels; i += chunk {
+		source.WriteString(strings.Repeat("${A-", chunk))
+		source.WriteString("\\\n")
+	}
+	source.WriteString("$A")
+	for i := 0; i < levels; i += chunk {
+		source.WriteString(strings.Repeat("}", chunk))
+		source.WriteString("\\\n")
+	}
+	source.WriteByte('\n')
+
+	old := debug.SetMaxStack(8 << 20)
+	defer debug.SetMaxStack(old)
+
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+	require.NoError(t, err)
+	stage := docs[0]["command"].(map[string]interface{})["alpine"].([]interface{})
+	val := stage[len(stage)-1].(map[string]interface{})["Value"].([]interface{})[0].(string)
+	require.Contains(t, val, "${A-x}")
+}

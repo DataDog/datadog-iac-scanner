@@ -78,16 +78,23 @@ func (e *wordExpander) expandResolved(value string, scan wordScan, env *envNode)
 	return expandPlainRefsFromScan(value, scan.refs, env)
 }
 
+// maxLexerDepth guards BuildKit's recursive shell.Lex (one Go stack frame per
+// nested ${...} or quote level), which otherwise fatally overflows the goroutine
+// stack on continuation-joined lines with hundreds of thousands of levels.
+const maxLexerDepth = 1000
+
 // canUseLexer reports whether BuildKit's shell.Lex can expand value faithfully:
 //   - invalid UTF-8 or NUL bytes cause text/scanner to write to stderr, and a
 //     leading BOM is silently dropped by text/scanner;
 //   - syntax errors (unclosed quotes/braces, unsupported bash operators) would
 //     fail in BuildKit anyway;
+//   - nesting beyond maxLexerDepth could overflow BuildKit's recursive lexer stack;
 //   - an unset variable with an operator (e.g. ${X//a/b} or ${X:-x}) is rebuilt
 //     lossily under SkipUnsetEnv (// becomes /, escapes/quotes in operands are
 //     processed). A plain ${NAME} is rebuilt verbatim and stays on this path.
 func canUseLexer(value string, scan wordScan, env *envNode) bool {
-	if scan.syntaxErr || !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || strings.HasPrefix(value, "\ufeff") {
+	if scan.syntaxErr || scan.maxDepth > maxLexerDepth ||
+		!utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || strings.HasPrefix(value, "\ufeff") {
 		return false
 	}
 	for _, ref := range scan.refs {
@@ -183,6 +190,7 @@ type wordRef struct {
 
 type wordScan struct {
 	refs      []wordRef
+	maxDepth  int
 	syntaxErr bool
 }
 
@@ -201,6 +209,9 @@ func scanWord(value string, escape byte) wordScan {
 	}
 	for pos := 0; pos < len(value); {
 		pos = s.step(pos)
+		if depth := len(s.stack) - 1; depth > s.result.maxDepth {
+			s.result.maxDepth = depth
+		}
 	}
 	if len(s.stack) > 1 {
 		s.result.syntaxErr = true
