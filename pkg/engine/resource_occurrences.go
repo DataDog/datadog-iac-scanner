@@ -52,6 +52,9 @@ func structuredDocumentOccurrence(file *model.FileMetadata, path model.SourcePat
 
 func legacyDocumentOccurrence(file *model.FileMetadata, searchKey string, line int) []*model.ResourceOccurrence {
 	occurrences := file.ResourceOccurrences
+	if o := dottedLegacyOccurrence(occurrences, searchKey); o != nil {
+		return []*model.ResourceOccurrence{o}
+	}
 	parts, anchored := detector.LegacyPathComponents(searchKey)
 	for _, o := range occurrences {
 		if matchesLegacyPath(parts, o.StructuralPath) {
@@ -68,6 +71,33 @@ func legacyDocumentOccurrence(file *model.FileMetadata, searchKey string, line i
 		}
 	}
 	return nil
+}
+
+// dottedLegacyOccurrence recovers a literal keyed entry from an unescaped
+// legacy path. Prefer the longest entry when another name is its prefix.
+// Explicit bracket and brace selectors still use the structural matcher.
+func dottedLegacyOccurrence(occurrences []*model.ResourceOccurrence, searchKey string) *model.ResourceOccurrence {
+	collection, rest, _ := strings.Cut(searchKey, ".")
+	if !strings.Contains(rest, ".") {
+		return nil
+	}
+	var best *model.ResourceOccurrence
+	longest := 0
+	for _, o := range occurrences {
+		path := o.StructuralPath
+		if len(path) != 2 || path[0].Key != collection || path[1].IsIndex {
+			continue
+		}
+		name := path[1].Key
+		if len(name) <= longest || !strings.Contains(name, ".") {
+			continue
+		}
+		tail, ok := strings.CutPrefix(rest, name)
+		if ok && (tail == "" || tail[0] == '.' || tail[0] == '[') {
+			best, longest = o, len(name)
+		}
+	}
+	return best
 }
 
 func matchesLegacyPath(parts []string, path model.SourcePath) bool {

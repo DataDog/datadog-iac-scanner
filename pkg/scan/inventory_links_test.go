@@ -976,6 +976,23 @@ func TestInventoryLinksDocumentFindings(t *testing.T) {
 		require.Equal(t, []string{"docker-compose.yml|services._parsed_expressions_web"}, linkedRefs(inv)[fingerprints[0]])
 	})
 
+	t.Run("dotted Compose service", func(t *testing.T) {
+		root := writeRepo(t, map[string]string{
+			"docker-compose.yml": "services:\n  web.api:\n    image: nginx:1\n  clean:\n    image: alpine:3\n",
+		})
+		rule := syntheticQuery("test-dotted-service", "dockerCompose", "DockerCompose", `	svc := input.document[i].services[name]
+	svc.image == "nginx:1"
+	typ := "service"
+	key := sprintf("services.%s.image", [name])`)
+		params := documentParams(root)
+		params.Platform = []string{"DockerCompose"}
+		inv, fingerprints := scanLinks(t, params, rule)
+		require.Len(t, inv.Resources, 2)
+		require.Len(t, fingerprints, 1)
+		require.Equal(t, []string{"docker-compose.yml|services.web.api"}, linkedRefs(inv)[fingerprints[0]])
+		require.Zero(t, inv.Stats.FindingsUnlinked)
+	})
+
 	t.Run("Helm repeated list", func(t *testing.T) {
 		root := writeRepo(t, map[string]string{
 			"charts/app/Chart.yaml": "apiVersion: v2\nname: app\nversion: 0.1.0\n",

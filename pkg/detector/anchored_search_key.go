@@ -80,11 +80,14 @@ func splitSearchKeySegments(searchKey string) (split []string, extracted [][]str
 func LegacyPathComponents(searchKey string) (parts []string, anchored bool) {
 	segments, extracted := splitSearchKeySegments(searchKey)
 	for i, segment := range segments {
-		key, _, hasValue := strings.Cut(segment, "=")
-		if i == 0 && hasValue {
-			anchored = true
+		if i == 0 {
+			// The leading value anchor is outside brackets. An equals sign
+			// in a bracket selector or a later segment is part of the key.
+			if j := strings.IndexAny(segment, "=["); j >= 0 && segment[j] == '=' {
+				segment, anchored = segment[:j], true
+			}
 		}
-		parts = append(parts, expandBracketSegmentResolving(key, extracted)...)
+		parts = append(parts, expandBracketSegmentResolving(segment, extracted)...)
 	}
 	return parts, anchored
 }

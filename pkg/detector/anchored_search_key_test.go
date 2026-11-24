@@ -68,6 +68,17 @@ func TestResolveAnchoredPath(t *testing.T) {
 	assert.Equal(t, []string{"playbooks", "0", "community.aws.ecs_ecr", "policy", "Statement", "0", "Principal"}, comps)
 }
 
+func TestLegacyPathComponentsPreservesEqualsInKeys(t *testing.T) {
+	for _, key := range []string{"labels.a=b.value", `labels["a=b"].value`, "labels.{{a=b}}.value"} {
+		parts, anchored := LegacyPathComponents(key)
+		assert.Equal(t, []string{"labels", "a=b", "value"}, parts, key)
+		assert.False(t, anchored, key)
+	}
+	parts, anchored := LegacyPathComponents("name={{task-a}}.labels.a=b")
+	assert.Equal(t, []string{"name", "labels", "a=b"}, parts)
+	assert.True(t, anchored)
+}
+
 func TestResolveAnchoredPathRejections(t *testing.T) {
 	doc := ansibleLineInfoDoc()
 
