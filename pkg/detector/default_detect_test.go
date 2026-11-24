@@ -15,7 +15,100 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
+
+func TestCloudFormationGeneratedResourceLine(t *testing.T) {
+	const source = `Transform: AWS::LanguageExtensions
+Resources:
+  Fn::ForEach::Environments:
+    - Environment
+    - [Prod, Dev]
+    - Fn::ForEach::Tiers:
+        - Tier
+        - [Web]
+        - ${Environment}${Tier}Bucket:
+            Type: AWS::S3::Bucket
+            Properties:
+              BucketName: !Sub ${Environment}-${Tier}
+  ExplicitBucket:
+    Type: AWS::S3::Bucket
+`
+	ctx := context.Background()
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+	var doc model.Document
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+	file := &model.FileMetadata{
+		FilePath: "stack.yaml", Kind: model.KindYAML, OriginalData: source, LineInfoDocument: doc,
+	}
+	detector := NewDetectLine(3)
+	for _, tc := range []struct {
+		key  string
+		line int
+	}{
+		{"Resources.ProdWebBucket.Properties.BucketName", 12},
+		{"Resources.DevWebBucket.Properties.BucketName", 12},
+		{"Resources.ProdWebBucket.Properties", 11},
+		{"Resources.ProdWebBucket.Properties.VersioningConfiguration", 3},
+		{"Resources.ExplicitBucket.Type", 14},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			result := detector.DetectLine(ctx, file, tc.key)
+			require.Equal(t, tc.line, result.Line)
+		})
+	}
+}
+
+func TestCloudFormationGeneratedResourcePropertyLines(t *testing.T) {
+	const source = `Transform: AWS::LanguageExtensions
+Parameters:
+  Names:
+    Type: CommaDelimitedList
+    Default: Blue,Green
+Resources:
+  Fn::ForEach::Functions:
+    - Name
+    - !Ref Names
+    - Function${Name}:
+        Type: AWS::Lambda::Function
+        Properties:
+          Tags:
+            - Key: Name
+              Value: ${Name}
+          Environment:
+            Variables:
+              TOKEN_${Name}: example
+        Metadata:
+          'label.${Name}=enabled': example
+          list:
+            - Wrapped${Name}: example
+`
+	ctx := context.Background()
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+	var doc model.Document
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+	file := &model.FileMetadata{
+		FilePath: "stack.yaml", Kind: model.KindYAML, OriginalData: source, LineInfoDocument: doc,
+	}
+	detector := NewDetectLine(3)
+	for _, tc := range []struct {
+		key  string
+		line int
+	}{
+		{"Resources.FunctionBlue.Properties.Tags.0.{{Value}}", 15},
+		{"Resources[{{FunctionBlue}}].Properties.Tags[0].{{Value}}", 15},
+		{"Resources.FunctionBlue.Properties.Environment.Variables.TOKEN_Blue", 18},
+		{"Resources.FunctionGreen.Properties.Environment.Variables.TOKEN_Green", 18},
+		{"Resources.FunctionBlue.Metadata.{{label.Blue=enabled}}", 20},
+		{"Resources.FunctionBlue.Metadata.list[0].WrappedBlue", 22},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			require.Equal(t, tc.line, detector.DetectLine(ctx, file, tc.key).Line)
+		})
+	}
+}
 
 var OriginalDataCICD = `name: Web Page To Markdown
 on:

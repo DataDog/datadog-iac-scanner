@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 )
 
@@ -169,6 +170,9 @@ type lineInfoState struct {
 	// optional marks a lazy reparser of an already-parsed document: findings
 	// whose line detection never consults LineInfoDocument may skip loading it.
 	optional bool
+	// cloudFormationLoopMarker is computed when the loader is installed so
+	// resource findings can check for a loop without scanning the source again.
+	cloudFormationLoopMarker bool
 }
 
 // lineInfoGroup is the line-info tree shared by the copies of one source file.
@@ -421,6 +425,12 @@ func (f *FileMetadata) LineInfoOptional() bool {
 	return f.lineInfo != nil && f.lineInfo.optional
 }
 
+// HasCloudFormationLoopMarker reports whether a lazy YAML source contains the
+// literal loop key prefix.
+func (f *FileMetadata) HasCloudFormationLoopMarker() bool {
+	return f.lineInfo != nil && f.lineInfo.cloudFormationLoopMarker
+}
+
 // WithoutLineInfoView returns a view of f with no LineInfoDocument or lazy
 // loader, without reading f.LineInfoDocument (safe alongside concurrent
 // UseLineInfoDocument / DiscardLineInfoDocument calls on f). It shares
@@ -470,7 +480,11 @@ func (f *FileMetadata) SetLineInfoLoader(
 		f.lineInfo = nil
 		return
 	}
-	f.lineInfo = &lineInfoState{loader: loader}
+	f.lineInfo = &lineInfoState{
+		loader: loader,
+		cloudFormationLoopMarker: strings.EqualFold(f.Platform, platforms.CloudFormation) &&
+			(f.Kind == KindYAML || f.Kind == KindYML) && strings.Contains(f.OriginalData, "Fn::ForEach::"),
+	}
 }
 
 // SetLineInfoSectionLoader sets how a top-level section the line-info loader
@@ -501,7 +515,9 @@ func cloneLineInfoState(src *lineInfoState) *lineInfoState {
 		group = src.copies
 		src.mu.Unlock()
 	}
-	return &lineInfoState{loader: src.loader, group: group, optional: src.optional}
+	return &lineInfoState{
+		loader: src.loader, group: group, optional: src.optional, cloudFormationLoopMarker: src.cloudFormationLoopMarker,
+	}
 }
 
 // LineInfoShareKey identifies the line-info tree f reads: copies of one source
