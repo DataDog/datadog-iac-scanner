@@ -568,3 +568,33 @@ func TestParser_Parse_ManyDependenciesResolveInOnePass(t *testing.T) {
 	small, large := measure(500), measure(2000)
 	require.Less(t, large, small*6, "4x dependencies must not allocate quadratically")
 }
+
+// Popped stack frames in resolveBindings must be zeroed so intermediate values
+// in a growing chain (ARG A=$A...) become collectable during resolveBindings
+// rather than retaining O(N^2) bytes until the function returns.
+func TestParser_Parse_GrowingChainReleasesIntermediateValues(t *testing.T) {
+	const links = 2000
+	step := strings.Repeat(".", 64)
+	var source strings.Builder
+	source.WriteString("FROM scratch\nARG A=x\n")
+	for i := 0; i < links; i++ {
+		source.WriteString("ARG A=$A")
+		source.WriteString(step)
+		source.WriteByte('\n')
+	}
+	source.WriteString("RUN echo $A\n")
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+	require.NoError(t, err)
+	runtime.ReadMemStats(&after)
+
+	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+	want := "echo x" + strings.Repeat(step, links)
+	require.Equal(t, []interface{}{want}, stage[len(stage)-1].(map[string]interface{})["Value"])
+	// Without zeroing popped frames, 2k x 64B links retain ~128+ MiB during
+	// resolveBindings; with zeroing, intermediate bindings are collected early.
+	require.Less(t, after.HeapInuse, before.HeapInuse+(80<<20))
+}

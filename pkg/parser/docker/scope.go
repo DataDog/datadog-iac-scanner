@@ -133,6 +133,7 @@ func resolveBindings(roots []*binding) {
 	for len(stack) > 0 {
 		top := &stack[len(stack)-1]
 		if top.b.done {
+			stack[len(stack)-1] = frame{}
 			stack = stack[:len(stack)-1]
 			continue
 		}
@@ -148,6 +149,9 @@ func resolveBindings(roots []*binding) {
 			continue
 		}
 		b, scan := top.b, top.scan
+		// Clear the popped slot so intermediate bindings and their expanded
+		// values become collectable as soon as the parent drops b.env.
+		stack[len(stack)-1] = frame{}
 		stack = stack[:len(stack)-1]
 		if b.expander.mayReference(b.raw) {
 			b.value = b.expander.expandResolved(b.raw, scan, b.env)
