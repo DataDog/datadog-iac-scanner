@@ -232,6 +232,46 @@ func TestAttachMissingDependencies_AliasesAtDifferentVersions(t *testing.T) {
 		"c3 shares the chart of c2, which Helm copies per alias")
 }
 
+func TestHelm_Resolve_PreservesLocalAliasSelection(t *testing.T) {
+	const configMap = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}
+data:
+  version: {{ .Chart.Version | quote }}
+`
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"app/Chart.yaml": []byte(`apiVersion: v2
+name: app
+version: 1.0.0
+dependencies:
+  - name: lib
+    alias: primary
+    version: ">=1.0.0 <3.0.0"
+    repository: file://../lib-v2
+  - name: lib
+    alias: canary
+    version: "1.0.0"
+    repository: file://../lib-v1
+`),
+		"lib-v1/Chart.yaml":               []byte("apiVersion: v2\nname: lib\nversion: 1.0.0\n"),
+		"lib-v2/Chart.yaml":               []byte("apiVersion: v2\nname: lib\nversion: 2.0.0\n"),
+		"lib-v1/templates/configmap.yaml": []byte(configMap),
+		"lib-v2/templates/configmap.yaml": []byte(configMap),
+	})
+	resolver := NewResolver(memfs).WithChartRoots([]string{"app", "lib-v1", "lib-v2"})
+	rendered, err := resolver.Resolve(context.Background(), "app")
+	require.NoError(t, err)
+	require.Len(t, rendered.File, 2)
+
+	manifests := make(map[string]string, len(rendered.File))
+	for _, file := range rendered.File {
+		manifests[file.FileName] = string(file.Content)
+	}
+	require.Contains(t, manifests["lib-v2/templates/configmap.yaml"], "name: primary\ndata:\n  version: \"2.0.0\"")
+	require.Contains(t, manifests["lib-v1/templates/configmap.yaml"], "name: canary\ndata:\n  version: \"1.0.0\"")
+}
+
 // Charts that each depend on every chart after them are reached through
 // exponentially many paths; one render attaches a bounded number of them.
 func TestAttachMissingDependencies_AttachedChartsAreCapped(t *testing.T) {
@@ -256,6 +296,35 @@ func TestAttachMissingDependencies_AttachedChartsAreCapped(t *testing.T) {
 	locator := attachMissingDependencies(ctx, vfs.DiskFS{}, newChartIndex(vfs.DiskFS{}, roots), ch, roots[0])
 	require.Equal(t, maxAttachedCharts, locator.attached)
 	require.Equal(t, 1, strings.Count(logBuf.String(), "attaches more than"))
+}
+
+func TestAttachMissingDependencies_VendoredOrderAtCap(t *testing.T) {
+	const chartYAML = "apiVersion: v2\nname: %s\nversion: 1.0.0\n"
+	const dependencyYAML = "dependencies:\n  - name: %s\n    version: 1.0.0\n    repository: file://../../../%s\n"
+	// The directory order is the reverse of the declared chart-name order.
+	memfs := vfs.NewMemFS(map[string][]byte{
+		"app/Chart.yaml":                    []byte(fmt.Sprintf(chartYAML, "app")),
+		"app/charts/a-directory/Chart.yaml": []byte(fmt.Sprintf(chartYAML+dependencyYAML, "zeta", "zeta-lib", "zeta-lib")),
+		"app/charts/z-directory/Chart.yaml": []byte(fmt.Sprintf(chartYAML+dependencyYAML, "alpha", "alpha-lib", "alpha-lib")),
+		"alpha-lib/Chart.yaml":              []byte(fmt.Sprintf(chartYAML, "alpha-lib")),
+		"zeta-lib/Chart.yaml":               []byte(fmt.Sprintf(chartYAML, "zeta-lib")),
+	})
+	ctx := context.Background()
+	ch, err := loadChart(ctx, memfs, "app")
+	require.NoError(t, err)
+
+	attacher := newAttacher(ctx, memfs, newChartIndex(memfs, []string{"alpha-lib", "zeta-lib"}), "app", true)
+	attacher.locator.attached = maxAttachedCharts - 1
+	attacher.attachFrom(ch, "app", 0)
+
+	deps := ch.Dependencies()
+	require.Len(t, deps, 2)
+	require.Equal(t, "alpha", deps[0].Name())
+	require.Len(t, deps[0].Dependencies(), 1)
+	require.Equal(t, "alpha-lib", deps[0].Dependencies()[0].Name())
+	require.Equal(t, "zeta", deps[1].Name())
+	require.Empty(t, deps[1].Dependencies())
+	require.Equal(t, maxAttachedCharts, attacher.locator.attached)
 }
 
 // dependencyTreeHeight returns the number of dependency edges on the longest

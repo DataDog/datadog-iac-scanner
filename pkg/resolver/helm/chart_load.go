@@ -34,6 +34,9 @@ func loadChart(ctx context.Context, fsys vfs.FS, dir string) (*chart.Chart, erro
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Debug().Msgf("Not rendering non-template files of chart '%s': %s", dir, strings.Join(dropped, ", "))
 	}
+	// Order vendored dependencies before attaching local charts. Helm chooses
+	// the first compatible chart for each alias, so attachment order matters.
+	sortChartDependencies(ch)
 	return ch, nil
 }
 
