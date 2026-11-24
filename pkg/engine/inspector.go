@@ -255,6 +255,7 @@ type Inspector struct {
 	externalPathRoots      map[string]bool
 	inventory              InventorySink
 	mergeAllow             map[string]struct{}
+	terraformRootVars      map[string]cty.Value
 	// releaseDocumentsAfterPayload drops each file's Document map once the OPA
 	// payload is built; only a JSON payload export without line-info mode reads it
 	// afterwards (see SetReleaseDocumentsAfterPayload).
@@ -369,6 +370,11 @@ func (c *Inspector) SetExternalModulePaths(paths []string) {
 // SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
 func (c *Inspector) SetMergeAllow(paths []string) {
 	c.mergeAllow = tfpath.AllowSet(paths)
+}
+
+// SetTerraformRootVars supplies the scan's explicitly selected Terraform inputs.
+func (c *Inspector) SetTerraformRootVars(vars map[string]cty.Value) {
+	c.terraformRootVars = maps.Clone(vars)
 }
 
 // QueryContext contains the context where the query is executed, which scan it belongs, basic information of query,
@@ -1805,6 +1811,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if !ok || file == nil {
 		return nil, false
 	}
+	file = qCtx.findingSourceFile(file, vulnerability.TerraformOverride)
 
 	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID, vulnerability.LegacyQueryIDs); found {
 		if rc.Severity != nil {

@@ -139,7 +139,7 @@ func (r *resourceAttrReader) record(t hcl.Traversal) {
 	}
 	if attr, ok := traversalAttribute(rest[0]); ok {
 		switch attr {
-		case metaArgCount, metaArgForEach, "provider", "depends_on", "lifecycle", "connection", "provisioner":
+		case metaArgCount, metaArgForEach, "provider", metaArgDependsOn, blockTypeLifecycle, blockTypeConnection, blockTypeProvisioner:
 			// Terraform owns these arguments/blocks; they are not provider outputs.
 			return
 		}

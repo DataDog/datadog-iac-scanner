@@ -152,32 +152,26 @@ func cloneVariableMap(src converter.VariableMap) converter.VariableMap {
 	return dst
 }
 
-func (p *Parser) processContent(ctx context.Context, elements model.Document, content, path string) {
-	var certInfo map[string]interface{}
-	if content != "" {
-		certInfo = utils.AddCertificateInfo(ctx, p.fsys, path, content)
-		if certInfo != nil {
-			elements["certificate_body"] = certInfo
-		}
+// EnrichResourceCertificate replaces a resource's PEM filename with its metadata.
+// written is the optional JSON expression from path. It can name the PEM file
+// even if the effective value contains the PEM contents or could not be resolved.
+func EnrichResourceCertificate(ctx context.Context, fsys vfs.FS, elements model.Document, path, written string) {
+	var value string
+	switch body := elements["certificate_body"].(type) {
+	case string:
+		value = body
+	case ctyjson.SimpleJSONValue:
+		value, _ = ctyutil.ConcreteString(body.Value)
+	default:
+		return
 	}
-}
-
-func (p *Parser) processElements(ctx context.Context, elements model.Document, path string) {
-	for k, v3 := range elements { // resource elements
-		if k != "certificate_body" {
-			continue
-		}
-		switch value := v3.(type) {
-		case string:
-			content := utils.CheckCertificate(value)
-			p.processContent(ctx, elements, content, path)
-		case ctyjson.SimpleJSONValue:
-			s, ok := ctyutil.ConcreteString(value.Value)
-			if !ok {
-				continue
-			}
-			content := utils.CheckCertificate(s)
-			p.processContent(ctx, elements, content, path)
+	filename := utils.CheckCertificate(value)
+	if filename == "" && (strings.Contains(value, "-----BEGIN CERTIFICATE-----") || strings.Contains(value, "${")) {
+		filename = utils.CheckCertificate(written)
+	}
+	if filename != "" {
+		if info := utils.AddCertificateInfo(ctx, fsys, path, filename); info != nil {
+			elements["certificate_body"] = info
 		}
 	}
 }
@@ -189,7 +183,7 @@ func (p *Parser) processResourcesElements(ctx context.Context, resourcesElements
 			return errors.New("failed to process resources")
 		case interface{}:
 			if elements, ok := t.(model.Document); ok {
-				p.processElements(ctx, elements, path)
+				EnrichResourceCertificate(ctx, p.fsys, elements, path, "")
 			}
 		}
 	}

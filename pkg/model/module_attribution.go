@@ -48,6 +48,7 @@ const (
 // module inputs to who controls it. CallSite is the root call argument setting
 // it when Control is ArgumentControlCaller.
 type ModuleArgument struct {
+	Filename  string
 	LineStart int
 	LineEnd   int
 	Control   ArgumentControl

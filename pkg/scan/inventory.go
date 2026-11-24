@@ -409,8 +409,12 @@ func recordFindings(collector *inventory.Collector, files model.FileMetadatas, s
 				continue
 			}
 			// The finding stands for every place its identity was raised.
-			places := append([]model.RaisedOn{{FileID: vf.FileID, Line: vf.Line, SearchKey: vf.SearchKey,
-				BlockStart: vf.BlockLocation.Start.Line}}, vf.AlsoRaisedOn...)
+			place := model.RaisedOn{FileID: vf.FileID, Line: vf.Line, SearchKey: vf.SearchKey, BlockStart: vf.BlockLocation.Start.Line}
+			if vf.TerraformOverride != nil {
+				place.BlockStart = vf.TerraformOverride.InventoryLine
+				place.Block = vf.TerraformOverride.InventoryBlock
+			}
+			places := append([]model.RaisedOn{place}, vf.AlsoRaisedOn...)
 			for _, place := range places {
 				// A module instance's document is named after its file's.
 				fileID, _, _ := strings.Cut(place.FileID, "\x00")
@@ -421,6 +425,7 @@ func recordFindings(collector *inventory.Collector, files model.FileMetadatas, s
 					Line:            place.Line,
 					SearchKey:       place.SearchKey,
 					BlockStart:      place.BlockStart,
+					Block:           place.Block,
 					ModuleCallChain: vf.ModuleCallChain,
 				})
 			}

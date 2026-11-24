@@ -354,7 +354,8 @@ type FileMetadata struct {
 	TerraformScope *TerraformScope `json:"-"`
 	// TerraformInstances maps document keys for expanded blocks to their
 	// written label and HCL instance suffix.
-	TerraformInstances map[TerraformInstanceKey]TerraformInstance `json:"-"`
+	TerraformInstances map[TerraformInstanceKey]TerraformInstance  `json:"-"`
+	TerraformOverrides map[TerraformBlock]*TerraformOverrideSource `json:"-"`
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.
@@ -375,6 +376,23 @@ type TerraformInstanceKey struct {
 // TerraformBlock identifies a declared Terraform block.
 type TerraformBlock struct {
 	Kind, Type, Name string
+}
+
+// TerraformOverrideSource maps effective Terraform fields to the files that
+// supplied them and identifies the declaration in the document being scanned.
+type TerraformOverrideSource struct {
+	DeclarationStart ResourceLine
+	InventoryLine    int
+	Fields           map[string]string
+}
+
+// TerraformOverrideFinding separates the location explaining a finding from
+// that of its declaration, which identifies the affected inventory block.
+type TerraformOverrideFinding struct {
+	SourceFileID     string
+	DeclarationStart ResourceLine
+	InventoryLine    int
+	InventoryBlock   string
 }
 
 // PlanResourceKey is a terraform plan -json resource section and document key.
@@ -443,6 +461,7 @@ func (f *FileMetadata) WithoutLineInfoView() *FileMetadata {
 		ModuleAttributions:  f.ModuleAttributions,
 		TerraformScope:      f.TerraformScope,
 		TerraformInstances:  f.TerraformInstances,
+		TerraformOverrides:  f.TerraformOverrides,
 		Platform:            f.Platform,
 	}
 }
@@ -984,7 +1003,8 @@ type Vulnerability struct {
 	// kept one finding per identity, when the scan keeps them (see
 	// RecordDuplicate): an inventory links the kept finding to every
 	// resource it stands for.
-	AlsoRaisedOn []RaisedOn `json:"-"`
+	AlsoRaisedOn      []RaisedOn                `json:"-"`
+	TerraformOverride *TerraformOverrideFinding `json:"-"`
 }
 
 // RaisedOn is where a finding was raised: its document, line and search
@@ -994,6 +1014,7 @@ type RaisedOn struct {
 	Line       int
 	SearchKey  string
 	BlockStart int
+	Block      string
 }
 
 // raisedOn is where v was raised. A module instance's document is named
@@ -1001,7 +1022,12 @@ type RaisedOn struct {
 // module instantiated many times adds nothing to the findings it raises.
 func (v *Vulnerability) raisedOn() RaisedOn {
 	fileID, _, _ := strings.Cut(v.FileID, "\x00")
-	return RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
+	place := RaisedOn{FileID: fileID, Line: v.Line, SearchKey: v.SearchKey, BlockStart: v.BlockLocation.Start.Line}
+	if v.TerraformOverride != nil {
+		place.BlockStart = v.TerraformOverride.InventoryLine
+		place.Block = v.TerraformOverride.InventoryBlock
+	}
+	return place
 }
 
 // Places gathers where the findings of one identity were raised, once each,

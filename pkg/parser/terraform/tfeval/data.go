@@ -43,12 +43,13 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
-	e       *Evaluator
-	blocks  []*hclsyntax.Block
-	sources map[string][]byte
-	locals  *localGraph
-	addr    string
-	chain   *callChain
+	e              *Evaluator
+	blocks         []*hclsyntax.Block
+	sources        map[string][]byte
+	locals         *localGraph
+	addr           string
+	chain          *callChain
+	overrideInputs *overrideInputs
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -83,25 +84,25 @@ type moduleData struct {
 
 func newModuleData(
 	e *Evaluator,
-	sources map[string][]byte,
-	locals *localGraph,
-	static *dirStatic,
+	parsed *dirParse,
 	addr string,
 	chain *callChain,
+	inputs *overrideInputs,
 ) *moduleData {
+	locals, static := parsed.locals, parsed.static
 	blocks := locals.dataBlocks
 	if len(blocks) == 0 {
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: sources, locals: locals, addr: addr, chain: chain,
+		e: e, blocks: blocks, sources: parsed.sources, locals: locals, addr: addr, chain: chain, overrideInputs: inputs,
 		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
 		readsData:          static.dataReadsData,
 		readsLocals:        static.dataReadsLocals,
 		readsResources:     static.dataReadsResources,
 		readsModuleOutputs: static.dataReadsModules,
 	}
-	d.jsonBodies = jsonLocalDataBodies(blocks, sources)
+	d.jsonBodies = jsonLocalDataBodies(blocks, parsed.sources, parsed.declarations)
 	return d
 }
 
@@ -130,12 +131,16 @@ func cyclicDataBlocks(blocks []*hclsyntax.Block, localExprs map[string]hclsyntax
 	return cyclic
 }
 
-func jsonLocalDataBodies(blocks []*hclsyntax.Block, sources map[string][]byte) map[*hclsyntax.Block]hcl.Body {
+func jsonLocalDataBodies(
+	blocks []*hclsyntax.Block, sources map[string][]byte, declarations map[*hclsyntax.Body]*hclsyntax.Body,
+) map[*hclsyntax.Block]hcl.Body {
 	var out map[*hclsyntax.Block]hcl.Body
 	parsed := map[string][]*hcl.Block{}
 	for _, b := range blocks {
 		filename := b.TypeRange.Filename
-		if _, ok := localdata.Lookup(b.Labels[0]); !ok || !tfpath.IsJSONConfig(filename) {
+		// An overridden JSON block already has its schema-aware, effective
+		// body. Reopening the original would discard its overrides.
+		if _, ok := localdata.Lookup(b.Labels[0]); !ok || !tfpath.IsJSONConfig(filename) || declarations[b.Body] != nil {
 			continue
 		}
 		native, ok := parsed[filename]
@@ -242,11 +247,7 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 	instances := make([]ResolvedResource, 0, len(d.blocks))
 	exposed := make([]ResolvedResource, 0, len(d.blocks))
 	for _, b := range d.blocks {
-		inputs := blockEvalInputs(b, evalCtx)
-		cached, ok := d.evalCache[b]
-		if !ok || !sameCtyValues(cached.inputs, inputs) {
-			cached = d.evalBlock(ctx, b, evalCtx, inputs)
-		}
+		cached := d.evaluateBlock(ctx, b, evalCtx)
 		instances = append(instances, cached.instances...)
 		exposed = append(exposed, cached.exposed...)
 	}
@@ -259,6 +260,18 @@ func (d *moduleData) evaluate(ctx context.Context, evalCtx *hcl.EvalContext) cty
 		}
 	}
 	return objectOrEmpty(byType.Variables)
+}
+
+func (d *moduleData) evaluateBlock(ctx context.Context, b *hclsyntax.Block, evalCtx *hcl.EvalContext) blockEvalCache {
+	inputs := blockEvalInputs(b, evalCtx)
+	// A selected local can read a dependency hidden by the same local's
+	// default branch. Its default value alone cannot validate a cache hit.
+	if d.overrideInputs == nil || !d.overrideInputs.directedData[b.Body] {
+		if cached, ok := d.evalCache[b]; ok && sameCtyValues(cached.inputs, inputs) {
+			return cached
+		}
+	}
+	return d.evalBlock(ctx, b, evalCtx, inputs)
 }
 
 // exposeUnknown sets data.<typ>.<name> to an unknown value, the result of a
@@ -292,7 +305,8 @@ func (d *moduleData) evalBlock(
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true)
+	fileInputs := d.overrideInputs.forBody(b.Body)
+	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, fileInputs)
 	for i := range expanded {
 		inst := &expanded[i]
 		view := *inst
@@ -478,6 +492,11 @@ func (d *moduleData) withComputedAttributes(
 	}
 	computed := localdata.Evaluate(scanCtx, inst.Type, body, func(expr hcl.Expression) (cty.Value, bool) {
 		scoped := ctx
+		if inst.documentScope != nil {
+			if view := inst.documentScope.files[expr.Range().Filename]; view != nil {
+				scoped = partial.Scope(ctx, view.bindings)
+			}
+		}
 		for {
 			inner, vars, bound := partial.Unbind(expr)
 			if !bound {
@@ -524,9 +543,14 @@ func (d *moduleData) resolved(scope *ModuleScope) []ResolvedResource {
 				value, _ := inst.InstanceKey.Unmark()
 				key.instance = value.GoString()
 			}
-			scope.dataSources[key] = documentDataSource{
+			metadata := documentDataSource{
 				source: source, body: body, iteration: inst.Iteration, json: json, filename: block.TypeRange.Filename,
 			}
+			metadata.directed = d.overrideInputs != nil && d.overrideInputs.directedData[block.Body]
+			if inst.documentScope != nil {
+				metadata.files = inst.documentScope.files
+			}
+			scope.dataSources[key] = metadata
 		}
 	}
 	return d.instances

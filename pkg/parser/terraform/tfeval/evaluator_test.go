@@ -3455,7 +3455,8 @@ resource "aws_subnet" "s" { cidr_block = var.cidr }
 			writeModule(t, tmp, "mod", tt.modFiles)
 			root := writeModule(t, tmp, "root", tt.rootFiles)
 
-			fullRes, _, fullDirs, err := New().EvaluateModule(context.Background(), root, nil)
+			fullEval := New()
+			fullRes, _, fullDirs, err := fullEval.EvaluateModule(context.Background(), root, nil)
 			require.NoError(t, err)
 
 			skipEval := New()
@@ -3472,6 +3473,11 @@ resource "aws_subnet" "s" { cidr_block = var.cidr }
 			require.Len(t, skipRes, len(expectedChild))
 			require.Equal(t, tt.wantVal, skipRes[0].Attributes[tt.wantAttr].AsString())
 			require.Equal(t, fullDirs, skipDirs)
+
+			fullEval.SetSkipRootResources(true)
+			cachedRes, _, _, err := fullEval.EvaluateModule(t.Context(), root, nil)
+			require.NoError(t, err)
+			require.Len(t, cachedRes, len(expectedChild), "the full root cache must not override skip mode")
 		})
 	}
 }

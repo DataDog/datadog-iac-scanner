@@ -29,6 +29,9 @@ type Finding struct {
 	// and ModuleCallChain the module calls that block was reached through.
 	BlockStart      int
 	ModuleCallChain string
+	// Block names the affected Terraform declaration when its location is
+	// separate from the finding's source.
+	Block string
 }
 
 // AddFinding records a finding to link to the rows when the inventory is built.
@@ -164,6 +167,11 @@ func matchTerraform(rows []Resource, candidates, atStart []int, f *Finding) []in
 	// resource belongs to no row, whatever shares its line.
 	if namesNonResourceBlock(f.SearchKey) {
 		return nil
+	}
+	if f.Block != "" {
+		// The declaration is known even when the inventory has no row for
+		// it. The source line can belong to another file.
+		return ofBlock(rows, atStart, f.Block)
 	}
 	block := searchKeyBlock(f.SearchKey)
 	if f.BlockStart > 0 && len(atStart) > 0 {

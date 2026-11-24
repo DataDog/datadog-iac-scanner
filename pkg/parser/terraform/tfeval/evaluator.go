@@ -57,6 +57,8 @@ type ResolvedResource struct {
 	// attributes evaluation could not resolve. It is not consulted during
 	// evaluation, so recovered references never feed back into resolved values.
 	Body *hclsyntax.Body
+	// DeclarationBody is the written body when overrides changed Body.
+	DeclarationBody *hclsyntax.Body
 	// Scope is the module declaring the resource as it was evaluated.
 	Scope *ModuleScope
 	// Iteration holds the each or count value of an expanded instance, nil
@@ -116,8 +118,9 @@ type ModuleScope struct {
 	// evalCtx is the context the module's blocks were evaluated in, final once
 	// evaluation completes, and sources the module's files by filename. They
 	// let a value evaluation could not resolve be rendered as its parts.
-	evalCtx *hcl.EvalContext
-	sources map[string][]byte
+	evalCtx        *hcl.EvalContext
+	sources        map[string][]byte
+	overrideInputs *overrideInputs
 	// dataSources retains only the source/instance metadata
 	// needed to render partial documents after authoritative evaluation finishes.
 	renderedData *sync.Map
@@ -152,6 +155,8 @@ type Evaluator struct {
 	// fsys serves the evaluator's directory reads (module and tfvars files).
 	// Defaults to the real disk; content-push scans inject an in-memory FS.
 	fsys vfs.FS
+	// Root inputs from the scan's explicitly selected variable definitions file.
+	explicitRootVars map[string]cty.Value
 	// cache memoizes completed module evaluations keyed by (dir, packageRoot,
 	// input digest). A single Evaluator is used for an entire scan, so entries
 	// with the same key represent the same module reached with the same resolved
@@ -212,6 +217,8 @@ type Evaluator struct {
 type dirParse struct {
 	bodies        []*hclsyntax.Body
 	sources       map[string][]byte
+	overrides     []ResourceOverride
+	declarations  map[*hclsyntax.Body]*hclsyntax.Body
 	varDecls      map[string]variableDecl
 	localExprs    map[string]hclsyntax.Expression
 	modules       []*hclsyntax.Block
@@ -276,13 +283,12 @@ func (e *Evaluator) parseDirForChain(ctx context.Context, dir, packageRoot, addr
 		if ok {
 			return cached
 		}
-		dp, _ := parseRootDirForModules(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
-		return dp
+		return e.parseRootDirForModules(ctx, dir, packageRoot)
 	}
 	return e.parseDir(ctx, dir, packageRoot)
 }
 
-// every fork with its locals graph.
+// parseDir returns the parsed module directory, shared by all evaluator forks.
 func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirParse {
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 
@@ -296,6 +302,14 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
 	dp := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
+		dp.bodies, dp.overrides = resolveResourceOverrides(ctx, bodies, sources)
+		if len(dp.overrides) > 0 {
+			dp.declarations = make(map[*hclsyntax.Body]*hclsyntax.Body, len(dp.overrides))
+			for _, override := range dp.overrides {
+				dp.declarations[override.Effective.Body] = override.Declaration.Body
+			}
+		}
+		bodies = dp.bodies
 		dp.varDecls, dp.localExprs, dp.modules, dp.resources, dp.outputs = collectBlocks(bodies)
 		dp.resourceTypes = declaredResourceTypes(dp.resources)
 		dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, collectDataBlocks(bodies))
@@ -315,6 +329,7 @@ func (e *Evaluator) Fork() *Evaluator {
 	return &Evaluator{
 		funcs:             e.funcs,
 		fsys:              e.fsys,
+		explicitRootVars:  e.explicitRootVars,
 		cache:             make(map[evalCacheKey]*evalCacheEntry),
 		remoteResolver:    e.remoteResolver,
 		notEvaluatedDirs:  make(map[string]bool),
@@ -327,9 +342,22 @@ func (e *Evaluator) Fork() *Evaluator {
 	}
 }
 
+// SetExplicitRootVars supplies the scan's highest-precedence inputs for roots
+// with effective resource or data overrides.
+// A non-nil map disables per-file selections even when it is empty. The map
+// is read-only and shared by evaluator forks.
+func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
+	// The input digest distinguishes different values. An explicit empty file
+	// can keep the same values but change whether file directives apply.
+	if (e.explicitRootVars == nil) != (inputs == nil) && len(e.cache) != 0 {
+		e.ReleaseEvalCache()
+	}
+	e.explicitRootVars = inputs
+}
+
 // SetSkipRootResources skips evaluating root-level resources and outputs when
-// only child-module resources are consumed. Root resources referenced by module
-// calls, locals, or data blocks are still pre-injected before child evaluation.
+// the root has no effective overrides. Resources referenced by module calls,
+// locals, or data blocks are still pre-injected before child evaluation.
 func (e *Evaluator) SetSkipRootResources(skip bool) { e.skipRootResources = skip }
 
 // SetTrackModuleInstances makes evaluations record the module calls they
@@ -523,11 +551,13 @@ func (e *Evaluator) evaluateChain(
 	// A canceled scan skips the cache: hashing a large input collection is
 	// not worth finishing when the evaluation is about to stop.
 	inputsKey, inputsKeyOK := e.keyMemo.inputsKey(ctx, inputs)
+	canSkipRoot := addr == "" && e.skipRootResources
 	cacheKey := evalCacheKey{
 		dir:         dir,
 		rootDir:     rootDir,
 		packageRoot: packageRoot,
 		inputs:      inputsKey,
+		canSkipRoot: canSkipRoot,
 	}
 	if resources, outputs, hit := e.reuseCachedEvaluation(ctx, cacheKey, inputsKeyOK, addr, chain, visiting, allVisited); hit {
 		return resources, outputs, nil
@@ -554,16 +584,13 @@ func (e *Evaluator) evaluateChain(
 	if parsed.err != nil {
 		return nil, nil, parsed.err
 	}
-	bodies, sources, moduleBlocks, resourceBlocks := parsed.bodies, parsed.sources, parsed.modules, parsed.resources
-
-	evalCtx := buildModuleEvalContext(e.resolveVariables(parsed.varDecls, inputs), e.moduleContext(dir, rootDir))
-	scope := &ModuleScope{
-		Locals: parsed.localExprs, Bodies: bodies, Var: evalCtx.Variables["var"], evalCtx: evalCtx, sources: sources,
-		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{},
+	moduleBlocks, resourceBlocks := parsed.modules, parsed.resources
+	scope := e.newModuleScope(ctx, dir, rootDir, &parsed, inputs)
+	if addr == "" {
+		e.loadOverrideFileInputs(ctx, &parsed, inputs, scope)
 	}
-	e.noteCycles(ctx, dir, parsed.locals)
-	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, false, false)
-	data := newModuleData(e, sources, parsed.locals, parsed.static, addr, chain)
+	evalCtx := scope.evalCtx
+	data := newModuleData(e, &parsed, addr, chain, scope.overrideInputs)
 	// Module-call preparation retains its existing data view. Without calls,
 	// resources and data are resolved together by the dependency schedule.
 	if len(moduleBlocks) > 0 {
@@ -581,7 +608,7 @@ func (e *Evaluator) evaluateChain(
 		ctx, moduleBlocks, reads, evalCtx, scope, data, dir, rootDir, packageRoot, addr, chain, visiting, subtreeVisited,
 	)
 
-	if addr == "" && e.skipRootResources {
+	if canSkipRoot && len(parsed.overrides) == 0 {
 		tree, err := e.finishSkippedRootEvaluation(ctx, instancesBefore, childResources)
 		return tree, nil, err
 	}
@@ -590,19 +617,6 @@ func (e *Evaluator) evaluateChain(
 		ctx, &parsed, resourceBlocks, childResources, moduleOutputs, scope, evalCtx, data,
 		&cacheKey, inputsKeyOK, inputs, effects, subtreeVisited, instancesBefore, addr, chain,
 	)
-}
-
-func buildModuleEvalContext(varVals map[string]cty.Value, shared moduleContext) *hcl.EvalContext {
-	evalCtx := &hcl.EvalContext{
-		Variables: map[string]cty.Value{
-			rootVar: objectOrEmpty(varVals),
-		},
-		Functions: shared.functions,
-	}
-	for name, value := range shared.variables {
-		evalCtx.Variables[name] = value
-	}
-	return evalCtx
 }
 
 func (e *Evaluator) finishSkippedRootEvaluation(
@@ -645,8 +659,8 @@ func (e *Evaluator) finalizeChainEvaluation(
 	for i := range rootResources {
 		rootResources[i].Scope = scope
 	}
-	dataInstances := data.resolved(scope)
-	rootResources = append(rootResources, dataInstances...)
+	rootResources = append(rootResources, data.resolved(scope)...)
+	attachDeclarationBodies(rootResources, parsed.declarations)
 	resources := moduleResourceTree(rootResources, childResources)
 
 	outputs := make(map[string]cty.Value, len(parsed.outputs))
@@ -772,7 +786,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 || !scope.static.needsResourcePreinject {
 		return
 	}
-	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain)
+	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain, scope.overrideInputs)
 	injected := injectResourceRefs(evalCtx, resources, scope.static.resourceAttrs)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, injected, false)
 	if data.readsOwnResources() {
@@ -1065,10 +1079,11 @@ func (e *Evaluator) evalResourceBlocks(
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain *callChain,
+	inputs *overrideInputs,
 ) []ResolvedResource {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
-		resources = append(resources, e.expandBlock(ctx, rb, evalCtx, addr, chain, false)...)
+		resources = append(resources, e.expandBlock(ctx, rb, evalCtx, addr, chain, false, inputs.forBody(rb.Body))...)
 	}
 	return resources
 }
@@ -1083,6 +1098,7 @@ func (e *Evaluator) expandBlock(
 	addr string,
 	chain *callChain,
 	data bool,
+	inputs *overrideInputs,
 ) []ResolvedResource {
 	if len(rb.Labels) < 2 {
 		return nil
@@ -1091,6 +1107,7 @@ func (e *Evaluator) expandBlock(
 
 	// Attributes that ignore each/count evaluate identically in every instance.
 	memo := newInvariantMemo()
+	views := e.fileViews(ctx, evalCtx, rb.Body, inputs)
 
 	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
 		// Only attribution of module resources and data evaluation read the
@@ -1100,6 +1117,7 @@ func (e *Evaluator) expandBlock(
 			iteration = child.Variables
 		}
 		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
+		state.setFileInputs(views)
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
 		return ResolvedResource{
 			Type:          typeName,
@@ -1120,10 +1138,10 @@ func (e *Evaluator) expandBlock(
 		}
 	}
 
-	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne, views); ok {
 		return out
 	}
-	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne); ok {
+	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne, views); ok {
 		return out
 	}
 	return []ResolvedResource{makeOne(resName, evalCtx)}
@@ -1135,12 +1153,13 @@ func (e *Evaluator) expandCountInstances(
 	resName string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+	inputs *fileViews,
 ) ([]ResolvedResource, bool) {
 	countAttr := rb.Body.Attributes["count"]
 	if countAttr == nil {
 		return nil, false
 	}
-	cv, diags := countAttr.Expr.Value(evalCtx)
+	cv, diags := countAttr.Expr.Value(inputs.context(evalCtx, countAttr.SrcRange.Filename))
 	if !diags.HasErrors() && cv.IsKnown() && !cv.IsNull() && cv.Type() == cty.Number {
 		var n int
 		if err := gocty.FromCtyValue(cv, &n); err != nil {
@@ -1185,12 +1204,13 @@ func (e *Evaluator) expandForEachInstances(
 	resName string,
 	evalCtx *hcl.EvalContext,
 	makeOne func(string, *hcl.EvalContext) ResolvedResource,
+	inputs *fileViews,
 ) ([]ResolvedResource, bool) {
 	feAttr := rb.Body.Attributes["for_each"]
 	if feAttr == nil {
 		return nil, false
 	}
-	fv, diags := feAttr.Expr.Value(evalCtx)
+	fv, diags := feAttr.Expr.Value(inputs.context(evalCtx, feAttr.SrcRange.Filename))
 	if diags.HasErrors() || !isForEachCollection(fv) {
 		return []ResolvedResource{unknownForEachResource(resName, evalCtx, makeOne)}, true
 	}
@@ -1477,9 +1497,17 @@ type bodyState struct {
 	document *documentScope
 	memo     *invariantMemo
 	dynamic  *dynamicRecorder
+	files    *fileViews
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
+}
+
+func (st *bodyState) setFileInputs(inputs *fileViews) {
+	if inputs != nil {
+		st.files = inputs
+		st.document = &documentScope{files: inputs.views}
+	}
 }
 
 type dynamicRecorder struct {
@@ -1519,7 +1547,11 @@ func (e *Evaluator) evalBodyWith(
 		if skip[name] {
 			continue
 		}
-		out[name] = e.evalExprMemo(attr.Expr, evalCtx, st)
+		scoped := evalCtx
+		if st != nil {
+			scoped = st.files.context(evalCtx, attr.SrcRange.Filename)
+		}
+		out[name] = e.evalExprMemo(attr.Expr, scoped, st)
 	}
 
 	blocks := nestedBlocks{out: out}
@@ -1528,7 +1560,7 @@ func (e *Evaluator) evalBodyWith(
 			break
 		}
 		if st != nil && dynamicblock.Is(b) {
-			e.addDynamicBlocks(ctx, &blocks, b, evalCtx, st)
+			e.addDynamicBlocks(ctx, &blocks, b, st.files.context(evalCtx, b.TypeRange.Filename), st)
 			continue
 		}
 		path := append([]string{b.Type}, b.Labels...)

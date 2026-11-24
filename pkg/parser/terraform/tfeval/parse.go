@@ -35,12 +35,12 @@ const blockTypeModule = "module"
 
 // reservedModuleAttrs are module-block keys that are not passed as inputs.
 var reservedModuleAttrs = map[string]bool{
-	"source":     true,
-	"version":    true,
-	"providers":  true,
-	"count":      true,
-	"for_each":   true,
-	"depends_on": true,
+	"source":         true,
+	"version":        true,
+	"providers":      true,
+	"count":          true,
+	"for_each":       true,
+	metaArgDependsOn: true,
 }
 
 // parseDir parses HCL and JSON config in dir (non-recursively) and returns
@@ -236,12 +236,17 @@ func assembleRootSlots(slots []rootFileSlot, parseDeferred bool) (bodies []*hcls
 // be emitted (only child module calls matter). Files containing only resource /
 // output / provider blocks are deferred and only parsed if any module, locals,
 // or data block may reference a managed resource.
-func parseRootDirForModules(
-	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
-) (dirParse, error) {
-	slots, deferredCount, err := readRootFileSlots(ctx, dir, packageRoot, allow, fsys)
+func (e *Evaluator) parseRootDirForModules(ctx context.Context, dir, packageRoot string) dirParse {
+	slots, deferredCount, err := readRootFileSlots(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
 	if err != nil {
-		return dirParse{err: err}, err
+		return dirParse{err: err}
+	}
+	for _, slot := range slots {
+		if tfpath.IsOverrideFile(slot.path) {
+			// An override can need a base from a deferred file, including a
+			// resource with no references from other root expressions.
+			return e.parseDir(ctx, dir, packageRoot)
+		}
 	}
 
 	bodies, sources := assembleRootSlots(slots, false)
@@ -265,7 +270,7 @@ func parseRootDirForModules(
 	dp.resourceTypes = declaredResourceTypes(dp.resources)
 	dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, dataBlocks)
 	dp.static = newDirStatic(&dp)
-	return dp, nil
+	return dp
 }
 
 func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
@@ -458,7 +463,9 @@ func resolveLocalDir(callerDir, source string) string {
 // LoadRootVars reads the variable definitions files Terraform loads on its own
 // from dir (see tfpath.AutoloadedVarFiles) and returns a variable map for use as
 // root-module inputs, reading through the evaluator's filesystem. Later files
-// override earlier ones. Files that fail to read or parse are silently skipped.
+// override earlier ones. When an effective resource or data override needs
+// evaluator-rendered values, explicitly selected inputs take precedence.
+// Files that fail to read or parse are silently skipped.
 // Only files listed in dir are read: MemFS records ReadFile misses as
 // escalation signals, so absent files must not be probed.
 func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
@@ -490,6 +497,9 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 				out[attrName] = v
 			}
 		}
+	}
+	if len(e.explicitRootVars) != 0 && len(e.ResourceOverrides(ctx, dir)) != 0 {
+		maps.Copy(out, e.explicitRootVars)
 	}
 	return out
 }

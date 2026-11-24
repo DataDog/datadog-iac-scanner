@@ -28,6 +28,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
 	"github.com/rs/zerolog"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // extraCallerInfo records a deduplicated module caller so its findings can be
@@ -50,18 +51,18 @@ type moduleResolutionResult struct {
 	extras               map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
 	moduleFiles   map[string]*moduleFileCalls
+	overrides     *terraformOverrides
 	resourceCount int
 	rootCount     int
 	ok            bool
 }
 
-// instantiateLocalModules evaluates local modules and injects resolved resource
-// documents. In a called module body only the resource blocks are dropped (they
-// are re-emitted instantiated, with caller-resolved values); variable, output,
-// data and locals blocks are kept so their rules still fire exactly as in a
-// standalone scan. The instantiated local "module" call-sites are stripped from
-// root documents so call-site rule branches don't fire alongside the
-// instantiated resources.
+// instantiateLocalModules evaluates Terraform modules. Resolved resource and
+// data instances in called modules are emitted as synthetic documents. The
+// original documents retain other blocks and use the effective configuration
+// for overrides still scanned there. Instantiated local module calls are
+// stripped from root documents so call-site rule branches do not duplicate
+// the instance findings.
 //
 // It mutates the input FileMetadata documents in place. Mutations are applied
 // only after evaluation succeeds (see resolveModulesSafely); a panic during
@@ -113,6 +114,7 @@ func (c *Inspector) instantiateLocalModules(
 		// module blocks must remain so the corresponding Rego branches can still fire.
 		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
 	}
+	res.overrides.apply(files, res.docs, res.syntheticFiles)
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
 }
 
@@ -372,7 +374,7 @@ func (c *Inspector) resolveModulesSafely(
 	inv = c.newTerraformInventory(lookup, externalModuleFile)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
-		externalModuleFile, inv,
+		externalModuleFile, inv, c.terraformRootVars,
 	)
 }
 
@@ -407,6 +409,7 @@ func evaluateRootModules(
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
 	inv *terraformInventory,
+	overrides *terraformOverrides,
 ) {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
@@ -414,6 +417,7 @@ func evaluateRootModules(
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
+		overrides: overrides,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -460,6 +464,7 @@ type rootMerge struct {
 	rootEvalOK           *bool
 	moduleCalls          *moduleCallIndex
 	inventory            *terraformInventory
+	overrides            *terraformOverrides
 }
 
 func (m *rootMerge) merge(
@@ -487,6 +492,7 @@ func (m *rootMerge) merge(
 	// Every resource and data source of the root, before instantiation keeps
 	// only what rules can match.
 	m.inventory.addRoot(dir, resources)
+	m.overrides.record(m.ctx, m.evaluator, resources)
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
 	for d := range childDirs {
@@ -672,6 +678,7 @@ func resolveModuleDocuments(
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
 	inv *terraformInventory,
+	rootVars map[string]cty.Value,
 ) moduleResolutionResult {
 	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
 	if len(dirsWithTf) == 0 {
@@ -693,11 +700,13 @@ func resolveModuleDocuments(
 
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
+	evaluator.SetExplicitRootVars(rootVars)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	evaluator.SetSkipRootResources(inv == nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
+	overrides := scanTerraformOverrides(ctx, evaluator, byAbsPath, filesByDir, repoPath)
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
@@ -738,7 +747,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv, overrides,
 	)
 	if ctx.Err() != nil {
 		// The scan is stopping: report no resolution rather than one whose
@@ -784,7 +793,7 @@ func resolveModuleDocuments(
 
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
 
-	return moduleResolutionResult{
+	result := moduleResolutionResult{
 		docs:                 extra,
 		syntheticFiles:       syntheticFiles,
 		suppressed:           instantiated,
@@ -794,10 +803,13 @@ func resolveModuleDocuments(
 		unresolvedModuleDirs: unresolvedModuleDirs,
 		extras:               extras,
 		moduleFiles:          moduleCalls.fileCalls(),
+		overrides:            overrides,
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
 	}
+	overrides.prepare(ctx, evaluator, &result, actualCalledDirs)
+	return result
 }
 
 // discoverStaticCalls returns the directories some scanned directory calls,
