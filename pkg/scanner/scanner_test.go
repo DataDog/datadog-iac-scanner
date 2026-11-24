@@ -13,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -46,6 +47,29 @@ func TestScanner_StartScan(t *testing.T) {
 // must not fail as if the services used mixed source providers.
 func TestPrepareAndScanWithoutServices(t *testing.T) {
 	require.NoError(t, PrepareAndScan(context.Background(), "server", false, 5, nil))
+}
+
+func TestHasTerraformServiceAndReleasePrepareState(t *testing.T) {
+	tfServices, _, err := createServices([]string{"terraform"}, []string{""})
+	require.NoError(t, err)
+	require.True(t, hasTerraformService(tfServices))
+
+	jsonServices, _, err := createServices([]string{"json"}, []string{""})
+	require.NoError(t, err)
+	require.False(t, hasTerraformService(jsonServices))
+
+	cache := hclcache.New(0)
+	_, diags := cache.ParseConfig([]byte(`resource "aws_s3_bucket" "b" {}`), "/repo/main.tf")
+	require.False(t, diags.HasErrors())
+	require.Equal(t, 1, cache.Len())
+
+	releasePrepareState(tfServices, cache)
+	require.Equal(t, 0, cache.Len())
+
+	// Closed cache must not retain entries parsed after releasePrepareState.
+	_, diags = cache.ParseConfig([]byte(`resource "aws_s3_bucket" "c" {}`), "/repo/other.tf")
+	require.False(t, diags.HasErrors())
+	require.Equal(t, 0, cache.Len())
 }
 
 func createServices(types, cloudProviders []string) (serviceSlice, *storage.MemoryStorage, error) {

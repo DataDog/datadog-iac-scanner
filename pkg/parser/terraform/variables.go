@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -49,7 +50,7 @@ func parseHCLBody(ctx context.Context, fsys vfs.FS, filename string) (*hclsyntax
 		return nil, err
 	}
 
-	parsedFile, diags := hclsyntax.ParseConfig(src, filename, hcl.InitialPos)
+	parsedFile, diags := hclcache.ParseConfig(ctx, src, filename)
 	if diags.HasErrors() {
 		return nil, diags
 	}
@@ -109,7 +110,7 @@ func getInputVariablesAndLocalsFromFile(
 	if !bytes.Contains(src, variableBlockMarker) && !bytes.Contains(src, localsBlockMarker) {
 		return nil, nil, nil
 	}
-	parsedFile, diags := hclsyntax.ParseConfig(src, filename, hcl.InitialPos)
+	parsedFile, diags := hclcache.ParseConfig(ctx, src, filename)
 	if diags.HasErrors() {
 		return nil, nil, diags
 	}

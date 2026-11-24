@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
@@ -268,7 +269,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 		return resolved, json, nil, resolvedFiles, errors.Wrap(parseErr, "failed terraform parse")
 	}
 
-	file, diagnostics := hclsyntax.ParseConfig(resolved, filepath.Base(path), hcl.Pos{Byte: 0, Line: 1, Column: 1})
+	file, diagnostics := hclcache.ParseConfig(ctx, resolved, path)
 	defer func() {
 		if r := recover(); r != nil {
 			errMessage := "Recovered from panic during parsing of file " + path

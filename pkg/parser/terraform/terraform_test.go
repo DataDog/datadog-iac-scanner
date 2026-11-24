@@ -8,6 +8,7 @@ package terraform
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -582,4 +584,157 @@ func TestParser_CertificateFilesystem(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParser_HCLCacheReusesDirectoryParsesAndMatchesUncached(t *testing.T) {
+	dir := "/repo/env/prod"
+	files := map[string][]byte{
+		filepath.Join(dir, "variables.tf"): []byte(`
+variable "env" {
+  type    = string
+  default = "prod"
+}
+`),
+		filepath.Join(dir, "locals.tf"): []byte(`
+locals {
+  bucket_name = "app-${var.env}-logs"
+  policy_sid  = "AllowRead-${var.env}"
+}
+`),
+		filepath.Join(dir, "iam.tf"): []byte(`
+locals {
+  effect = "Allow"
+}
+data "aws_iam_policy_document" "read" {
+  statement {
+    sid       = local.policy_sid
+    effect    = local.effect
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${local.bucket_name}/*"]
+  }
+}
+resource "aws_iam_policy" "read" {
+  name   = local.policy_sid
+  policy = data.aws_iam_policy_document.read.json
+}
+`),
+		filepath.Join(dir, "main.tf"): []byte(`
+resource "aws_s3_bucket" "logs" {
+  bucket = local.bucket_name
+}
+`),
+		filepath.Join(dir, "terraform.tfvars"): []byte(`env = "staging"`),
+	}
+	order := []string{
+		filepath.Join(dir, "variables.tf"),
+		filepath.Join(dir, "locals.tf"),
+		filepath.Join(dir, "iam.tf"),
+		filepath.Join(dir, "main.tf"),
+		filepath.Join(dir, "terraform.tfvars"),
+	}
+
+	parseAll := func(ctx context.Context) map[string][]byte {
+		p := NewDefaultWithParams(vfs.NewMemFS(files), "", model.SCIInfo{})
+		out := make(map[string][]byte, len(order))
+		for _, path := range order {
+			_, docs, _, _, err := p.Parse(ctx, files[path], path, false, 0)
+			require.NoError(t, err, path)
+			b, err := json.Marshal(docs)
+			require.NoError(t, err)
+			out[path] = b
+		}
+		return out
+	}
+
+	uncached := parseAll(context.Background())
+
+	cache := hclcache.New(0)
+	defer cache.Close()
+	cached := parseAll(hclcache.WithCache(context.Background(), cache))
+
+	// Output must be identical with vs without hclcache.
+	require.Equal(t, uncached, cached)
+
+	// Every file in the directory is parsed at most once instead of 2-3x across
+	// variables.go, data_source.go, and terraform.go.
+	stats := cache.Stats()
+	require.Equal(t, int64(len(order)), stats.Misses, "expected each file to be parsed once")
+	require.GreaterOrEqual(t, stats.Hits, int64(6), "expected cache hits across variables, data sources, and resource parses")
+}
+
+func BenchmarkParseDirectoryWithHCLCache(b *testing.B) {
+	dir := "/repo/env/prod"
+	files := map[string][]byte{
+		filepath.Join(dir, "variables.tf"): []byte(`
+variable "env" { default = "prod" }
+variable "region" { default = "us-east-1" }
+variable "owner" { default = "platform" }
+`),
+		filepath.Join(dir, "locals.tf"): []byte(`
+locals {
+  bucket_name = "${var.owner}-${var.env}-${var.region}-logs"
+  policy_sid  = "AllowRead-${var.env}"
+  common_tags = { Env = var.env, Owner = var.owner, Region = var.region }
+}
+`),
+		filepath.Join(dir, "iam.tf"): []byte(`
+locals {
+  effect = "Allow"
+}
+data "aws_iam_policy_document" "read" {
+  statement {
+    sid       = local.policy_sid
+    effect    = local.effect
+    actions   = ["s3:GetObject", "s3:ListBucket"]
+    resources = ["arn:aws:s3:::${local.bucket_name}/*"]
+  }
+}
+resource "aws_iam_policy" "read" {
+  name   = local.policy_sid
+  policy = data.aws_iam_policy_document.read.json
+}
+`),
+		filepath.Join(dir, "main.tf"): []byte(`
+resource "aws_s3_bucket" "logs" {
+  bucket = local.bucket_name
+  tags   = local.common_tags
+}
+`),
+		filepath.Join(dir, "terraform.tfvars"): []byte(`env = "staging"`),
+	}
+	order := []string{
+		filepath.Join(dir, "variables.tf"),
+		filepath.Join(dir, "locals.tf"),
+		filepath.Join(dir, "iam.tf"),
+		filepath.Join(dir, "main.tf"),
+		filepath.Join(dir, "terraform.tfvars"),
+	}
+	memfs := vfs.NewMemFS(files)
+
+	b.Run("Uncached", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			p := NewDefaultWithParams(memfs, "", model.SCIInfo{})
+			for _, path := range order {
+				if _, _, _, _, err := p.Parse(context.Background(), files[path], path, false, 0); err != nil {
+					b.Fatal(err)
+				}
+			}
+		}
+	})
+
+	b.Run("WithHCLCache", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			cache := hclcache.New(0)
+			ctx := hclcache.WithCache(context.Background(), cache)
+			p := NewDefaultWithParams(memfs, "", model.SCIInfo{})
+			for _, path := range order {
+				if _, _, _, _, err := p.Parse(ctx, files[path], path, false, 0); err != nil {
+					b.Fatal(err)
+				}
+			}
+			cache.Close()
+		}
+	})
 }

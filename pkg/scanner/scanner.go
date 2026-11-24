@@ -10,12 +10,14 @@ import (
 	"errors"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
 	"github.com/DataDog/datadog-iac-scanner/internal/metrics"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 )
 
@@ -35,9 +37,20 @@ func PrepareAndScan(
 	}
 	metrics.Metric.Start("prepare_sources")
 
+	// Scope the bounded HCL parse cache strictly to prepare_sources so Terraform
+	// file, variable, and data-source parses share ASTs without retaining or
+	// refilling cached ASTs during StartScan/eval peak memory.
+	prepareCtx := ctx
+	var prepareHCLCache *hclcache.Cache
+	if hasTerraformService(services) && hclcache.FromContext(ctx) == nil {
+		prepareHCLCache = hclcache.New(0)
+		defer prepareHCLCache.Close()
+		prepareCtx = hclcache.WithCache(ctx, prepareHCLCache)
+	}
+
 	// The disk walk serves every disk scan.
 	if fsp, ok := runner.DiskSourceProvider(services); ok {
-		err := runner.PrepareDiskSources(ctx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth)
+		err := runner.PrepareDiskSources(prepareCtx, fsp, services, scanID, openAPIResolveReferences, maxResolverDepth)
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
@@ -46,20 +59,20 @@ func PrepareAndScan(
 		// The cached file bytes were only needed during the shared walk; release them
 		// before eval so they are not held through the query phase.
 		fsp.ReleaseContentCache()
-		releasePrepareState(services)
+		releasePrepareState(services, prepareHCLCache)
 		return StartScan(ctx, scanID, services)
 	}
 
 	// The in-memory (server) dispatch: one pass over the pushed files, rendering
 	// each pushed Helm chart once.
 	if mp, ok := runner.MemorySourceProvider(services); ok {
-		err := runner.PrepareMemorySources(ctx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth)
+		err := runner.PrepareMemorySources(prepareCtx, mp, services, scanID, openAPIResolveReferences, maxResolverDepth)
 		metrics.Metric.Stop()
 		memwatch.Sample(ctx, memwatch.PhasePrepareSources)
 		if err != nil {
 			return err
 		}
-		releasePrepareState(services)
+		releasePrepareState(services, prepareHCLCache)
 		return StartScan(ctx, scanID, services)
 	}
 
@@ -68,9 +81,24 @@ func PrepareAndScan(
 	return errors.New("services must share one source provider")
 }
 
+func hasTerraformService(services serviceSlice) bool {
+	for _, s := range services {
+		if s == nil || s.Parser == nil {
+			continue
+		}
+		for _, p := range s.Parser.Platform {
+			if strings.EqualFold(p, "terraform") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // releasePrepareState drops the dedup state that only the prepare phase uses,
 // so it is not held through eval.
-func releasePrepareState(services serviceSlice) {
+func releasePrepareState(services serviceSlice, hclCache *hclcache.Cache) {
+	hclCache.Close()
 	for _, s := range services {
 		s.ClearContentInterner()
 		s.ClearParsedShares()

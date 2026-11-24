@@ -396,6 +396,17 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	if a.Only, err = expandPaths(a.Only); err != nil {
 		return returnAnalyzedPaths, fmt.Errorf("failed to expand only-paths: %w", err)
 	}
+	excMatcher := pathutil.NewMatcher(a.Exc)
+	var onlyMatcher *pathutil.Matcher
+	if a.Only != nil {
+		onlyMatcher = &pathutil.Matcher{}
+		for _, p := range a.Only {
+			onlyMatcher.AddLiteral(p)
+		}
+	}
+	isIncluded := func(p string) bool {
+		return onlyMatcher == nil || onlyMatcher.Match(p)
+	}
 	// get all the files inside the given paths
 	for _, path := range a.Paths {
 		pathInfo, statErr := os.Stat(path)
@@ -409,7 +420,9 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				return err
 			}
 			if path == gitDir {
-				a.Exc = append(a.Exc, filepath.ToSlash(path))
+				norm := filepath.ToSlash(path)
+				a.Exc = append(a.Exc, norm)
+				excMatcher.AddLiteral(norm)
 				return filepath.SkipDir
 			}
 
@@ -427,7 +440,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 						(singleFilePath && gitIgnore.MatchesParentDir(trimmed)))
 			}
 			inScope := func(p string, ignored bool) bool {
-				return !ignored && !isExcludedFile(p, a.Exc) && isIncludedFile(p, a.Only)
+				return !ignored && !excMatcher.Match(p) && isIncluded(p)
 			}
 
 			if d.IsDir() {
@@ -444,6 +457,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 						norm := filepath.ToSlash(path)
 						ignoreFiles = append(ignoreFiles, norm)
 						a.Exc = append(a.Exc, norm)
+						excMatcher.AddLiteral(norm)
 						return filepath.SkipDir
 					}
 				}
@@ -456,6 +470,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					norm := filepath.ToSlash(path)
 					ignoreFiles = append(ignoreFiles, norm)
 					a.Exc = append(a.Exc, norm)
+					excMatcher.AddLiteral(norm)
 					return filepath.SkipDir
 				}
 				return nil
@@ -468,6 +483,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					norm := filepath.ToSlash(path)
 					ignoreFiles = append(ignoreFiles, norm)
 					a.Exc = append(a.Exc, norm)
+					excMatcher.AddExactFile(norm)
 					return nil
 				}
 			}
@@ -494,6 +510,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				norm := filepath.ToSlash(path)
 				projectConfigFiles = append(projectConfigFiles, norm)
 				a.Exc = append(a.Exc, norm)
+				excMatcher.AddExactFile(norm)
 				return nil
 			}
 
@@ -501,10 +518,11 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				norm := filepath.ToSlash(path)
 				ignoreFiles = append(ignoreFiles, norm)
 				a.Exc = append(a.Exc, norm)
+				excMatcher.AddExactFile(norm)
 				return nil
 			}
 
-			if isExcludedFile(path, a.Exc) || !isIncludedFile(path, a.Only) {
+			if excMatcher.Match(path) || !isIncluded(path) {
 				return nil
 			}
 
@@ -1273,32 +1291,6 @@ func expandPaths(paths []string) ([]string, error) {
 		expanded = append(expanded, exp...)
 	}
 	return expanded, nil
-}
-
-// isIncludedFile returns true if path should be included given the onlyPaths restriction.
-// onlyPaths must be the result of expandPaths:
-//   - nil means no restriction was configured → include all files
-//   - non-nil (even empty) means a restriction is in effect → only matching files pass
-func isIncludedFile(path string, onlyPaths []string) bool {
-	if onlyPaths == nil {
-		return true
-	}
-	for _, p := range onlyPaths {
-		if p == path || strings.HasPrefix(path, p+string(os.PathSeparator)) {
-			return true
-		}
-	}
-	return false
-}
-
-// isExcludedFile verifies if the path is in the pre-expanded exclude list or below one of its directories.
-func isExcludedFile(path string, expandedExc []string) bool {
-	for _, p := range expandedExc {
-		if p != "" && pathutil.MatchesPath(p, path) {
-			return true
-		}
-	}
-	return false
 }
 
 func isConfigFile(path string, suffixes []string) bool {

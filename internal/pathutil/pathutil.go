@@ -14,14 +14,20 @@ import (
 func MatchesPath(pattern, filePath string) bool {
 	pattern = cleanSlash(pattern)
 	filePath = cleanSlash(filePath)
+	return matchCleanPattern(pattern, filePath)
+}
 
+func matchCleanPattern(pattern, filePath string) bool {
 	// Exact match.
 	if pattern == filePath {
 		return true
 	}
 	// Directory prefix: any file under pattern/ matches.
-	if strings.HasPrefix(filePath, strings.TrimSuffix(pattern, "/")+"/") {
+	if hasDirPrefix(filePath, pattern) {
 		return true
+	}
+	if !hasGlobMeta(pattern) {
+		return false
 	}
 	// Double-star glob (**): segment-aware recursive match.
 	if strings.Contains(pattern, "**") {
@@ -30,6 +36,171 @@ func MatchesPath(pattern, filePath string) bool {
 	// Single-level glob (*, ?, [...]): use path.Match with forward-slash semantics.
 	if matched, err := path.Match(pattern, filePath); err == nil && matched {
 		return true
+	}
+	return false
+}
+
+func hasDirPrefix(filePath, dir string) bool {
+	if dir == "" {
+		return false
+	}
+	if dir == "/" {
+		return strings.HasPrefix(filePath, "/")
+	}
+	if len(filePath) <= len(dir) || filePath[len(dir)] != '/' {
+		return false
+	}
+	return strings.HasPrefix(filePath, dir)
+}
+
+func hasGlobMeta(pattern string) bool {
+	return strings.ContainsAny(pattern, "*?[\\")
+}
+
+// Matcher evaluates a set of MatchesPath patterns repeatedly without re-cleaning
+// or re-splitting patterns on every candidate path. Literal paths and directory
+// prefixes are checked in O(1) / O(path depth) without scanning the pattern list.
+type Matcher struct {
+	exact  map[string]struct{}
+	dirSet map[string]struct{}
+	globs  []compiledGlob
+}
+
+type compiledGlob struct {
+	pattern  string
+	segments []string // non-nil iff pattern contains "**"
+}
+
+// NewMatcher compiles patterns for repeated path matching.
+func NewMatcher(patterns []string) *Matcher {
+	m := &Matcher{}
+	for _, p := range patterns {
+		m.Add(p)
+	}
+	return m
+}
+
+// Add inserts one MatchesPath pattern into the matcher.
+func (m *Matcher) Add(pattern string) {
+	if pattern == "" {
+		return
+	}
+	clean := cleanSlash(pattern)
+	if clean == "" {
+		return
+	}
+	if !hasGlobMeta(clean) {
+		m.AddLiteral(clean)
+		return
+	}
+	if m.exact == nil {
+		m.exact = make(map[string]struct{})
+	}
+	m.exact[clean] = struct{}{}
+	g := compiledGlob{pattern: clean}
+	if strings.Contains(clean, "**") {
+		g.segments = strings.Split(clean, "/")
+	}
+	m.globs = append(m.globs, g)
+}
+
+// AddLiteral inserts a literal file or directory path (no glob interpretation).
+// It matches exact paths and any descendant path under clean/.
+func (m *Matcher) AddLiteral(pathOrDir string) {
+	if pathOrDir == "" {
+		return
+	}
+	clean := cleanSlash(pathOrDir)
+	if clean == "" {
+		return
+	}
+	if m.exact == nil {
+		m.exact = make(map[string]struct{})
+	}
+	m.exact[clean] = struct{}{}
+	if m.dirSet == nil {
+		m.dirSet = make(map[string]struct{})
+	}
+	m.dirSet[clean] = struct{}{}
+}
+
+// AddExactFile inserts a literal file path known not to be a directory prefix,
+// avoiding ancestor-prefix matching on per-file exclusions such as gitignored files.
+func (m *Matcher) AddExactFile(filePath string) {
+	if filePath == "" {
+		return
+	}
+	clean := cleanSlash(filePath)
+	if clean == "" {
+		return
+	}
+	if m.exact == nil {
+		m.exact = make(map[string]struct{})
+	}
+	m.exact[clean] = struct{}{}
+}
+
+// Match reports whether filePath matches any pattern in m.
+func (m *Matcher) Match(filePath string) bool {
+	if m == nil || (len(m.exact) == 0 && len(m.dirSet) == 0 && len(m.globs) == 0) {
+		return false
+	}
+	clean := cleanSlash(filePath)
+	if clean == "" {
+		return false
+	}
+	if _, ok := m.exact[clean]; ok {
+		return true
+	}
+	if m.matchDirAncestor(clean) {
+		return true
+	}
+	return m.matchGlobs(clean)
+}
+
+// matchDirAncestor checks whether any proper ancestor directory of clean is in dirSet.
+// Because cleanSlash produces a cleaned slash-separated path, checking every '/'
+// boundary (plus root "/") matches hasDirPrefix in O(path depth) with zero allocations.
+func (m *Matcher) matchDirAncestor(clean string) bool {
+	if len(m.dirSet) == 0 {
+		return false
+	}
+	for i := len(clean) - 1; i > 0; i-- {
+		if clean[i] == '/' {
+			if _, ok := m.dirSet[clean[:i]]; ok {
+				return true
+			}
+		}
+	}
+	if clean[0] == '/' {
+		if _, ok := m.dirSet["/"]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Matcher) matchGlobs(clean string) bool {
+	if len(m.globs) == 0 {
+		return false
+	}
+	var pathSegs []string
+	for _, g := range m.globs {
+		if hasDirPrefix(clean, g.pattern) {
+			return true
+		}
+		if g.segments != nil {
+			if pathSegs == nil {
+				pathSegs = strings.Split(clean, "/")
+			}
+			if matchDoublestar(g.segments, pathSegs) {
+				return true
+			}
+			continue
+		}
+		if matched, err := path.Match(g.pattern, clean); err == nil && matched {
+			return true
+		}
 	}
 	return false
 }
@@ -100,8 +271,8 @@ func matchDoublestar(pat, filePath []string) bool {
 	return len(filePath) == 0
 }
 
-// cleanSlash puts p in one spelling. An empty p is kept, as it matches nothing
-// but an absolute path.
+// cleanSlash puts p in one spelling. An empty p is kept rather than letting
+// path.Clean turn it into ".".
 func cleanSlash(p string) string {
 	if p == "" {
 		return p
