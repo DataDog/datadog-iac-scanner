@@ -14,11 +14,9 @@ import (
 // file's escape directive) and parameter operators on known variables behave as
 // they do in a build. Variables that are not known are left as written, since a
 // shell or the build command line may still provide them. Any word the lexer
-// would reject or rewrite is expanded by expandPlainRefs instead, which only
-// replaces known $NAME and ${NAME} references and keeps every other byte.
-//
-// Reading a variable can expand another declaration, so expansions nest. A
-// shell.Lex keeps its scanner state, so every expansion uses its own.
+// would reject or rewrite goes to expandPlainRefsFromScan instead, which only
+// replaces known plain $NAME and ${NAME} references outside single quotes and
+// keeps every other byte verbatim.
 type wordExpander struct {
 	escape byte
 	raw    bool
@@ -38,15 +36,22 @@ func (e *wordExpander) newLex() *shell.Lex {
 	return lex
 }
 
-// expandValues expands each value in place against scope and returns values.
-func expandValues(e *wordExpander, values []string, scope environment) []string {
-	if e.raw && scope.empty() {
+// expandValues expands each value in place against env and returns values.
+// Any lazy declarations referenced by a word are resolved iteratively before
+// BuildKit's lexer runs, so the lexer only ever sees finalized values.
+func expandValues(e *wordExpander, values []string, env *envNode) []string {
+	if e.raw && env == nil {
 		return values
 	}
 	for i, value := range values {
-		if e.mayReference(value) {
-			values[i] = e.expand(value, scope)
+		if !e.mayReference(value) {
+			continue
 		}
+		scan := scanWord(value, e.escape)
+		if deps := unresolvedDeps(scan.refs, env); len(deps) > 0 {
+			resolveBindings(deps)
+		}
+		values[i] = e.expandResolved(value, scan, env)
 	}
 	return values
 }
@@ -59,43 +64,296 @@ func (e *wordExpander) mayReference(value string) bool {
 	return strings.ContainsAny(value, "$\\\"'`")
 }
 
-func (e *wordExpander) expand(value string, scope environment) string {
-	if e.lexerHandles(value, scope) {
-		if expanded, _, err := e.newLex().ProcessWord(value, scope); err == nil {
+// expandResolved expands value after its referenced bindings in env have been
+// resolved. It uses BuildKit's lexer when the lexer can process value without
+// diagnostics or lossy unset-operator reconstruction, and otherwise falls back
+// to plain-reference replacement using the same scan.
+func (e *wordExpander) expandResolved(value string, scan wordScan, env *envNode) string {
+	if canUseLexer(value, scan, env) {
+		if expanded, _, err := e.newLex().ProcessWord(value, resolvedEnv{env}); err == nil {
 			return expanded
 		}
 	}
-	return e.expandPlainRefs(value, scope)
+	return expandPlainRefsFromScan(value, scan.refs, env)
 }
 
-// lexerHandles reports whether BuildKit's lexer can expand value faithfully.
-// One pass over ${...} references decides:
-//   - bytes that make text/scanner write diagnostics to stderr, or a leading
-//     byte order mark it would drop, are not given to it;
-//   - an unset variable with an operator, such as ${NAME//a/b} or ${NAME:-x}, is
-//     not given to it. With SkipUnsetEnv it rebuilds that reference from its
-//     parsed parts, which changes it (// becomes /, escapes and quotes in the
-//     operand are processed) and drops explicit defaults. A plain ${NAME} is
-//     rebuilt exactly and stays on this path.
-//
-// The scan ignores quoting, so it can only err towards the byte-preserving path.
-func (e *wordExpander) lexerHandles(value string, scope environment) bool {
-	if !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || strings.HasPrefix(value, "\ufeff") {
+// canUseLexer reports whether BuildKit's shell.Lex can expand value faithfully:
+//   - invalid UTF-8 or NUL bytes cause text/scanner to write to stderr, and a
+//     leading BOM is silently dropped by text/scanner;
+//   - syntax errors (unclosed quotes/braces, unsupported bash operators) would
+//     fail in BuildKit anyway;
+//   - an unset variable with an operator (e.g. ${X//a/b} or ${X:-x}) is rebuilt
+//     lossily under SkipUnsetEnv (// becomes /, escapes/quotes in operands are
+//     processed). A plain ${NAME} is rebuilt verbatim and stays on this path.
+func canUseLexer(value string, scan wordScan, env *envNode) bool {
+	if scan.syntaxErr || !utf8.ValidString(value) || strings.IndexByte(value, 0) >= 0 || strings.HasPrefix(value, "\ufeff") {
 		return false
 	}
-	for pos := 0; pos+1 < len(value); pos++ {
-		if value[pos] != '$' || value[pos+1] != '{' {
-			continue
-		}
-		nameStart := pos + 2
-		nameEnd := parameterNameEnd(value, nameStart)
-		plain := nameEnd < len(value) && value[nameEnd] == '}'
-		if _, known := scope.Get(value[nameStart:nameEnd]); !plain && !known {
+	for _, ref := range scan.refs {
+		if !ref.plain && !env.has(ref.name) {
 			return false
 		}
-		pos++
 	}
 	return true
+}
+
+// resolvedEnv adapts an immutable *envNode to BuildKit's shell.EnvGetter.
+// Referenced bindings are already resolved before ProcessWord runs; if an
+// unexpected binding is still lazy, it is resolved iteratively as a safeguard.
+type resolvedEnv struct {
+	env *envNode
+}
+
+func (r resolvedEnv) Get(name string) (string, bool) {
+	b, ok := r.env.get(name)
+	if !ok {
+		return "", false
+	}
+	if !b.done {
+		resolveBindings([]*binding{b})
+	}
+	return b.value, true
+}
+
+func (r resolvedEnv) Keys() []string {
+	return r.env.keys(nil)
+}
+
+// expandPlainRefsFromScan replaces only known plain identifier $NAME and
+// ${NAME} references recorded by scanWord, keeping every other byte verbatim.
+// Plain references are disjoint and ordered by start offset, and inserted
+// values are never scanned again.
+func expandPlainRefsFromScan(value string, refs []wordRef, env *envNode) string {
+	if env == nil || len(refs) == 0 {
+		return value
+	}
+	var out strings.Builder
+	copied := 0
+	for _, ref := range refs {
+		if !ref.plain || !isIdentifierName(ref.name) {
+			continue
+		}
+		b, ok := env.get(ref.name)
+		if !ok {
+			continue
+		}
+		if !b.done {
+			resolveBindings([]*binding{b})
+		}
+		out.WriteString(value[copied:ref.start])
+		out.WriteString(b.value)
+		copied = ref.end
+	}
+	if copied == 0 {
+		return value
+	}
+	out.WriteString(value[copied:])
+	return out.String()
+}
+
+func isIdentifierName(name string) bool {
+	if name == "" {
+		return false
+	}
+	first, _ := utf8.DecodeRuneInString(name)
+	return first == '_' || unicode.IsLetter(first)
+}
+
+type scanCtx uint8
+
+const (
+	ctxWord scanCtx = iota
+	ctxDouble
+	ctxSingle
+	ctxParam
+)
+
+type scanFrame struct {
+	kind scanCtx
+	stop byte // '}' or '/' for ctxParam
+}
+
+type wordRef struct {
+	start int
+	end   int // valid when plain is true
+	name  string
+	plain bool
+}
+
+type wordScan struct {
+	refs      []wordRef
+	syntaxErr bool
+}
+
+// scanWord performs one O(len(value)) context-stack walk matching BuildKit's
+// shell.Lex quoting, escape, and parameter boundaries. It serves three roles
+// from one consistent view of the word:
+//   - static dependency discovery for lazy bindings (no speculative lexing),
+//   - quote-aware detection of unset parameter operators and syntax errors,
+//   - plain $NAME/${NAME} span collection for byte-preserving fallback.
+func scanWord(value string, escape byte) wordScan {
+	var inline [8]scanFrame
+	s := wordScanner{
+		value:  value,
+		escape: escape,
+		stack:  append(inline[:0], scanFrame{kind: ctxWord}),
+	}
+	for pos := 0; pos < len(value); {
+		pos = s.step(pos)
+	}
+	if len(s.stack) > 1 {
+		s.result.syntaxErr = true
+	}
+	return s.result
+}
+
+type wordScanner struct {
+	value  string
+	escape byte
+	stack  []scanFrame
+	result wordScan
+}
+
+func (s *wordScanner) step(pos int) int {
+	top := s.stack[len(s.stack)-1]
+	ch := s.value[pos]
+
+	if top.kind == ctxSingle {
+		if ch == '\'' {
+			s.stack = s.stack[:len(s.stack)-1]
+		}
+		return pos + 1
+	}
+	if top.kind == ctxParam && ch == top.stop {
+		if ch == '/' {
+			s.stack[len(s.stack)-1].stop = '}'
+		} else {
+			s.stack = s.stack[:len(s.stack)-1]
+		}
+		return pos + 1
+	}
+	if ch == s.escape {
+		return s.skipEscape(pos, top.kind == ctxDouble)
+	}
+	if ch == '$' {
+		return s.scanDollar(pos)
+	}
+	if top.kind == ctxDouble {
+		if ch == '"' {
+			s.stack = s.stack[:len(s.stack)-1]
+		}
+		return pos + 1
+	}
+	switch ch {
+	case '\'':
+		s.stack = append(s.stack, scanFrame{kind: ctxSingle})
+	case '"':
+		s.stack = append(s.stack, scanFrame{kind: ctxDouble})
+	}
+	return pos + 1
+}
+
+func (s *wordScanner) skipEscape(pos int, inDouble bool) int {
+	if pos+1 >= len(s.value) {
+		return pos + 1
+	}
+	next := s.value[pos+1]
+	if inDouble && next != '"' && next != '$' && next != s.escape {
+		return pos + 1
+	}
+	_, size := utf8.DecodeRuneInString(s.value[pos+1:])
+	return pos + 1 + size
+}
+
+func (s *wordScanner) scanDollar(pos int) int {
+	if pos+1 >= len(s.value) {
+		return pos + 1
+	}
+	if s.value[pos+1] != '{' {
+		nameEnd := parameterNameEnd(s.value, pos+1)
+		if nameEnd == pos+1 {
+			return pos + 1
+		}
+		s.result.refs = append(s.result.refs, wordRef{
+			start: pos,
+			end:   nameEnd,
+			name:  s.value[pos+1 : nameEnd],
+			plain: true,
+		})
+		return nameEnd
+	}
+	return s.scanBraced(pos)
+}
+
+func (s *wordScanner) scanBraced(pos int) int {
+	nameStart := pos + 2
+	if nameStart >= len(s.value) {
+		s.result.syntaxErr = true
+		return len(s.value)
+	}
+	switch s.value[nameStart] {
+	case '}':
+		s.result.syntaxErr = true
+		return nameStart + 1
+	case '{', ':':
+		s.result.syntaxErr = true
+		return nameStart
+	}
+
+	nameEnd := parameterNameEnd(s.value, nameStart)
+	if nameEnd >= len(s.value) {
+		s.result.syntaxErr = true
+		return len(s.value)
+	}
+
+	name := s.value[nameStart:nameEnd]
+	op := s.value[nameEnd]
+	if op == '}' {
+		s.result.refs = append(s.result.refs, wordRef{
+			start: pos,
+			end:   nameEnd + 1,
+			name:  name,
+			plain: true,
+		})
+		return nameEnd + 1
+	}
+	return s.scanOperator(pos, name, nameEnd, op)
+}
+
+func (s *wordScanner) scanOperator(pos int, name string, nameEnd int, op byte) int {
+	next := nameEnd + 1
+	switch op {
+	case '/':
+		s.result.refs = append(s.result.refs, wordRef{start: pos, name: name})
+		if next < len(s.value) && s.value[next] == '/' {
+			next++
+		}
+		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '/'})
+		return next
+	case ':':
+		s.result.refs = append(s.result.refs, wordRef{start: pos, name: name})
+		if next >= len(s.value) {
+			s.result.syntaxErr = true
+			return len(s.value)
+		}
+		op2 := s.value[next]
+		if op2 != '+' && op2 != '-' && op2 != '?' {
+			s.result.syntaxErr = true
+			if op2 == '}' {
+				return next + 1
+			}
+		}
+		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
+		return next + 1
+	case '+', '-', '?', '#', '%':
+		s.result.refs = append(s.result.refs, wordRef{start: pos, name: name})
+		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
+		return next
+	default:
+		s.result.syntaxErr = true
+		s.stack = append(s.stack, scanFrame{kind: ctxParam, stop: '}'})
+		return next
+	}
 }
 
 // parameterNameEnd returns the end of the variable name starting at start,
@@ -122,94 +380,4 @@ func parameterNameEnd(value string, start int) int {
 		pos += size
 	}
 	return pos
-}
-
-// expandPlainRefs replaces known $NAME and ${NAME} references that are outside
-// single quotes in one linear pass. Every other byte stays as written: quotes,
-// escapes, operators, unknown names and invalid bytes. Substituted values are
-// never scanned again.
-func (e *wordExpander) expandPlainRefs(value string, scope environment) string {
-	var out strings.Builder
-	copied := 0
-	inSingle, inDouble := false, false
-
-	for pos := 0; pos < len(value); {
-		ch := value[pos]
-		switch {
-		case inSingle:
-			inSingle = ch != '\''
-			pos++
-		case ch == e.escape:
-			pos = e.skipEscape(value, pos, inDouble)
-		case ch == '"':
-			inDouble = !inDouble
-			pos++
-		case ch == '\'' && !inDouble:
-			inSingle = true
-			pos++
-		case ch != '$':
-			pos++
-		case pos+1 < len(value) && value[pos+1] == '$':
-			// Consume $$ together so $$NAME is not read as $ and $NAME.
-			pos += 2
-		default:
-			name, end, ok := plainReferenceAt(value, pos)
-			if !ok {
-				pos++
-				continue
-			}
-			if replacement, known := scope.Get(name); known {
-				out.WriteString(value[copied:pos])
-				out.WriteString(replacement)
-				copied = end
-			}
-			pos = end
-		}
-	}
-
-	if copied == 0 {
-		return value
-	}
-	out.WriteString(value[copied:])
-	return out.String()
-}
-
-// skipEscape returns the position after an escape sequence. Inside double
-// quotes only a quote, a dollar or the escape itself can be escaped.
-func (e *wordExpander) skipEscape(value string, pos int, inDouble bool) int {
-	if pos+1 == len(value) {
-		return pos + 1
-	}
-	next := value[pos+1]
-	if inDouble && next != '"' && next != '$' && next != e.escape {
-		return pos + 1
-	}
-	_, size := utf8.DecodeRuneInString(value[pos+1:])
-	return pos + 1 + size
-}
-
-// plainReferenceAt parses a plain $NAME or ${NAME} at pos, where NAME starts
-// with a letter or underscore.
-func plainReferenceAt(value string, pos int) (name string, end int, ok bool) {
-	start := pos + 1
-	braced := start < len(value) && value[start] == '{'
-	if braced {
-		start++
-	}
-	if start >= len(value) {
-		return "", start, false
-	}
-	first, _ := utf8.DecodeRuneInString(value[start:])
-	if first != '_' && !unicode.IsLetter(first) {
-		return "", start, false
-	}
-	end = parameterNameEnd(value, start)
-	name = value[start:end]
-	if braced {
-		if end >= len(value) || value[end] != '}' {
-			return "", end, false
-		}
-		end++
-	}
-	return name, end, true
 }

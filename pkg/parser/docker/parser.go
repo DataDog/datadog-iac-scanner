@@ -63,14 +63,13 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		declarationLex = newWordExpander(parsed.EscapeToken, false)
 	}
 	stages := newStageScopes()
-	scope := stages.globals
 
 	for _, child := range parsed.AST.Children {
 		name := strings.ToLower(strings.TrimSpace(child.Value))
 		if name == command.From {
 			fromValue = fromArguments(child.Original)
 			if !lineInfoOnly {
-				scope = stages.enter(child, declarationLex)
+				stages.enter(child, declarationLex)
 			}
 		}
 
@@ -84,7 +83,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 		// Source locations keep raw commands before rule-facing enrichment.
 		if !lineInfoOnly {
-			scope.expandCommand(&cmd, stages.globals, lex, declarationLex)
+			stages.expandCommand(&cmd, lex, declarationLex)
 		}
 
 		if fromValue == "" {

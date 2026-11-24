@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/buildkit/frontend/dockerfile/shell"
 	"github.com/stretchr/testify/require"
 )
 
@@ -149,4 +150,71 @@ func TestExpandValues_UnsetOperatorsKeepEveryByte(t *testing.T) {
 func TestExpandValues_LeadingByteOrderMarkIsKept(t *testing.T) {
 	got := expandValues(newWordExpander('\\', true), []string{"\ufeff$H"}, newTestScope(map[string]string{"H": "hello"}))
 	require.Equal(t, []string{"\ufeffhello"}, got)
+}
+
+type recordingEnv struct {
+	vals map[string]string
+	seen map[string]bool
+}
+
+func (r *recordingEnv) Get(name string) (string, bool) {
+	r.seen[name] = true
+	v, ok := r.vals[name]
+	return v, ok
+}
+
+func (r *recordingEnv) Keys() []string { return nil }
+
+// scanWord drives static dependency discovery before BuildKit's lexer runs.
+// Every variable BuildKit reads on a valid word must be discovered by scanWord,
+// and our expander must match BuildKit's output when all variables are known.
+func TestScanWord_MatchesBuildKitReadsAndOutput(t *testing.T) {
+	words := []string{
+		`$H ${H}`,
+		`echo \$H '$H' "\$H" "$H"`,
+		`pre'fix $A'post "$B"`,
+		`"it's $A" '$B'`,
+		`${A:-$B} ${EMPTY:-$C}`,
+		`${H//$P/$R}`,
+		`${H/}/$R} ${H/a/$R/tail}`,
+		`"${H//./'$1'}" $A`,
+		`"${A:-"it's ${B:+a} '"}" $C`,
+		`${A#"$B"} ${A%'$B'} ${A/a/"$B"}`,
+		`$$H $$${H} $? $1`,
+		`'${UNKNOWN:-$A}' ${H:-fallback}`,
+		`"${A:-'literal $B'}" $C`,
+	}
+	vals := map[string]string{
+		"H": "hello.world", "A": "alpha", "B": "beta", "C": "gamma",
+		"P": "l", "R": "L", "EMPTY": "", "1": "one", "?": "0", "$": "99",
+	}
+
+	for _, escape := range []rune{'\\', '`'} {
+		for _, raw := range []bool{true, false} {
+			for _, word := range words {
+				t.Run(fmt.Sprintf("%c/raw=%t/%s", escape, raw, word), func(t *testing.T) {
+					rec := &recordingEnv{vals: vals, seen: map[string]bool{}}
+					lex := shell.NewLex(escape)
+					lex.RawQuotes, lex.RawEscapes, lex.SkipUnsetEnv = raw, raw, true
+					want, _, err := lex.ProcessWord(word, rec)
+					if err != nil {
+						return // backslash escapes invalid under backtick escape token
+					}
+
+					scan := scanWord(word, byte(escape))
+					require.False(t, scan.syntaxErr)
+					scanned := map[string]bool{}
+					for _, ref := range scan.refs {
+						scanned[ref.name] = true
+					}
+					for name := range rec.seen {
+						require.True(t, scanned[name], "scanWord missed %q read by BuildKit in %q", name, word)
+					}
+
+					got := expandValues(newWordExpander(escape, raw), []string{word}, newTestScope(vals))[0]
+					require.Equal(t, want, got)
+				})
+			}
+		}
+	}
 }

@@ -205,18 +205,24 @@ ENTRYPOINT ["java","-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
 }
 
 func TestVariableScope_DeclareArgs(t *testing.T) {
-	scope := newScope()
+	stages := newStageScopes()
+	stages.globals = newTestScope(map[string]string{"BARE": "global"})
+	stages.inStage = true
 	lex := newWordExpander('\\', false)
-	got := scope.declareArgs(lex, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, newTestScope(map[string]string{"BARE": "global"}))
-	require.Equal(t, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, got)
-	require.Equal(t, map[string]string{"ARG": "2", "NEXT": "2x", "BARE": "global"}, scope.snapshot())
+	values := []string{"ARG=2", "NEXT=${ARG}x", "BARE"}
+	stages.declareArgs(lex, values)
+	require.Equal(t, []string{"ARG=2", "NEXT=${ARG}x", "BARE"}, values)
+	require.Equal(t, map[string]string{"ARG": "2", "NEXT": "2x", "BARE": "global"}, snapshotEnv(stages.current()))
 }
 
 func TestVariableScope_DeclareEnvs(t *testing.T) {
-	scope := newTestScope(map[string]string{"K": "KEY", "V": "value"})
-	got := scope.declareEnvs(newWordExpander('\\', false), []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="})
-	require.Equal(t, []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="}, got)
-	require.Equal(t, map[string]string{"ARG": "2", "KEY": "value", "K": "new", "V": "value"}, scope.snapshot())
+	stages := newStageScopes()
+	stages.inStage = true
+	stages.stage = newTestScope(map[string]string{"K": "KEY", "V": "value"})
+	values := []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="}
+	stages.declareEnvs(newWordExpander('\\', false), values)
+	require.Equal(t, []string{"ARG", "2", "=", "$K", "$V", "=", "K", "new", "="}, values)
+	require.Equal(t, map[string]string{"ARG": "2", "KEY": "value", "K": "new", "V": "value"}, snapshotEnv(stages.current()))
 }
 
 // Dockerfile instructions are case-insensitive: a lowercase FROM names its
@@ -337,11 +343,13 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 		{"unrelated stage resets variables", "FROM alpine AS build\nARG A=one\nENV E=two\nFROM busybox\nRUN echo $A $E\n", map[int][]string{5: {"echo $A $E"}}},
 		{"FROM only sees global ARG", "ARG IMAGE=alpine\nFROM $IMAGE AS build\nARG IMAGE=busybox\nENV IMAGE=scratch\nFROM $IMAGE\n", map[int][]string{5: {"alpine"}}},
 		{"derived stage inherits ARG and ENV", "FROM alpine AS build\nARG A=one\nENV E=two\nFROM build\nRUN echo $A $E\n", map[int][]string{5: {"echo one two"}}},
-		{"derived stage matches names case-insensitively", "FROM alpine AS build\nENV E=two\nFROM build\nRUN echo $E\n", map[int][]string{4: {"echo two"}}},
+		{"derived stage matches names case-insensitively", "FROM alpine AS Build\nENV E=two\nFROM build\nRUN echo $E\n", map[int][]string{4: {"echo two"}}},
 		{"quoted base name still finds its stage", "FROM alpine AS base\nENV PORT=22\nFROM \"base\"\nEXPOSE $PORT\n", map[int][]string{4: {"22"}}},
 		{"derived stage does not leak into its parent", "FROM alpine AS base\nENV V=base\nFROM base AS child\nENV V=child\nFROM alpine AS other\nRUN echo $V\n", map[int][]string{6: {"echo $V"}}},
 		{"unset default stays visible", "FROM alpine:${TAG:-latest}\nRUN echo ${TAG:-latest}\n", map[int][]string{1: {"alpine:${TAG:-latest}"}, 2: {"echo ${TAG:-latest}"}}},
 		{"unset global replacement keeps both slashes", "FROM alpine\nARG H=hello\nRUN echo ${UNKNOWN//a/b} $H\n", map[int][]string{3: {"echo ${UNKNOWN//a/b} hello"}}},
+		{"single-quoted unset operator strips quotes in declaration", "FROM alpine\nENV A='${UNKNOWN:-x}'\nRUN echo $A\n", map[int][]string{3: {"echo ${UNKNOWN:-x}"}}},
+		{"single-quoted unset operator does not block known modifier", "FROM alpine\nARG H=hello\nRUN echo '${UNKNOWN:-x}' ${H:-fallback}\n", map[int][]string{3: {"echo '${UNKNOWN:-x}' hello"}}},
 		{"ENV keeps a reference to a variable set by the same instruction", "FROM alpine\nENV A=1\nENV A=2 B=$A\nRUN echo $A $B\n", map[int][]string{3: {"A", "2", "=", "B", "$A", "="}, 4: {"echo 2 1"}}},
 		{"legacy ENV form", "FROM alpine\nENV PORT 22\nEXPOSE $PORT\n", map[int][]string{3: {"22"}}},
 		{"sibling stages are isolated", "FROM alpine AS base\nENV V=base\nFROM base AS left\nENV V=left\nFROM base AS right\nRUN echo $V\n", map[int][]string{6: {"echo base"}}},
@@ -369,7 +377,7 @@ func TestParser_Parse_VariableScopes(t *testing.T) {
 	}
 }
 
-func resolveArgsAndEnvs(values []string, scope *variableScope) []string {
+func resolveArgsAndEnvs(values []string, scope *envNode) []string {
 	return expandValues(newWordExpander('\\', true), values, scope)
 }
 
@@ -393,15 +401,14 @@ func TestParser_Parse_LineInfoOnlySkipsExpansion(t *testing.T) {
 	require.Equal(t, []interface{}{"echo $V"}, commands[2].(map[string]interface{})["Value"])
 }
 
-// A chain of stages shares its parents' bindings. Copying them would make the
-// memory quadratic in the number of stages, so doubling the chain must roughly
-// double the allocation.
+// A chain of stages shares its parents' bindings via a persistent balanced tree,
+// so both memory and unknown-variable lookups across all stages stay O(N log N).
 func TestParser_Parse_StageChainSharesParentScope(t *testing.T) {
 	parse := func(stages int) uint64 {
 		var source strings.Builder
 		source.WriteString("FROM alpine AS s0\nENV V0=0\n")
 		for i := 1; i <= stages; i++ {
-			fmt.Fprintf(&source, "FROM s%d AS s%d\nENV V%d=%d\n", i-1, i, i, i)
+			fmt.Fprintf(&source, "FROM s%d AS s%d\nENV V%d=%d\nRUN echo $UNKNOWN\n", i-1, i, i, i)
 		}
 		fmt.Fprintf(&source, "RUN echo $V0 $V%d\n", stages)
 
@@ -411,34 +418,75 @@ func TestParser_Parse_StageChainSharesParentScope(t *testing.T) {
 		_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
 		runtime.ReadMemStats(&after)
 		require.NoError(t, err)
-		for _, stage := range docs[0]["command"].(map[string]interface{}) {
-			for _, c := range stage.([]interface{}) {
-				if cmd := c.(map[string]interface{}); cmd["Cmd"] == "run" {
-					require.Equal(t, []interface{}{fmt.Sprintf("echo 0 %d", stages)}, cmd["Value"])
-				}
-			}
-		}
+		lastStage := docs[0]["command"].(map[string]interface{})[fmt.Sprintf("s%d AS s%d", stages-1, stages)].([]interface{})
+		lastCmd := lastStage[len(lastStage)-1].(map[string]interface{})
+		require.Equal(t, []interface{}{fmt.Sprintf("echo 0 %d", stages)}, lastCmd["Value"])
 		return after.TotalAlloc - before.TotalAlloc
 	}
 	small, large := parse(1000), parse(4000)
 	require.Less(t, large, small*6, "4x the stages must not cost much more than 4x the memory")
 }
 
-// Declarations are expanded when read. A chain that doubles on every line costs
-// nothing while no instruction reads it, however large its value would be.
+// Declarations are expanded only when actually read. Neither an in-stage chain,
+// a bare ARG redeclaring a global chain, nor a single-quoted reference to it
+// should force resolution.
 func TestParser_Parse_UnreadDoublingChainIsFree(t *testing.T) {
-	var source strings.Builder
-	source.WriteString("FROM scratch\nARG A=x\n")
+	var inStage, globalRedecl, singleQuoted strings.Builder
+	inStage.WriteString("FROM scratch\nARG A=x\n")
+	globalRedecl.WriteString("ARG A=x\n")
+	singleQuoted.WriteString("FROM scratch\nARG A=x\n")
 	for i := 0; i < 60; i++ {
-		source.WriteString("ARG A=$A$A\n")
+		inStage.WriteString("ARG A=$A$A\n")
+		globalRedecl.WriteString("ARG A=$A$A\n")
+		singleQuoted.WriteString("ARG A=$A$A\n")
 	}
+	globalRedecl.WriteString("FROM scratch\nARG A\n")
+	singleQuoted.WriteString("ARG S='$A'\nRUN echo $S\n")
+
+	for name, source := range map[string]string{
+		"in-stage":          inStage.String(),
+		"global bare ARG":   globalRedecl.String(),
+		"single-quoted ref": singleQuoted.String(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source), "Dockerfile", false, 0)
+			runtime.ReadMemStats(&after)
+			require.NoError(t, err)
+			require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(16<<20))
+			if name == "single-quoted ref" {
+				stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+				require.Equal(t, []interface{}{"echo $A"}, stage[len(stage)-1].(map[string]interface{})["Value"])
+			}
+		})
+	}
+}
+
+// Dependency discovery is purely lexical and never feeds synthetic empty values
+// into BuildKit's lexer. With large cached H and R and a still-lazy P=z,
+// evaluating ${H//$P/$R} must resolve P first instead of running a replacement
+// with an empty pattern.
+func TestParser_Parse_LazyPatternDoesNotAllocatePlaceholderReplacement(t *testing.T) {
+	bigH := strings.Repeat("a", 32<<10)
+	bigR := strings.Repeat("b", 32<<10)
+	source := fmt.Sprintf(
+		"FROM scratch\nARG H=%s\nARG R=%s\nRUN echo $H $R\nARG P=z\nARG OUT=${H//$P/$R}\nRUN echo $OUT\n",
+		bigH, bigR,
+	)
+
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	_, _, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source.String()), "Dockerfile", false, 0)
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte(source), "Dockerfile", false, 0)
 	runtime.ReadMemStats(&after)
 	require.NoError(t, err)
-	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(16<<20))
+	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(8<<20),
+		"resolving P statically must not run a speculative empty-pattern replacement")
+
+	stage := docs[0]["command"].(map[string]interface{})["scratch"].([]interface{})
+	require.Equal(t, []interface{}{"echo " + bigH}, stage[len(stage)-1].(map[string]interface{})["Value"])
 }
 
 // A long chain of declarations that each refer to the previous one resolves
@@ -486,8 +534,8 @@ func TestParser_Parse_LongDeclarationChainUsesBoundedStack(t *testing.T) {
 	require.Equal(t, []interface{}{"echo x x"}, stage[len(stage)-1].(map[string]interface{})["Value"])
 }
 
-// Every dependency of a word is found in one pass, so a declaration reading N
-// others is not rescanned N times.
+// Every dependency of a word is discovered statically in one pass, so a
+// declaration reading N others is resolved once without quadratic rescanning.
 func TestParser_Parse_ManyDependenciesResolveInOnePass(t *testing.T) {
 	const inputs = 3000
 	var source, ref strings.Builder
