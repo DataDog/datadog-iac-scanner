@@ -1130,14 +1130,22 @@ func TestInventoryCloudFormationForEachCollections(t *testing.T) {
 	const header = `Transform: AWS::LanguageExtensions
 Resources:
   Fn::ForEach::Buckets:
-    - Name
 `
 	const template = `    - Bucket${Name}:
         Type: AWS::S3::Bucket
-Parameters:
+`
+	const parameters = `Parameters:
   Names:
     Type: CommaDelimitedList
     Default: Blue,Green
+`
+	const nested = `    - Name
+    - [Blue, Green]
+    - Fn::ForEach::Types:
+        - Type
+        - [Bucket]
+        - ${Type}${Name}:
+            Type: AWS::S3::Bucket
 `
 	bucket := syntheticQuery("test-cfn-loop-bucket", "cloudFormation", "CloudFormation", `	resource := input.document[i].Resources[logical]
 	typ := resource.Type
@@ -1146,16 +1154,17 @@ Parameters:
 	key := sprintf("Resources.%s.Type", [logical])`)
 
 	for _, tc := range []struct {
-		name       string
-		collection string
-		loopEnd    int
+		name    string
+		loop    string
+		loopEnd int
 	}{
-		{"flow-style literal", "    - [Blue, Green]\n", 7},
-		{"block-style literal", "    -\n      - Blue\n      - Green\n", 9},
-		{"parameter reference", "    - !Ref Names\n", 7},
+		{"flow-style literal", "    - Name\n    - [Blue, Green]\n" + template, 7},
+		{"block-style literal", "    - Name\n    -\n      - Blue\n      - Green\n" + template, 9},
+		{"parameter reference", "    - Name\n    - !Ref Names\n" + template, 7},
+		{"nested literal loops", nested, 10},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			root := writeRepo(t, map[string]string{"stack.yaml": header + tc.collection + template})
+			root := writeRepo(t, map[string]string{"stack.yaml": header + tc.loop + parameters})
 			params := documentParams(root)
 			params.Platform = []string{"CloudFormation"}
 			inv, fingerprints := scanLinks(t, params, bucket)

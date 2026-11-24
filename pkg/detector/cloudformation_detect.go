@@ -6,6 +6,7 @@
 package detector
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -26,7 +27,7 @@ func detectCloudFormationLoopLine(file *model.FileMetadata, searchKey string, ou
 	if file.LineInfoDocument == nil || !cloudFormationResourceSearch(file.Kind, searchKey) {
 		return model.VulnerabilityLines{}, false
 	}
-	path := expandSearchKeyPath(searchKey)
+	path := cloudFormationSearchPath(searchKey)
 	if len(path) < 2 {
 		return model.VulnerabilityLines{}, false
 	}
@@ -45,4 +46,23 @@ func detectCloudFormationLoopLine(file *model.FileMetadata, searchKey string, ou
 	}
 	result, err := sourceLines(file, marker.Line, outputLines)
 	return result, err == nil
+}
+
+func cloudFormationSearchPath(searchKey string) []string {
+	if !strings.Contains(searchKey, "{{") {
+		return expandSearchKeyPath(searchKey)
+	}
+	// Keep wrapped keys opaque while splitting on dots, brackets and anchors.
+	var substitutions []string
+	for i, wrapped := range GetBracketValues(searchKey, nil, "") {
+		placeholder := "\x00" + strconv.Itoa(i) + "\x00"
+		searchKey = strings.ReplaceAll(searchKey, wrapped[0], placeholder)
+		substitutions = append(substitutions, placeholder, wrapped[1])
+	}
+	path := expandSearchKeyPath(searchKey)
+	unwrap := strings.NewReplacer(substitutions...)
+	for i, component := range path {
+		path[i] = unwrap.Replace(component)
+	}
+	return path
 }

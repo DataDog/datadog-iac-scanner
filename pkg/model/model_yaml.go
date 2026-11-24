@@ -202,19 +202,12 @@ func expandCloudFormationForEach(doc map[string]interface{}) {
 	if resources == nil {
 		return
 	}
-	for {
-		forEachKeys := collectForEachKeys(resources)
-		if len(forEachKeys) == 0 {
-			break
-		}
-		anyExpanded := false
-		for _, key := range forEachKeys {
-			if expandForEachEntry(resources, key, parameters) {
-				anyExpanded = true
-			}
-		}
-		if !anyExpanded {
-			break
+	lines, _ := resources["_dd_lines"].(map[string]*LineObject)
+	for _, key := range collectForEachKeys(resources) {
+		lineKey := "_dd_" + key
+		if expandForEachEntry(resources, resources[key], parameters, lines, lines[lineKey]) {
+			delete(resources, key)
+			delete(lines, lineKey)
 		}
 	}
 }
@@ -235,8 +228,10 @@ func forEachExpansionContext(doc map[string]interface{}) (resources, parameters 
 	return resources, parameters
 }
 
-func expandForEachEntry(resources map[string]interface{}, key string, parameters map[string]interface{}) bool {
-	varName, collection, templateMap, ok := parseForEachSpec(resources[key], parameters)
+func expandForEachEntry(resources map[string]interface{}, spec interface{}, parameters map[string]interface{},
+	lines map[string]*LineObject, source *LineObject,
+) bool {
+	varName, collection, templateMap, ok := parseForEachSpec(spec, parameters)
 	if !ok {
 		return false
 	}
@@ -244,14 +239,22 @@ func expandForEachEntry(resources map[string]interface{}, key string, parameters
 		bindings := map[string]string{varName: item}
 		for logicalID, resourceValue := range templateMap {
 			resolvedLogicalID := replaceForEachVars(logicalID, bindings)
-			if _, exists := resources[resolvedLogicalID]; !exists {
-				resources[resolvedLogicalID] = substituteForEachBindings(resourceValue, bindings)
-				copyForEachLineInfo(resources, key, resolvedLogicalID)
+			if _, exists := resources[resolvedLogicalID]; exists {
+				continue
+			}
+			value := substituteForEachBindings(resourceValue, bindings)
+			// Expand a nested directive in this iteration. Its name can be
+			// identical across iterations even when its generated IDs differ.
+			if strings.HasPrefix(resolvedLogicalID, "Fn::ForEach::") && expandForEachEntry(resources, value, parameters, lines, source) {
+				continue
+			}
+			resources[resolvedLogicalID] = value
+			if source != nil {
+				// Keep the outer loop's marker for the generated resource span.
+				lines["_dd_"+resolvedLogicalID] = source
 			}
 		}
 	}
-	delete(resources, key)
-	removeForEachLineInfo(resources, key)
 	return true
 }
 
@@ -379,9 +382,28 @@ func substituteForEachBindings(v interface{}, bindings map[string]string) interf
 			out[replaceForEachVars(key, bindings)] = substituteForEachBindings(val, bindings)
 		}
 		return out
+	case map[string]*LineObject:
+		return substituteForEachLineKeys(t, bindings)
 	default:
 		return v
 	}
+}
+
+// Substitute the lookup keys while leaving the written source lines intact.
+// Metadata can be shared by several expansions of the same template.
+func substituteForEachLineKeys(lines map[string]*LineObject, bindings map[string]string) map[string]*LineObject {
+	out := make(map[string]*LineObject, len(lines))
+	for key, marker := range lines {
+		if len(marker.Arr) > 0 {
+			array := make([]map[string]*LineObject, len(marker.Arr))
+			for i, element := range marker.Arr {
+				array[i] = substituteForEachLineKeys(element, bindings)
+			}
+			marker = &LineObject{Line: marker.Line, Arr: array}
+		}
+		out[replaceForEachVars(key, bindings)] = marker
+	}
+	return out
 }
 
 func isPureRefNode(m map[string]interface{}) bool {
@@ -400,26 +422,6 @@ func replaceForEachVars(template string, bindings map[string]string) string {
 		resolved = strings.ReplaceAll(resolved, "&{"+name+"}", value)
 	}
 	return resolved
-}
-
-func copyForEachLineInfo(resources map[string]interface{}, foreachKey, resourceKey string) {
-	lines, ok := resources["_dd_lines"].(map[string]*LineObject)
-	if !ok {
-		return
-	}
-	source, ok := lines["_dd_"+foreachKey]
-	if !ok {
-		return
-	}
-	lines["_dd_"+resourceKey] = source
-}
-
-func removeForEachLineInfo(resources map[string]interface{}, foreachKey string) {
-	lines, ok := resources["_dd_lines"].(map[string]*LineObject)
-	if !ok {
-		return
-	}
-	delete(lines, "_dd_"+foreachKey)
 }
 
 /*

@@ -1076,7 +1076,7 @@ Resources:
   Fn::ForEach::Regions:
     - Region
     - !Ref Regions
-    - Fn::ForEach::Tiers${Region}:
+    - Fn::ForEach::Tiers:
         - Tier
         - !Ref Tiers
         - Bucket${Region}${Tier}:
