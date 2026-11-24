@@ -21,6 +21,10 @@ type SimpleJSONFinding struct {
 	Line        int    `json:"line"`
 	FileName    string `json:"fileName"`
 	FingerPrint string `json:"fingerPrint"`
+	// RenderRoot is the Kustomization directory that rendered the document,
+	// empty (and omitted) for raw files.
+	RenderRoot          string `json:"render_root,omitempty"`
+	KustomizeResourceID string `json:"kustomize_resource_id,omitempty"`
 }
 
 // PrintSimpleJSONReport prints a flat JSON array of findings, one entry per (query × file) pair.
@@ -39,13 +43,15 @@ func PrintSimpleJSONReport(ctx context.Context, path, filename string, body inte
 			q := &summary.Queries[i]
 			for j := range q.Files {
 				findings = append(findings, SimpleJSONFinding{
-					QueryID:     q.QueryID,
-					QueryName:   q.QueryName,
-					Severity:    string(q.Severity),
-					Platform:    q.Platform,
-					Line:        q.Files[j].Line,
-					FileName:    q.Files[j].FileName,
-					FingerPrint: q.Files[j].Fingerprint,
+					QueryID:             q.QueryID,
+					QueryName:           q.QueryName,
+					Severity:            string(q.Severity),
+					Platform:            q.Platform,
+					Line:                q.Files[j].Line,
+					FileName:            q.Files[j].FileName,
+					FingerPrint:         q.Files[j].Fingerprint,
+					RenderRoot:          q.Files[j].RenderRoot,
+					KustomizeResourceID: q.Files[j].KustomizeResourceID,
 				})
 			}
 		}

@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
+	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -521,5 +523,80 @@ func TestFindingSet_RecordsWhereDroppedDuplicatesWereRaised(t *testing.T) {
 		require.Equal(t, 1, kept[0].Line)
 		require.Len(t, kept[0].AlsoRaisedOn, 2999)
 		require.Less(t, time.Since(start), time.Second, "reverse=%v", reverse)
+	}
+}
+
+// One base line rendered by two kustomizations is two findings that both
+// survive compaction and storage.
+func TestFindingSet_KeepsOneFindingPerRenderRoot(t *testing.T) {
+	ctx := context.Background()
+	base := model.Vulnerability{
+		FileName: "base/deployment.yaml", Platform: "Kubernetes", QueryID: "q",
+		ResourceType: "Deployment", ResourceName: "web", KustomizeResourceID: "apps/Deployment||web", Line: 9, SearchKey: "metadata.name={{web}}",
+	}
+	dev, prod := base, base
+	dev.RenderRoot, prod.RenderRoot = "overlays/dev", "overlays/prod"
+	kept := decodeAll(newFindingSet(true, nil), []model.Vulnerability{dev, prod, dev})
+	require.Len(t, kept, 2)
+
+	s := storage.NewMemoryStorage()
+	require.NoError(t, s.SaveVulnerabilities(ctx, kept))
+	got, err := s.GetVulnerabilities(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+}
+
+// Two same-name objects of one file rendered into different namespaces are
+// two findings: a rendered finding is identified by the rendered object, not
+// by the rule's resource name. A rule reporting n/a cannot merge known objects.
+func TestFindingSet_KeepsOneFindingPerRenderedObject(t *testing.T) {
+	ctx := context.Background()
+	files := map[string]*model.FileMetadata{}
+	for _, ns := range []string{"a", "b"} {
+		f := &model.FileMetadata{
+			ID: ns, FilePath: "o/cm.yaml", Kind: model.KindYAML, RenderRoot: "o",
+			LinesOriginalData: &[]string{"kind: ConfigMap"},
+			Kustomize: &model.KustomizeAttribution{Kind: "ConfigMap", RenderedName: "app", RenderedNamespace: ns,
+				ResourceID: "/ConfigMap|" + ns + "|app"},
+		}
+		f.SetLineInfoLoader(func(context.Context, *model.FileMetadata) (map[string]interface{}, error) {
+			return map[string]interface{}{}, nil
+		})
+		files[ns] = f
+	}
+	qCtx := &QueryContext{
+		scanID: "scan",
+		Query: &PreparedQuery{Metadata: model.QueryMetadata{Query: "q", Metadata: map[string]interface{}{
+			"severity": model.SeverityInfo, "platform": "Kubernetes", "id": "rule-id",
+		}}},
+		Files:         files,
+		FlagEvaluator: featureflags.NewLocalEvaluator(),
+	}
+	build := func(doc, name string) model.Vulnerability {
+		v, err := DefaultVulnerabilityBuilder(ctx, qCtx, &tracker.CITracker{}, map[string]interface{}{
+			"documentId": doc, "searchKey": "metadata.name={{app}}", "resourceType": "ConfigMap", "resourceName": name,
+		}, detector.NewDetectLine(3), false, 0)
+		require.NoError(t, err)
+		return *v
+	}
+	a, b := build("a", "app"), build("b", "app")
+	require.Equal(t, "/ConfigMap|a|app", a.KustomizeResourceID)
+	require.Len(t, decodeAll(newFindingSet(true, nil), []model.Vulnerability{a, b, a}), 2)
+
+	unnamed := build("a", "n/a")
+	require.Equal(t, "/ConfigMap|a|app", unnamed.KustomizeResourceID)
+	require.Len(t, decodeAll(newFindingSet(true, nil), []model.Vulnerability{unnamed, build("b", "n/a")}), 2)
+}
+
+// Relational rule subjects are independent of the object chosen to locate them.
+func TestKustomizeIdentityRuleSubject(t *testing.T) {
+	for _, platform := range []string{"Kubernetes", "kubernetes"} {
+		a := &model.FileMetadata{RenderRoot: "overlays/prod", Kustomize: &model.KustomizeAttribution{Kind: "Pod", ResourceID: "/Pod|prod|a"}}
+		b := &model.FileMetadata{RenderRoot: "overlays/prod", Kustomize: &model.KustomizeAttribution{Kind: "Pod", ResourceID: "/Pod|prod|b"}}
+		sa := kustomizeIdentity(a, platform, "ServiceAccount", "prod/shared")
+		require.Equal(t, sa, kustomizeIdentity(b, platform, "ServiceAccount", "prod/shared"))
+		require.NotEqual(t, sa, kustomizeIdentity(b, platform, "ServiceAccount", "prod/other"))
+		require.NotEqual(t, kustomizeIdentity(a, platform, "Pod", "a"), kustomizeIdentity(b, platform, "Pod", "b"))
+		require.Empty(t, kustomizeIdentity(a, "Terraform", "ServiceAccount", "prod/shared"))
 	}
 }

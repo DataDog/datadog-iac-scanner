@@ -145,6 +145,8 @@ func mutationTable() []func(v *Vulnerability) {
 		func(v *Vulnerability) { v.SuppressionKind = SuppressionKindInSource },
 		func(v *Vulnerability) { v.SuppressionJustification = SuppressionJustificationIgnoreComment },
 		func(v *Vulnerability) { v.ModuleCallChain = "stack/main.tf|module.a" },
+		func(v *Vulnerability) { v.RenderRoot = "overlays/prod" },
+		func(v *Vulnerability) { v.KustomizeResourceID = "apps/Deployment|prod|web" },
 		func(v *Vulnerability) { v.DetectedFileName = "modules/app/main.tf" },
 		func(v *Vulnerability) { v.OrderPath = "registry.example.com/org/module/main.tf" },
 		func(v *Vulnerability) { v.DetectedLineWithVulnerability = "detected text" },
@@ -280,4 +282,11 @@ func TestFirstFindingPerIdentityRecording_KeepsWhereDuplicatesWereRaised(t *test
 		instances = append(instances, instance)
 	}
 	require.Empty(t, FirstFindingPerIdentityRecording(instances)[0].AlsoRaisedOn)
+}
+
+func TestRenderedFindingOrder(t *testing.T) {
+	a := Vulnerability{FileName: "base/deploy.yaml", Line: 9, QueryID: "q", Platform: "Kubernetes", ResourceType: "Deployment", ResourceName: "web", RenderRoot: "overlays/a", KustomizeResourceID: "apps/Deployment||web"}
+	b := a
+	b.RenderRoot = "overlays/b"
+	require.Equal(t, FirstFindingPerIdentity([]Vulnerability{a, b}), FirstFindingPerIdentity([]Vulnerability{b, a}))
 }

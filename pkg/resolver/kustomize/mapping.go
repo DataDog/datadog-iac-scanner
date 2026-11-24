@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -18,7 +17,11 @@ import (
 	"sigs.k8s.io/kustomize/api/types"
 )
 
-const originAnnotation = "config.kubernetes.io/origin"
+const (
+	originAnnotation = "config.kubernetes.io/origin"
+	namespaceKind    = "Namespace"
+	generatorCreate  = "create"
+)
 
 type sourceDoc struct {
 	kind, name, namespace string
@@ -55,6 +58,9 @@ func (r *Renderer) mapResources(res *Result, m resmap.ResMap, rootKust string, r
 		res.Documents = append(res.Documents, doc)
 	}
 	rejectCollisions(res)
+	if err := r.assignResourceIDs(res, m.Resources(), g, expired); err != nil {
+		return err
+	}
 	if expired() {
 		return &RenderError{Reason: ReasonTimeout}
 	}
@@ -156,18 +162,16 @@ func (r *Renderer) renameMode(reads []string) renameMode {
 
 // generatorEntries proves generated names unambiguous across the graph: every
 // entry creates (merge and replace keep the base origin under another
-// kustomization's options), no entry name repeats, in any namespace or level,
-// and every entry hashes the same way.
+// kustomization's options), and no entry name repeats, in any namespace or
+// level. Entries may hash differently: each is matched by its own hashing.
 type generatorEntries struct {
-	names   map[string]bool
-	hashOff *bool
+	names map[string]bool
 }
 
 func (g *generatorEntries) add(k *types.Kustomization) bool {
 	if g.names == nil {
 		g.names = map[string]bool{}
 	}
-	global := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
 	var args []types.GeneratorArgs
 	for i := range k.ConfigMapGenerator {
 		args = append(args, k.ConfigMapGenerator[i].GeneratorArgs)
@@ -177,11 +181,10 @@ func (g *generatorEntries) add(k *types.Kustomization) bool {
 	}
 	for i := range args {
 		a := &args[i]
-		off := global || a.Options != nil && a.Options.DisableNameSuffixHash
-		if (a.Behavior != "" && a.Behavior != "create") || g.names[a.Name] || (g.hashOff != nil && *g.hashOff != off) {
+		if (a.Behavior != "" && a.Behavior != generatorCreate) || g.names[a.Name] {
 			return false
 		}
-		g.names[a.Name], g.hashOff = true, &off
+		g.names[a.Name] = true
 	}
 	return true
 }
@@ -231,7 +234,7 @@ func (r *Renderer) mapResource(res *Result, rs *resource.Resource, g *loadGraph,
 		Chain:             []string{rootKust},
 	}
 	doc := model.ResolvedHelm{Content: content, SourceDocumentIndex: -1, Kustomize: attr}
-	if mode == renameAffix && attr.Kind == "Namespace" {
+	if mode == renameAffix && attr.Kind == namespaceKind {
 		mode = renameAny
 	}
 	switch {
@@ -672,20 +675,12 @@ func generatedAs(name, n string, hashOff bool) bool {
 	if hashOff {
 		return name == n
 	}
-	hash, ok := strings.CutPrefix(name, n+"-")
-	return ok && hash != "" && !strings.Contains(hash, "-")
+	return name != n && hashSuffix.ReplaceAllString(name, "") == n
 }
 
-// generatorName returns the only generator entry of genKind
-// (ConfigMapGenerator or SecretGenerator) in the kustomization at path whose
-// name between prefix and suffix, with its hash unless disabled, is the
-// rendered name; none or several return nil.
-func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string) *types.GeneratorArgs {
-	k, ok := r.Kustomization(path)
-	if !ok {
-		return nil
-	}
-	hashOff := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
+// generatorArgs returns the ConfigMap and Secret generators of genKind
+// declared in k.
+func generatorArgs(k *types.Kustomization, genKind string) []types.GeneratorArgs {
 	var args []types.GeneratorArgs
 	switch genKind {
 	case "ConfigMapGenerator":
@@ -697,6 +692,20 @@ func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string)
 			args = append(args, k.SecretGenerator[i].GeneratorArgs)
 		}
 	}
+	return args
+}
+
+// generatorName returns the only generator entry of genKind
+// (ConfigMapGenerator or SecretGenerator) in the kustomization at path whose
+// name between prefix and suffix, with its hash unless disabled, is the
+// rendered name; none or several return nil.
+func (r *Renderer) generatorName(path, genKind, rendered, prefix, suffix string) *types.GeneratorArgs {
+	k, ok := r.Kustomization(path)
+	if !ok {
+		return nil
+	}
+	args := generatorArgs(k, genKind)
+	hashOff := k.GeneratorOptions != nil && k.GeneratorOptions.DisableNameSuffixHash
 	var best *types.GeneratorArgs
 	for i := range args {
 		n := args[i].Name

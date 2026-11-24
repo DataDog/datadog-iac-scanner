@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1229,7 +1230,6 @@ func TestRenderNoRenamingProof(t *testing.T) {
 	for name, ks := range map[string][]types.Kustomization{
 		"merge":         {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "merge", false)}}},
 		"repeated name": {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}, {SecretGenerator: []types.SecretArgs{{GeneratorArgs: gen("g", "", false).GeneratorArgs}}}},
-		"mixed hashing": {{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}, {ConfigMapGenerator: []types.ConfigMapArgs{gen("h", "create", true)}}},
 	} {
 		var g generatorEntries
 		ok := true
@@ -1239,6 +1239,11 @@ func TestRenderNoRenamingProof(t *testing.T) {
 		if ok {
 			t.Errorf("%s: generator entries proved unambiguous", name)
 		}
+	}
+	var mixed generatorEntries
+	if !mixed.add(&types.Kustomization{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "", false)}}) ||
+		!mixed.add(&types.Kustomization{ConfigMapGenerator: []types.ConfigMapArgs{gen("h", "create", true)}}) {
+		t.Error("entries hashing differently are matched by their own hashing")
 	}
 	var g generatorEntries
 	if !g.add(&types.Kustomization{ConfigMapGenerator: []types.ConfigMapArgs{gen("g", "create", false), gen("g-x", "", false)}}) {
@@ -1438,8 +1443,59 @@ func TestRenderSymlinkedRootKustomizationFails(t *testing.T) {
 	}
 }
 
-// TestRenderChainIntermediate records every kustomization between the root
-// and the source file, not only the two ends.
+// TestRenderIdentityNameHashDisabled keeps a generated name that only looks
+// hashed when its generator disabled the content-hash suffix, by its own
+// options or the kustomization's generatorOptions.
+func TestRenderIdentityNameHashDisabled(t *testing.T) {
+	const kust = "configMapGenerator:\n  - name: settings-bcdfgh2m4k\n    literals:\n      - TOKEN=1\n"
+	for name, option := range map[string]string{
+		"global generatorOptions": "generatorOptions:\n  disableNameSuffixHash: true\n" + kust,
+		"generator options":       kust + "    options:\n      disableNameSuffixHash: true\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, err := render(t, writeTree(t, map[string]string{"o/kustomization.yaml": option}), "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range res.Documents {
+				a := d.Kustomize
+				if a.Kind != "ConfigMap" {
+					continue
+				}
+				if a.RenderedName != "settings-bcdfgh2m4k" {
+					t.Errorf("precondition: rendered name %q, want the generator name whole", a.RenderedName)
+				}
+				if a.ResourceID != "/ConfigMap||"+a.RenderedName {
+					t.Errorf("identity name %q lost a suffix that was never a hash", a.ResourceID)
+				}
+			}
+		})
+	}
+}
+
+// TestRenderIdentityOverlappingGenerators keeps the stripped identity of a
+// hash-enabled generator whose name contains a disableNameSuffixHash sibling's
+// name, and keeps it when the generated data changes the content hash.
+func TestRenderIdentityOverlappingGenerators(t *testing.T) {
+	for _, pair := range []struct{ hashed, plain string }{
+		{"app-config", "app"}, {"settings", "settings-bcdfgh2m4k"},
+	} {
+		t.Run(pair.hashed+"/"+pair.plain, func(t *testing.T) {
+			get := func(value string) []string {
+				tree := map[string]string{"o/kustomization.yaml": fmt.Sprintf("configMapGenerator:\n- name: %s\n  literals: [A=%s]\n- name: %s\n  options:\n    disableNameSuffixHash: true\n  literals: [A=literal]\n", pair.hashed, value, pair.plain)}
+				return identities(t, tree, "o")
+			}
+			want := []string{"/ConfigMap||" + pair.hashed, "/ConfigMap||" + pair.plain}
+			sort.Strings(want)
+			for _, value := range []string{"one", "two"} {
+				if got := get(value); !reflect.DeepEqual(got, want) {
+					t.Errorf("mixed generator identities %v, want %v", got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestRenderChainIntermediate(t *testing.T) {
 	dir := writeTree(t, map[string]string{
 		"top/kustomization.yaml":  "resources:\n  - ../mid\n",
@@ -1680,5 +1736,382 @@ func BenchmarkPlan(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		Plan(abs, nil, content, canonical)
+	}
+}
+
+// identities renders root in tree and returns the resource IDs of the
+// rendered objects.
+func identities(t *testing.T, tree map[string]string, root string) []string {
+	t.Helper()
+	res, err := render(t, writeTree(t, tree), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, d := range res.Documents {
+		ids = append(ids, d.Kustomize.ResourceID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// TestRenderIdentity identifies a rendered object by its rendered group, kind,
+// namespace and name: where its manifest lives and what a generator holds do
+// not matter, the affixes and namespace an overlay sets do.
+func TestRenderIdentity(t *testing.T) {
+	tree := func(file, prefix, ns, value string) map[string]string {
+		return map[string]string{
+			"base/kustomization.yaml": "resources:\n  - " + file + "\n",
+			"base/" + file:            deployment,
+			"o/kustomization.yaml": "namePrefix: " + prefix + "\nnamespace: " + ns + "\nresources:\n  - ../base\n" +
+				"configMapGenerator:\n  - name: settings\n    literals:\n      - A=" + value + "\n",
+		}
+	}
+	got := identities(t, tree("deployment.yaml", "dev-", "dev", "1"), "o")
+	want := []string{"/ConfigMap|dev|dev-settings", "/Service|dev|dev-web", "apps/Deployment|dev|dev-web"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for name, other := range map[string]map[string]string{
+		"moved manifest":      tree("moved.yaml", "dev-", "dev", "1"),
+		"generated data edit": tree("deployment.yaml", "dev-", "dev", "2"),
+	} {
+		if ids := identities(t, other, "o"); !reflect.DeepEqual(ids, got) {
+			t.Errorf("%s: got %v, want %v", name, ids, got)
+		}
+	}
+	for name, other := range map[string]map[string]string{
+		"namePrefix": tree("deployment.yaml", "qa-", "dev", "1"),
+		"namespace":  tree("deployment.yaml", "dev-", "qa", "1"),
+	} {
+		for i, id := range identities(t, other, "o") {
+			if id == got[i] {
+				t.Errorf("%s: %s kept its identity", name, id)
+			}
+		}
+	}
+}
+
+// TestRenderIdentityReplacementCanary never identifies an object by a name a
+// replacement copied from generated data, whether the target names the field
+// or leaves it out: an omitted target fieldPaths defaults to metadata.name.
+func TestRenderIdentityReplacementCanary(t *testing.T) {
+	for name, targets := range map[string]string{
+		"named field":   "        fieldPaths:\n          - metadata.name\n",
+		"leading dot":   "        fieldPaths:\n          - .metadata.name\n",
+		"omitted field": "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeTree(t, map[string]string{
+				"o/deployment.yaml": deployment,
+				"o/kustomization.yaml": "resources:\n  - deployment.yaml\n" +
+					"configMapGenerator:\n  - name: settings\n    literals:\n      - TOKEN=canaryvalue\n" +
+					"replacements:\n  - source:\n      kind: ConfigMap\n      name: settings\n      fieldPath: data.TOKEN\n" +
+					"    targets:\n      - select:\n          kind: Deployment\n" + targets,
+			})
+			res, err := render(t, dir, "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var copied bool
+			for _, d := range res.Documents {
+				a := d.Kustomize
+				copied = copied || a.RenderedName == "canaryvalue"
+				if id := a.ResourceID; strings.Contains(id, "canary") {
+					t.Errorf("identity %q carries generated data", id)
+				}
+			}
+			if !copied {
+				t.Fatal("precondition: the replacement did not copy the value into a name")
+			}
+		})
+	}
+}
+
+// TestRenderIdentityUnknownDocument keeps the findings of distinct objects
+// whose source attribution fails apart: their identities fall back to the
+// source file and document, and to the object's position in the render when
+// even the document is unknown, without carrying generated data.
+func TestRenderIdentityUnknownDocument(t *testing.T) {
+	const two = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web1\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web2\n"
+	dir := writeTree(t, map[string]string{
+		"o/deployment.yaml": two,
+		"o/kustomization.yaml": "resources:\n  - deployment.yaml\n" +
+			"configMapGenerator:\n  - name: settings\n    literals:\n      - TOKEN=canaryvalue\n" +
+			"replacements:\n  - source:\n      kind: ConfigMap\n      name: settings\n      fieldPath: data.TOKEN\n" +
+			"    targets:\n      - select:\n          kind: Deployment\n          name: web1\n",
+	})
+	res, err := render(t, dir, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, d := range res.Documents {
+		a := d.Kustomize
+		if a.Kind != "Deployment" {
+			continue
+		}
+		if id := a.ResourceID; strings.Contains(id, "canary") {
+			t.Errorf("identity %q carries generated data", id)
+		} else {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) != 2 {
+		t.Fatalf("got %d Deployment identities %v, want 2", len(ids), ids)
+	}
+	if ids[0] == ids[1] {
+		t.Errorf("two Deployments share one identity %q: one finding hides the other", ids[0])
+	}
+}
+
+// TestRenderIdentityLegacyVars keeps the identity of an object whose name a
+// legacy var writes through a custom varReference stable: editing only the
+// generated data the var carries moves neither identity nor fingerprint, and
+// the value never enters the identity.
+func TestRenderIdentityLegacyVars(t *testing.T) {
+	const varDeployment = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: $(TOKEN)\n"
+	identity := func(t *testing.T, value string) (rendered, id string) {
+		t.Helper()
+		dir := writeTree(t, map[string]string{
+			"o/deployment.yaml": varDeployment,
+			"o/ref.yaml":        "varReference:\n  - path: metadata/name\n    kind: Deployment\n",
+			"o/kustomization.yaml": "resources:\n  - deployment.yaml\n" +
+				"configurations:\n  - ref.yaml\n" +
+				"configMapGenerator:\n  - name: settings\n    literals:\n      - TOKEN=" + value + "\n" +
+				"vars:\n  - name: TOKEN\n    objref:\n      apiVersion: v1\n      kind: ConfigMap\n      name: settings\n    fieldref:\n      fieldpath: data.TOKEN\n",
+		})
+		res, err := render(t, dir, "o")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range res.Documents {
+			if a := d.Kustomize; a.Kind == "Deployment" {
+				return a.RenderedName, a.ResourceID
+			}
+		}
+		t.Fatal("no Deployment rendered")
+		return "", ""
+	}
+	rendered, id := identity(t, "canaryvalue")
+	if !strings.Contains(rendered, "canaryvalue") {
+		t.Fatalf("precondition: the var did not reach the rendered name %q", rendered)
+	}
+	if strings.Contains(id, "canary") {
+		t.Errorf("identity %q carries generated data", id)
+	}
+	if editedRendered, editedID := identity(t, "othervalue"); editedID != id {
+		t.Errorf("data edit moved the identity from %q to %q", id, editedID)
+	} else if !strings.Contains(editedRendered, "othervalue") {
+		t.Error("precondition: the data edit did not reach the rendered name")
+	}
+}
+
+// Review probes exercise identity contracts through real Kustomize builds.
+func TestRenderIdentityContracts(t *testing.T) {
+	t.Run("distinct unknown generators", func(t *testing.T) {
+		files := map[string]string{
+			"o/deploy.yaml":        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+			"o/kustomization.yaml": "resources: [deploy.yaml]\nconfigMapGenerator:\n- name: first\n  literals: [A=one]\n- name: second\n  literals: [A=two]\npatches:\n- target:\n    kind: Deployment\n    name: web\n  patch: |-\n    - op: add\n      path: /metadata/name\n      value: renamed\n",
+		}
+		res, err := render(t, writeTree(t, files), "o")
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen := map[string]string{}
+		for _, d := range res.Documents {
+			a := d.Kustomize
+			if a.Kind != "ConfigMap" {
+				continue
+			}
+			id := a.ResourceID
+			t.Logf("rendered=%q id=%q", a.RenderedName, id)
+			if old, ok := seen[id]; ok {
+				t.Errorf("distinct objects %q and %q share identity %q", old, a.RenderedName, id)
+			}
+			seen[id] = a.RenderedName
+		}
+	})
+	t.Run("replacement spellings exclude generated data", func(t *testing.T) {
+		for _, field := range []string{"metadata.name", ".metadata.name", "metadata.namespace", ".metadata.namespace"} {
+			t.Run(field, func(t *testing.T) {
+				get := func(value string) string {
+					files := map[string]string{
+						"o/deploy.yaml":        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: initial\n",
+						"o/kustomization.yaml": "resources: [deploy.yaml]\nconfigMapGenerator:\n- name: settings\n  literals: [TOKEN=" + value + "]\nreplacements:\n- source:\n    kind: ConfigMap\n    name: settings\n    fieldPath: data.TOKEN\n  targets:\n  - select:\n      kind: Deployment\n    fieldPaths: [" + field + "]\n",
+					}
+					res, err := render(t, writeTree(t, files), "o")
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, d := range res.Documents {
+						if d.Kustomize.Kind == "Deployment" {
+							return d.Kustomize.ResourceID
+						}
+					}
+					t.Fatal("missing Deployment")
+					return ""
+				}
+				a, b := get("canaryone"), get("canarytwo")
+				t.Logf("before=%q after=%q", a, b)
+				if strings.Contains(a, "canary") || strings.Contains(b, "canary") {
+					t.Error("identity contains generated data")
+				}
+				if a != b {
+					t.Error("generated-data-only edit changed identity")
+				}
+			})
+		}
+	})
+	t.Run("unrelated identity writer preserves other objects", func(t *testing.T) {
+		get := func(file, prefix, namespace, replacement string) string {
+			files := map[string]string{
+				"o/" + file:            "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n---\napiVersion: v1\nkind: Service\nmetadata:\n  name: web\n  namespace: initial\n",
+				"o/kustomization.yaml": "resources: [" + file + "]\nnamePrefix: " + prefix + "\nnamespace: " + namespace + "\nconfigMapGenerator:\n- name: settings\n  literals: [TOKEN=other]\n" + replacement,
+			}
+			res, err := render(t, writeTree(t, files), "o")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range res.Documents {
+				if d.Kustomize.Kind == "Deployment" {
+					return d.Kustomize.ResourceID
+				}
+			}
+			t.Fatal("missing Deployment")
+			return ""
+		}
+		replacement := "replacements:\n- source:\n    kind: ConfigMap\n    name: settings\n    fieldPath: data.TOKEN\n  targets:\n  - select:\n      kind: Service\n    fieldPaths: [metadata.namespace]\n"
+		before := get("deploy.yaml", "dev-", "dev", "")
+		after := get("deploy.yaml", "dev-", "dev", replacement)
+		moved := get("moved.yaml", "dev-", "dev", replacement)
+		renamed := get("deploy.yaml", "qa-", "dev", replacement)
+		namespace := get("deploy.yaml", "dev-", "qa", replacement)
+		t.Logf("plain=%q writer=%q moved=%q renamed=%q namespace=%q", before, after, moved, renamed, namespace)
+		if before != after {
+			t.Error("unrelated identity writer changed Deployment identity")
+		}
+		if after != moved {
+			t.Error("moving manifest changed Deployment identity")
+		}
+		if after == renamed {
+			t.Error("namePrefix change did not change Deployment identity")
+		}
+		if after == namespace {
+			t.Error("namespace change did not change Deployment identity")
+		}
+	})
+}
+
+func TestRenderIdentitySourceFanout(t *testing.T) {
+	files := map[string]string{
+		"base/kustomization.yaml": "resources: [deploy.yaml]\n",
+		"base/deploy.yaml":        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+		"a/kustomization.yaml":    "resources: [../base]\nnamePrefix: a-\n",
+		"b/kustomization.yaml":    "resources: [../base]\nnamePrefix: b-\n",
+		"o/service.yaml":          "apiVersion: v1\nkind: Service\nmetadata:\n  name: svc\n  namespace: initial\n",
+		"o/kustomization.yaml":    "resources: [../a, ../b, service.yaml]\nconfigMapGenerator:\n- name: settings\n  literals: [TOKEN=other]\nreplacements:\n- source:\n    kind: ConfigMap\n    name: settings\n    fieldPath: data.TOKEN\n  targets:\n  - select:\n      kind: Service\n    fieldPaths: [metadata.namespace]\n",
+	}
+	res, err := render(t, writeTree(t, files), "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	count := 0
+	for _, d := range res.Documents {
+		a := d.Kustomize
+		if a.Kind != "Deployment" {
+			continue
+		}
+		count++
+		id := a.ResourceID
+		t.Logf("rendered=%q source=%q document=%d identity=%q", a.RenderedName, a.SourceName, d.SourceDocumentIndex, id)
+		if old, ok := ids[id]; ok {
+			t.Errorf("distinct rendered objects %q and %q share identity %q", old, a.RenderedName, id)
+		}
+		ids[id] = a.RenderedName
+	}
+	if count != 2 {
+		t.Fatalf("wanted two Deployment objects, got %d", count)
+	}
+}
+
+// Every data-to-identity mechanism keeps generated values out of resource IDs.
+func TestRenderIdentityDataEdits(t *testing.T) {
+	mechanisms := map[string]string{
+		"replacement file": "replacements:\n- path: replace.yaml\n",
+		"replacement list": "replacements:\n- path: replacements.yaml\n",
+		"JSON patch copy":  "patches:\n- target:\n    kind: ConfigMap\n    name: settings\n  patch: |-\n    - op: copy\n      from: /data/TOKEN\n      path: /metadata/name\n",
+	}
+	for label, mechanism := range mechanisms {
+		t.Run(label, func(t *testing.T) {
+			get := func(value string) string {
+				replacement := "source:\n  kind: ConfigMap\n  name: settings\n  fieldPath: data.TOKEN\ntargets:\n- select:\n    kind: ConfigMap\n  fieldPaths: [.metadata.name]\n"
+				files := map[string]string{
+					"o/kustomization.yaml": "configMapGenerator:\n- name: settings\n  literals: [TOKEN=" + value + "]\n" + mechanism,
+					"o/replace.yaml":       replacement,
+					"o/replacements.yaml":  "- " + strings.ReplaceAll(strings.TrimSuffix(replacement, "\n"), "\n", "\n  ") + "\n",
+				}
+				res, err := render(t, writeTree(t, files), "o")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(res.Documents) != 1 {
+					t.Fatal("expected one generated object")
+				}
+				a := res.Documents[0].Kustomize
+				if !strings.Contains(a.RenderedName, value) {
+					t.Fatalf("precondition: data did not reach name %q", a.RenderedName)
+				}
+				if strings.Contains(a.ResourceID, value) {
+					t.Fatalf("identity contains generated data: %q", a.ResourceID)
+				}
+				return a.ResourceID
+			}
+			if a, b := get("canaryone"), get("canarytwo"); a != b {
+				t.Errorf("data edit changed identity: %q -> %q", a, b)
+			}
+		})
+	}
+}
+
+func TestRenderIdentityGeneratorInheritance(t *testing.T) {
+	for _, behavior := range []string{"merge", "replace"} {
+		for _, disabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/hash-disabled-%t", behavior, disabled), func(t *testing.T) {
+				get := func(value string) string {
+					files := map[string]string{
+						"base/kustomization.yaml": "configMapGenerator:\n- name: settings-bcdfgh2m4k\n  literals: [A=base]\n",
+						"o/kustomization.yaml":    fmt.Sprintf("resources: [../base]\nconfigMapGenerator:\n- name: settings-bcdfgh2m4k\n  behavior: %s\n  options:\n    disableNameSuffixHash: %t\n  literals: [A=%s]\n", behavior, disabled, value),
+					}
+					res, err := render(t, writeTree(t, files), "o")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(res.Documents) != 1 {
+						t.Fatal("expected one generated object")
+					}
+					id := res.Documents[0].Kustomize.ResourceID
+					if !strings.HasPrefix(id, "source:") {
+						t.Errorf("unproven inherited hash settings must use explicit fallback, got %q", id)
+					}
+					return id
+				}
+				if a, b := get("one"), get("two"); a != b {
+					t.Errorf("data edit changed fallback %q -> %q", a, b)
+				}
+			})
+		}
+	}
+}
+
+func TestRenderIdentityDistinctComponents(t *testing.T) {
+	files := map[string]string{
+		"o/kustomization.yaml": "resources: [deploy.yaml]\n",
+		"o/deploy.yaml":        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: c\n  namespace: a|b\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: b|c\n  namespace: a\n",
+	}
+	ids := identities(t, files, "o")
+	if len(ids) != 2 || ids[0] == ids[1] {
+		t.Fatalf("distinct components must stay distinct: %v", ids)
 	}
 }
