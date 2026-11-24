@@ -562,16 +562,18 @@ func (b *factBuilder) walkConditionalScope(scope int, fn func(condScope int)) in
 func (b *factBuilder) walkIf(node *syntax.IfClause, source string, scope int, deferred, conditional bool, depth, nesting int) int {
 	return b.walkConditionalScope(scope, func(condScope int) {
 		initial := b.options[condScope]
+		conditionOptions := initial
 		changed := false
 		for cur, first := node, true; cur != nil; cur, first = cur.Else, false {
 			condConditional := true
 			if first {
 				condConditional = conditional
 			}
-			b.options[condScope] = initial
+			b.options[condScope] = conditionOptions
 			b.walkStmts(cur.Cond, source, condScope, deferred, condConditional, depth, nesting+1)
+			conditionOptions = b.options[condScope]
 			b.walkStmts(cur.Then, source, condScope, deferred, true, depth, nesting+1)
-			if b.options[condScope] != initial {
+			if conditionOptions != initial || b.options[condScope] != initial {
 				changed = true
 			}
 		}
@@ -811,19 +813,49 @@ func shellScriptIndex(words []Value, name string) int {
 
 var shellValueOptions = map[string]bool{shellOptionValue: true, "+o": true, "-O": true, "+O": true, "--rcfile": true, "--init-file": true}
 
+var suValueOptions = map[string]bool{
+	"-s": true, "--shell": true, "-g": true, "--group": true,
+	"-G": true, "--supp-group": true, "-w": true, "--whitelist-environment": true,
+}
+
 func suScriptIndex(words []Value) int {
 	for i := 1; i < len(words); i++ {
 		if !words[i].Known {
 			return -1
 		}
-		if words[i].Text == optionEnd {
+		arg := words[i].Text
+		if arg == optionEnd {
+			return suForwardedScriptIndex(words, i+1)
+		}
+		if arg == commandFlag || arg == "--command" {
+			if i+1 < len(words) {
+				return i + 1
+			}
 			return -1
 		}
-		if (words[i].Text == commandFlag || words[i].Text == "--command") && i+1 < len(words) {
-			return i + 1
+		if suValueOptions[arg] {
+			i++
+			continue
 		}
+		if arg == "-" || strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return suForwardedScriptIndex(words, i)
 	}
 	return -1
+}
+
+// suForwardedScriptIndex resolves shell -c arguments forwarded after the
+// username operand (for example, `su -s /bin/sh -- root -c 'cmd'`).
+func suForwardedScriptIndex(words []Value, userIndex int) int {
+	if userIndex >= len(words) {
+		return -1
+	}
+	rel := shellScriptIndex(words[userIndex:], sh)
+	if rel < 0 {
+		return -1
+	}
+	return userIndex + rel
 }
 
 // Literal performs only quote removal for a single grammar-delimited word.

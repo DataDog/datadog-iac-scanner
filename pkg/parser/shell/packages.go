@@ -61,10 +61,12 @@ const (
 )
 
 var (
-	aptApkZypperVersionPattern = regexp.MustCompile(`^[A-Za-z0-9_.+-]+~?=.+$`)
+	aptApkZypperVersionPattern = regexp.MustCompile(`^[A-Za-z0-9_.+-]+(:[A-Za-z0-9_-]+)?~?=.+$`)
 	pipVersionPattern          = regexp.MustCompile(`^[A-Za-z0-9_.-]+(\[[^]]+\])?(===?|~=).+$`)
 	rpmVersionPatterns         = []*regexp.Regexp{
 		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-(\d+:)?(\d+\.)+\d+`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d+:\d[A-Za-z0-9_.~+^]*`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d[A-Za-z0-9.~+^]*-\d[A-Za-z0-9_~+^]*\.[A-Za-z0-9_.]+$`),
 		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\$.+`),
 		regexp.MustCompile(`^[A-Za-z0-9_.+-]+=.+`),
 	}

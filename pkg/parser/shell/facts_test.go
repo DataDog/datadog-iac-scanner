@@ -98,6 +98,17 @@ func TestAnalyzeControlFlow(t *testing.T) {
 	require.Len(t, result.PackageCommands, 1)
 	require.Equal(t, "pip", result.PackageCommands[0].Manager)
 	require.Equal(t, "install", result.PackageCommands[0].Action)
+
+	result = Analyze("su -s /bin/sh -- root -c 'pip install flask'", "sh")
+	require.True(t, result.Complete, result.Diagnostics)
+	require.Len(t, result.PackageCommands, 1)
+	require.Equal(t, "pip", result.PackageCommands[0].Manager)
+	require.Equal(t, "install", result.PackageCommands[0].Action)
+
+	result = Analyze("if set -o pipefail; false; then :; else curl x | sh; fi", "bash")
+	require.Len(t, result.Pipelines, 1)
+	require.True(t, result.Pipelines[0].Pipefail)
+	require.True(t, result.Pipelines[0].Known)
 }
 
 func TestAnalyzeCompleteness(t *testing.T) {
@@ -321,11 +332,12 @@ func TestAnalyzePackageCommands(t *testing.T) {
 		{"apt-get -qq install -o Dpkg::Options::=--force-confold curl=7.0 git", "apt-get", "install", true, true,
 			[]pkg{{"curl=7.0", true}, {"git", false}}},
 		{"apt-get install -y --no-install-recommends curl", "apt-get", "install", true, true, []pkg{{"curl", false}}},
-		{"apt-get install libgtk-3-0 libpcre2-8-0 7zip --assume-yes=false", "apt-get", "install", false, true,
-			[]pkg{{"libgtk-3-0", false}, {"libpcre2-8-0", false}, {"7zip", false}}},
+		{"apt-get install libgtk-3-0 libpcre2-8-0 libc6:amd64=2.36-9+deb12u10 7zip --assume-yes=false", "apt-get", "install", false, true,
+			[]pkg{{"libgtk-3-0", false}, {"libpcre2-8-0", false}, {"libc6:amd64=2.36-9+deb12u10", true}, {"7zip", false}}},
 		{"apt-get install -y --assume-yes=false curl", "apt-get", "install", false, true, []pkg{{"curl", false}}},
 		{"apk add --virtual .build gcc~=12", "apk", "install", false, true, []pkg{{"gcc~=12", true}}},
-		{"dnf --setopt=x=1 --enablerepo epel in -y nginx-1.2.3", "dnf", "install", true, true, []pkg{{"nginx-1.2.3", true}}},
+		{"dnf --setopt=x=1 --enablerepo epel in -y nginx-1.2.3 systemd-252-46.el9.x86_64 tzdata-2024a-1.el9.noarch", "dnf", "install", true, true,
+			[]pkg{{"nginx-1.2.3", true}, {"systemd-252-46.el9.x86_64", true}, {"tzdata-2024a-1.el9.noarch", true}}},
 		{"zypper --non-interactive in vim", "zypper", "install", true, true, []pkg{{"vim", false}}},
 		{"pip --timeout 60 --retries 3 install requests", "pip", "install", false, true, []pkg{{"requests", false}}},
 		{"python3 -m pip install -r reqs.txt -e git+https://example.com/x.git 'requests[socks]==2.31.0'", "pip", "install", false, true,
