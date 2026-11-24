@@ -994,21 +994,26 @@ func TestInventoryLinksDocumentFindings(t *testing.T) {
 	})
 
 	t.Run("Compose property matching a dotted service name", func(t *testing.T) {
-		root := writeRepo(t, map[string]string{
-			"docker-compose.yml": "services:\n  web:\n    environment: {DB_PASSWORD: example-value}\n" +
-				"  web.environment:\n    image: alpine:3\n",
-		})
 		rule := syntheticQuery("test-compose-environment", "dockerCompose", "DockerCompose", `	svc := input.document[i].services[name]
 	svc.environment.DB_PASSWORD == "example-value"
 	typ := "service"
 	key := sprintf("services.%s.environment", [name])`)
-		params := documentParams(root)
-		params.Platform = []string{"DockerCompose"}
+		for _, fixture := range []struct{ name, compose string }{
+			{"block", "services:\n  web:\n    environment: {DB_PASSWORD: example-value}\n" +
+				"  web.environment:\n    image: alpine:3\n"},
+			{"flow", "services: {web: {environment: {DB_PASSWORD: example-value}}, web.environment: {image: alpine:3}}\n"},
+		} {
+			t.Run(fixture.name, func(t *testing.T) {
+				root := writeRepo(t, map[string]string{"docker-compose.yml": fixture.compose})
+				params := documentParams(root)
+				params.Platform = []string{"DockerCompose"}
 
-		inv, fingerprints := scanLinks(t, params, rule)
-		require.Len(t, inv.Resources, 2)
-		require.Len(t, fingerprints, 1)
-		require.Equal(t, []string{"docker-compose.yml|services.web"}, linkedRefs(inv)[fingerprints[0]])
+				inv, fingerprints := scanLinks(t, params, rule)
+				require.Len(t, inv.Resources, 2)
+				require.Len(t, fingerprints, 1)
+				require.Equal(t, []string{"docker-compose.yml|services.web"}, linkedRefs(inv)[fingerprints[0]])
+			})
+		}
 	})
 
 	t.Run("Helm repeated list", func(t *testing.T) {

@@ -63,7 +63,7 @@ func legacyDocumentOccurrence(
 	platform string, occurrences []*model.ResourceOccurrence, searchKey string, line int,
 ) []*model.ResourceOccurrence {
 	if line > 0 {
-		if o := dottedLegacyOccurrence(occurrences, searchKey, line); o != nil {
+		if o := dottedLegacyOccurrence(occurrences, searchKey, line); o != nil && legacySourceOccurrence(occurrences, line) == o {
 			return []*model.ResourceOccurrence{o}
 		}
 	}
