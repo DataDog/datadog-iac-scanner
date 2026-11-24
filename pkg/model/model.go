@@ -1472,6 +1472,9 @@ type AnalyzedPaths struct {
 	// TooLarge holds, per file skipped for its size, the platform its
 	// extension gives.
 	TooLarge map[string]string
+	// DeployedBaseCandidates are the files mentioning an Argo CD Application
+	// or Flux GitRepository/Kustomization, when KustomizeRoots are collected.
+	DeployedBaseCandidates []string
 }
 
 // ResolvedFileSplit is a struct that contains the information of a resolved file, the path and the lines of the file

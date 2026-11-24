@@ -343,6 +343,30 @@ func (c *Client) createQueryFilter() *source.QueryInspectorParameters {
 	return &queryFilter
 }
 
+// kustomizeSettings builds the render settings after the walk's excludes are
+// known: Config.IgnorePaths carries the gitignore and exclude paths by then.
+func (c *Client) kustomizeSettings(paths []string) (*provider.KustomizeSettings, error) {
+	repo := c.ScanParams.RepoPath
+	if repo == "" && len(paths) > 0 {
+		repo = paths[0]
+	}
+	maxFile := int64(math.MaxInt64)
+	if c.ScanParams.MaxFileSizeFlag > 0 {
+		maxFile = int64(c.ScanParams.MaxFileSizeFlag) << 20
+	}
+	// Built after the walk's excludes are known: they carry the gitignore
+	// and exclude paths by then.
+	scope, err := provider.ExpandPathFilter(c.walkScopeExcludes, c.ScanParams.Config.OnlyPaths)
+	if err != nil {
+		return nil, err
+	}
+	return &provider.KustomizeSettings{
+		Roots: c.kustomizeRoots, RepoPath: repo, MaxFileBytes: maxFile, Scope: scope,
+		DeployedCandidates: c.kustomizeDeployedCandidates,
+		RepoURL:            c.ScanParams.SCIInfo.RepositoryCommitInfo.RepositoryUrl,
+	}, nil
+}
+
 func (c *Client) createService(
 	ctx context.Context,
 	inspector *engine.Inspector,
@@ -475,23 +499,10 @@ func (c *Client) configureKustomizeSource(fsSource *provider.FileSystemSourcePro
 	if len(c.kustomizeRoots) == 0 {
 		return nil
 	}
-
-	repo := c.ScanParams.RepoPath
-	if repo == "" && len(paths) > 0 {
-		repo = paths[0]
+	settings, err := c.kustomizeSettings(paths)
+	if err != nil {
+		return err
 	}
-	maxFile := int64(math.MaxInt64)
-	if c.ScanParams.MaxFileSizeFlag > 0 {
-		maxFile = int64(c.ScanParams.MaxFileSizeFlag) << 20
-	}
-	// Built after the walk's excludes are known: Config.IgnorePaths
-	// carries the gitignore and exclude paths by now.
-	scope, scopeErr := provider.ExpandPathFilter(c.walkScopeExcludes, c.ScanParams.Config.OnlyPaths)
-	if scopeErr != nil {
-		return scopeErr
-	}
-	fsSource.SetKustomize(&provider.KustomizeSettings{
-		Roots: c.kustomizeRoots, RepoPath: repo, MaxFileBytes: maxFile, Scope: scope,
-	})
+	fsSource.SetKustomize(settings)
 	return nil
 }
