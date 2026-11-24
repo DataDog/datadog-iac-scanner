@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1071,4 +1072,86 @@ func TestAnalyze_KustomizeRoots(t *testing.T) {
 	require.Empty(t, analyzeOne(filepath.Join(dir, "ignored", "kustomization.yaml")))
 	require.Equal(t, []string{filepath.ToSlash(filepath.Join(dir, "a"))},
 		analyzeOne(filepath.Join(dir, "a", "kustomization.yaml")))
+}
+
+func TestAnalyze_DockerfileVariants(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"dockerfile":            "FROM alpine:3.20\n",
+		"app.DOCKERFILE":        "FROM scratch\nCOPY bin /bin\n",
+		"Dockerfile.prod":       "FROM scratch\nCOPY app /app\n",
+		"DOCKERFILE.dev":        "ARG BASE=alpine:3.20\nFROM ${BASE}\n",
+		"Dockerfile.debian":     "FROM debian:bookworm\n",
+		"valid.debian":          "FROM debian:bookworm\n",
+		"Dockerfile.txt":        "README notes: pull FROM registry and RUN build\n",
+		"decoy.debian":          "just notes\n",
+		"decoy.ubi8":            "just notes\n",
+		"Dockerfile.yaml":       "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n",
+		"Dockerfile.tf":         "resource \"aws_s3_bucket\" \"b\" {}\n",
+		"upper/Dockerfile.YAML": "FROM alpine\n",
+	}
+	for name, content := range files {
+		full := filepath.Join(dir, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		require.NoError(t, os.WriteFile(full, []byte(content), 0o600))
+	}
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{""},
+		MaxFileSize: -1,
+	})
+	require.NoError(t, err)
+
+	join := func(name string) string { return filepath.ToSlash(filepath.Join(dir, name)) }
+
+	require.ElementsMatch(t, []string{"dockerfile", "kubernetes", "terraform"}, got.Types)
+	require.ElementsMatch(t, []string{
+		join("dockerfile"),
+		join("app.DOCKERFILE"),
+		join("Dockerfile.prod"),
+		join("DOCKERFILE.dev"),
+		join("Dockerfile.debian"),
+		join("valid.debian"),
+		join("Dockerfile.yaml"),
+		join("Dockerfile.tf"),
+	}, got.Inventory)
+	require.ElementsMatch(t, []string{
+		join("Dockerfile.txt"),
+		join("decoy.debian"),
+		join("decoy.ubi8"),
+	}, got.Exc)
+
+	for _, name := range []string{"dockerfile", "app.DOCKERFILE", "Dockerfile.prod", "DOCKERFILE.dev", "Dockerfile.debian", "valid.debian"} {
+		require.Equal(t, "dockerfile", got.FilePlatform[join(name)], name)
+	}
+	require.Equal(t, "kubernetes", got.FilePlatform[join("Dockerfile.yaml")])
+	require.Equal(t, "terraform", got.FilePlatform[join("Dockerfile.tf")])
+	require.NotContains(t, got.FilePlatform, join("upper/Dockerfile.YAML"))
+	require.Contains(t, got.ContentCache, join("Dockerfile.prod"))
+	require.NotContains(t, got.ContentCache, join("Dockerfile.txt"))
+
+	// Filtering to Terraform drops content-checked Dockerfile candidates cleanly.
+	tfOnly, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{"terraform"},
+		MaxFileSize: -1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"terraform"}, tfOnly.Types)
+	require.NotContains(t, tfOnly.Inventory, join("Dockerfile.prod"))
+	require.Contains(t, tfOnly.Inventory, join("Dockerfile.tf"))
+
+	// In-memory classification uses the supplied FS and applies the same content check.
+	mem := vfs.NewMemFS(map[string][]byte{
+		"Dockerfile.prod": []byte("FROM scratch\nCOPY app /app\n"),
+		"Dockerfile.txt":  []byte("not a dockerfile\n"),
+		"app.debian":      []byte("FROM debian:bookworm\n"),
+	})
+	ctx := context.Background()
+	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "Dockerfile.prod", nil, platforms.Supported))
+	require.Equal(t, "", ClassifyFile(ctx, mem, "Dockerfile.txt", nil, platforms.Supported))
+	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "app.debian", nil, platforms.Supported))
 }

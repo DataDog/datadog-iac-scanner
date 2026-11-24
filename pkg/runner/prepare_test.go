@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -212,6 +214,12 @@ func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
 		"pytest.ini":          []byte("[pytest]\naddopts = -p auto\n"),
 		"catalog/entity.yaml": []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: web\n"),
 		"ansible.cfg":         []byte("[defaults]\nno_log = False\n"),
+		"Dockerfile.prod":     []byte("FROM scratch\nCOPY app /app\n"),
+		"Dockerfile.txt":      []byte("notes mentioning FROM and RUN\n"),
+		"decoy.debian":        []byte("not a dockerfile\n"),
+		"dockerfile":          []byte("FROM alpine:3.20\n"),
+		"app.DOCKERFILE":      []byte("FROM alpine:3.20\n"),
+		"Dockerfile.yaml":     []byte("apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n"),
 	})
 	mp := provider.NewMemorySourceProvider(memfs, memfs.Paths(), nil, nil)
 	services, _ := buildServices(t, ctx, memfs, mp)
@@ -225,7 +233,22 @@ func TestPrepareMemorySources_SkipsFilesExcludedByContent(t *testing.T) {
 			paths = append(paths, filepath.ToSlash(file.FilePath))
 		}
 	}
-	require.Equal(t, []string{"ansible.cfg"}, paths)
+	require.ElementsMatch(t, []string{
+		"ansible.cfg",
+		"Dockerfile.prod",
+		"dockerfile",
+		"app.DOCKERFILE",
+		"Dockerfile.yaml",
+	}, paths)
+
+	// Parser extensions stay in sync with the shared file-type registry.
+	extMap := buildExtensionRouting(services)
+	registered := make([]string, 0, len(extMap))
+	for ext := range extMap {
+		registered = append(registered, ext)
+	}
+	sort.Strings(registered)
+	require.Equal(t, utils.SupportedFileTypes(), registered)
 }
 
 func TestServicesForPlatformAndParserKindFallsBackWhenUnmatched(t *testing.T) {

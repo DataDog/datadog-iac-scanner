@@ -26,4 +26,10 @@ const (
 	Dockerfile     = "dockerfile"
 	Kubernetes     = "kubernetes"
 	Terraform      = "terraform"
+
+	// Extension-routed platforms outside the default Supported list.
+	// Bicep routes .bicep files during analysis; parsed Bicep documents are
+	// attributed to azureresourcemanager in analyzer.PlatformForKind.
+	Bicep = "bicep"
+	GRPC  = "grpc"
 )

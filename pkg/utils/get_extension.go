@@ -6,32 +6,50 @@
 package utils
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"golang.org/x/tools/godoc/util"
 )
 
-var extensionNameTargets = []string{"tfvars", "Dockerfile", "possibleDockerfile"}
+const tfvarsName = "tfvars"
+
+// dockerfileExtension recognizes Dockerfile and <name>.Dockerfile in any case.
+// Dockerfile.<name> is a content-checked candidate only after registered formats
+// have had precedence. Auxiliary files use the same configured path filters as
+// other scanner inputs; arbitrary variant names cannot identify their purpose.
+func dockerfileExtension(path, ext string) (string, bool) {
+	lower := strings.ToLower(filepath.Base(path))
+	switch {
+	case lower == "dockerfile":
+		return dockerfileName, true
+	case strings.HasSuffix(lower, dockerfileExt):
+		return dockerfileExt, true
+	case strings.HasPrefix(lower, "dockerfile."):
+		format, registered := supportedFileTypes[strings.ToLower(ext)]
+		if !registered || format.platform == platforms.Dockerfile {
+			return PossibleDockerfile, true
+		}
+	}
+	return "", false
+}
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
 	ext := tfpath.Extension(path)
+	if dockerExt, ok := dockerfileExtension(path, ext); ok {
+		return dockerExt
+	}
 	if ext != "" {
 		return ext
 	}
-	base := filepath.Base(path)
-	if Contains(base, extensionNameTargets) {
-		return base
-	}
-	if strings.HasSuffix(base, "tfvars") {
-		return "tfvars"
+	if strings.HasSuffix(filepath.Base(path), tfvarsName) {
+		return tfvarsName
 	}
 	return ""
 }
@@ -47,7 +65,6 @@ func GetExtension(ctx context.Context, path string) (string, error) {
 // real disk (the default, via GetExtension), preserving existing behavior.
 func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, error) {
 	contextLogger := logger.FromContext(ctx)
-	targets := extensionNameTargets
 
 	// Get file information
 	fileInfo, err := fsys.Stat(path)
@@ -62,51 +79,5 @@ func GetExtensionWithFS(ctx context.Context, fsys vfs.FS, path string) (string, 
 		return "", err
 	}
 
-	ext := tfpath.Extension(path)
-	if ext == "" {
-		base := filepath.Base(path)
-
-		if Contains(base, targets) {
-			ext = base
-		} else {
-			isText, err := isTextFile(ctx, fsys, path)
-
-			if err != nil {
-				return "", err
-			}
-
-			if isText {
-				err := fmt.Errorf("file %s does not have a supported extension", path)
-				contextLogger.Debug().Msg(err.Error())
-				return "", err
-			}
-		}
-	}
-
-	return ext, nil
-}
-
-func isTextFile(ctx context.Context, fsys vfs.FS, path string) (bool, error) {
-	contextLogger := logger.FromContext(ctx)
-	info, err := fsys.Stat(path)
-	if err != nil {
-		contextLogger.Error().Msgf("failed to get file info: %s", err)
-		return false, err
-	}
-
-	if info.IsDir() {
-		return false, nil
-	}
-
-	content, err := fsys.ReadFile(filepath.Clean(path))
-	if err != nil {
-		contextLogger.Error().Msgf("failed to analyze file: %s", err)
-		return false, err
-	}
-
-	content = bytes.ReplaceAll(content, []byte("\r"), []byte(""))
-
-	isText := util.IsText(content)
-
-	return isText, nil
+	return ExtensionFromPath(path), nil
 }

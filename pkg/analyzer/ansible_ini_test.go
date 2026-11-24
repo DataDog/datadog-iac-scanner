@@ -82,4 +82,54 @@ func TestExcludedByContent(t *testing.T) {
 	require.True(t, ExcludedByContent("service.datadog.yaml", []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: x\n")))
 	require.False(t, ExcludedByContent("deploy.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\n")))
 	require.False(t, ExcludedByContent("main.tf", []byte("[metadata]\n")))
+
+	// Dockerfile candidates require a valid FROM header; unambiguous Dockerfile names do not.
+	require.False(t, ExcludedByContent("Dockerfile.prod", []byte("FROM scratch\nCOPY a /a\n")))
+	require.False(t, ExcludedByContent("DOCKERFILE.DEV", []byte("ARG BASE=alpine\nFROM $BASE\n")))
+	require.True(t, ExcludedByContent("Dockerfile.prod", []byte("notes mentioning FROM and RUN\n")))
+	require.True(t, ExcludedByContent("Dockerfile.txt", []byte("plain text\n")))
+	require.False(t, ExcludedByContent("app.debian", []byte("FROM debian:bookworm\n")))
+	require.True(t, ExcludedByContent("notes.debian", []byte("not a dockerfile\n")))
+	require.False(t, ExcludedByContent("app.ubi8", []byte("FROM registry.access.redhat.com/ubi8\n")))
+	require.True(t, ExcludedByContent("notes.ubi8", []byte("not a dockerfile\n")))
+	require.False(t, ExcludedByContent("Dockerfile", []byte("not parsed yet\n")))
+	require.False(t, ExcludedByContent("app.DOCKERFILE", []byte("not parsed yet\n")))
+	// Registered non-Dockerfile extensions keep their own content policy.
+	require.True(t, ExcludedByContent("Dockerfile.yaml", []byte("apiVersion: v3\nkind: service\nmetadata:\n  name: x\n")))
+	require.False(t, ExcludedByContent("Dockerfile.yaml", []byte("apiVersion: apps/v1\nkind: Deployment\n")))
+	// Ansible template directories are skipped for Dockerfile candidates just like YAML.
+	require.True(t, ExcludedByContent("roles/web/templates/Dockerfile.j2", []byte("FROM {{ base_image }}\n")))
+}
+
+func TestIsDockerfileContent(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"simple FROM without RUN", "FROM scratch\nCOPY app /app\n", true},
+		{"lowercase from", "from alpine:3.20\n", true},
+		{"leading comments and directives", "# syntax=docker/dockerfile:1\n# comment\n\nFROM ubuntu:24.04\n", true},
+		{"leading ARGs before FROM", "ARG BASE=alpine:3.20\nARG TAG=latest\nFROM ${BASE}\n", true},
+		{"UTF-8 BOM and CRLF", "\ufeff# comment\r\nARG IMG=alpine\r\nFROM $IMG\r\n", true},
+		{"FROM with platform flag", "FROM --platform=$BUILDPLATFORM golang:1.22 AS build\n", true},
+		{"backslash line-continued keyword", "F\\\nROM alpine\n", true},
+		{"backtick escape directive and multiline ARG", "# escape=`\nARG BASE=`\nalpine:3.20\nFROM ${BASE}\n", true},
+		{"valid heredoc body", "FROM alpine\nRUN <<EOF\necho hello\nEOF\n", true},
+		{"empty content", "", false},
+		{"comments only", "# just a comment\n   \n", false},
+		{"ARG only without FROM", "ARG FOO=bar\n", false},
+		{"bare FROM without image", "FROM\n", false},
+		{"FROM with flag only", "FROM --platform=linux/amd64\n", false},
+		{"prose containing FROM and RUN", "Release notes:\nPull FROM the registry and RUN tests.\n", false},
+		{"shell script", "#!/bin/sh\necho FROM alpine\n", false},
+		{"JSON document", "{\"from\": \"alpine\", \"run\": \"echo hi\"}\n", false},
+		{"non-ARG instruction before FROM", "RUN echo nope\nFROM alpine\n", false},
+		{"unterminated heredoc", "FROM alpine\nRUN <<EOF\nunterminated\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isDockerfileContent([]byte(tt.content)))
+		})
+	}
 }
