@@ -1170,6 +1170,10 @@ Parameters:
 			}
 			require.Len(t, fingerprints, 2)
 			require.NotEqual(t, fingerprints[0], fingerprints[1])
+			for _, finding := range readSARIFRun(t, params).Results {
+				require.Len(t, finding.ResultLocations, 1)
+				require.Equal(t, tc.loopEnd, finding.ResultLocations[0].PhysicalLocation.Region.StartLine)
+			}
 			refs := linkedRefs(inv)
 			require.ElementsMatch(t, [][]string{{"stack.yaml|BucketBlue"}, {"stack.yaml|BucketGreen"}},
 				[][]string{refs[fingerprints[0]], refs[fingerprints[1]]})

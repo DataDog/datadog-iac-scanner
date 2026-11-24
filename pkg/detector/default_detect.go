@@ -42,6 +42,10 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 
 	lines := file.Lines()
 
+	if result, ok := detectCloudFormationLoopLine(file, searchKey, outputLines); ok {
+		return result
+	}
+
 	// Terraform plan JSON is remapped under a top-level "resource" key, so the
 	// resource block has no source text to match. Resolve the searchKey path
 	// structurally (mirroring the legacy searchLine) before any text matching.

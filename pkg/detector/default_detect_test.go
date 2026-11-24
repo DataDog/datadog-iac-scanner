@@ -15,7 +15,49 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/test"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
+
+func TestCloudFormationGeneratedResourceLine(t *testing.T) {
+	const source = `Transform: AWS::LanguageExtensions
+Resources:
+  Fn::ForEach::Environments:
+    - Environment
+    - [Prod]
+    - Fn::ForEach::Tiers:
+        - Tier
+        - [Web]
+        - ${Environment}${Tier}Bucket:
+            Type: AWS::S3::Bucket
+            Properties:
+              BucketName: !Sub ${Environment}-${Tier}
+  ExplicitBucket:
+    Type: AWS::S3::Bucket
+`
+	ctx := context.Background()
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+	var doc model.Document
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+	file := &model.FileMetadata{
+		FilePath: "stack.yaml", Kind: model.KindYAML, OriginalData: source, LineInfoDocument: doc,
+	}
+	detector := NewDetectLine(3)
+	for _, tc := range []struct {
+		key  string
+		line int
+	}{
+		{"Resources.ProdWebBucket.Properties.BucketName", 12},
+		{"Resources.ProdWebBucket.Properties", 11},
+		{"Resources.ProdWebBucket.Properties.VersioningConfiguration", 3},
+		{"Resources.ExplicitBucket.Type", 14},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			result := detector.DetectLine(ctx, file, tc.key)
+			require.Equal(t, tc.line, result.Line)
+		})
+	}
+}
 
 var OriginalDataCICD = `name: Web Page To Markdown
 on:
