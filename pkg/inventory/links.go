@@ -264,13 +264,23 @@ func narrowestHolding(rows []Resource, candidates []int, line int) (int, bool) {
 	best, width := -1, math.MaxInt
 	for _, j := range candidates {
 		r := &rows[j]
-		end := max(r.LineEnd, r.LineStart)
-		if line < r.LineStart || line > end {
+		start, end := r.LineStart, max(r.LineEnd, r.LineStart)
+		if r.linkFallbackLine != 0 {
+			start, end = r.linkFallbackLine, r.linkFallbackLine
+		}
+		if line < start || line > end {
 			continue
 		}
-		if w := end - r.LineStart; w < width {
+		w := end - start
+		if w < width || (w == width && preferCollectionEntry(r, &rows[best])) {
 			best, width = j, w
 		}
 	}
 	return best, best >= 0
+}
+
+// A generated row sorts by its loop's span in the report. For a tie on the
+// collection line, keep the order by logical ID used before it moved.
+func preferCollectionEntry(row, best *Resource) bool {
+	return (row.linkFallbackLine != 0 || best.linkFallbackLine != 0) && row.ResourcePath < best.ResourcePath
 }
