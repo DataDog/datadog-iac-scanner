@@ -19,12 +19,25 @@ const (
 	shellSetCommand = "set"
 	evalCommand     = "eval"
 
-	maxShellDepth    = 16
-	maxFactNodes     = 50000
-	maxFactNesting   = 256
-	maxSyntaxNesting = 512
-	maxScriptBytes   = 1 << 20
+	maxShellDepth  = 16
+	maxFactNodes   = 50000
+	maxFactNesting = 256
+	// maxScriptBytes caps cumulative bytes parsed by mvdan.cc/sh/v3/syntax.
+	// Keeping it at 128 KiB bounds worst-case parser recursion depth regardless
+	// of shell syntax (deep arithmetic, heredoc-wrapped parens, unary chains).
+	maxScriptBytes = 128 << 10
 )
+
+// stmtOutcome separates the call whose success establishes that a statement
+// succeeded from the call whose failure establishes that it failed.
+// For `A && B`, success proves B succeeded, but failure may come from A or B.
+// For `A || B`, failure proves B failed, but success may come from A or B.
+type stmtOutcome struct {
+	successCall int
+	failureCall int
+}
+
+var noOutcome = stmtOutcome{successCall: -1, failureCall: -1}
 
 type factBuilder struct {
 	result    *Facts
@@ -87,21 +100,25 @@ func newFactBuilder() *factBuilder {
 
 func (b *factBuilder) finish() *Facts {
 	b.result.PackageCommands = packageCommands(b.result.Calls)
-	for i := range b.result.Calls {
-		call := &b.result.Calls[i]
-		if call.Name == cdCommand {
-			call.CDPath = cdOperand(call.Arguments, call.DynamicArguments)
-		}
-		if !call.Executable.Known || call.Function || environmentChangingCommand(call.Name) {
-			b.result.EnvironmentMayChange = true
+	return b.result
+}
+
+func isShellBuiltinCall(call *Invocation, shellForm bool) bool {
+	if !shellForm || call.Function || !call.Executable.Known || call.Executable.Text != call.Name {
+		return false
+	}
+	for _, wrapper := range call.Wrappers {
+		if wrapper != commandBuiltin {
+			return false
 		}
 	}
-	return b.result
+	return true
 }
 
 func environmentChangingCommand(name string) bool {
 	switch name {
-	case ".", sourceCommand, evalCommand, cdCommand, "export", "unset", shellSetCommand:
+	case ".", sourceCommand, evalCommand, cdCommand, "export", "unset", shellSetCommand,
+		"read", "mapfile", "readarray", "getopts":
 		return true
 	default:
 		return false
@@ -137,7 +154,7 @@ func (b *factBuilder) scope(parent int, kind ScopeKind) int {
 }
 
 func (b *factBuilder) script(script, shellName string, scope int, deferred, conditional bool, depth int) {
-	if depth >= maxShellDepth || b.bytes+len(script) > maxScriptBytes || exceedsNestingLimit(script, maxSyntaxNesting) {
+	if depth >= maxShellDepth || b.bytes+len(script) > maxScriptBytes {
 		b.diagnostic("shell analysis limit reached")
 		return
 	}
@@ -155,21 +172,23 @@ func (b *factBuilder) script(script, shellName string, scope int, deferred, cond
 	b.walkStmts(file.Stmts, script, scope, deferred, conditional, depth, 0)
 }
 
-func (b *factBuilder) walkStmts(stmts []*syntax.Stmt, source string, scope int, deferred, conditional bool, depth, nesting int) int {
-	last := -1
+func (b *factBuilder) walkStmts(
+	stmts []*syntax.Stmt, source string, scope int, deferred, conditional bool, depth, nesting int,
+) stmtOutcome {
+	last := noOutcome
 	for _, stmt := range stmts {
 		last = b.walkStmt(stmt, source, scope, deferred, conditional, depth, nesting)
 	}
 	return last
 }
 
-func (b *factBuilder) walkStmt(stmt *syntax.Stmt, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkStmt(stmt *syntax.Stmt, source string, scope int, deferred, conditional bool, depth, nesting int) stmtOutcome {
 	if stmt == nil {
-		return -1
+		return noOutcome
 	}
 	if b.nodes >= maxFactNodes || nesting > maxFactNesting {
 		b.diagnostic("shell analysis limit reached")
-		return -1
+		return noOutcome
 	}
 	b.nodes++
 	stmtScope := scope
@@ -181,14 +200,14 @@ func (b *factBuilder) walkStmt(stmt *syntax.Stmt, source string, scope int, defe
 	}
 	last := b.walkCmd(stmt.Cmd, source, stmtScope, deferred, conditional, depth, nesting+1)
 	if stmt.Background || stmt.Coprocess || stmt.Negated {
-		return -1
+		return noOutcome
 	}
 	return last
 }
 
-func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, deferred, conditional bool, depth, nesting int) stmtOutcome {
 	if cmd == nil {
-		return -1
+		return noOutcome
 	}
 	switch node := cmd.(type) {
 	case *syntax.BinaryCmd:
@@ -204,14 +223,14 @@ func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, defe
 	case *syntax.Subshell:
 		subScope := b.scope(scope, ScopeSubshell)
 		b.walkStmts(node.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
-		return -1
+		return noOutcome
 	case *syntax.Block:
 		return b.walkStmts(node.Stmts, source, scope, deferred, conditional, depth, nesting+1)
 	case *syntax.FuncDecl:
 		b.defineFunction(node, scope, conditional)
 		fnScope := b.scope(scope, ScopeFunction)
 		b.walkStmt(node.Body, source, fnScope, true, conditional, depth, nesting+1)
-		return -1
+		return noOutcome
 	case *syntax.CallExpr:
 		return b.walkCallExpr(node, source, scope, deferred, conditional, depth, nesting)
 	case *syntax.DeclClause:
@@ -219,20 +238,22 @@ func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, defe
 		for _, assign := range node.Args {
 			b.walkSubstitutions(assign, source, scope, deferred, conditional, depth, nesting+1)
 		}
-		return -1
+		return noOutcome
 	case *syntax.TimeClause:
 		return b.walkStmt(node.Stmt, source, scope, deferred, conditional, depth, nesting+1)
 	case *syntax.CoprocClause:
 		coprocScope := b.scope(scope, ScopeCoprocess)
 		b.walkStmt(node.Stmt, source, coprocScope, deferred, conditional, depth, nesting+1)
-		return -1
+		return noOutcome
 	default:
 		b.walkSubstitutions(node, source, scope, deferred, conditional, depth, nesting+1)
-		return -1
+		return noOutcome
 	}
 }
 
-func (b *factBuilder) walkBinaryCmd(node *syntax.BinaryCmd, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkBinaryCmd(
+	node *syntax.BinaryCmd, source string, scope int, deferred, conditional bool, depth, nesting int,
+) stmtOutcome {
 	if node.Op == syntax.Pipe || node.Op == syntax.PipeAll {
 		pipeScope := b.scope(scope, ScopePipeline)
 		options := b.options[pipeScope]
@@ -244,22 +265,26 @@ func (b *factBuilder) walkBinaryCmd(node *syntax.BinaryCmd, source string, scope
 			stageScope := b.scope(pipeScope, ScopePipelineStage)
 			b.walkStmt(stage, source, stageScope, deferred, conditional, depth, nesting+1)
 		}
-		return -1
+		return noOutcome
 	}
 	left := b.walkStmt(node.X, source, scope, deferred, conditional, depth, nesting+1)
 	firstRight := len(b.result.Calls)
 	right := b.walkStmt(node.Y, source, scope, deferred, true, depth, nesting+1)
 	guardKind := GuardSuccess
+	guardCall := left.successCall
 	if node.Op == syntax.OrStmt {
 		guardKind = GuardFailure
+		guardCall = left.failureCall
 	}
-	for i := firstRight; i < len(b.result.Calls); i++ {
-		b.result.Calls[i].Guards = append(b.result.Calls[i].Guards, Guard{Kind: guardKind, Call: left})
+	if guardCall >= 0 {
+		for i := firstRight; i < len(b.result.Calls); i++ {
+			b.result.Calls[i].Guards = append(b.result.Calls[i].Guards, Guard{Kind: guardKind, Call: guardCall})
+		}
 	}
 	if node.Op == syntax.OrStmt {
-		return -1
+		return stmtOutcome{successCall: -1, failureCall: right.failureCall}
 	}
-	return right
+	return stmtOutcome{successCall: right.successCall, failureCall: -1}
 }
 
 func collectPipelineStages(node *syntax.BinaryCmd) []*syntax.Stmt {
@@ -277,7 +302,7 @@ func collectPipelineStages(node *syntax.BinaryCmd) []*syntax.Stmt {
 	return stages
 }
 
-func (b *factBuilder) walkConditionalScope(scope int, fn func(condScope int)) int {
+func (b *factBuilder) walkConditionalScope(scope int, fn func(condScope int)) stmtOutcome {
 	parent := scope
 	condScope := b.scope(scope, ScopeConditional)
 	initial := b.options[parent]
@@ -286,10 +311,10 @@ func (b *factBuilder) walkConditionalScope(scope int, fn func(condScope int)) in
 		initial.known = false
 		b.options[parent] = initial
 	}
-	return -1
+	return noOutcome
 }
 
-func (b *factBuilder) walkIf(node *syntax.IfClause, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkIf(node *syntax.IfClause, source string, scope int, deferred, conditional bool, depth, nesting int) stmtOutcome {
 	return b.walkConditionalScope(scope, func(condScope int) {
 		initial := b.options[condScope]
 		conditionOptions := initial
@@ -315,14 +340,21 @@ func (b *factBuilder) walkIf(node *syntax.IfClause, source string, scope int, de
 	})
 }
 
-func (b *factBuilder) walkWhile(node *syntax.WhileClause, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkWhile(
+	node *syntax.WhileClause, source string, scope int, deferred, conditional bool, depth, nesting int,
+) stmtOutcome {
 	return b.walkConditionalScope(scope, func(condScope int) {
 		b.walkStmts(node.Cond, source, condScope, deferred, conditional, depth, nesting+1)
 		b.walkStmts(node.Do, source, condScope, deferred, true, depth, nesting+1)
 	})
 }
 
-func (b *factBuilder) walkFor(node *syntax.ForClause, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkFor(
+	node *syntax.ForClause, source string, scope int, deferred, conditional bool, depth, nesting int,
+) stmtOutcome {
+	if _, ok := node.Loop.(*syntax.WordIter); ok {
+		b.result.EnvironmentMayChange = true
+	}
 	return b.walkConditionalScope(scope, func(condScope int) {
 		if node.Loop != nil {
 			b.walkSubstitutions(node.Loop, source, condScope, deferred, conditional, depth, nesting+1)
@@ -331,7 +363,9 @@ func (b *factBuilder) walkFor(node *syntax.ForClause, source string, scope int, 
 	})
 }
 
-func (b *factBuilder) walkCase(node *syntax.CaseClause, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkCase(
+	node *syntax.CaseClause, source string, scope int, deferred, conditional bool, depth, nesting int,
+) stmtOutcome {
 	return b.walkConditionalScope(scope, func(condScope int) {
 		if node.Word != nil {
 			b.walkSubstitutions(node.Word, source, condScope, deferred, conditional, depth, nesting+1)
@@ -345,7 +379,9 @@ func (b *factBuilder) walkCase(node *syntax.CaseClause, source string, scope int
 	})
 }
 
-func (b *factBuilder) walkCallExpr(node *syntax.CallExpr, source string, scope int, deferred, conditional bool, depth, nesting int) int {
+func (b *factBuilder) walkCallExpr(
+	node *syntax.CallExpr, source string, scope int, deferred, conditional bool, depth, nesting int,
+) stmtOutcome {
 	if len(node.Assigns) > 0 {
 		b.result.EnvironmentMayChange = true
 		for _, assign := range node.Assigns {
@@ -356,7 +392,7 @@ func (b *factBuilder) walkCallExpr(node *syntax.CallExpr, source string, scope i
 		b.walkSubstitutions(arg, source, scope, deferred, conditional, depth, nesting+1)
 	}
 	if len(node.Args) == 0 {
-		return -1
+		return noOutcome
 	}
 	last := len(b.result.Calls)
 	values := make([]Value, 0, len(node.Args))
@@ -377,30 +413,73 @@ func (b *factBuilder) walkCallExpr(node *syntax.CallExpr, source string, scope i
 	}
 	b.call(values, spans, b.nodeSpan(node), scope, deferred, conditional, depth, true)
 	if last >= len(b.result.Calls) {
-		return -1
+		return noOutcome
 	}
-	return last
+	return stmtOutcome{successCall: last, failureCall: last}
 }
 
-// walkSubstitutions walks command and process substitutions nested inside words,
-// assignments, redirects, and expressions.
+// walkSubstitutions walks command and process substitutions (and expression-level
+// variable assignments) nested inside words, assignments, redirects, and
+// arithmetic/test expressions while enforcing nesting and node budgets.
 func (b *factBuilder) walkSubstitutions(root syntax.Node, source string, scope int, deferred, conditional bool, depth, nesting int) {
 	if root == nil {
 		return
 	}
+	walkNesting := nesting
 	syntax.Walk(root, func(node syntax.Node) bool {
-		switch sub := node.(type) {
-		case *syntax.CmdSubst:
-			subScope := b.scope(scope, ScopeCommandSubstitution)
-			b.walkStmts(sub.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
-			return false
-		case *syntax.ProcSubst:
-			subScope := b.scope(scope, ScopeProcessSubstitution)
-			b.walkStmts(sub.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
+		if node == nil {
+			walkNesting--
+			return true
+		}
+		if b.nodes >= maxFactNodes || walkNesting > maxFactNesting {
+			b.diagnostic("shell analysis limit reached")
 			return false
 		}
+		b.nodes++
+		if b.inspectSubNode(node, source, scope, deferred, conditional, depth, walkNesting) {
+			return false
+		}
+		walkNesting++
 		return true
 	})
+}
+
+func (b *factBuilder) inspectSubNode(
+	node syntax.Node, source string, scope int, deferred, conditional bool, depth, walkNesting int,
+) (stop bool) {
+	switch sub := node.(type) {
+	case *syntax.CmdSubst:
+		subScope := b.scope(scope, ScopeCommandSubstitution)
+		b.walkStmts(sub.Stmts, source, subScope, deferred, conditional, depth, walkNesting+1)
+		return true
+	case *syntax.ProcSubst:
+		subScope := b.scope(scope, ScopeProcessSubstitution)
+		b.walkStmts(sub.Stmts, source, subScope, deferred, conditional, depth, walkNesting+1)
+		return true
+	case *syntax.ParamExp:
+		if sub.Exp != nil && (sub.Exp.Op == syntax.AssignUnset || sub.Exp.Op == syntax.AssignUnsetOrNull) {
+			b.result.EnvironmentMayChange = true
+		}
+	case *syntax.BinaryArithm:
+		if isArithmAssignOp(sub.Op) {
+			b.result.EnvironmentMayChange = true
+		}
+	case *syntax.UnaryArithm:
+		if sub.Op == syntax.Inc || sub.Op == syntax.Dec {
+			b.result.EnvironmentMayChange = true
+		}
+	}
+	return false
+}
+
+func isArithmAssignOp(op syntax.BinAritOperator) bool {
+	switch op {
+	case syntax.Assgn, syntax.AddAssgn, syntax.SubAssgn, syntax.MulAssgn, syntax.QuoAssgn,
+		syntax.RemAssgn, syntax.AndAssgn, syntax.OrAssgn, syntax.XorAssgn, syntax.ShlAssgn, syntax.ShrAssgn:
+		return true
+	default:
+		return false
+	}
 }
 
 func (b *factBuilder) call(values []Value, spans []Span, span Span, scope int, deferred, conditional bool, depth int, shellForm bool) {
@@ -440,71 +519,72 @@ func (b *factBuilder) call(values []Value, spans []Span, span Span, scope int, d
 	} else {
 		b.diagnostic("dynamic executable")
 	}
+	builtin := isShellBuiltinCall(&call, shellForm)
+	b.recordCallEffects(&call, words, scope, deferred, conditional, builtin)
 	b.result.Calls = append(b.result.Calls, call)
-	if call.Name == shellSetCommand && !deferred {
-		options := parseShellArgv(b.options[scope], words).options
-		if conditional {
-			options.known = false
-		}
-		b.options[scope] = options
-	}
 	if function {
 		b.diagnostic("shell function invocation is not expanded")
 		return
 	}
-	switch call.Name {
-	case "alias", "unalias", evalCommand, sourceCommand, ".":
+	if builtin && isDynamicShellStateBuiltin(call.Name) {
 		b.diagnostic("dynamic shell state is not evaluated")
 		return
 	}
 	b.nestedScript(words, call.Name, scope, deferred, conditional, depth)
 }
 
+func (b *factBuilder) recordCallEffects(call *Invocation, words []Value, scope int, deferred, conditional, builtin bool) {
+	if call.Name == cdCommand && builtin {
+		call.CDPath = cdOperand(call.Arguments, call.DynamicArguments)
+	}
+	if !call.Executable.Known || call.Function || (builtin && environmentChangingCommand(call.Name)) {
+		b.result.EnvironmentMayChange = true
+	}
+	if call.Name == shellSetCommand && !deferred && builtin {
+		options := parseShellArgv(b.options[scope], words).options
+		if conditional {
+			options.known = false
+		}
+		b.options[scope] = options
+	}
+}
+
+func isDynamicShellStateBuiltin(name string) bool {
+	switch name {
+	case "alias", "unalias", evalCommand, sourceCommand, ".":
+		return true
+	default:
+		return false
+	}
+}
+
 func (b *factBuilder) nestedScript(words []Value, name string, scope int, deferred, conditional bool, depth int) {
 	if !isScriptShell(name) && name != suCommand {
 		return
 	}
-	shellName := name
-	if shellName == suCommand {
-		shellName = sh
-	}
-	initial := shellOptions{shell: shellName, known: true}
-
-	var scriptIndex int
-	var unknownOption bool
-	var childOpts shellOptions
-	if name == suCommand {
-		scriptIndex, unknownOption = suScriptIndex(words)
-		childOpts = initial
-	} else {
-		parsed := parseShellArgv(initial, words)
-		scriptIndex = parsed.scriptIndex
-		unknownOption = parsed.unknownOption
-		childOpts = parsed.options
-	}
-	if scriptIndex < 0 {
-		if unknownOption {
+	resolved := resolveShellNestedScript(words, name)
+	if !resolved.found {
+		if resolved.unknownOption {
 			b.diagnostic("dynamic nested shell script")
 		}
 		return
 	}
-	script := words[scriptIndex]
-	if !script.Known {
+	if resolved.unknownOption || !resolved.script.Known {
 		b.diagnostic("dynamic nested shell script")
 		return
 	}
 	childScope := b.scope(scope, ScopeShellScript)
-	b.options[childScope] = childOpts
+	b.options[childScope] = resolved.options
 	if b.nested == nil {
 		call := b.result.Calls[len(b.result.Calls)-1]
 		nested := call.Span
-		if index := scriptIndex - 1; index < len(call.ArgumentSpans) {
-			nested = call.ArgumentSpans[index]
+		if resolved.spanArgIndex >= 0 && resolved.spanArgIndex < len(call.ArgumentSpans) {
+			nested = call.ArgumentSpans[resolved.spanArgIndex]
 		}
 		b.nested = &nested
 		defer func() { b.nested = nil }()
 	}
-	b.script(script.Text, shellName, childScope, deferred, conditional, depth+1)
+	b.script(resolved.script.Text, resolved.shellName, childScope, deferred, conditional, depth+1)
 }
 
 // argumentSpans keeps the spans of the last count words, the arguments left

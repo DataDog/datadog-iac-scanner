@@ -21,19 +21,12 @@ const (
 	zshShell         = "zsh"
 	suCommand        = "su"
 	optionEnd        = "--"
-	commandFlag      = "-c"
 	shellOptionValue = "-o"
 )
 
-var (
-	shellValueOptions = map[string]bool{
-		shellOptionValue: true, "+o": true, "-O": true, "+O": true, "--rcfile": true, "--init-file": true,
-	}
-	suValueOptions = map[string]bool{
-		"-s": true, "--shell": true, "-g": true, "--group": true,
-		"-G": true, "--supp-group": true, "-w": true, "--whitelist-environment": true,
-	}
-)
+var shellValueOptions = map[string]bool{
+	shellOptionValue: true, "+o": true, "-O": true, "+O": true, "--rcfile": true, "--init-file": true,
+}
 
 type shellOptions struct {
 	shell    string
@@ -44,6 +37,15 @@ type shellOptions struct {
 type shellArgvResult struct {
 	options       shellOptions
 	scriptIndex   int
+	unknownOption bool
+}
+
+type nestedShellScript struct {
+	shellName     string
+	options       shellOptions
+	script        Value
+	spanArgIndex  int
+	found         bool
 	unknownOption bool
 }
 
@@ -107,14 +109,7 @@ func parseShellArgv(initial shellOptions, words []Value) shellArgvResult {
 		if commandOption(opt) {
 			hasCommand = true
 		}
-		if i+1 < len(words) {
-			if consumesShellOptionValue(opt) {
-				i++
-				applyShellOptionValue(&res.options, opt, words[i])
-			} else if shellValueOptions[opt] {
-				i++
-			}
-		}
+		i = consumeShellOptionValues(&res.options, opt, words, i)
 	}
 	return res
 }
@@ -123,8 +118,26 @@ func isShellOptionToken(opt string) bool {
 	return strings.HasPrefix(opt, "-") || strings.HasPrefix(opt, "+")
 }
 
-func consumesShellOptionValue(opt string) bool {
-	return !strings.HasPrefix(opt, optionEnd) && strings.HasSuffix(opt, "o")
+func consumeShellOptionValues(state *shellOptions, opt string, words []Value, i int) int {
+	if strings.HasPrefix(opt, optionEnd) {
+		if shellValueOptions[opt] && i+1 < len(words) {
+			return i + 1
+		}
+		return i
+	}
+	for _, r := range opt[1:] {
+		if r != 'o' && r != 'O' {
+			continue
+		}
+		if i+1 >= len(words) {
+			break
+		}
+		i++
+		if r == 'o' {
+			applyShellOptionValue(state, opt, words[i])
+		}
+	}
+	return i
 }
 
 func applyShellOptionValue(state *shellOptions, opt string, val Value) {
@@ -143,66 +156,174 @@ func commandOption(option string) bool {
 		return false
 	}
 	for _, letter := range option[1:] {
-		if !strings.ContainsRune("abcefhiklmnprstuvxBCEHPT", letter) {
+		if !strings.ContainsRune("abcefhiklmnoprstuvxBCEHOPT", letter) {
 			return false
 		}
 	}
 	return true
 }
 
-func suScriptIndex(words []Value) (scriptIndex int, unknownOption bool) {
-	var operands []int
+func resolveShellNestedScript(words []Value, name string) nestedShellScript {
+	if name == suCommand {
+		return parseSuArgv(words)
+	}
+	initial := shellOptions{shell: normalizeShell(name), known: true}
+	parsed := parseShellArgv(initial, words)
+	if parsed.scriptIndex < 1 || parsed.scriptIndex >= len(words) {
+		return nestedShellScript{unknownOption: parsed.unknownOption}
+	}
+	return nestedShellScript{
+		shellName:     name,
+		options:       parsed.options,
+		script:        words[parsed.scriptIndex],
+		spanArgIndex:  parsed.scriptIndex - 1,
+		found:         true,
+		unknownOption: parsed.unknownOption,
+	}
+}
+
+type suArgvState struct {
+	selectedShell string
+	hasCmd        bool
+	cmdVal        Value
+	cmdWordIdx    int
+	operands      []int
+	unknown       bool
+}
+
+func parseSuArgv(words []Value) nestedShellScript {
+	st := suArgvState{selectedShell: sh}
 	for i := 1; i < len(words); i++ {
 		if !words[i].Known {
-			return -1, true
+			st.unknown = true
+			return nestedShellScript{unknownOption: true}
 		}
 		arg := words[i].Text
 		if arg == optionEnd {
 			for j := i + 1; j < len(words); j++ {
-				operands = append(operands, j)
+				st.operands = append(st.operands, j)
 			}
 			break
 		}
-		if arg == commandFlag || arg == "--command" || isSuBundledCommandFlag(arg) {
-			if i+1 < len(words) {
-				return i + 1, false
-			}
-			return -1, false
+		if strings.HasPrefix(arg, optionEnd) {
+			i = st.parseLongOption(arg, words, i)
+		} else if strings.HasPrefix(arg, "-") && arg != "-" {
+			i = st.parseShortOptions(arg[1:], words, i)
+		} else {
+			st.operands = append(st.operands, i)
 		}
-		if suValueOptions[arg] {
-			i++
-			continue
+		if st.unknown {
+			return nestedShellScript{unknownOption: true}
 		}
-		if strings.HasPrefix(arg, "-") && arg != "-" {
-			continue
-		}
-		operands = append(operands, i)
 	}
-	return suForwardedScriptIndex(words, operands)
+	if st.hasCmd {
+		return nestedShellScript{
+			shellName:    st.selectedShell,
+			options:      shellOptions{shell: normalizeShell(st.selectedShell), known: true},
+			script:       st.cmdVal,
+			spanArgIndex: st.cmdWordIdx - 1,
+			found:        true,
+		}
+	}
+	return suForwardedScript(words, st.operands, st.selectedShell)
 }
 
-func isSuBundledCommandFlag(arg string) bool {
-	return len(arg) > 2 && strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, optionEnd) &&
-		strings.HasSuffix(arg, "c") && strings.Trim(arg[1:len(arg)-1], "lmpPf") == ""
+func (st *suArgvState) parseLongOption(arg string, words []Value, i int) int {
+	name, attachedVal, attached := strings.Cut(arg, "=")
+	nextVal := func() (Value, int, bool) {
+		if attached {
+			return Value{Text: attachedVal, Known: true}, i, true
+		}
+		if i+1 < len(words) {
+			i++
+			return words[i], i, true
+		}
+		return Value{}, i, false
+	}
+	switch name {
+	case "--command", "--session-command":
+		if val, idx, ok := nextVal(); ok {
+			st.hasCmd, st.cmdVal, st.cmdWordIdx = true, val, idx
+		}
+	case "--shell":
+		if val, _, ok := nextVal(); ok {
+			if !val.Known {
+				st.unknown = true
+			} else {
+				st.selectedShell = val.Text
+			}
+		}
+	case "--group", "--supp-group", "--whitelist-environment":
+		if !attached && i+1 < len(words) {
+			i++
+		}
+	}
+	return i
 }
 
-// suForwardedScriptIndex resolves shell -c arguments forwarded after su's
+func (st *suArgvState) parseShortOptions(flags string, words []Value, i int) int {
+	for pos, r := range flags {
+		rest := flags[pos+1:]
+		nextVal := func() (Value, int, bool) {
+			if rest != "" {
+				return Value{Text: rest, Known: true}, i, true
+			}
+			if i+1 < len(words) {
+				i++
+				return words[i], i, true
+			}
+			return Value{}, i, false
+		}
+		switch r {
+		case 'c':
+			if val, idx, ok := nextVal(); ok {
+				st.hasCmd, st.cmdVal, st.cmdWordIdx = true, val, idx
+			}
+			return i
+		case 's':
+			if val, _, ok := nextVal(); ok {
+				if !val.Known {
+					st.unknown = true
+				} else {
+					st.selectedShell = val.Text
+				}
+			}
+			return i
+		case 'g', 'G', 'w':
+			if rest == "" && i+1 < len(words) {
+				i++
+			}
+			return i
+		}
+	}
+	return i
+}
+
+// suForwardedScript resolves shell -c arguments forwarded after su's
 // optional login marker (`-`) and username operand.
-func suForwardedScriptIndex(words []Value, operands []int) (scriptIndex int, unknownOption bool) {
+func suForwardedScript(words []Value, operands []int, selectedShell string) nestedShellScript {
 	if len(operands) > 0 && words[operands[0]].Known && words[operands[0]].Text == "-" {
 		operands = operands[1:]
 	}
 	if len(operands) < 2 {
-		return -1, false
+		return nestedShellScript{}
 	}
 	forwarded := make([]Value, 1, len(operands))
-	forwarded[0] = Value{Text: sh, Known: true}
+	forwarded[0] = Value{Text: selectedShell, Known: true}
 	for _, idx := range operands[1:] {
 		forwarded = append(forwarded, words[idx])
 	}
-	parsed := parseShellArgv(shellOptions{shell: sh, known: true}, forwarded)
+	parsed := parseShellArgv(shellOptions{shell: normalizeShell(selectedShell), known: true}, forwarded)
 	if parsed.scriptIndex < 1 || parsed.scriptIndex >= len(forwarded) {
-		return -1, parsed.unknownOption
+		return nestedShellScript{unknownOption: parsed.unknownOption}
 	}
-	return operands[parsed.scriptIndex], parsed.unknownOption
+	wordIdx := operands[parsed.scriptIndex]
+	return nestedShellScript{
+		shellName:     selectedShell,
+		options:       parsed.options,
+		script:        words[wordIdx],
+		spanArgIndex:  wordIdx - 1,
+		found:         true,
+		unknownOption: parsed.unknownOption,
+	}
 }

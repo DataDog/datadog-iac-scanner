@@ -61,6 +61,7 @@ const (
 	subcmdReinstall = "reinstall"
 	subcmdRm        = "rm"
 	optYes          = "--yes"
+	optShortYes     = "-yes"
 	optAssumeYes    = "--assume-yes"
 	optVersion      = "--version"
 )
@@ -177,7 +178,7 @@ func rpmAssumeYes(options []Option) bool {
 	assumeYes := false
 	for _, option := range options {
 		switch option.Name {
-		case "--assumeyes", optAssumeYes, optYes, "-yes":
+		case "--assumeyes", optAssumeYes, optYes, optShortYes:
 			if val, ok := parseOptionBool(option.Value); ok {
 				assumeYes = val
 			}
@@ -238,7 +239,22 @@ func nodePinned(arguments []Value, index int, _ []Option) bool {
 }
 
 func isGemVersionFlag(token string) bool {
-	return token == optVersion || strings.HasPrefix(token, optVersion+"=") || strings.HasPrefix(token, "-v")
+	return isGemSeparateVersionFlag(token) || isGemAttachedVersionFlag(token)
+}
+
+func isGemSeparateVersionFlag(token string) bool {
+	if token == optVersion {
+		return true
+	}
+	return strings.HasPrefix(token, "-") && !strings.HasPrefix(token, optionEnd) && strings.HasSuffix(token, "v")
+}
+
+func isGemAttachedVersionFlag(token string) bool {
+	if strings.HasPrefix(token, optVersion+"=") {
+		return true
+	}
+	return strings.HasPrefix(token, "-") && !strings.HasPrefix(token, optionEnd) &&
+		strings.Contains(token[1:], "v") && !strings.HasSuffix(token, "v")
 }
 
 // gemPinned accepts a version given inline (name:1.0), right after the gem it
@@ -253,11 +269,10 @@ func gemPinned(arguments []Value, index int, _ []Option) bool {
 	}
 	// Check whether a leading -v/--version immediately precedes this gem
 	// (with no earlier gem operand between it and this gem).
-	if index >= 1 && isGemVersionFlag(arguments[index-1].Text) &&
-		(strings.HasPrefix(arguments[index-1].Text, optVersion+"=") || len(arguments[index-1].Text) > 2) {
+	if index >= 1 && isGemAttachedVersionFlag(arguments[index-1].Text) {
 		return index < 2 || strings.HasPrefix(arguments[index-2].Text, "-") || arguments[index-2].Text == actionInstall
 	}
-	if index >= 2 && (arguments[index-2].Text == "-v" || arguments[index-2].Text == optVersion) {
+	if index >= 2 && isGemSeparateVersionFlag(arguments[index-2].Text) {
 		return index < 3 || strings.HasPrefix(arguments[index-3].Text, "-") || arguments[index-3].Text == actionInstall
 	}
 	return false
@@ -485,36 +500,57 @@ func (grammar *managerGrammar) readOptions(command *PackageCommand, arguments []
 			operands = append(operands, i)
 			continue
 		}
-		option, consumes := grammar.option(token)
-		option.Global = len(operands) == 0
+		opts, consumes := grammar.parseOption(token)
+		global := len(operands) == 0
+		for j := range opts {
+			opts[j].Global = global
+		}
 		if consumes && i+1 < len(arguments) {
 			i++
-			option.Value = arguments[i].Text
+			opts[len(opts)-1].Value = arguments[i].Text
 			if !arguments[i].Known {
 				command.Known = false
 			}
 		}
-		if grammar.editableVCS(option) {
-			command.Packages = append(command.Packages, Package{Name: option.Value, Argument: offset + i})
+		last := opts[len(opts)-1]
+		if grammar.editableVCS(last) {
+			command.Packages = append(command.Packages, Package{Name: last.Value, Argument: offset + i})
 		}
-		command.Options = append(command.Options, option)
+		command.Options = append(command.Options, opts...)
 	}
 	return operands
 }
 
-// option splits an option token into its name and attached value, and reports
-// whether the next argument is its value.
-func (grammar *managerGrammar) option(token string) (Option, bool) {
-	if name, value, attached := strings.Cut(token, "="); attached && strings.HasPrefix(token, "--") {
-		return Option{Name: name, Value: value}, false
+// parseOption splits a long option or bundled short options into individual
+// Option entries and reports whether the final option consumes the next argv
+// element as its value.
+func (grammar *managerGrammar) parseOption(token string) (opts []Option, consumesNext bool) {
+	if strings.HasPrefix(token, optionEnd) {
+		if name, value, attached := strings.Cut(token, "="); attached {
+			return []Option{{Name: name, Value: value}}, false
+		}
+		return []Option{{Name: token}}, grammar.values[token]
 	}
-	if grammar.values[token] {
-		return Option{Name: token}, true
+	if token == optShortYes {
+		return []Option{{Name: token}}, false
 	}
-	if !strings.HasPrefix(token, "--") && len(token) > 2 && grammar.values[token[:2]] {
-		return Option{Name: token[:2], Value: strings.TrimPrefix(token[2:], "=")}, false
+	if len(token) > 2 && token[2] == '=' {
+		return []Option{{Name: token[:2], Value: token[3:]}}, false
 	}
-	return Option{Name: token}, false
+	short := token[1:]
+	for pos, r := range short {
+		flag := "-" + string(r)
+		if grammar.values[flag] {
+			if pos+1 < len(short) {
+				opts = append(opts, Option{Name: flag, Value: strings.TrimPrefix(short[pos+1:], "=")})
+				return opts, false
+			}
+			opts = append(opts, Option{Name: flag})
+			return opts, true
+		}
+		opts = append(opts, Option{Name: flag})
+	}
+	return opts, false
 }
 
 // editableVCS reports a pip editable install from a version control URL,

@@ -104,6 +104,24 @@ func TestAnalyzeControlFlow(t *testing.T) {
 	require.False(t, result.Pipelines[1].Pipefail)
 	require.True(t, result.Pipelines[1].Known)
 
+	// External wrappers and paths around `set` must not mutate the enclosing shell's options.
+	for _, script := range []string{
+		"env -i set -o pipefail; curl x | sh",
+		"/bin/set -o pipefail; curl x | sh",
+	} {
+		result = Analyze(script, "bash")
+		require.Len(t, result.Pipelines, 1, script)
+		require.False(t, result.Pipelines[0].Pipefail, script)
+		require.True(t, result.Pipelines[0].Known, script)
+	}
+
+	// Compound AND failure must not be attributed to a potentially skipped call.
+	result = Analyze("false && echo skipped || pip install flask", "sh")
+	require.True(t, result.Complete, result.Diagnostics)
+	require.Len(t, result.Calls, 3)
+	require.Equal(t, []Guard{{Kind: GuardSuccess, Call: 0}}, result.Calls[1].Guards)
+	require.Empty(t, result.Calls[2].Guards)
+
 	// POSIX `[` builtin guard stays complete and does not mark environment mutation.
 	result = Analyze("[ -f /etc/os-release ] && apt-get install -y curl", "sh")
 	require.True(t, result.Complete, result.Diagnostics)
@@ -115,12 +133,19 @@ func TestAnalyzeControlFlow(t *testing.T) {
 	for _, script := range []string{
 		"bash -c -- 'pip install flask'",
 		"bash -eo pipefail -c 'pip install flask'",
+		"bash -co pipefail 'pip install flask'",
+		"bash -oc pipefail 'pip install flask'",
 		"sh -euo pipefail -c 'pip install flask'",
 		"su -s /bin/sh -- root -c 'pip install flask'",
+		"su -s /bin/bash -c 'packages=(flask); pip install flask' root",
+		"su --shell=/bin/bash --command='packages=(flask); pip install flask' root",
+		"su -c'pip install flask' root",
+		"su --command='pip install flask' root",
 		"su root --command 'pip install flask'",
 		"su root -s /bin/sh -c 'pip install flask'",
 		"su root -- -c 'pip install flask'",
 		"su -lc 'pip install flask' root",
+		"su -lc'pip install flask' root",
 	} {
 		result = Analyze(script, "bash")
 		require.True(t, result.Complete, script, result.Diagnostics)
@@ -163,6 +188,12 @@ func TestAnalyzeCompleteness(t *testing.T) {
 func TestAnalyzeDeepNestingAndLargePipelines(t *testing.T) {
 	t.Run("deep nesting does not overflow stack", func(t *testing.T) {
 		deep := strings.Repeat("(", 170000) + "1" + strings.Repeat(")", 170000)
+		w, k := 400, 850
+		heredocChunk := strings.Repeat("(", w) + "1+$(cat <<E\n" + strings.Repeat(")", w+1) + "\nE\n)+"
+		heredocDeep := "echo $((" + strings.Repeat(heredocChunk, k) + "1" + strings.Repeat(")", w*k) + "))\n"
+		unaryChainOverLimit := "echo $((" + strings.Repeat("!", 900000) + "0))"
+		unaryChainUnderLimit := "echo $((" + strings.Repeat("!", 10000) + "0))"
+
 		old := debug.SetMaxStack(8 << 20)
 		defer debug.SetMaxStack(old)
 
@@ -172,8 +203,9 @@ func TestAnalyzeDeepNestingAndLargePipelines(t *testing.T) {
 			"echo \"it's\"\necho $((" + deep + "))\necho \"that's\"\n",
 			"cat <<EOF\ndon't\nEOF\necho $((" + deep + "))\n",
 			"echo $'don\\'t'\necho $((" + deep + "))\n",
-			"echo \"$((" + deep + "))\"",
-			"echo " + strings.Repeat("$(echo ')' ", 20000) + strings.Repeat(")", 20000),
+			heredocDeep,
+			unaryChainOverLimit,
+			unaryChainUnderLimit,
 		} {
 			facts := Analyze(script, "bash")
 			require.False(t, facts.Complete)
@@ -372,18 +404,29 @@ func TestAnalyzeCDOperand(t *testing.T) {
 }
 
 func TestAnalyzeEnvironmentMayChange(t *testing.T) {
-	for _, script := range []string{
-		"HOME=/tmp pip install flask",
-		"export HOME=/tmp; pip install flask",
-		"unset HOME; pip install flask",
-		"configure() { HOME=/tmp; }; pip install flask",
-		"cd /tmp; pip install --cache-dir cache flask",
-		"$SETUP; pip install flask",
-		". ./environment; pip install flask",
-		"eval \"$SETUP\"; pip install flask",
+	for _, tc := range []struct {
+		script string
+		shell  string
+	}{
+		{script: "HOME=/tmp pip install flask"},
+		{script: "export HOME=/tmp; pip install flask"},
+		{script: "unset HOME; pip install flask"},
+		{script: "configure() { HOME=/tmp; }; pip install flask"},
+		{script: "cd /tmp; pip install --cache-dir cache flask"},
+		{script: "for HOME in /tmp; do pip install flask; done"},
+		{script: "echo ${HOME:=/tmp}; pip install flask"},
+		{script: "(( HOME = 1 )); pip install flask", shell: "bash"},
+		{script: "read HOME; pip install flask"},
+		{script: "$SETUP; pip install flask"},
+		{script: ". ./environment; pip install flask"},
+		{script: "eval \"$SETUP\"; pip install flask"},
 	} {
-		t.Run(script, func(t *testing.T) {
-			require.True(t, Analyze(script, "sh").EnvironmentMayChange)
+		t.Run(tc.script, func(t *testing.T) {
+			shellName := tc.shell
+			if shellName == "" {
+				shellName = "sh"
+			}
+			require.True(t, Analyze(tc.script, shellName).EnvironmentMayChange)
 		})
 	}
 	for _, script := range []string{
@@ -426,6 +469,9 @@ func TestAnalyzePackageCommands(t *testing.T) {
 		{"zypper install -n vim", "zypper", "install", false, true, []pkg{{"vim", false}}},
 		{"zypper -p http://r in vim", "zypper", "install", false, true, []pkg{{"vim", false}}},
 		{"pip --timeout 60 --retries 3 install requests", "pip", "install", false, true, []pkg{{"requests", false}}},
+		{"pip install -qr requirements.txt requests", "pip", "install", false, true, []pkg{{"requests", false}}},
+		{"pip install -qrrequirements.txt requests", "pip", "install", false, true, []pkg{{"requests", false}}},
+		{"apt-get install -yo Dpkg::Options::=--force-confold curl", "apt-get", "install", true, true, []pkg{{"curl", false}}},
 		{"python3 -m pip install -r reqs.txt -e git+https://example.com/x.git 'requests[socks]==2.31.0'", "pip", "install", false, true,
 			[]pkg{{"git+https://example.com/x.git", false}, {"requests[socks]==2.31.0", true}}},
 		{"npm i --registry https://registry.example.com --omit dev --audit-level high @scope/a@1 git-rev-sync user/repo ./local https://example.com/pkg.tgz", "npm", "install", false, true,
