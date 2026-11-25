@@ -43,7 +43,7 @@ type managerGrammar struct {
 	actions          map[string]string
 	values           map[string]bool
 	operand          func(token string) bool
-	pinned           func(arguments []Value, index int, options []Option) bool
+	pinned           func(grammar *managerGrammar, arguments []Value, index int) bool
 	yes              func(options []Option) bool
 	globalSubcommand string
 	// editable marks pip, whose -e/--editable value can be a VCS URL to install.
@@ -91,19 +91,19 @@ func set(words string) map[string]bool {
 	return result
 }
 
-func aptZypperPinned(arguments []Value, index int, _ []Option) bool {
+func aptZypperPinned(_ *managerGrammar, arguments []Value, index int) bool {
 	return aptZypperVersionPattern.MatchString(arguments[index].Text)
 }
 
-func apkPinned(arguments []Value, index int, _ []Option) bool {
+func apkPinned(_ *managerGrammar, arguments []Value, index int) bool {
 	return apkVersionPattern.MatchString(arguments[index].Text)
 }
 
-func pipPinned(arguments []Value, index int, _ []Option) bool {
+func pipPinned(_ *managerGrammar, arguments []Value, index int) bool {
 	return pipVersionPattern.MatchString(arguments[index].Text)
 }
 
-func rpmPinned(arguments []Value, index int, _ []Option) bool {
+func rpmPinned(_ *managerGrammar, arguments []Value, index int) bool {
 	text := arguments[index].Text
 	for _, pattern := range rpmVersionPatterns {
 		if pattern.MatchString(text) {
@@ -229,7 +229,7 @@ func nodePackage(token string) bool {
 	return token != "" && !strings.Contains(name, "/") && !nonRegistryNodePackage.MatchString(token)
 }
 
-func nodePinned(arguments []Value, index int, _ []Option) bool {
+func nodePinned(_ *managerGrammar, arguments []Value, index int) bool {
 	name := arguments[index].Text
 	if strings.HasPrefix(name, "@") {
 		_, name, _ = strings.Cut(name, "/")
@@ -238,42 +238,41 @@ func nodePinned(arguments []Value, index int, _ []Option) bool {
 	return hasAt && version != ""
 }
 
-func isGemVersionFlag(token string) bool {
-	return isGemSeparateVersionFlag(token) || isGemAttachedVersionFlag(token)
-}
-
-func isGemSeparateVersionFlag(token string) bool {
-	if token == optVersion {
-		return true
+func gemVersionOption(grammar *managerGrammar, token string) (present, consumesNext bool) {
+	if !strings.HasPrefix(token, "-") || token == "-" || token == optionEnd {
+		return false, false
 	}
-	return strings.HasPrefix(token, "-") && !strings.HasPrefix(token, optionEnd) && strings.HasSuffix(token, "v")
-}
-
-func isGemAttachedVersionFlag(token string) bool {
-	if strings.HasPrefix(token, optVersion+"=") {
-		return true
+	opts, consumes := grammar.parseOption(token)
+	last := opts[len(opts)-1]
+	if last.Name == "-v" || last.Name == optVersion {
+		return true, consumes
 	}
-	return strings.HasPrefix(token, "-") && !strings.HasPrefix(token, optionEnd) &&
-		strings.Contains(token[1:], "v") && !strings.HasSuffix(token, "v")
+	return false, false
 }
 
 // gemPinned accepts a version given inline (name:1.0), right after the gem it
 // applies to (`gem install rails -v 7.0`), or as a leading version flag before
 // the gem (`gem install -v 7.0 rails`).
-func gemPinned(arguments []Value, index int, _ []Option) bool {
+func gemPinned(grammar *managerGrammar, arguments []Value, index int) bool {
 	if gemVersionPattern.MatchString(arguments[index].Text) {
 		return true
 	}
-	if index+1 < len(arguments) && isGemVersionFlag(arguments[index+1].Text) {
-		return true
+	if index+1 < len(arguments) {
+		if present, _ := gemVersionOption(grammar, arguments[index+1].Text); present {
+			return true
+		}
 	}
 	// Check whether a leading -v/--version immediately precedes this gem
 	// (with no earlier gem operand between it and this gem).
-	if index >= 1 && isGemAttachedVersionFlag(arguments[index-1].Text) {
-		return index < 2 || strings.HasPrefix(arguments[index-2].Text, "-") || arguments[index-2].Text == actionInstall
+	if index >= 1 {
+		if present, consumesNext := gemVersionOption(grammar, arguments[index-1].Text); present && !consumesNext {
+			return index < 2 || strings.HasPrefix(arguments[index-2].Text, "-") || arguments[index-2].Text == actionInstall
+		}
 	}
-	if index >= 2 && isGemSeparateVersionFlag(arguments[index-2].Text) {
-		return index < 3 || strings.HasPrefix(arguments[index-3].Text, "-") || arguments[index-3].Text == actionInstall
+	if index >= 2 {
+		if present, consumesNext := gemVersionOption(grammar, arguments[index-2].Text); present && consumesNext {
+			return index < 3 || strings.HasPrefix(arguments[index-3].Text, "-") || arguments[index-3].Text == actionInstall
+		}
 	}
 	return false
 }
@@ -469,7 +468,7 @@ func (grammar *managerGrammar) read(arguments []Value, offset int) PackageComman
 	}
 	for i := range command.Packages {
 		if !grammar.editable || !strings.Contains(command.Packages[i].Name, "://") {
-			command.Packages[i].Pinned = grammar.pinned(arguments, command.Packages[i].Argument-offset, command.Options)
+			command.Packages[i].Pinned = grammar.pinned(grammar, arguments, command.Packages[i].Argument-offset)
 		}
 	}
 	command.AssumeYes = grammar.yes(command.Options)
