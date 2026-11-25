@@ -1520,3 +1520,16 @@ resource "aws_s3_bucket" "this" {
 		t.Fatal("the called module must not also be scanned as a root")
 	}
 }
+
+func TestTerraformRootDirs_RepositoryEntryPointsOnly(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	root := filepath.Join(repo, "stack")
+	local := filepath.Join(repo, "local")
+	uncalledLocal := filepath.Join(repo, "uncalled")
+	cache := filepath.Join(repo, ".cache", "modules")
+	dirs := map[string]bool{repo: true, root: true, local: true, uncalledLocal: true, cache: true, outside: true}
+	called := map[string]bool{local: true}
+	got := terraformRootDirs(dirs, called, externalModuleFiles(repo, func(path string) bool { return pathWithinRoot(path, cache) }))
+	require.ElementsMatch(t, []string{repo, root, uncalledLocal}, got)
+	require.IsIncreasing(t, got)
+}

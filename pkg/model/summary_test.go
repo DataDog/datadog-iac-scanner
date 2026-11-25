@@ -22,10 +22,12 @@ func TestModuleAttributionSerializationContract(t *testing.T) {
 
 	// Vulnerability is the content-push wire type: the IDE anchors instantiated
 	// findings on the call-site declaration, so the attribution must serialize.
-	vulnerabilityJSON, err := json.Marshal(Vulnerability{ModuleAttribution: attribution})
+	location := &SourceLocation{Filename: "infra/main.tf", LineStart: 2, LineEnd: 2}
+	vulnerabilityJSON, err := json.Marshal(Vulnerability{ModuleAttribution: attribution, ReportLocation: location})
 	require.NoError(t, err)
 	require.Contains(t, string(vulnerabilityJSON), "moduleAttribution")
 	require.Contains(t, string(vulnerabilityJSON), "call_site")
+	require.Contains(t, string(vulnerabilityJSON), "reportLocation")
 
 	// VulnerableFile is the report-side type: SARIF exposes the attribution as a
 	// dedicated properties payload (ModuleAttributionForSARIF), never inline.
@@ -641,4 +643,21 @@ func TestCanonicalReportedPath(t *testing.T) {
 	// Outside every checkout: untouched, byte for byte.
 	require.Equal(t, "src/a/b/c.yaml", CanonicalReportedPath("src/a/b/c.yaml", extractionMap))
 	require.Equal(t, "src/a/b/c.yaml", CanonicalReportedPath("src/a/b/c.yaml", nil))
+}
+
+func TestCreateSummary_ModuleReportLocationPreservesIdentity(t *testing.T) {
+	ctx := context.Background()
+	finding := Vulnerability{
+		FileName: "/repo/modules/main.tf", QueryID: "q", QueryName: "q", Severity: SeverityHigh, Platform: "Terraform",
+		ResourceType: "aws_s3_bucket", ResourceName: "this", LineWithVulnerability: "acl = public-read",
+		ModuleCallChain: "stack/main.tf|module.bucket",
+	}
+	before := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, "/repo", SCIInfo{})
+	finding.ReportLocation = &SourceLocation{Filename: "stack/main.tf", LineStart: 3, LineEnd: 3, ColumnStart: 2, ColumnEnd: 20}
+	after := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, "/repo", SCIInfo{})
+	file := after.Queries[0].Files[0]
+	require.Equal(t, before.Queries[0].Files[0].Fingerprint, file.Fingerprint)
+	require.Equal(t, finding.ReportLocation, file.ReportLocation)
+	require.NotSame(t, finding.ReportLocation, file.ReportLocation)
+	require.Equal(t, "modules/main.tf", file.FileName, "fixes still address the detected file")
 }

@@ -52,6 +52,8 @@ type VulnerableFile struct {
 	ModuleCallChain string `json:"module_call_chain,omitempty"`
 	// ModuleAttribution: declaration and body locations for instantiated module findings.
 	ModuleAttribution *ModuleAttribution `json:"-"`
+	// ReportLocation is the resolved location, copied from finding routing.
+	ReportLocation *SourceLocation `json:"-"`
 	// FileID is the document the finding was raised on (Vulnerability.FileID).
 	FileID string `json:"-"`
 	// ResourceOccurrences carries the declarations the reported finding represents.
@@ -385,6 +387,11 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			item.ModuleCallChain,
 		)
 
+		var reportLocation *SourceLocation
+		if item.ReportLocation != nil {
+			location := *item.ReportLocation
+			reportLocation = &location
+		}
 		qItem := q[item.QueryID]
 		qItem.Files = append(qItem.Files, VulnerableFile{
 			FileName:                 resolvedPath,
@@ -410,6 +417,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			SuppressionJustification: item.SuppressionJustification,
 			ModuleCallChain:          item.ModuleCallChain,
 			ModuleAttribution:        cloneModuleAttributionSummary(item.ModuleAttribution),
+			ReportLocation:           reportLocation,
 			FileID:                   item.FileID,
 			ResourceOccurrences:      item.ResourceOccurrences,
 		})

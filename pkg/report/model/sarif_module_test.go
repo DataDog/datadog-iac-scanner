@@ -22,6 +22,9 @@ func TestBuildSarifIssue_ModuleAttribution(t *testing.T) {
 		Platform:  "terraform",
 		Files: []model.VulnerableFile{{
 			FileName: "modules/bucket/main.tf",
+			ReportLocation: &model.SourceLocation{
+				Filename: "stack/main.tf", LineStart: 2, LineEnd: 2, ColumnStart: 1, ColumnEnd: 43,
+			},
 			Fingerprint: model.GetDatadogFingerprintHash(
 				model.SCIInfo{}, "modules/bucket/main.tf", "terraform",
 				"aws_s3_bucket", "this", "acl-rule", "acl = public-read", "stack|module.bucket",
@@ -120,7 +123,10 @@ func TestBuildSarifIssue_RemoteModuleOmitsFix(t *testing.T) {
 		Severity:  model.SeverityHigh,
 		Platform:  "terraform",
 		Files: []model.VulnerableFile{{
-			FileName:        "main.tf",
+			FileName: "main.tf",
+			ReportLocation: &model.SourceLocation{
+				Filename: "stack/main.tf", LineStart: 2, LineEnd: 5, ColumnStart: 1, ColumnEnd: 2,
+			},
 			ResourceType:    "aws_s3_bucket",
 			ResourceName:    "this",
 			Remediation:     "remove insecure ACL",
@@ -159,7 +165,10 @@ func TestBuildSarifIssue_ValueNotSetByModuleOmitsFix(t *testing.T) {
 				Severity:  model.SeverityHigh,
 				Platform:  "terraform",
 				Files: []model.VulnerableFile{{
-					FileName:        "modules/bucket/main.tf",
+					FileName: "modules/bucket/main.tf",
+					ReportLocation: &model.SourceLocation{
+						Filename: "stack/main.tf", LineStart: 4, LineEnd: 4, ColumnStart: 1, ColumnEnd: 2,
+					},
 					ResourceType:    "aws_s3_bucket",
 					ResourceName:    "this",
 					Remediation:     "remove insecure ACL",
@@ -214,4 +223,29 @@ func TestBuildSarifIssue_NonModuleFindingUnchanged(t *testing.T) {
 	require.Equal(t, "main.tf", result.ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
 	_, hasModule := result.ResultProperties["module"]
 	require.False(t, hasModule)
+}
+
+// Even malformed inputs that bypass engine routing cannot fall back to a
+// fetched file or publish a path escaping the scanned repository.
+func TestBuildSarifIssue_RejectsInvalidModuleReportLocations(t *testing.T) {
+	for _, name := range []string{"", "../cache/main.tf", "../../tmp/modules/hash/gcp/main.tf", "/tmp/cache/main.tf",
+		`C:\cache\main.tf`, `..\cache\main.tf`, "https://example.com/main.tf"} {
+		t.Run(name, func(t *testing.T) {
+			file := model.VulnerableFile{
+				FileName: "../../tmp/cache/main.tf",
+				ResourceLocation: model.ResourceLocation{
+					Start: model.ResourceLine{Line: 1, Col: 1}, End: model.ResourceLine{Line: 2, Col: 2},
+				},
+				ModuleAttribution: &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "stack/main.tf"}},
+			}
+			if name != "" {
+				file.ReportLocation = &model.SourceLocation{Filename: name, LineStart: 1, LineEnd: 2}
+			}
+			issue := model.QueryResult{QueryName: "rule", Severity: model.SeverityHigh, Files: []model.VulnerableFile{file}}
+			report := NewSarifReport().(*sarifReport)
+			_, err := report.BuildSarifIssue(context.Background(), &issue, model.SCIInfo{})
+			require.NoError(t, err)
+			require.Empty(t, report.Runs[0].Results)
+		})
+	}
 }

@@ -232,6 +232,9 @@ func callAttribution(
 	if len(chain) == 0 {
 		return nil
 	}
+	if _, ok := repositoryFileName(chain[0].CalledFrom, repoPath); !ok {
+		return nil
+	}
 	entry := cache.modulePath(chain, repoPath, lookup)
 	if len(entry.path) == 0 {
 		return nil
@@ -639,6 +642,36 @@ func repoRelativeFile(filePath, repoPath string) string {
 		return filepath.ToSlash(filepath.Base(abs))
 	}
 	return filepath.ToSlash(rel)
+}
+
+// externalModuleFiles defines the repository boundary for evaluation and
+// finding routing. A fetched cache inside the checkout is external too.
+// The returned predicate is always present; callers cannot accidentally
+// disable containment checks by omitting the fetched-path registry.
+func externalModuleFiles(repoPath string, fetched func(string) bool) func(string) bool {
+	return func(path string) bool {
+		abs := absPath(path, repoPath)
+		return (repoPath != "" && !pathWithinRoot(abs, repoPath)) || (fetched != nil && fetched(abs))
+	}
+}
+
+// repositoryFileName is the checked conversion for repository locations.
+// repoRelativeFile also names provenance outside the repository, so it must
+// not be used alone to establish that a call site is reportable.
+func repositoryFileName(filePath, repoPath string) (string, bool) {
+	if filePath == "" {
+		return "", false
+	}
+	// Content-push paths round-trip without a filesystem repository root.
+	if repoPath == "" {
+		return filepath.ToSlash(filepath.Clean(filePath)), true
+	}
+	rel, err := filepath.Rel(filepath.Clean(repoPath), absPath(filePath, repoPath))
+	if err != nil {
+		return "", false
+	}
+	name := filepath.ToSlash(rel)
+	return name, model.IsRepositoryFile(name)
 }
 
 func moduleCallerRoot(calledFrom, repoPath string) string {

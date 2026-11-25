@@ -167,3 +167,87 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, 2, module.ModulePath[0].CodeLocation.LineStart)
 	require.Equal(t, 5, module.ModulePath[0].CodeLocation.LineEnd)
 }
+
+// A downloaded package can contain entry points other than the //subdir the
+// repository calls. Those directories must never instantiate resources on
+// their own, even when they call another module in the same package.
+func TestInspect_RemotePackageOnlyReportsReachableCalls(t *testing.T) {
+	for _, uncalled := range []string{"", "gcp"} {
+		t.Run("uncalled/"+uncalled, func(t *testing.T) {
+			repo, pkg := t.TempDir(), t.TempDir()
+			const source = "git::https://example.com/modules.git//selected?ref=v1"
+			unusedSource := "../unused-child"
+			if uncalled == "" {
+				unusedSource = "./unused-child"
+			}
+			paths := []string{
+				writeCallerFixture(t, pkg, "selected/main.tf", `module "child" { source = "./child" }`),
+				writeCallerFixture(t, pkg, "selected/child/main.tf", `variable "name" {}
+resource "aws_s3_bucket" "reachable" { acl = "public-read" }
+`),
+				writeCallerFixture(t, pkg, filepath.Join(uncalled, "main.tf"), `module "unused" { source = "`+unusedSource+`" }`),
+				writeCallerFixture(t, pkg, "unused-child/main.tf", `resource "aws_s3_bucket" "unreachable" { acl = "public-read" }`),
+			}
+			ins := newTestInspector(t, inspectorOpts{
+				queries: []model.QueryMetadata{
+					{Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+						Metadata: map[string]interface{}{"id": "acl-rule", "platform": "Terraform"}, Aggregation: 1},
+					{Query: "variable_rule", Content: variableTypeRule, InputData: "{}", Platform: "terraform",
+						Metadata: map[string]interface{}{"id": "variable-rule", "platform": "Terraform"}, Aggregation: 1},
+				},
+				repoPath: repo, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+			})
+			dirs := map[string]RemoteModuleDirectory{}
+			provenance := map[string]RemoteModuleProvenance{}
+			for _, stack := range []string{"stack-a", "stack-b"} {
+				caller := writeCallerFixture(t, repo, stack+"/main.tf", `module "selected" { source = "`+source+`" }`)
+				paths = append(paths, caller)
+				key := RemoteModuleKey(filepath.Dir(caller), source, "")
+				dirs[key] = RemoteModuleDirectory{Path: filepath.Join(pkg, "selected"), PackageRoot: pkg}
+				provenance[key] = RemoteModuleProvenance{
+					Source: source, SourceType: moduleSourceTypeGit,
+					ModuleRoot: filepath.Join(pkg, "selected"), PackageRoot: pkg,
+				}
+			}
+			ins.SetRemoteModuleDirectories(dirs)
+			ins.SetRemoteModuleProvenance(provenance)
+			ins.SetExternalModulePaths([]string{pkg})
+			var files model.FileMetadatas
+			for _, path := range paths {
+				files = append(files, parseTerraform(t, path)...)
+			}
+			ctx := context.Background()
+			findings, err := ins.Inspect(ctx, "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, findings, 4, "one resource and one file finding per scanned call")
+			summary := model.CreateSummary(ctx, model.Counters{}, findings, "test", nil, repo, model.SCIInfo{})
+			report := reportModel.NewSarifReport()
+			for i := range summary.Queries {
+				_, err = report.BuildSarifIssue(ctx, &summary.Queries[i], model.SCIInfo{})
+				require.NoError(t, err)
+			}
+			raw, err := json.Marshal(report)
+			require.NoError(t, err)
+			var doc struct {
+				Runs []struct {
+					Results []struct {
+						Locations []struct {
+							PhysicalLocation struct {
+								ArtifactLocation struct{ URI string } `json:"artifactLocation"`
+							} `json:"physicalLocation"`
+						} `json:"locations"`
+					} `json:"results"`
+				} `json:"runs"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &doc))
+			require.Len(t, doc.Runs[0].Results, 4)
+			uris := map[string]int{}
+			for _, result := range doc.Runs[0].Results {
+				uris[result.Locations[0].PhysicalLocation.ArtifactLocation.URI]++
+			}
+			require.Equal(t, map[string]int{"stack-a/main.tf": 2, "stack-b/main.tf": 2}, uris)
+			require.NotContains(t, string(raw), pkg, "the module cache never appears in SARIF")
+		})
+	}
+}

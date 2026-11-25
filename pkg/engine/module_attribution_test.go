@@ -516,3 +516,11 @@ func TestEnrichModuleHopKeepsDeclaredSourceWhenCanonicalSourceDiffers(t *testing
 	require.Equal(t, "https://github.com/upstream/repo", address)
 	require.Equal(t, "https://mirror.example.com/Org/Repo", declared)
 }
+
+func TestCallAttribution_RequiresRepositoryRootCaller(t *testing.T) {
+	repo := t.TempDir()
+	for _, caller := range []string{filepath.Join(t.TempDir(), "main.tf"), "../cache/main.tf", ""} {
+		chain := []tfeval.CallSite{{CalledFrom: caller, ModuleName: "child", Source: "./child"}}
+		require.Nil(t, callAttribution(chain, "/cache/child/main.tf", repo, nil, nil))
+	}
+}

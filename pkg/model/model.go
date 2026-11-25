@@ -1045,6 +1045,10 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// ReportLocation is assigned by finding routing after module caller expansion.
+	// Module findings always report here; FileName and the original ranges keep
+	// describing the detected module code for identity, provenance and fixes.
+	ReportLocation *SourceLocation `json:"reportLocation,omitempty"`
 	// ResourceID is the Terraform address of the affected block instance.
 	ResourceID string `json:"resourceId,omitempty"`
 	// RootModule is the repository-relative root module that evaluated this

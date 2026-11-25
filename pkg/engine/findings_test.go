@@ -132,11 +132,15 @@ func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
 		return model.Vulnerability{
 			FileID: docID, FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
 			ResourceType: "aws_s3_bucket", ResourceName: "replica", ModuleCallChain: chain, Line: line,
+			ModuleAttribution: &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "stack/main.tf"}},
 		}
 	}
 	routing := newFindingRouting(map[string][]extraCallerInfo{
-		"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-	}, nil, nil, "/repo", nil)
+		"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other",
+			attributions: map[string]*model.ModuleAttribution{
+				moduleAttributionKey("aws_s3_bucket", 0, 0): {CallSite: model.SourceLocation{Filename: "other/main.tf"}},
+			}}},
+	}, nil, model.FileMetadatas{{FilePath: "/repo/stack/main.tf"}, {FilePath: "/repo/other/main.tf"}}, "/repo", nil)
 
 	kept := decodeAll(newFindingSet(true, routing), []model.Vulnerability{
 		finding("doc-early", 1), finding("doc-late", 2),
@@ -341,8 +345,8 @@ func moduleCalls() *moduleFileCalls {
 	return &moduleFileCalls{
 		name: "main.tf",
 		calls: []moduleCall{
-			{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{}},
-			{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{}},
+			{callChain: "a/main.tf|module.m", attribution: &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "a/main.tf"}}},
+			{callChain: "b/main.tf|module.m", attribution: &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "b/main.tf"}}},
 		},
 	}
 }
@@ -373,9 +377,13 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			files: one,
 			items: twice,
 			routing: func(file *model.FileMetadata) *findingRouting {
+				attrs := cloneModuleAttributions(file.ModuleAttributions)
+				for _, attr := range attrs {
+					attr.CallSite.Filename = "other/main.tf"
+				}
 				return newFindingRouting(map[string][]extraCallerInfo{
-					file.ID: {{callChain: "other/main.tf|module.app", docID: "doc-other"}},
-				}, nil, nil, "", nil)
+					file.ID: {{callChain: "other/main.tf|module.app", docID: "doc-other", attributions: attrs}},
+				}, nil, model.FileMetadatas{{FilePath: "stack/main.tf"}, {FilePath: "other/main.tf"}}, "", nil)
 			},
 		},
 		{
@@ -385,7 +393,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			routing: func(file *model.FileMetadata) *findingRouting {
 				return newFindingRouting(nil, map[string]*moduleFileCalls{
 					file.ID: moduleCalls(),
-				}, nil, "", nil)
+				}, model.FileMetadatas{{FilePath: "a/main.tf"}, {FilePath: "b/main.tf"}}, "", nil)
 			},
 		},
 	}
@@ -396,8 +404,17 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			file.ModuleCallChain = "stack/main.tf|module.app"
 			ins := newTestInspector(t, inspectorOpts{vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator()})
 			ins.ruleConfigs = tc.ruleConfigs
+			if tc.name == "extra caller" {
+				detected := ins.detector.DetectLine(ctx, file, "aws_s3_bucket[this].acl")
+				file.ModuleAttributions = map[string]*model.ModuleAttribution{
+					moduleAttributionKey("aws_s3_bucket", detected.BlockLocation.Start.Line, detected.BlockLocation.Start.Col): {
+						CallSite: model.SourceLocation{Filename: "stack/main.tf"},
+					},
+				}
+			}
 			compacted, full := decodeCompacted(t, ins, tc.files(file), tc.routing(file), tc.items(file))
 			require.Equal(t, storedFindings(t, full), storedFindings(t, compacted))
+			require.Len(t, compacted, 2, "both callers survive identity reduction")
 		})
 	}
 
@@ -415,6 +432,11 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		detected := ins.detector.DetectLine(ctx, newer, "aws_s3_bucket[this].acl")
 		require.Positive(t, detected.BlockLocation.Start.Line)
 		callerName := "excluded/main.tf"
+		older.ModuleAttributions = map[string]*model.ModuleAttribution{
+			moduleAttributionKey("aws_s3_bucket", detected.BlockLocation.Start.Line, detected.BlockLocation.Start.Col): {
+				CallSite: model.SourceLocation{Filename: "stack/main.tf"},
+			},
+		}
 		newer.ModuleAttributions = map[string]*model.ModuleAttribution{
 			moduleAttributionKey("aws_s3_bucket", detected.BlockLocation.Start.Line, detected.BlockLocation.Start.Col): {
 				CallSite: model.SourceLocation{Filename: callerName},
@@ -424,7 +446,7 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			"bucket-rule": {IgnorePaths: []string{"**/excluded/**"}},
 		}
 		routing := newFindingRouting(nil, nil, model.FileMetadatas{
-			{FilePath: callerName},
+			{FilePath: callerName}, {FilePath: "stack/main.tf"},
 		}, "", nil)
 		compacted, full := decodeCompacted(t, ins, map[string]*model.FileMetadata{
 			older.ID: older, newer.ID: newer,
@@ -528,4 +550,57 @@ func TestFindingSet_KeepsOccurrencesOfDroppedDuplicates(t *testing.T) {
 		require.Len(t, kept[0].ResourceOccurrences, 3000)
 		require.Less(t, time.Since(start), time.Second, "reverse=%v", reverse)
 	}
+}
+
+func TestFindingRouting_ResolvesOnlyScannedRepositoryCallSites(t *testing.T) {
+	repo := t.TempDir()
+	cache := filepath.Join(repo, ".cache", "modules")
+	external := func(path string) bool { return pathWithinRoot(path, cache) }
+	caller := "stack/main.tf"
+	files := model.FileMetadatas{
+		{FilePath: filepath.Join(repo, caller)},
+		{FilePath: filepath.Join(cache, "main.tf")},
+		{FilePath: "/outside/main.tf"},
+	}
+	for _, predicate := range []func(string) bool{nil, external} {
+		routing := newFindingRouting(nil, nil, files, repo, predicate)
+		for _, tc := range []struct {
+			name string
+			file string
+			call string
+			want bool
+		}{
+			{name: "scanned caller", file: "/outside/resource.tf", call: caller, want: true},
+			{name: "unscanned caller", file: "/outside/resource.tf", call: "absent/main.tf"},
+			{name: "escaping caller", file: "/outside/resource.tf", call: "../outside/main.tf"},
+			{name: "absolute caller", file: "/outside/resource.tf", call: "/outside/main.tf"},
+			{name: "unreached file", file: "/outside/resource.tf"},
+			{name: "ordinary repository finding", file: filepath.Join(repo, caller), want: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				v := model.Vulnerability{FileName: tc.file, Line: 20}
+				if tc.call != "" {
+					v.ModuleAttribution = &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: tc.call, LineStart: 3}}
+				}
+				_, ok := routing.resolveLocation(&v)
+				require.Equal(t, tc.want, ok)
+				require.Equal(t, tc.file, v.FileName, "detected location and identity are preserved")
+				require.Equal(t, 20, v.Line)
+				if tc.want && tc.call != "" {
+					require.Equal(t, &model.SourceLocation{
+						Filename: caller, LineStart: 3, LineEnd: 3, ColumnStart: 1, ColumnEnd: 2,
+					}, v.ReportLocation)
+				} else {
+					require.Nil(t, v.ReportLocation)
+				}
+			})
+		}
+	}
+	// A cache inside the checkout still cannot act as a scanned caller.
+	routing := newFindingRouting(nil, nil, files, repo, external)
+	v := model.Vulnerability{ModuleAttribution: &model.ModuleAttribution{
+		CallSite: model.SourceLocation{Filename: ".cache/modules/main.tf"},
+	}}
+	_, ok := routing.resolveLocation(&v)
+	require.False(t, ok)
 }
