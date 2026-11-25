@@ -301,12 +301,22 @@ func TestResolveWarnsWhenSkippingModuleDirectory(t *testing.T) {
 
 func TestResolveRemoteModuleWhenLocalCallVisitedDirectory(t *testing.T) {
 	const packageSource = "example/network/aws"
+	const childSource = packageSource + "//modules/child"
+	const otherPackageChild = "example/storage/aws//modules/child"
 	for _, tc := range []struct {
-		name, subdir string
-		wantWarning  bool
+		name, remoteSource, version string
+		totalBytes                  int64
+		wantWarning                 bool
 	}{
-		{name: "matching directory", subdir: "modules/child"},
-		{name: "different directory", subdir: "modules/other", wantWarning: true},
+		{name: "matching directory", remoteSource: childSource, version: "1.0.0"},
+		{name: "different directory", remoteSource: packageSource + "//modules/other", version: "1.0.0", wantWarning: true},
+		{name: "different package", remoteSource: otherPackageChild, version: "1.0.0", wantWarning: true},
+		{name: "different version", remoteSource: childSource, version: "2.0.0", wantWarning: true},
+		{name: "matching directory after admission", remoteSource: childSource, version: "1.0.0", totalBytes: 1 << 20},
+		{
+			name: "different package after admission", remoteSource: otherPackageChild, version: "1.0.0",
+			totalBytes: 1 << 20, wantWarning: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rootFile := writeRegistryModuleCaller(t, t.TempDir(), "parent", packageSource)
@@ -314,13 +324,12 @@ func TestResolveRemoteModuleWhenLocalCallVisitedDirectory(t *testing.T) {
 			packageFile := filepath.Join(packageRoot, "main.tf")
 			childDir := filepath.Join(packageRoot, "modules", "child")
 			childFile := filepath.Join(childDir, "main.tf")
-			remoteSource := packageSource + "//" + tc.subdir
 
 			require.NoError(t, os.MkdirAll(childDir, 0o755))
 			require.NoError(t, os.WriteFile(packageFile, fmt.Appendf(nil, `
 module "local_child" { source = "./modules/child" }
 module "remote_child" { source = %q }
-`, remoteSource), 0o644))
+`, tc.remoteSource), 0o644))
 			require.NoError(t, os.WriteFile(childFile, []byte(`resource "aws_s3_bucket" "this" {}`), 0o644))
 
 			var logs bytes.Buffer
@@ -329,10 +338,11 @@ module "remote_child" { source = %q }
 				RootPaths:      []string{filepath.Dir(rootFile)},
 				DiscoveryPaths: []string{rootFile},
 				Resolver: mapResolver{bySource: map[string]resolver.Resolution{
-					packageSource: {LocalPath: packageRoot, PackageRoot: packageRoot},
-					remoteSource:  {LocalPath: childDir, PackageRoot: packageRoot},
+					packageSource:   {LocalPath: packageRoot, PackageRoot: packageRoot, ResolvedVersion: "1.0.0"},
+					tc.remoteSource: {LocalPath: childDir, PackageRoot: packageRoot, ResolvedVersion: tc.version},
 				}},
-				MaxDepth: 3,
+				MaxDepth:       3,
+				ResourceLimits: resolver.ResourceLimits{MaxTotalBytes: tc.totalBytes},
 			})
 			t.Cleanup(result.Cleanup)
 
@@ -346,7 +356,7 @@ module "remote_child" { source = %q }
 			}
 			require.Equal(t, 1, strings.Count(logs.String(), "\n"))
 			require.Contains(t, logs.String(), "another module already claimed its directory")
-			require.Contains(t, logs.String(), fmt.Sprintf("\"source\":%q", remoteSource))
+			require.Contains(t, logs.String(), fmt.Sprintf("\"source\":%q", tc.remoteSource))
 			require.Contains(t, logs.String(), `"previous_source":"./modules/child"`)
 		})
 	}

@@ -205,6 +205,7 @@ type visitedSet struct {
 type moduleDirectoryOwner struct {
 	source   string
 	identity resolver.ModuleDirectoryIdentity
+	local    bool
 }
 
 type resolutionCache struct {
@@ -228,11 +229,16 @@ type moduleParseCache struct {
 	entries map[string]map[string]tfmodules.ParsedModule
 }
 
+type traversalPackage struct {
+	root     string
+	identity string
+}
+
 type pendingTraversal struct {
 	seed            string
 	repoAllowedDirs map[string]map[string]bool
 	depth           int
-	packageRoot     string
+	pkg             traversalPackage
 }
 
 type pendingTraversalCollector struct {
@@ -313,7 +319,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	g.SetLimit(max(1, runtime.GOMAXPROCS(0)*seedGroupConcurrencyFactor))
 	for seedDir, allowedFiles := range seedGroups {
 		g.Go(func() error {
-			w.traverse(gCtx, seedDir, allowedFiles, repositoryGroups, 0, "")
+			w.traverse(gCtx, seedDir, allowedFiles, repositoryGroups, 0, traversalPackage{})
 			return nil
 		})
 	}
@@ -428,7 +434,7 @@ func (w *walker) expandAdmittedPackages(ctx context.Context, maximum int64) {
 					nil,
 					traversal.repoAllowedDirs,
 					traversal.depth,
-					traversal.packageRoot,
+					traversal.pkg,
 				)
 				return nil
 			})
@@ -443,7 +449,7 @@ func partitionPendingTraversals(
 	admitted = make([]pendingTraversal, 0, len(pending))
 	rejected = make([]pendingTraversal, 0, len(pending))
 	for _, traversal := range pending {
-		if accepted[filepath.Clean(traversal.packageRoot)] {
+		if accepted[filepath.Clean(traversal.pkg.root)] {
 			admitted = append(admitted, traversal)
 		} else {
 			rejected = append(rejected, traversal)
@@ -454,8 +460,8 @@ func partitionPendingTraversals(
 		if left.depth != right.depth {
 			return left.depth < right.depth
 		}
-		if left.packageRoot != right.packageRoot {
-			return left.packageRoot < right.packageRoot
+		if left.pkg.root != right.pkg.root {
+			return left.pkg.root < right.pkg.root
 		}
 		return left.seed < right.seed
 	})
@@ -688,7 +694,7 @@ func (c *moduleParseCache) set(key string, mods map[string]tfmodules.ParsedModul
 func (c *pendingTraversalCollector) add(traversal pendingTraversal) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[visitKey(traversal.seed, traversal.packageRoot)] = traversal
+	c.entries[visitKey(traversal.seed, traversal.pkg.root)] = traversal
 }
 
 func (c *pendingTraversalCollector) drain() []pendingTraversal {
@@ -918,11 +924,11 @@ func (w *walker) traverse(
 	allowedFiles map[string]bool,
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
-	packageRoot string,
+	pkg traversalPackage,
 ) {
 	var remote []remoteModuleCall
-	w.collectLocalModules(ctx, seed, allowedFiles, repoAllowedDirs, depth, packageRoot, &remote)
-	w.traverseRemoteModules(ctx, remote, repoAllowedDirs, packageRoot)
+	w.collectLocalModules(ctx, seed, allowedFiles, repoAllowedDirs, depth, pkg, &remote)
+	w.traverseRemoteModules(ctx, remote, repoAllowedDirs, pkg.root)
 }
 
 func (w *walker) collectLocalModules(
@@ -931,12 +937,13 @@ func (w *walker) collectLocalModules(
 	allowedFiles map[string]bool,
 	repoAllowedDirs map[string]map[string]bool,
 	depth int,
-	packageRoot string,
+	pkg traversalPackage,
 	remote *[]remoteModuleCall,
 ) {
 	if depth >= w.maxDepth {
 		return
 	}
+	packageRoot := pkg.root
 	mods := w.parseModulesInDir(ctx, seed, allowedFiles, packageRoot)
 	if mods == nil {
 		return
@@ -977,13 +984,18 @@ func (w *walker) collectLocalModules(
 				continue
 			}
 		}
-		if _, added := w.visited.tryAdd(localDir, packageRoot, moduleDirectoryOwner{source: mod.Source}); !added {
+		owner := moduleDirectoryOwner{
+			source:   mod.Source,
+			identity: resolver.ModuleDirectoryIdentity{Package: pkg.identity},
+			local:    true,
+		}
+		if _, added := w.visited.tryAdd(localDir, packageRoot, owner); !added {
 			continue
 		}
 		if packageRoot != "" {
 			w.results.addPaths(flatTerraformFilePaths(ctx, localDir, packageRoot)...)
 		}
-		w.collectLocalModules(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, packageRoot, remote)
+		w.collectLocalModules(ctx, localDir, childAllowedFiles, repoAllowedDirs, depth+1, pkg, remote)
 	}
 }
 
@@ -1226,27 +1238,31 @@ func (w *walker) traverseRemoteModuleGroup(
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)
 	}
-	if !w.addResolvedModulePaths(ctx, representative, &resolution) {
+	owner := moduleDirectoryOwner{
+		source:   representative.Source,
+		identity: resolver.RequestedModuleDirectory(representative, &resolution),
+	}
+	if !w.addResolvedModulePaths(ctx, owner, &resolution) {
 		return
 	}
 	w.results.addSourceMapping(
 		resolution.LocalPath,
 		canonicalModuleURL(representative.Source, resolution.ResolvedVersion),
 	)
+	pkg := traversalPackage{root: resolution.PackageRoot, identity: owner.identity.Package}
 	if !w.deferExpansion {
-		w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, resolution.PackageRoot)
+		w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, pkg)
 		return
 	}
 	w.pending.add(pendingTraversal{
 		seed:            resolution.LocalPath,
 		repoAllowedDirs: repoAllowedDirs,
 		depth:           depth + 1,
-		packageRoot:     resolution.PackageRoot,
+		pkg:             pkg,
 	})
 }
 
-func (w *walker) addResolvedModulePaths(ctx context.Context, mod *tfmodules.ParsedModule, res *resolver.Resolution) bool {
-	owner := moduleDirectoryOwner{source: mod.Source, identity: resolver.RequestedModuleDirectory(mod, res)}
+func (w *walker) addResolvedModulePaths(ctx context.Context, owner moduleDirectoryOwner, res *resolver.Resolution) bool {
 	contextLogger := logger.FromContext(ctx)
 	if previous, added := w.visited.tryAdd(res.LocalPath, res.PackageRoot, owner); !added {
 		if !sameModuleDirectory(ctx, previous, owner, res) {
@@ -1270,11 +1286,14 @@ func (w *walker) addResolvedModulePaths(ctx context.Context, mod *tfmodules.Pars
 }
 
 func sameModuleDirectory(ctx context.Context, previous, current moduleDirectoryOwner, res *resolver.Resolution) bool {
-	if previous.identity.Package != "" {
-		return previous.identity == current.identity
+	if previous.identity.Package != current.identity.Package {
+		return false
 	}
-	// A relative call within the package has no remote package identity.
-	// Compare the remote selection to the directory the local call visited.
+	if !previous.local {
+		return previous.identity.Subdir == current.identity.Subdir
+	}
+	// A local call selects a path within the enclosing package. Compare the
+	// remote selection to the directory the local call visited.
 	expected := filepath.Join(res.PackageRoot, filepath.FromSlash(current.identity.Subdir))
 	if expected == filepath.Clean(res.LocalPath) {
 		return true
