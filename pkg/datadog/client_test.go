@@ -90,8 +90,15 @@ func TestGetDefaultRuleset(t *testing.T) {
 			Provider:         ptr("gcp"),
 			Cwe:              ptr("123"),
 			DocumentationUrl: ptr("http://example.com/doc1"),
-			IsTesting:        false,
-			IsPublished:      true,
+			ComplianceFrameworks: []ComplianceFramework{{
+				Framework:   "CIS",
+				Version:     "1.0",
+				Requirement: "Section 1",
+				Control:     "1.2",
+				IsDefault:   true,
+			}},
+			IsTesting:   false,
+			IsPublished: true,
 		},
 		{
 			ID:               "common-rule-2",
