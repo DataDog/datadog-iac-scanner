@@ -1,6 +1,7 @@
 package modulegraph
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -190,6 +192,111 @@ func TestResolveAssemblesModuleMetadataAndPaths(t *testing.T) {
 		Depth:           1,
 		CanonicalSource: "git::https://github.com/acme/network//modules/vpc?ref=v1",
 	}}, result.Modules)
+}
+
+func TestResolveWarnsWhenSkippingModuleDirectory(t *testing.T) {
+	const (
+		registrySource = "example/network/aws//modules/child"
+		gitSource      = "git::https://github.com/example/network.git//modules/child?ref=v1"
+	)
+	tests := []struct {
+		name         string
+		sources      []string
+		directory    string
+		hasFiles     bool
+		emptyWarning bool
+		ownerWarning bool
+	}{
+		{
+			name:         "different package",
+			sources:      []string{registrySource, "example/storage/aws//modules/child"},
+			directory:    "modules/child",
+			hasFiles:     true,
+			ownerWarning: true,
+		},
+		{
+			name:         "different subdirectory",
+			sources:      []string{"example/network/aws", registrySource},
+			directory:    ".",
+			hasFiles:     true,
+			ownerWarning: true,
+		},
+		{
+			name:      "same module",
+			sources:   []string{registrySource, registrySource},
+			directory: "modules/child",
+			hasFiles:  true,
+		},
+		{
+			name:      "registry and Git spellings",
+			sources:   []string{registrySource, gitSource},
+			directory: "modules/child",
+			hasFiles:  true,
+		},
+		{
+			name:         "empty module",
+			sources:      []string{registrySource},
+			directory:    "modules/child",
+			emptyWarning: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root, packageRoot := t.TempDir(), t.TempDir()
+			moduleDir := filepath.Join(packageRoot, tc.directory)
+			require.NoError(t, os.MkdirAll(moduleDir, 0o755))
+			moduleFile := filepath.Join(moduleDir, "main.tf")
+			if tc.hasFiles {
+				require.NoError(t, os.WriteFile(moduleFile, []byte(`resource "aws_s3_bucket" "this" {}`), 0o644))
+			}
+			var callers strings.Builder
+			bySource := make(map[string]resolver.Resolution)
+			for i, source := range tc.sources {
+				fmt.Fprintf(&callers, "module \"child_%d\" { source = %q }\n", i, source)
+				res := resolver.Resolution{LocalPath: moduleDir, PackageRoot: packageRoot}
+				if source == registrySource && tc.sources[len(tc.sources)-1] == gitSource {
+					res.RegistryGitDirectory = resolver.RequestedModuleDirectory(&tfmodules.ParsedModule{Source: gitSource}, &res)
+				}
+				bySource[source] = res
+			}
+			callerFile := filepath.Join(root, "main.tf")
+			require.NoError(t, os.WriteFile(callerFile, []byte(callers.String()), 0o644))
+			var logs bytes.Buffer
+			ctx := zerolog.New(zerolog.SyncWriter(&logs)).Level(zerolog.WarnLevel).WithContext(t.Context())
+
+			result := Resolve(ctx, &Request{
+				RootPaths:      []string{root},
+				DiscoveryPaths: []string{callerFile},
+				Resolver:       mapResolver{bySource: bySource},
+				MaxDepth:       2,
+			})
+
+			require.Len(t, result.Modules, len(tc.sources))
+			if tc.hasFiles {
+				require.Equal(t, []string{moduleFile}, result.ScanPaths)
+			} else {
+				require.Empty(t, result.ScanPaths)
+			}
+			switch {
+			case tc.ownerWarning:
+				require.Equal(t, 1, strings.Count(logs.String(), "\n"))
+				require.Contains(t, logs.String(), "another module already claimed its directory")
+				require.Contains(t, logs.String(), fmt.Sprintf("\"path\":%q", moduleDir))
+				for _, source := range tc.sources {
+					require.Contains(t, logs.String(), fmt.Sprintf("%q", source))
+				}
+				t.Log(strings.TrimSpace(logs.String()))
+			case tc.emptyWarning:
+				require.Equal(t, 1, strings.Count(logs.String(), "\n"))
+				require.Contains(t, logs.String(), "yielded no Terraform files")
+				require.Contains(t, logs.String(), fmt.Sprintf("\"source\":%q", registrySource))
+				require.Contains(t, logs.String(), fmt.Sprintf("\"path\":%q", moduleDir))
+				t.Log(strings.TrimSpace(logs.String()))
+			default:
+				require.Empty(t, logs.String())
+			}
+		})
+	}
 }
 
 func writeTerraformModulesManifest(t *testing.T, root string) {

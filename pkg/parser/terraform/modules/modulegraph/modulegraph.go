@@ -199,7 +199,12 @@ type walkerSnapshot struct {
 
 type visitedSet struct {
 	mu    sync.Mutex
-	paths map[string]bool
+	paths map[string]moduleDirectoryOwner
+}
+
+type moduleDirectoryOwner struct {
+	source   string
+	identity resolver.ModuleDirectoryIdentity
 }
 
 type resolutionCache struct {
@@ -275,7 +280,7 @@ func Resolve(ctx context.Context, request *Request) Result {
 	}
 	w := &walker{
 		visited: visitedSet{
-			paths: make(map[string]bool),
+			paths: make(map[string]moduleDirectoryOwner),
 		},
 		resolutions: resolutionCache{
 			entries: make(map[string]resolvedEntry),
@@ -519,15 +524,15 @@ func visitKey(localPath, packageRoot string) string {
 	return filepath.Clean(localPath) + "\x00" + filepath.Clean(packageRoot)
 }
 
-func (s *visitedSet) tryAdd(localPath, packageRoot string) bool {
+func (s *visitedSet) tryAdd(localPath, packageRoot string, owner moduleDirectoryOwner) (moduleDirectoryOwner, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := visitKey(localPath, packageRoot)
-	if s.paths[key] {
-		return false
+	if previous, ok := s.paths[key]; ok {
+		return previous, false
 	}
-	s.paths[key] = true
-	return true
+	s.paths[key] = owner
+	return moduleDirectoryOwner{}, true
 }
 
 func (c *resultCollector) addPaths(paths ...string) {
@@ -972,7 +977,7 @@ func (w *walker) collectLocalModules(
 				continue
 			}
 		}
-		if !w.visited.tryAdd(localDir, packageRoot) {
+		if _, added := w.visited.tryAdd(localDir, packageRoot, moduleDirectoryOwner{source: mod.Source}); !added {
 			continue
 		}
 		if packageRoot != "" {
@@ -1221,10 +1226,9 @@ func (w *walker) traverseRemoteModuleGroup(
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)
 	}
-	if !w.visited.tryAdd(resolution.LocalPath, resolution.PackageRoot) {
+	if !w.addResolvedModulePaths(ctx, representative, &resolution) {
 		return
 	}
-	w.results.addPaths(flatTerraformFilePaths(ctx, resolution.LocalPath, resolution.PackageRoot)...)
 	w.results.addSourceMapping(
 		resolution.LocalPath,
 		canonicalModuleURL(representative.Source, resolution.ResolvedVersion),
@@ -1239,6 +1243,44 @@ func (w *walker) traverseRemoteModuleGroup(
 		depth:           depth + 1,
 		packageRoot:     resolution.PackageRoot,
 	})
+}
+
+func (w *walker) addResolvedModulePaths(ctx context.Context, mod *tfmodules.ParsedModule, res *resolver.Resolution) bool {
+	owner := moduleDirectoryOwner{source: mod.Source, identity: resolver.RequestedModuleDirectory(mod, res)}
+	contextLogger := logger.FromContext(ctx)
+	if previous, added := w.visited.tryAdd(res.LocalPath, res.PackageRoot, owner); !added {
+		if !sameModuleDirectory(ctx, previous, owner, res) {
+			contextLogger.Warn().
+				Str("source", model.RedactURLCredentials(owner.source)).
+				Str("previous_source", model.RedactURLCredentials(previous.source)).
+				Str("path", res.LocalPath).
+				Msg("Skipping resolved Terraform module because another module already claimed its directory")
+		}
+		return false
+	}
+	files := flatTerraformFilePaths(ctx, res.LocalPath, res.PackageRoot)
+	if len(files) == 0 && ctx.Err() == nil {
+		contextLogger.Warn().
+			Str("source", model.RedactURLCredentials(owner.source)).
+			Str("path", res.LocalPath).
+			Msg("Resolved Terraform module directory yielded no Terraform files")
+	}
+	w.results.addPaths(files...)
+	return true
+}
+
+func sameModuleDirectory(ctx context.Context, previous, current moduleDirectoryOwner, res *resolver.Resolution) bool {
+	if previous.identity.Package != "" {
+		return previous.identity == current.identity
+	}
+	// A relative call within the package has no remote package identity.
+	// Compare the remote selection to the directory the local call visited.
+	expected := filepath.Join(res.PackageRoot, filepath.FromSlash(current.identity.Subdir))
+	if expected == filepath.Clean(res.LocalPath) {
+		return true
+	}
+	confined, err := resolver.ResolvePathWithinRoot(ctx, res.PackageRoot, expected)
+	return err == nil && confined == filepath.Clean(res.LocalPath)
 }
 
 func moduleCallRoot(mod *tfmodules.ParsedModule) string {

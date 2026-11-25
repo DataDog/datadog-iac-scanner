@@ -10,7 +10,21 @@ import (
 	"testing"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/stretchr/testify/require"
 )
+
+func TestRegistryGitDirectoryUsesRequestedSelection(t *testing.T) {
+	res := Resolution{LocalPath: "/package", PackageRoot: "/package", ResolvedRef: "commit"}
+	const download = "git::https://github.com/example/network.git//modules/./child?ref=v1"
+	res = stampRegistryResolution(&res, sourceTypeRegistry, "1.0.0", download)
+	registry := RequestedModuleDirectory(&tfmodules.ParsedModule{Source: "example/network/aws"}, &res)
+	git := RequestedModuleDirectory(&tfmodules.ParsedModule{
+		Source: "git::https://github.com/example/network//modules/child?ref=commit",
+	}, &Resolution{})
+
+	require.Equal(t, "modules/child", registry.Subdir)
+	require.Equal(t, git, registry)
+}
 
 func TestGitModuleResolveKeySeparatesTransport(t *testing.T) {
 	https := "git::https://github.com/org/repo.git//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
