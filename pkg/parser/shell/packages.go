@@ -70,8 +70,8 @@ var (
 	apkVersionPattern       = regexp.MustCompile(`^[A-Za-z0-9_.+-]+(~?=.+|~.+)$`)
 	pipVersionPattern       = regexp.MustCompile(`^[A-Za-z0-9_.-]+(\[[^]]+\])?(===?|~=).+$`)
 	rpmVersionPatterns      = []*regexp.Regexp{
-		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-(\d+:)?(\d+\.)+\d+[A-Za-z0-9.]*(-\d[A-Za-z0-9_.~+^]*)?$`),
-		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d+:\d[A-Za-z0-9_.~+^]*$`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-(\d+:)?(\d+\.)+\d+[A-Za-z0-9.~+^]*(-\d[A-Za-z0-9_.~+^]*)?$`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d+:\d[A-Za-z0-9_.~+^]*(-\d[A-Za-z0-9_.~+^]*)?$`),
 		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d[A-Za-z0-9.~+^]*-\d[A-Za-z0-9_~+^]*\.[A-Za-z0-9_.]+$`),
 		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\$.+$`),
 		regexp.MustCompile(`^[A-Za-z0-9_.+-]+=.+$`),
@@ -185,7 +185,7 @@ func rpmAssumeYes(options []Option) bool {
 			assumeYes = false
 		case "--setopt":
 			key, raw, found := strings.Cut(option.Value, "=")
-			if found && (strings.EqualFold(key, "assumeyes") || strings.EqualFold(key, "defaultyes")) {
+			if found && strings.EqualFold(key, "assumeyes") {
 				if val, ok := parseOptionBool(raw); ok {
 					assumeYes = val
 				}

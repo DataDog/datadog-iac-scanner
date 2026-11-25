@@ -162,16 +162,30 @@ func TestAnalyzeCompleteness(t *testing.T) {
 
 func TestAnalyzeDeepNestingAndLargePipelines(t *testing.T) {
 	t.Run("deep nesting does not overflow stack", func(t *testing.T) {
-		nested := "echo $((" + strings.Repeat("(", 170000) + "1" + strings.Repeat(")", 170000) + "))"
+		deep := strings.Repeat("(", 170000) + "1" + strings.Repeat(")", 170000)
 		old := debug.SetMaxStack(8 << 20)
 		defer debug.SetMaxStack(old)
 
-		facts := Analyze(nested, "sh")
-		require.False(t, facts.Complete)
-		require.Contains(t, facts.Diagnostics, "shell analysis limit reached")
+		for _, script := range []string{
+			"echo $((" + deep + "))",
+			"# don't\necho $((" + deep + "))\n# won't\n",
+			"echo \"it's\"\necho $((" + deep + "))\necho \"that's\"\n",
+			"cat <<EOF\ndon't\nEOF\necho $((" + deep + "))\n",
+			"echo $'don\\'t'\necho $((" + deep + "))\n",
+			"echo \"$((" + deep + "))\"",
+			"echo " + strings.Repeat("$(echo ')' ", 20000) + strings.Repeat(")", 20000),
+		} {
+			facts := Analyze(script, "bash")
+			require.False(t, facts.Complete)
+			require.Contains(t, facts.Diagnostics, "shell analysis limit reached")
+		}
 
-		val := Literal(strings.Repeat("(", 170000) + "1" + strings.Repeat(")", 170000))
-		require.False(t, val.Known)
+		for _, raw := range []string{
+			deep,
+			`"'` + `"` + `$(($(` + deep + `)))`,
+		} {
+			require.False(t, Literal(raw).Known)
+		}
 	})
 
 	t.Run("large pipeline is linear", func(t *testing.T) {
@@ -401,10 +415,12 @@ func TestAnalyzePackageCommands(t *testing.T) {
 		{"apt-get install -y --assume-yes=false curl", "apt-get", "install", false, true, []pkg{{"curl", false}}},
 		{"apk add --virtual .build gcc~=12 curl~8", "apk", "install", false, true,
 			[]pkg{{"gcc~=12", true}, {"curl~8", true}}},
-		{"dnf --setopt=x=1 --enablerepo epel in -y nginx-1.2.3 systemd-252-46.el9.x86_64 tzdata-2024a-1.el9.noarch", "dnf", "install", true, true,
-			[]pkg{{"nginx-1.2.3", true}, {"systemd-252-46.el9.x86_64", true}, {"tzdata-2024a-1.el9.noarch", true}}},
+		{"dnf --setopt=x=1 --enablerepo epel in -y nginx-1.2.3 systemd-252-46.el9.x86_64 systemd-0:252-46.el9.x86_64 rpm-4.20.0~rc1 tzdata-2024a-1.el9.noarch", "dnf", "install", true, true,
+			[]pkg{{"nginx-1.2.3", true}, {"systemd-252-46.el9.x86_64", true}, {"systemd-0:252-46.el9.x86_64", true}, {"rpm-4.20.0~rc1", true}, {"tzdata-2024a-1.el9.noarch", true}}},
 		{"yum install -y java-1.8.0-openjdk", "yum", "install", true, true, []pkg{{"java-1.8.0-openjdk", false}}},
 		{"dnf --setopt=assumeyes=1 install curl", "dnf", "install", true, true, []pkg{{"curl", false}}},
+		{"dnf --setopt=defaultyes=1 install curl", "dnf", "install", false, true, []pkg{{"curl", false}}},
+		{"dnf -y --setopt=defaultyes=0 install curl", "dnf", "install", true, true, []pkg{{"curl", false}}},
 		{"zypper --non-interactive in vim", "zypper", "install", true, true, []pkg{{"vim", false}}},
 		{"zypper -n in vim", "zypper", "install", true, true, []pkg{{"vim", false}}},
 		{"zypper install -n vim", "zypper", "install", false, true, []pkg{{"vim", false}}},
