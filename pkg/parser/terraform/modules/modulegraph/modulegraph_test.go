@@ -299,6 +299,59 @@ func TestResolveWarnsWhenSkippingModuleDirectory(t *testing.T) {
 	}
 }
 
+func TestResolveRemoteModuleWhenLocalCallVisitedDirectory(t *testing.T) {
+	const packageSource = "example/network/aws"
+	for _, tc := range []struct {
+		name, subdir string
+		wantWarning  bool
+	}{
+		{name: "matching directory", subdir: "modules/child"},
+		{name: "different directory", subdir: "modules/other", wantWarning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rootFile := writeRegistryModuleCaller(t, t.TempDir(), "parent", packageSource)
+			packageRoot := t.TempDir()
+			packageFile := filepath.Join(packageRoot, "main.tf")
+			childDir := filepath.Join(packageRoot, "modules", "child")
+			childFile := filepath.Join(childDir, "main.tf")
+			remoteSource := packageSource + "//" + tc.subdir
+
+			require.NoError(t, os.MkdirAll(childDir, 0o755))
+			require.NoError(t, os.WriteFile(packageFile, fmt.Appendf(nil, `
+module "local_child" { source = "./modules/child" }
+module "remote_child" { source = %q }
+`, remoteSource), 0o644))
+			require.NoError(t, os.WriteFile(childFile, []byte(`resource "aws_s3_bucket" "this" {}`), 0o644))
+
+			var logs bytes.Buffer
+			ctx := zerolog.New(zerolog.SyncWriter(&logs)).Level(zerolog.WarnLevel).WithContext(t.Context())
+			result := Resolve(ctx, &Request{
+				RootPaths:      []string{filepath.Dir(rootFile)},
+				DiscoveryPaths: []string{rootFile},
+				Resolver: mapResolver{bySource: map[string]resolver.Resolution{
+					packageSource: {LocalPath: packageRoot, PackageRoot: packageRoot},
+					remoteSource:  {LocalPath: childDir, PackageRoot: packageRoot},
+				}},
+				MaxDepth: 3,
+			})
+			t.Cleanup(result.Cleanup)
+
+			require.Len(t, result.Modules, 2)
+			require.Empty(t, result.Failures)
+			require.ElementsMatch(t, []string{packageFile, childFile}, result.ScanPaths)
+			require.NotContains(t, result.SourceMappings, childDir, "the local call should own the child directory")
+			if !tc.wantWarning {
+				require.Empty(t, logs.String())
+				return
+			}
+			require.Equal(t, 1, strings.Count(logs.String(), "\n"))
+			require.Contains(t, logs.String(), "another module already claimed its directory")
+			require.Contains(t, logs.String(), fmt.Sprintf("\"source\":%q", remoteSource))
+			require.Contains(t, logs.String(), `"previous_source":"./modules/child"`)
+		})
+	}
+}
+
 func writeTerraformModulesManifest(t *testing.T, root string) {
 	t.Helper()
 	dir := filepath.Join(root, ".terraform", "modules")

@@ -26,6 +26,18 @@ func TestRegistryGitDirectoryUsesRequestedSelection(t *testing.T) {
 	require.Equal(t, git, registry)
 }
 
+func TestRequestedRegistryModuleDirectoryWithoutGitMetadata(t *testing.T) {
+	registry := tfmodules.ParsedModule{Source: "example/network/aws//modules/child", Version: "~> 1.0"}
+	explicit := tfmodules.ParsedModule{Source: "registry.terraform.io/example/network/aws//modules/child", Version: "1.0.2"}
+
+	resolved := RequestedModuleDirectory(&registry, &Resolution{ResolvedVersion: "1.0.2"})
+	require.Equal(t, "modules/child", resolved.Subdir)
+	require.Equal(t, RequestedModuleDirectory(&explicit, &Resolution{}), resolved)
+
+	otherVersion := RequestedModuleDirectory(&registry, &Resolution{ResolvedVersion: "1.0.3"})
+	require.NotEqual(t, resolved.Package, otherVersion.Package)
+}
+
 func TestGitModuleResolveKeySeparatesTransport(t *testing.T) {
 	https := "git::https://github.com/org/repo.git//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
 	ssh := "git::ssh://git@github.com/org/repo//terraform-modules/aws-bucket?ref=aws-bucket_v7.1.2"
