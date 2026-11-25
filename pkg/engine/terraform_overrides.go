@@ -329,8 +329,9 @@ func legacyOverrideFindingPath(searchKey string) (block model.TerraformBlock, pr
 	return model.TerraformBlock{Kind: kind, Type: typ, Name: name}, field
 }
 
-// Legacy rules use both type[name].field and type.name.field, including
-// bracketed indices below the field.
+// Legacy rules use bracketed or dotted labels, optionally wrapped in {{...}}
+// or quotes. Decode labels here so attribution, overrides, and inventory use
+// the same declaration identity. Structured source paths bypass this parser.
 func legacyTerraformBlockPath(key string) (typ, name, tail string) {
 	end := strings.IndexAny(key, "[./")
 	if end < 0 {
@@ -339,13 +340,14 @@ func legacyTerraformBlockPath(key string) (typ, name, tail string) {
 	typ, label := key[:end], key[end+1:]
 	if key[end] == '[' {
 		name, tail, _ = strings.Cut(label, "]")
-		name = strings.Trim(strings.TrimSuffix(strings.TrimPrefix(name, "{{"), "}}"), `"'`)
-		return typ, name, tail
+	} else if split := strings.IndexAny(label, "[./"); split >= 0 {
+		name, tail = label[:split], label[split:]
+	} else {
+		name = label
 	}
-	if split := strings.IndexAny(label, "[./"); split >= 0 {
-		return typ, label[:split], label[split:]
-	}
-	return typ, label, ""
+	name = strings.Trim(name, `"'`)
+	name = strings.Trim(strings.TrimSuffix(strings.TrimPrefix(name, "{{"), "}}"), `"'`)
+	return typ, name, tail
 }
 
 func (q *QueryContext) findingSourceFile(file *model.FileMetadata, override *model.TerraformOverrideFinding) *model.FileMetadata {

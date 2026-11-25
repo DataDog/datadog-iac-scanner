@@ -8,8 +8,10 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -293,6 +295,20 @@ DatadogPolicy contains result if {
     "searchKey": sprintf("%s.aws_s3_bucket[%s].acl", [kind, name]),
   }
 }`
+	keyFormats := []string{
+		"%s.aws_s3_bucket[%s].acl",
+		"%s.aws_s3_bucket.%s.acl",
+		"%s.aws_s3_bucket[{{%s}}].acl",
+		"%s.aws_s3_bucket.{{%s}}.acl",
+		`%s.aws_s3_bucket["%s"].acl`,
+	}
+	var queries []model.QueryMetadata
+	for i, format := range keyFormats {
+		id := fmt.Sprintf("acl-%d", i)
+		content := strings.Replace(rule, `"%s.aws_s3_bucket[%s].acl"`, strconv.Quote(format), 1)
+		queries = append(queries, model.QueryMetadata{Query: id, Content: content, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": id, "platform": "Terraform"}, Aggregation: 1})
+	}
 	formats := []struct{ caller, module string }{
 		{".tf", ".tf"}, {".tofu", ".tofu"}, {".tf.json", ".tf.json"}, {".tofu.json", ".tofu.json"},
 		{".tf", ".tf.json"}, {".tf.json", ".tf"},
@@ -350,8 +366,7 @@ resource "aws_s3_bucket" "root" {
 					}
 					ins := newTestInspector(t, inspectorOpts{
 						repoPath: repoPath, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
-						queries: []model.QueryMetadata{{Query: "acl", Content: rule, InputData: "{}", Platform: "terraform",
-							Metadata: map[string]interface{}{"id": "acl", "platform": "Terraform"}, Aggregation: 1}},
+						queries: queries,
 					})
 					if external {
 						ins.SetRemoteModuleDirectories(dirs)
@@ -361,7 +376,7 @@ resource "aws_s3_bucket" "root" {
 					findings, err := ins.Inspect(ctx, "test", files, []string{"terraform"})
 					require.NoError(t, err)
 					require.Empty(t, ins.GetFailedQueries())
-					require.Equal(t, 8, len(findings), "three instantiated findings plus one root finding per caller")
+					require.Equal(t, 8*len(queries), len(findings), "every key spelling retains three instantiated findings and one root finding per caller")
 					counts := map[string]int{}
 					for _, finding := range findings {
 						counts[finding.ResourceName]++
@@ -370,7 +385,10 @@ resource "aws_s3_bucket" "root" {
 							require.Contains(t, []string{"stack-a/main" + format.caller, "stack-b/main" + format.caller}, finding.ReportLocation.Filename)
 						}
 					}
-					require.Equal(t, map[string]int{"display-root": 2, "display-first": 2, "display-second": 2, "display-data": 2}, counts)
+					require.Equal(t, map[string]int{
+						"display-root": 2 * len(queries), "display-first": 2 * len(queries),
+						"display-second": 2 * len(queries), "display-data": 2 * len(queries),
+					}, counts)
 					summary := model.CreateSummary(ctx, model.Counters{}, findings, "test", nil, repo, model.SCIInfo{})
 					report := reportModel.NewSarifReport()
 					for i := range summary.Queries {
@@ -379,7 +397,7 @@ resource "aws_s3_bucket" "root" {
 					}
 					raw, err := json.Marshal(report)
 					require.NoError(t, err)
-					require.Equal(t, 8, strings.Count(string(raw), `"partialFingerprints"`), "every retained finding reaches SARIF")
+					require.Equal(t, 8*len(queries), strings.Count(string(raw), `"partialFingerprints"`), "every retained finding reaches SARIF")
 				})
 			}
 		}

@@ -647,17 +647,18 @@ func TestCanonicalReportedPath(t *testing.T) {
 
 func TestCreateSummary_ModuleReportLocationPreservesIdentity(t *testing.T) {
 	ctx := context.Background()
+	root := t.TempDir()
 	finding := Vulnerability{
-		FileName: "/repo/modules/main.tf", QueryID: "q", QueryName: "q", Severity: SeverityHigh, Platform: "Terraform",
+		FileName: filepath.Join(root, "modules", "main.tf"), QueryID: "q", QueryName: "q", Severity: SeverityHigh, Platform: "Terraform",
 		ResourceType: "aws_s3_bucket", ResourceName: "this", LineWithVulnerability: "acl = public-read",
 		ModuleCallChain: "stack/main.tf|module.bucket",
 	}
-	before := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, "/repo", SCIInfo{})
+	before := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, root, SCIInfo{})
 	finding.ReportLocation = &SourceLocation{Filename: "stack/main.tf", LineStart: 3, LineEnd: 3, ColumnStart: 2, ColumnEnd: 20}
-	after := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, "/repo", SCIInfo{})
+	after := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, root, SCIInfo{})
 	file := after.Queries[0].Files[0]
 	require.Equal(t, before.Queries[0].Files[0].Fingerprint, file.Fingerprint)
 	require.Equal(t, finding.ReportLocation, file.ReportLocation)
 	require.NotSame(t, finding.ReportLocation, file.ReportLocation)
-	require.Equal(t, "modules/main.tf", file.FileName, "fixes still address the detected file")
+	require.Equal(t, filepath.Join("modules", "main.tf"), file.FileName, "fixes still address the detected file")
 }
