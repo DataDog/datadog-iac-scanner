@@ -13,7 +13,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +27,7 @@ import (
 	engineSource "github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/require"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -1402,4 +1405,62 @@ func readAll(resp *http.Response) ([]byte, error) {
 	var buf bytes.Buffer
 	_, err := buf.ReadFrom(resp.Body)
 	return buf.Bytes(), err
+}
+
+// Exercise the HTTP boundary with the default reference-resolution settings.
+// The rule echoes the scalar's value so a host-file substitution is observable.
+func TestAnalyze_ReferenceFilesystemIsolation(t *testing.T) {
+	analyzeProcessCwdMu.Lock()
+	t.Cleanup(analyzeProcessCwdMu.Unlock)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	const host = "host-only-reference-canary"
+	const owned = "pushed-reference-canary"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.yaml"), []byte("marker: "+host+"\n"), 0600))
+	absMain, absAsset := filepath.Join(dir, "sub/main.yaml"), filepath.Join(dir, "secret.yaml")
+	overshoot := strings.Repeat("../", 40) + strings.TrimLeft(filepath.ToSlash(absAsset), "/")
+	for _, tc := range []struct {
+		name, main, ref, push, want string
+		posixOnly                   bool
+	}{
+		{name: "relative unpushed", main: "sub/main.yaml", ref: "../secret.yaml", want: "../secret.yaml"},
+		{name: "relative pushed", main: "sub/main.yaml", ref: "../secret.yaml", push: "secret.yaml", want: owned},
+		{name: "absolute unpushed", main: absMain, ref: "../secret.yaml", want: "../secret.yaml"},
+		{name: "absolute pushed", main: absMain, ref: "../secret.yaml", push: absAsset, want: owned},
+		{name: "root overshoot unpushed", main: "sub/main.yaml", ref: overshoot, want: overshoot, posixOnly: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.posixOnly && runtime.GOOS == "windows" {
+				t.Skip("POSIX root traversal reproduction")
+			}
+			// Prove the reference reaches the host canary, including root overshoot.
+			hostContent, err := os.ReadFile(filepath.Join(filepath.Dir(tc.main), tc.ref))
+			require.NoError(t, err)
+			require.Contains(t, string(hostContent), host)
+			req := analyzeRequest{
+				Files:   []analyzeFile{{Path: tc.main, Content: "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: test}\ndata:\n  x: " + tc.ref + "\n"}},
+				Ruleset: ruleset(syntheticConfigMapEchoRule()), Libraries: k8sTestLibraries(), Platform: []string{"kubernetes"},
+			}
+			if tc.push != "" {
+				req.Files = append(req.Files, analyzeFile{Path: tc.push, Content: "marker: " + owned + "\n"})
+			}
+			body, err := json.Marshal(req)
+			require.NoError(t, err)
+			w := httptest.NewRecorder()
+			newTestServer(t).http.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.NotContains(t, w.Body.String(), host)
+			var out analyzeResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+			require.Empty(t, out.FailedQueries)
+			require.Len(t, out.Findings, 1, "the echo rule must run")
+			if tc.push != "" {
+				require.Contains(t, out.Findings[0].ResourceName, tc.want)
+			} else {
+				require.Equal(t, tc.want, out.Findings[0].ResourceName)
+			}
+			// A filename-like candidate is not a request for the client to read disk.
+			require.Empty(t, out.MissingFiles)
+		})
+	}
 }
