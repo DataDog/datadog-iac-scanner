@@ -819,13 +819,14 @@ var suValueOptions = map[string]bool{
 }
 
 func suScriptIndex(words []Value) int {
+	seenUser := false
 	for i := 1; i < len(words); i++ {
 		if !words[i].Known {
 			return -1
 		}
 		arg := words[i].Text
 		if arg == optionEnd {
-			return suForwardedScriptIndex(words, i+1)
+			return suForwardedScriptIndex(words, i, seenUser)
 		}
 		if arg == commandFlag || arg == "--command" {
 			if i+1 < len(words) {
@@ -840,22 +841,29 @@ func suScriptIndex(words []Value) int {
 		if arg == "-" || strings.HasPrefix(arg, "-") {
 			continue
 		}
-		return suForwardedScriptIndex(words, i)
+		seenUser = true
 	}
 	return -1
 }
 
-// suForwardedScriptIndex resolves shell -c arguments forwarded after the
-// username operand (for example, `su -s /bin/sh -- root -c 'cmd'`).
-func suForwardedScriptIndex(words []Value, userIndex int) int {
-	if userIndex >= len(words) {
+// suForwardedScriptIndex resolves shell -c arguments forwarded after su's `--`
+// option terminator (e.g. `su -s /bin/sh -- root -c 'cmd'` or `su root -- -c 'cmd'`).
+func suForwardedScriptIndex(words []Value, termIndex int, seenUser bool) int {
+	start := termIndex
+	if !seenUser {
+		start++
+		if start < len(words) && words[start].Known && words[start].Text == "-" {
+			start++
+		}
+	}
+	if start >= len(words) {
 		return -1
 	}
-	rel := shellScriptIndex(words[userIndex:], sh)
+	rel := shellScriptIndex(words[start:], sh)
 	if rel < 0 {
 		return -1
 	}
-	return userIndex + rel
+	return start + rel
 }
 
 // Literal performs only quote removal for a single grammar-delimited word.

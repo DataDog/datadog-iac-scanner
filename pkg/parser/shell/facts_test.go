@@ -93,17 +93,19 @@ func TestAnalyzeControlFlow(t *testing.T) {
 	require.False(t, result.Pipelines[1].Pipefail)
 	require.True(t, result.Pipelines[1].Known)
 
-	result = Analyze("bash -c -- 'pip install flask'", "bash")
-	require.True(t, result.Complete, result.Diagnostics)
-	require.Len(t, result.PackageCommands, 1)
-	require.Equal(t, "pip", result.PackageCommands[0].Manager)
-	require.Equal(t, "install", result.PackageCommands[0].Action)
-
-	result = Analyze("su -s /bin/sh -- root -c 'pip install flask'", "sh")
-	require.True(t, result.Complete, result.Diagnostics)
-	require.Len(t, result.PackageCommands, 1)
-	require.Equal(t, "pip", result.PackageCommands[0].Manager)
-	require.Equal(t, "install", result.PackageCommands[0].Action)
+	for _, script := range []string{
+		"bash -c -- 'pip install flask'",
+		"su -s /bin/sh -- root -c 'pip install flask'",
+		"su root --command 'pip install flask'",
+		"su root -s /bin/sh -c 'pip install flask'",
+		"su root -- -c 'pip install flask'",
+	} {
+		result = Analyze(script, "bash")
+		require.True(t, result.Complete, script, result.Diagnostics)
+		require.Len(t, result.PackageCommands, 1, script)
+		require.Equal(t, "pip", result.PackageCommands[0].Manager, script)
+		require.Equal(t, "install", result.PackageCommands[0].Action, script)
+	}
 
 	result = Analyze("if set -o pipefail; false; then :; else curl x | sh; fi", "bash")
 	require.Len(t, result.Pipelines, 1)
