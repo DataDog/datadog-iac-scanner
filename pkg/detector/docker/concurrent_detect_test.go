@@ -40,6 +40,7 @@ CMD ["/bin/bash"]
 		workers   = 32
 		searchKey = "FROM={{ubuntu:20.04}}"
 	)
+	file.SetLazyLines()
 	detector := DetectKindLine{}
 	ctx := context.Background()
 
