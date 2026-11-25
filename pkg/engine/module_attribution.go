@@ -9,7 +9,6 @@ import (
 	"net/url"
 	pathpkg "path"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -624,7 +623,15 @@ func pathWithinRoot(path, root string) bool {
 	if path == "" || root == "" {
 		return false
 	}
-	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
 	return err == nil && rel != parentDirectoryPath &&
 		!strings.HasPrefix(rel, parentDirectoryPath+string(filepath.Separator))
 }
@@ -636,8 +643,12 @@ func repoRelativeFile(filePath, repoPath string) string {
 	if repoPath == "" {
 		return filepath.ToSlash(filepath.Clean(filePath))
 	}
-	abs := absPath(filePath, repoPath)
-	rel, err := filepath.Rel(filepath.Clean(repoPath), abs)
+	root, err := filepath.Abs(repoPath)
+	if err != nil {
+		return filepath.ToSlash(filepath.Clean(filePath))
+	}
+	abs := absPath(filePath, root)
+	rel, err := filepath.Rel(root, abs)
 	if err != nil {
 		return filepath.ToSlash(filepath.Base(abs))
 	}
@@ -649,7 +660,14 @@ func repoRelativeFile(filePath, repoPath string) string {
 // The returned predicate is always present; callers cannot accidentally
 // disable containment checks by omitting the fetched-path registry.
 func externalModuleFiles(repoPath string, fetched func(string) bool) func(string) bool {
+	var err error
+	if repoPath != "" {
+		repoPath, err = filepath.Abs(repoPath)
+	}
 	return func(path string) bool {
+		if err != nil {
+			return true
+		}
 		abs := absPath(path, repoPath)
 		return (repoPath != "" && !pathWithinRoot(abs, repoPath)) || (fetched != nil && fetched(abs))
 	}
@@ -666,7 +684,11 @@ func repositoryFileName(filePath, repoPath string) (string, bool) {
 	if repoPath == "" {
 		return filepath.ToSlash(filepath.Clean(filePath)), true
 	}
-	rel, err := filepath.Rel(filepath.Clean(repoPath), absPath(filePath, repoPath))
+	root, err := filepath.Abs(repoPath)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, absPath(filePath, root))
 	if err != nil {
 		return "", false
 	}
@@ -719,15 +741,19 @@ func cloneModuleAttribution(attr *model.ModuleAttribution) *model.ModuleAttribut
 	return &clone
 }
 
-func moduleAttributionKey(resourceType string, definitionLine, definitionColumn int) string {
-	return resourceType + "." + strconv.Itoa(definitionLine) + "." + strconv.Itoa(definitionColumn)
+func moduleAttributionKey(resourceType, name string) model.TerraformBlock {
+	kind := terraformResourceBlock
+	if typ, data := strings.CutPrefix(resourceType, dataTypePrefix); data {
+		kind, resourceType = dataRoot, typ
+	}
+	return model.TerraformBlock{Kind: kind, Type: resourceType, Name: name}
 }
 
-func cloneModuleAttributions(attrs map[string]*model.ModuleAttribution) map[string]*model.ModuleAttribution {
+func cloneModuleAttributions(attrs map[model.TerraformBlock]*model.ModuleAttribution) map[model.TerraformBlock]*model.ModuleAttribution {
 	if len(attrs) == 0 {
 		return nil
 	}
-	out := make(map[string]*model.ModuleAttribution, len(attrs))
+	out := make(map[model.TerraformBlock]*model.ModuleAttribution, len(attrs))
 	for key, attr := range attrs {
 		out[key] = cloneModuleAttribution(attr)
 	}
@@ -739,23 +765,28 @@ func cloneModuleAttributions(attrs map[string]*model.ModuleAttribution) map[stri
 // narrowed to the argument setting that line when one does, and its code
 // location narrowed to the flagged region inside the module.
 func moduleAttributionForResource(
-	attrs map[string]*model.ModuleAttribution, v *model.Vulnerability,
+	attrs map[model.TerraformBlock]*model.ModuleAttribution, v *model.Vulnerability,
 ) *model.ModuleAttribution {
 	if len(attrs) == 0 {
 		return nil
 	}
-	line, col := v.BlockLocation.Start.Line, v.BlockLocation.Start.Col
-	if override := v.TerraformOverride; override != nil {
-		line, col = override.DeclarationStart.Line, override.DeclarationStart.Col
+	key := v.TerraformBlock
+	attr := attrs[key]
+	if key.Kind == "" && key.Name != "" {
+		// Legacy keys may omit resource/data. Prefer an explicitly reported
+		// data type, then the resource, then a data-only declaration.
+		key.Kind = terraformResourceBlock
+		if strings.HasPrefix(v.ResourceType, dataTypePrefix) {
+			key.Kind = dataRoot
+		}
+		attr = attrs[key]
+		if attr == nil && key.Kind == terraformResourceBlock {
+			key.Kind = dataRoot
+			attr = attrs[key]
+		}
 	}
-	attr, ok := attrs[moduleAttributionKey(v.ResourceType, line, col)]
-	if !ok && !strings.HasPrefix(v.ResourceType, dataTypePrefix) {
-		// A data rule may name its type without the prefix; the block's
-		// position still identifies it.
-		attr, ok = attrs[moduleAttributionKey(dataTypePrefix+v.ResourceType, line, col)]
-	}
-	if !ok {
-		return nil
+	if key.Name == "" {
+		attr = moduleAttributionAtDeclaration(attrs, v)
 	}
 	clone := cloneModuleAttribution(attr)
 	if clone == nil {
@@ -773,6 +804,36 @@ func moduleAttributionForResource(
 	}
 	narrowCodeLocation(&clone.ModuleCodeLocation, v)
 	return clone
+}
+
+// A legacy search key may identify only an attribute. Native HCL detection
+// still supplies its containing declaration. Accept only an exact, unique
+// declaration match; a nearby line or display name is not source identity.
+func moduleAttributionAtDeclaration(
+	attrs map[model.TerraformBlock]*model.ModuleAttribution, v *model.Vulnerability,
+) *model.ModuleAttribution {
+	start := v.BlockLocation.Start
+	if override := v.TerraformOverride; override != nil {
+		start = override.DeclarationStart
+	}
+	if start.Line < 1 {
+		return nil
+	}
+	var match *model.ModuleAttribution
+	for block, attr := range attrs {
+		if attr == nil || (block.Type != v.ResourceType && dataTypePrefix+block.Type != v.ResourceType) {
+			continue
+		}
+		location := attr.ModuleCodeLocation
+		if location.LineStart != start.Line || location.ColumnStart != start.Col {
+			continue
+		}
+		if match != nil {
+			return nil
+		}
+		match = attr
+	}
+	return match
 }
 
 // The narrowest range holding the line decides who controls the value.

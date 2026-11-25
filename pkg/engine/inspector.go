@@ -448,6 +448,14 @@ func NewInspector(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.NewInspector()")
 
+	if repoPath != "" {
+		absolute, err := filepath.Abs(repoPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to resolve repository root")
+		}
+		repoPath = absolute
+	}
+
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}

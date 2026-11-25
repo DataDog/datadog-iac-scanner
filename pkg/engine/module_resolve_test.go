@@ -601,7 +601,7 @@ resource "aws_sqs_queue_policy" "this" {
 
 	require.True(t, res.suppressed["mod-id"]["data.aws_ami"]["ubuntu"])
 	require.True(t, res.suppressed["mod-id"]["data.aws_iam_policy_document"]["p"])
-	require.Contains(t, res.syntheticFiles[0].ModuleAttributions, moduleAttributionKey("data.aws_ami", 4, 1))
+	require.Contains(t, res.syntheticFiles[0].ModuleAttributions, moduleAttributionKey("data.aws_ami", "ubuntu"))
 }
 
 // Only the blocks that came back instantiated may be dropped from the file they

@@ -36,7 +36,7 @@ import (
 type extraCallerInfo struct {
 	callChain    string
 	docID        string
-	attributions map[string]*model.ModuleAttribution
+	attributions map[model.TerraformBlock]*model.ModuleAttribution
 }
 
 // moduleResolutionResult bundles all outputs of resolveModuleDocuments.
@@ -964,7 +964,7 @@ type docGroup struct {
 	moduleAddress string
 	layer         int
 	entries       []instantiatedResource
-	attributions  map[string]*model.ModuleAttribution
+	attributions  map[model.TerraformBlock]*model.ModuleAttribution
 }
 
 func (g *docGroup) documentID() string {
@@ -1055,12 +1055,12 @@ func instantiatedDocs(
 		if !exists {
 			g = &docGroup{
 				fm: fm, callChain: cck, moduleAddress: r.ModuleAddress, layer: layer,
-				attributions: make(map[string]*model.ModuleAttribution),
+				attributions: make(map[model.TerraformBlock]*model.ModuleAttribution),
 			}
 			groups[key] = g
 			order = append(order, key)
 		}
-		g.attributions[moduleAttributionKey(kind, r.DefLine, r.DefColumn)] =
+		g.attributions[moduleAttributionKey(kind, base)] =
 			attributions.attribution(r, repoPath, lookup)
 		g.entries = append(g.entries, entry)
 		if occurrence := occurrences[r]; occurrence != nil {
@@ -1199,7 +1199,7 @@ func (h contentHasher) key() docContentKey {
 
 // newInstanceFileMetadata clones fm for a synthetic doc (empty Document so Combine skips it).
 func newInstanceFileMetadata(
-	fm *model.FileMetadata, id, callChain string, attributions map[string]*model.ModuleAttribution,
+	fm *model.FileMetadata, id, callChain string, attributions map[model.TerraformBlock]*model.ModuleAttribution,
 ) *model.FileMetadata {
 	clone := fm.ShallowCopy()
 	clone.ID = id

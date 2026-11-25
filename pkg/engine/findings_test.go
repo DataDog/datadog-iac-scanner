@@ -127,20 +127,22 @@ func TestFindingSet_KeepsWhatStorageReports(t *testing.T) {
 // onto the earlier instance is not a caller of the later one. Routing after
 // keeping one finding would report only the later instance's callers.
 func TestFindingSet_RoutesBeforeKeepingAnIdentity(t *testing.T) {
+	repo := t.TempDir()
 	chain := "stack/main.tf|module.app"
 	finding := func(docID string, line int) model.Vulnerability {
 		return model.Vulnerability{
 			FileID: docID, FileName: "modules/app/main.tf", Platform: "Terraform", QueryID: "q",
 			ResourceType: "aws_s3_bucket", ResourceName: "replica", ModuleCallChain: chain, Line: line,
 			ModuleAttribution: &model.ModuleAttribution{CallSite: model.SourceLocation{Filename: "stack/main.tf"}},
+			TerraformBlock:    moduleAttributionKey("aws_s3_bucket", "replica"),
 		}
 	}
 	routing := newFindingRouting(map[string][]extraCallerInfo{
 		"doc-early": {{callChain: "other/main.tf|module.app", docID: "doc-other",
-			attributions: map[string]*model.ModuleAttribution{
-				moduleAttributionKey("aws_s3_bucket", 0, 0): {CallSite: model.SourceLocation{Filename: "other/main.tf"}},
+			attributions: map[model.TerraformBlock]*model.ModuleAttribution{
+				moduleAttributionKey("aws_s3_bucket", "replica"): {CallSite: model.SourceLocation{Filename: "other/main.tf"}},
 			}}},
-	}, nil, model.FileMetadatas{{FilePath: "/repo/stack/main.tf"}, {FilePath: "/repo/other/main.tf"}}, "/repo", nil)
+	}, nil, model.FileMetadatas{{FilePath: filepath.Join(repo, "stack/main.tf")}, {FilePath: filepath.Join(repo, "other/main.tf")}}, repo, nil)
 
 	kept := decodeAll(newFindingSet(true, routing), []model.Vulnerability{
 		finding("doc-early", 1), finding("doc-late", 2),
@@ -405,9 +407,8 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 			ins := newTestInspector(t, inspectorOpts{vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator()})
 			ins.ruleConfigs = tc.ruleConfigs
 			if tc.name == "extra caller" {
-				detected := ins.detector.DetectLine(ctx, file, "aws_s3_bucket[this].acl")
-				file.ModuleAttributions = map[string]*model.ModuleAttribution{
-					moduleAttributionKey("aws_s3_bucket", detected.BlockLocation.Start.Line, detected.BlockLocation.Start.Col): {
+				file.ModuleAttributions = map[model.TerraformBlock]*model.ModuleAttribution{
+					moduleAttributionKey("aws_s3_bucket", "this"): {
 						CallSite: model.SourceLocation{Filename: "stack/main.tf"},
 					},
 				}
@@ -432,13 +433,13 @@ func TestDecodeQueryResults_CompactionMatchesStorageDedupe(t *testing.T) {
 		detected := ins.detector.DetectLine(ctx, newer, "aws_s3_bucket[this].acl")
 		require.Positive(t, detected.BlockLocation.Start.Line)
 		callerName := "excluded/main.tf"
-		older.ModuleAttributions = map[string]*model.ModuleAttribution{
-			moduleAttributionKey("aws_s3_bucket", detected.BlockLocation.Start.Line, detected.BlockLocation.Start.Col): {
+		older.ModuleAttributions = map[model.TerraformBlock]*model.ModuleAttribution{
+			moduleAttributionKey("aws_s3_bucket", "this"): {
 				CallSite: model.SourceLocation{Filename: "stack/main.tf"},
 			},
 		}
-		newer.ModuleAttributions = map[string]*model.ModuleAttribution{
-			moduleAttributionKey("aws_s3_bucket", detected.BlockLocation.Start.Line, detected.BlockLocation.Start.Col): {
+		newer.ModuleAttributions = map[model.TerraformBlock]*model.ModuleAttribution{
+			moduleAttributionKey("aws_s3_bucket", "this"): {
 				CallSite: model.SourceLocation{Filename: callerName},
 			},
 		}
@@ -553,14 +554,14 @@ func TestFindingSet_KeepsOccurrencesOfDroppedDuplicates(t *testing.T) {
 }
 
 func TestFindingRouting_ResolvesOnlyScannedRepositoryCallSites(t *testing.T) {
-	repo := t.TempDir()
+	repo, outside := t.TempDir(), t.TempDir()
 	cache := filepath.Join(repo, ".cache", "modules")
 	external := func(path string) bool { return pathWithinRoot(path, cache) }
 	caller := "stack/main.tf"
 	files := model.FileMetadatas{
 		{FilePath: filepath.Join(repo, caller)},
 		{FilePath: filepath.Join(cache, "main.tf")},
-		{FilePath: "/outside/main.tf"},
+		{FilePath: filepath.Join(outside, "main.tf")},
 	}
 	for _, predicate := range []func(string) bool{nil, external} {
 		routing := newFindingRouting(nil, nil, files, repo, predicate)
@@ -570,11 +571,11 @@ func TestFindingRouting_ResolvesOnlyScannedRepositoryCallSites(t *testing.T) {
 			call string
 			want bool
 		}{
-			{name: "scanned caller", file: "/outside/resource.tf", call: caller, want: true},
-			{name: "unscanned caller", file: "/outside/resource.tf", call: "absent/main.tf"},
-			{name: "escaping caller", file: "/outside/resource.tf", call: "../outside/main.tf"},
-			{name: "absolute caller", file: "/outside/resource.tf", call: "/outside/main.tf"},
-			{name: "unreached file", file: "/outside/resource.tf"},
+			{name: "scanned caller", file: filepath.Join(outside, "resource.tf"), call: caller, want: true},
+			{name: "unscanned caller", file: filepath.Join(outside, "resource.tf"), call: "absent/main.tf"},
+			{name: "escaping caller", file: filepath.Join(outside, "resource.tf"), call: "../outside/main.tf"},
+			{name: "absolute caller", file: filepath.Join(outside, "resource.tf"), call: filepath.Join(outside, "main.tf")},
+			{name: "unreached file", file: filepath.Join(outside, "resource.tf")},
 			{name: "ordinary repository finding", file: filepath.Join(repo, caller), want: true},
 		} {
 			t.Run(tc.name, func(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -249,5 +250,138 @@ resource "aws_s3_bucket" "reachable" { acl = "public-read" }
 			require.Equal(t, map[string]int{"stack-a/main.tf": 2, "stack-b/main.tf": 2}, uris)
 			require.NotContains(t, string(raw), pkg, "the module cache never appears in SARIF")
 		})
+	}
+}
+
+// The reporting contract must survive syntax and path representation changes:
+// the same instantiated resources reach the same repository calls.
+func TestInspect_ModuleLocationsAcrossFormatsAndRoots(t *testing.T) {
+	const hclModule = `variable "acl" { type = string }
+resource "aws_s3_bucket" "first" {
+  bucket = "display-first"
+  acl = var.acl
+}
+resource "aws_s3_bucket" "second" {
+  bucket = "display-second"
+  acl = var.acl
+}
+data "aws_s3_bucket" "first" {
+  bucket = "display-data"
+  acl = var.acl
+}
+`
+	const jsonModule = `{
+  "variable": {"acl": {"type": "string"}},
+  "resource": {
+    "aws_s3_bucket": {
+      "first": {"bucket": "display-first", "acl": "${var.acl}"},
+      "second": {"bucket": "display-second", "acl": "${var.acl}"}
+    }
+  },
+  "data": {"aws_s3_bucket": {"first": {"bucket": "display-data", "acl": "${var.acl}"}}}
+}`
+	const rule = `package datadog
+DatadogPolicy contains result if {
+  some i, name
+  some kind in {"resource", "data"}
+  bucket := input.document[i][kind].aws_s3_bucket[name]
+  bucket.acl == "public-read"
+  result := {
+    "documentId": input.document[i].id,
+    "resourceType": "aws_s3_bucket",
+    "resourceName": bucket.bucket,
+    "searchKey": sprintf("%s.aws_s3_bucket[%s].acl", [kind, name]),
+  }
+}`
+	formats := []struct{ caller, module string }{
+		{".tf", ".tf"}, {".tofu", ".tofu"}, {".tf.json", ".tf.json"}, {".tofu.json", ".tofu.json"},
+		{".tf", ".tf.json"}, {".tf.json", ".tf"},
+	}
+	for _, format := range formats {
+		for _, external := range []bool{false, true} {
+			for _, rootForm := range []string{"absolute", "dot", "relative"} {
+				name := format.caller + "-to-" + format.module + "/" + rootForm
+				if external {
+					name += "/fetched"
+				}
+				t.Run(name, func(t *testing.T) {
+					base := t.TempDir()
+					repo := filepath.Join(base, "repo")
+					moduleDir := filepath.Join(repo, "modules", "bucket")
+					source := "../modules/bucket"
+					if external {
+						moduleDir = filepath.Join(base, "cache", "bucket")
+						source = "git::https://example.com/bucket.git"
+					}
+					body := hclModule
+					if strings.HasSuffix(format.module, ".json") {
+						body = jsonModule
+					}
+					moduleFile := writeCallerFixture(t, moduleDir, "main"+format.module, body)
+					files := parseTerraform(t, moduleFile)
+					dirs := map[string]RemoteModuleDirectory{}
+					for _, stack := range []string{"stack-a", "stack-b"} {
+						caller := `module "bucket" {
+  source = "` + source + `"
+  acl = "public-read"
+}
+resource "aws_s3_bucket" "root" {
+  bucket = "display-root"
+  acl = "public-read"
+}`
+						if strings.HasSuffix(format.caller, ".json") {
+							caller = `{
+  "module": {"bucket": {"source": "` + source + `", "acl": "public-read"}},
+  "resource": {"aws_s3_bucket": {"root": {"bucket": "display-root", "acl": "public-read"}}}
+}`
+						}
+						path := writeCallerFixture(t, repo, stack+"/main"+format.caller, caller)
+						files = append(files, parseTerraform(t, path)...)
+						dirs[RemoteModuleKey(filepath.Dir(path), source, "")] = RemoteModuleDirectory{Path: moduleDir, PackageRoot: moduleDir}
+					}
+					repoPath := repo
+					switch rootForm {
+					case "dot":
+						t.Chdir(repo)
+						repoPath = "."
+					case "relative":
+						t.Chdir(base)
+						repoPath = "repo/../repo"
+					}
+					ins := newTestInspector(t, inspectorOpts{
+						repoPath: repoPath, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+						queries: []model.QueryMetadata{{Query: "acl", Content: rule, InputData: "{}", Platform: "terraform",
+							Metadata: map[string]interface{}{"id": "acl", "platform": "Terraform"}, Aggregation: 1}},
+					})
+					if external {
+						ins.SetRemoteModuleDirectories(dirs)
+						ins.SetExternalModulePaths([]string{moduleDir})
+					}
+					ctx := context.Background()
+					findings, err := ins.Inspect(ctx, "test", files, []string{"terraform"})
+					require.NoError(t, err)
+					require.Empty(t, ins.GetFailedQueries())
+					require.Equal(t, 8, len(findings), "three instantiated findings plus one root finding per caller")
+					counts := map[string]int{}
+					for _, finding := range findings {
+						counts[finding.ResourceName]++
+						if finding.ModuleCallChain != "" {
+							require.NotNil(t, finding.ReportLocation)
+							require.Contains(t, []string{"stack-a/main" + format.caller, "stack-b/main" + format.caller}, finding.ReportLocation.Filename)
+						}
+					}
+					require.Equal(t, map[string]int{"display-root": 2, "display-first": 2, "display-second": 2, "display-data": 2}, counts)
+					summary := model.CreateSummary(ctx, model.Counters{}, findings, "test", nil, repo, model.SCIInfo{})
+					report := reportModel.NewSarifReport()
+					for i := range summary.Queries {
+						_, err = report.BuildSarifIssue(ctx, &summary.Queries[i], model.SCIInfo{})
+						require.NoError(t, err)
+					}
+					raw, err := json.Marshal(report)
+					require.NoError(t, err)
+					require.Equal(t, 8, strings.Count(string(raw), `"partialFingerprints"`), "every retained finding reaches SARIF")
+				})
+			}
+		}
 	}
 }
