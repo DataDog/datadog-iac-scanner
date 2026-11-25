@@ -162,10 +162,12 @@ func TestJSON_StringifyContent_ConcurrentNonPlan(t *testing.T) {
 
 func TestParser_mayResolve(t *testing.T) {
 	plan := filepath.FromSlash("/scan/plan.json")
-	fsys := vfs.NewMemFS(map[string][]byte{
-		filepath.FromSlash("/scan/policy.json"): []byte(`{"Version": "2012-10-17"}`),
-	})
-	p := &Parser{FS: fsys}
+	newParser := func() (*Parser, *vfs.MemFS) {
+		fsys := vfs.NewMemFS(map[string][]byte{
+			filepath.FromSlash("/scan/policy.json"): []byte(`{"Version": "2012-10-17"}`),
+		})
+		return &Parser{FS: fsys}, fsys
+	}
 
 	for name, tc := range map[string]struct {
 		content string
@@ -184,12 +186,14 @@ func TestParser_mayResolve(t *testing.T) {
 		"escaped name character": {`{"a": "policy\u002ejson"}`, true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			p, fsys := newParser()
 			require.Equal(t, tc.want, p.mayResolve([]byte(tc.content), plan))
 			require.Empty(t, fsys.MissingFiles(), "existence probes must not request extra files")
 		})
 	}
 
 	// When nothing can resolve, Resolve returns the content unchanged.
+	p, _ := newParser()
 	content := []byte(`{"a": ["data.aws_iam_policy_document.x.json"], "b": "plan.json"}`)
 	resolved, files, err := p.Resolve(context.Background(), content, plan, false, 15)
 	require.NoError(t, err)

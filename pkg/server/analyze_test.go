@@ -1417,70 +1417,50 @@ func TestAnalyze_ReferenceFilesystemIsolation(t *testing.T) {
 	const host = "host-only-reference-canary"
 	const owned = "pushed-reference-canary"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "secret.yaml"), []byte("marker: "+host+"\n"), 0600))
-	rule := syntheticK8sRule()
-	rule.RegoQuery = []byte(`package datadog
-import rego.v1
-DatadogPolicy contains result if {
-    doc := input.document[i]
-    doc.kind == "ConfigMap"
-    result := {
-        "documentId": doc.id,
-        "resourceType": "ConfigMap",
-        "resourceName": sprintf("%v", [doc.data.x]),
-        "searchKey": "data.x",
-    }
-}`)
-	for _, shape := range []string{"relative", "absolute", "root traversal"} {
-		t.Run(shape, func(t *testing.T) {
-			mainPath, assetPath, reference := "sub/main.yaml", "secret.yaml", "../secret.yaml"
-			if shape == "absolute" {
-				mainPath = filepath.Join(dir, mainPath)
-				assetPath = filepath.Join(dir, assetPath)
+	absMain, absAsset := filepath.Join(dir, "sub/main.yaml"), filepath.Join(dir, "secret.yaml")
+	overshoot := strings.Repeat("../", 40) + strings.TrimLeft(filepath.ToSlash(absAsset), "/")
+	for _, tc := range []struct {
+		name, main, ref, push, want string
+		posixOnly                   bool
+	}{
+		{name: "relative unpushed", main: "sub/main.yaml", ref: "../secret.yaml", want: "../secret.yaml"},
+		{name: "relative pushed", main: "sub/main.yaml", ref: "../secret.yaml", push: "secret.yaml", want: owned},
+		{name: "absolute unpushed", main: absMain, ref: "../secret.yaml", want: "../secret.yaml"},
+		{name: "absolute pushed", main: absMain, ref: "../secret.yaml", push: absAsset, want: owned},
+		{name: "root overshoot unpushed", main: "sub/main.yaml", ref: overshoot, want: overshoot, posixOnly: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.posixOnly && runtime.GOOS == "windows" {
+				t.Skip("POSIX root traversal reproduction")
 			}
-			if shape == "root traversal" {
-				if runtime.GOOS == "windows" {
-					t.Skip("POSIX root traversal reproduction")
-				}
-				reference = strings.Repeat("../", 40) + strings.TrimLeft(filepath.ToSlash(filepath.Join(dir, assetPath)), "/")
-			}
-			// Prove the reference really reaches the host canary through the
-			// resolver's cleaned path, including the root-overshoot case.
-			hostContent, err := os.ReadFile(filepath.Clean(filepath.Join(filepath.Dir(mainPath), reference)))
+			// Prove the reference reaches the host canary, including root overshoot.
+			hostContent, err := os.ReadFile(filepath.Join(filepath.Dir(tc.main), tc.ref))
 			require.NoError(t, err)
 			require.Contains(t, string(hostContent), host)
-			for _, pushed := range []bool{false, true} {
-				if pushed && shape == "root traversal" {
-					continue // Escaping paths cannot be pushed.
-				}
-				t.Run(fmt.Sprint(pushed), func(t *testing.T) {
-					req := analyzeRequest{
-						Files:   []analyzeFile{{Path: mainPath, Content: "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: test}\ndata:\n  x: " + reference + "\n"}},
-						Ruleset: ruleset(rule), Libraries: k8sTestLibraries(), Platform: []string{"kubernetes"},
-					}
-					if pushed {
-						req.Files = append(req.Files, analyzeFile{Path: assetPath, Content: "marker: " + owned + "\n"})
-					}
-					body, err := json.Marshal(req)
-					require.NoError(t, err)
-					w := httptest.NewRecorder()
-					newTestServer(t).http.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
-					require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-					require.NotContains(t, w.Body.String(), host)
-					var out analyzeResponse
-					require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
-					require.Empty(t, out.FailedQueries)
-					require.Len(t, out.Findings, 1, "the echo rule must run")
-					if pushed {
-						require.Contains(t, out.Findings[0].ResourceName, owned)
-						require.Empty(t, out.MissingFiles)
-					} else {
-						require.Equal(t, reference, out.Findings[0].ResourceName)
-						// A filename-like scalar is only a candidate, not a
-						// dependency request for the client to read from disk.
-						require.Empty(t, out.MissingFiles)
-					}
-				})
+			req := analyzeRequest{
+				Files:   []analyzeFile{{Path: tc.main, Content: "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: test}\ndata:\n  x: " + tc.ref + "\n"}},
+				Ruleset: ruleset(syntheticConfigMapEchoRule()), Libraries: k8sTestLibraries(), Platform: []string{"kubernetes"},
 			}
+			if tc.push != "" {
+				req.Files = append(req.Files, analyzeFile{Path: tc.push, Content: "marker: " + owned + "\n"})
+			}
+			body, err := json.Marshal(req)
+			require.NoError(t, err)
+			w := httptest.NewRecorder()
+			newTestServer(t).http.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.NotContains(t, w.Body.String(), host)
+			var out analyzeResponse
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+			require.Empty(t, out.FailedQueries)
+			require.Len(t, out.Findings, 1, "the echo rule must run")
+			if tc.push != "" {
+				require.Contains(t, out.Findings[0].ResourceName, tc.want)
+			} else {
+				require.Equal(t, tc.want, out.Findings[0].ResourceName)
+			}
+			// A filename-like candidate is not a request for the client to read disk.
+			require.Empty(t, out.MissingFiles)
 		})
 	}
 }

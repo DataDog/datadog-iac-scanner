@@ -247,9 +247,11 @@ func TestReferenceFilesystemAuthority(t *testing.T) {
 						if tc.want == "" {
 							require.Equal(t, "./asset."+ext, parsed.Docs[0]["scalar"])
 						} else {
-							scalar, err := json.Marshal(parsed.Docs[0]["scalar"])
-							require.NoError(t, err)
-							require.Contains(t, string(scalar), `"marker":"`+tc.want+`"`)
+							// Each occurrence must resolve; one cannot satisfy the other's assertion.
+							for _, field := range []string{"value", "scalar"} {
+								resolved, _ := parsed.Docs[0][field].(map[string]any)
+								require.Equal(t, tc.want, resolved["marker"], field)
+							}
 						}
 						encoded, err := json.Marshal(parsed.Docs)
 						require.NoError(t, err)
@@ -258,8 +260,6 @@ func TestReferenceFilesystemAuthority(t *testing.T) {
 						if tc.want == "" {
 							require.Contains(t, string(encoded), "$ref")
 							require.NotContains(t, string(encoded), "host")
-						} else {
-							require.Contains(t, string(encoded), `"marker":"`+tc.want+`"`)
 						}
 					}
 				})
