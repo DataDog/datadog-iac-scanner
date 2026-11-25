@@ -6,6 +6,7 @@
 package shell
 
 import (
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -48,35 +49,45 @@ func TestAnalyzeCalls(t *testing.T) {
 	require.Equal(t, "x==1", result.Calls[1].Arguments[1].Text)
 	require.Equal(t, "/usr/bin/pip install 'x==1'", script[result.Calls[1].Span.Start:result.Calls[1].Span.End][len("timeout 10 sudo -u root "):])
 	require.Equal(t, "'x==1'", script[result.Calls[1].ArgumentSpans[1].Start:result.Calls[1].ArgumentSpans[1].End])
-	require.Equal(t, "shell_script", result.Scopes[result.Calls[3].Scope].Kind)
+	require.Equal(t, ScopeShellScript, result.Scopes[result.Calls[3].Scope].Kind)
 	require.Equal(t, "'apt-get install x'", script[result.Calls[3].Span.Start:result.Calls[3].Span.End],
 		"a nested script call spans the argument that holds the script")
-	require.Equal(t, "command_substitution", result.Scopes[result.Calls[4].Scope].Kind)
+	require.Equal(t, ScopeCommandSubstitution, result.Scopes[result.Calls[4].Scope].Kind)
+
+	// Package.Span is safe even for nested scripts whose ArgumentSpans is nil.
+	require.Len(t, result.PackageCommands, 2)
+	nestedPkgSpan := result.PackageCommands[1].Packages[0].Span
+	require.Equal(t, "'apt-get install x'", script[nestedPkgSpan.Start:nestedPkgSpan.End])
 
 	result = AnalyzeArgv([]string{"echo", "$(pip install x)", "|"})
 	require.Len(t, result.Calls, 1)
 	require.True(t, result.Calls[0].Arguments[0].Known)
 	require.True(t, result.Complete)
 
-	result = AnalyzeShell("curl https://example.test | tar -xz | sh", []string{"/bin/bash", "-o", "pipefail", "-c"})
-	require.True(t, result.Complete, result.Diagnostics)
-	require.Len(t, result.Pipelines, 1)
-	require.True(t, result.Pipelines[0].Pipefail)
-	require.True(t, result.Pipelines[0].Known)
-	require.Len(t, result.Calls, 3)
+	// Analyze and AnalyzeShell agree on shell flags such as -o pipefail.
+	for _, res := range []*Facts{
+		Analyze("curl https://example.test | tar -xz | sh", "bash -o pipefail"),
+		AnalyzeShell("curl https://example.test | tar -xz | sh", []string{"/bin/bash", "-o", "pipefail", "-c"}),
+	} {
+		require.True(t, res.Complete, res.Diagnostics)
+		require.Len(t, res.Pipelines, 1)
+		require.True(t, res.Pipelines[0].Pipefail)
+		require.True(t, res.Pipelines[0].Known)
+		require.Len(t, res.Calls, 3)
+	}
 }
 
 func TestAnalyzeControlFlow(t *testing.T) {
 	result := Analyze("apt-get update && apt-get install x; echo fallback || echo failed; if true; then echo body; fi", "/usr/local/bin/bash")
 	require.True(t, result.Complete, result.Diagnostics)
 	require.False(t, result.Calls[0].Conditional)
-	require.Equal(t, []Guard{{Kind: "success", Call: 0}}, result.Calls[1].Guards)
-	require.Equal(t, []Guard{{Kind: "failure", Call: 2}}, result.Calls[3].Guards)
+	require.Equal(t, []Guard{{Kind: GuardSuccess, Call: 0}}, result.Calls[1].Guards)
+	require.Equal(t, []Guard{{Kind: GuardFailure, Call: 2}}, result.Calls[3].Guards)
 	require.True(t, result.Calls[5].Conditional)
 
 	result = Analyze(`f() { cd relative; }; (cd third); apt-get() { :; }; apt-get install x`, "bash")
 	require.True(t, result.Calls[0].Deferred)
-	require.Equal(t, "subshell", result.Scopes[result.Calls[1].Scope].Kind)
+	require.Equal(t, ScopeSubshell, result.Scopes[result.Calls[1].Scope].Kind)
 	require.True(t, result.Calls[len(result.Calls)-1].Function)
 
 	result = Analyze("for ((i=0; i<0; i++)); do set -o pipefail; done; curl x | cat", "bash")
@@ -93,8 +104,18 @@ func TestAnalyzeControlFlow(t *testing.T) {
 	require.False(t, result.Pipelines[1].Pipefail)
 	require.True(t, result.Pipelines[1].Known)
 
+	// POSIX `[` builtin guard stays complete and does not mark environment mutation.
+	result = Analyze("[ -f /etc/os-release ] && apt-get install -y curl", "sh")
+	require.True(t, result.Complete, result.Diagnostics)
+	require.False(t, result.EnvironmentMayChange)
+	require.Equal(t, "[", result.Calls[0].Name)
+	require.True(t, result.Calls[0].Executable.Known)
+	require.Len(t, result.PackageCommands, 1)
+
 	for _, script := range []string{
 		"bash -c -- 'pip install flask'",
+		"bash -eo pipefail -c 'pip install flask'",
+		"sh -euo pipefail -c 'pip install flask'",
 		"su -s /bin/sh -- root -c 'pip install flask'",
 		"su root --command 'pip install flask'",
 		"su root -s /bin/sh -c 'pip install flask'",
@@ -108,6 +129,11 @@ func TestAnalyzeControlFlow(t *testing.T) {
 		require.Equal(t, "install", result.PackageCommands[0].Action, script)
 	}
 
+	result = AnalyzeArgv([]string{"/bin/bash", "-eo", "pipefail", "-c", "apt-get install -y curl"})
+	require.True(t, result.Complete, result.Diagnostics)
+	require.Len(t, result.PackageCommands, 1)
+	require.Equal(t, "apt-get", result.PackageCommands[0].Manager)
+
 	result = Analyze("su -s /bin/sh root /dev/null -- -c 'pip install flask'", "bash")
 	require.True(t, result.Complete, result.Diagnostics)
 	require.Empty(t, result.PackageCommands)
@@ -120,19 +146,43 @@ func TestAnalyzeControlFlow(t *testing.T) {
 
 func TestAnalyzeCompleteness(t *testing.T) {
 	for _, script := range []string{
-		`"$BIN" install`, `sh -c "$SCRIPT"`, `sudo -l apt-get install x`, `env -S 'apt-get install x'`,
+		`"$BIN" install`, `sh -c "$SCRIPT"`, `bash "$OPTS" -c 'pip install x'`,
+		`sudo -l apt-get install x`, `env -S 'apt-get install x'`,
 		`xargs -n 1 pip install x`, `alias apt-get=echo; apt-get install x`, "echo 'unterminated",
 	} {
 		require.False(t, Analyze(script, "sh").Complete, script)
 	}
 	require.False(t, Analyze("Write-Output hi", "powershell").Complete)
+	require.False(t, Analyze("echo hi", "").Complete)
 
 	builder := newFactBuilder()
 	builder.script("pip install x", "sh", 0, false, false, maxShellDepth)
 	require.Contains(t, builder.result.Diagnostics, "shell analysis limit reached")
 }
 
-func TestAnalyzeSuccessPredecessors(t *testing.T) {
+func TestAnalyzeDeepNestingAndLargePipelines(t *testing.T) {
+	t.Run("deep nesting does not overflow stack", func(t *testing.T) {
+		nested := "echo $((" + strings.Repeat("(", 170000) + "1" + strings.Repeat(")", 170000) + "))"
+		old := debug.SetMaxStack(8 << 20)
+		defer debug.SetMaxStack(old)
+
+		facts := Analyze(nested, "sh")
+		require.False(t, facts.Complete)
+		require.Contains(t, facts.Diagnostics, "shell analysis limit reached")
+
+		val := Literal(strings.Repeat("(", 170000) + "1" + strings.Repeat(")", 170000))
+		require.False(t, val.Known)
+	})
+
+	t.Run("large pipeline is linear", func(t *testing.T) {
+		facts := Analyze(strings.Repeat("a|", 2000)+"a", "sh")
+		require.True(t, facts.Complete, facts.Diagnostics)
+		require.Len(t, facts.Pipelines, 1)
+		require.Len(t, facts.Calls, 2001)
+	})
+}
+
+func TestAnalyzeSuccessPrecedes(t *testing.T) {
 	tests := []struct {
 		name   string
 		script string
@@ -185,14 +235,20 @@ func TestAnalyzeSuccessPredecessors(t *testing.T) {
 			facts := Analyze(tc.script, "sh")
 			require.True(t, facts.Complete, facts.Diagnostics)
 			require.Len(t, facts.Calls, len(tc.want))
-			for i, predecessors := range tc.want {
-				require.Equal(t, predecessors, facts.Calls[i].SuccessPredecessors, "call %d", i)
+			for later, wantPredecessors := range tc.want {
+				var got []int
+				for earlier := range facts.Calls {
+					if facts.SuccessPrecedes(earlier, later) {
+						got = append(got, earlier)
+					}
+				}
+				require.Equal(t, wantPredecessors, got, "call %d", later)
 			}
 		})
 	}
 }
 
-func TestAnalyzeOrderedPredecessors(t *testing.T) {
+func TestAnalyzePrecedes(t *testing.T) {
 	for _, tc := range []struct {
 		name, script, shell string
 		want                [][]int
@@ -242,24 +298,25 @@ func TestAnalyzeOrderedPredecessors(t *testing.T) {
 			facts := Analyze(tc.script, shellName)
 			require.True(t, facts.Complete, facts.Diagnostics)
 			require.Len(t, facts.Calls, len(tc.want))
-			for i, predecessors := range tc.want {
-				require.Equal(t, predecessors, facts.Calls[i].OrderedPredecessors, "call %d", i)
+			for later, wantPredecessors := range tc.want {
+				var got []int
+				for earlier := range facts.Calls {
+					if facts.Precedes(earlier, later) {
+						got = append(got, earlier)
+					}
+				}
+				require.Equal(t, wantPredecessors, got, "call %d", later)
 			}
 		})
 	}
 }
 
-func TestAnalyzeOrderingBudget(t *testing.T) {
-	facts := Analyze(strings.Repeat("echo x; ", 1000), "sh")
-	require.False(t, facts.Complete)
-	require.Contains(t, facts.Diagnostics, "command ordering analysis limit reached")
-	require.Len(t, facts.Calls, 1000, "known calls survive when relation expansion reaches its budget")
-	require.Equal(t, "echo", facts.Calls[0].Name)
-	require.Equal(t, "echo", facts.Calls[len(facts.Calls)-1].Name)
-	for i := range facts.Calls {
-		require.Empty(t, facts.Calls[i].SuccessPredecessors, "partial success edges must be cleared")
-		require.Empty(t, facts.Calls[i].OrderedPredecessors, "partial order edges must be cleared")
-	}
+func TestAnalyzeLargeSequentialScriptStaysComplete(t *testing.T) {
+	facts := Analyze(strings.Repeat("echo x; ", 500), "sh")
+	require.True(t, facts.Complete, facts.Diagnostics)
+	require.Len(t, facts.Calls, 500)
+	require.True(t, facts.Precedes(0, 499))
+	require.False(t, facts.Precedes(499, 0))
 }
 
 func TestAnalyzeCDOperand(t *testing.T) {
@@ -342,17 +399,25 @@ func TestAnalyzePackageCommands(t *testing.T) {
 		{"apt-get install libgtk-3-0 libpcre2-8-0 libc6:amd64=2.36-9+deb12u10 7zip --assume-yes=false", "apt-get", "install", false, true,
 			[]pkg{{"libgtk-3-0", false}, {"libpcre2-8-0", false}, {"libc6:amd64=2.36-9+deb12u10", true}, {"7zip", false}}},
 		{"apt-get install -y --assume-yes=false curl", "apt-get", "install", false, true, []pkg{{"curl", false}}},
-		{"apk add --virtual .build gcc~=12", "apk", "install", false, true, []pkg{{"gcc~=12", true}}},
+		{"apk add --virtual .build gcc~=12 curl~8", "apk", "install", false, true,
+			[]pkg{{"gcc~=12", true}, {"curl~8", true}}},
 		{"dnf --setopt=x=1 --enablerepo epel in -y nginx-1.2.3 systemd-252-46.el9.x86_64 tzdata-2024a-1.el9.noarch", "dnf", "install", true, true,
 			[]pkg{{"nginx-1.2.3", true}, {"systemd-252-46.el9.x86_64", true}, {"tzdata-2024a-1.el9.noarch", true}}},
+		{"yum install -y java-1.8.0-openjdk", "yum", "install", true, true, []pkg{{"java-1.8.0-openjdk", false}}},
+		{"dnf --setopt=assumeyes=1 install curl", "dnf", "install", true, true, []pkg{{"curl", false}}},
 		{"zypper --non-interactive in vim", "zypper", "install", true, true, []pkg{{"vim", false}}},
+		{"zypper -n in vim", "zypper", "install", true, true, []pkg{{"vim", false}}},
+		{"zypper install -n vim", "zypper", "install", false, true, []pkg{{"vim", false}}},
+		{"zypper -p http://r in vim", "zypper", "install", false, true, []pkg{{"vim", false}}},
 		{"pip --timeout 60 --retries 3 install requests", "pip", "install", false, true, []pkg{{"requests", false}}},
 		{"python3 -m pip install -r reqs.txt -e git+https://example.com/x.git 'requests[socks]==2.31.0'", "pip", "install", false, true,
 			[]pkg{{"git+https://example.com/x.git", false}, {"requests[socks]==2.31.0", true}}},
-		{"npm i --registry https://registry.example.com --omit dev @scope/a@1 git-rev-sync user/repo ./local https://example.com/pkg.tgz", "npm", "install", false, true,
+		{"npm i --registry https://registry.example.com --omit dev --audit-level high @scope/a@1 git-rev-sync user/repo ./local https://example.com/pkg.tgz", "npm", "install", false, true,
 			[]pkg{{"@scope/a@1", true}, {"git-rev-sync", false}}},
+		{"yarn global add pm2", "yarn", "install", false, true, []pkg{{"pm2", false}}},
 		{"gem install rails -v 7.0 puma --version=6.0.0 rack -v3.0.0 rake", "gem", "install", false, true,
 			[]pkg{{"rails", true}, {"puma", true}, {"rack", true}, {"rake", false}}},
+		{"gem install -v 7.0 rails", "gem", "install", false, true, []pkg{{"rails", true}}},
 		{`yarn add "$PKG"`, "yarn", "install", false, false, []pkg{}},
 		{`gem install rake --version $VERSION`, "gem", "install", false, false, []pkg{{"rake", true}}},
 		{`pip install --index-url $INDEX requests`, "pip", "install", false, false, []pkg{{"requests", false}}},
@@ -369,8 +434,7 @@ func TestAnalyzePackageCommands(t *testing.T) {
 		packages := []pkg{}
 		for _, p := range command.Packages {
 			packages = append(packages, pkg{p.Name, p.Pinned})
-			span := facts.Calls[command.Call].ArgumentSpans[p.Argument]
-			require.Contains(t, tc.script[span.Start:span.End], p.Name, tc.script)
+			require.Contains(t, tc.script[p.Span.Start:p.Span.End], p.Name, tc.script)
 		}
 		require.Equal(t, tc.packages, packages, tc.script)
 	}
@@ -407,7 +471,7 @@ func TestAnalyzePackageCleanupChainsAreOrdered(t *testing.T) {
 			}
 			require.NotEqual(t, -1, installCall, "install call is present: %#v", facts.PackageCommands)
 			require.NotEqual(t, -1, cleanupCall, "cleanup call is present: %#v", facts.Calls)
-			require.Contains(t, facts.Calls[cleanupCall].OrderedPredecessors, installCall,
+			require.True(t, facts.Precedes(installCall, cleanupCall),
 				"cleanup call must retain the install call as a proven predecessor")
 		})
 	}

@@ -24,9 +24,11 @@ type PackageCommand struct {
 }
 
 // Option is an option as written; Value holds its argument, attached or not.
+// Global reports whether the option appeared before the subcommand.
 type Option struct {
-	Name  string `json:"name"`
-	Value string `json:"value,omitempty"`
+	Name   string `json:"name"`
+	Value  string `json:"value,omitempty"`
+	Global bool   `json:"-"`
 }
 
 // Package is an operand naming a package from the manager's registry.
@@ -34,14 +36,16 @@ type Package struct {
 	Name     string `json:"name"`
 	Pinned   bool   `json:"pinned"`
 	Argument int    `json:"-"`
+	Span     Span   `json:"-"`
 }
 
 type managerGrammar struct {
-	actions map[string]string
-	values  map[string]bool
-	operand func(token string) bool
-	pinned  func(arguments []Value, index int, options []Option) bool
-	yes     func(options []Option) bool
+	actions          map[string]string
+	values           map[string]bool
+	operand          func(token string) bool
+	pinned           func(arguments []Value, index int, options []Option) bool
+	yes              func(options []Option) bool
+	globalSubcommand string
 	// editable marks pip, whose -e/--editable value can be a VCS URL to install.
 	editable bool
 }
@@ -58,17 +62,19 @@ const (
 	subcmdRm        = "rm"
 	optYes          = "--yes"
 	optAssumeYes    = "--assume-yes"
+	optVersion      = "--version"
 )
 
 var (
-	aptApkZypperVersionPattern = regexp.MustCompile(`^[A-Za-z0-9_.+-]+(:[A-Za-z0-9_-]+)?~?=.+$`)
-	pipVersionPattern          = regexp.MustCompile(`^[A-Za-z0-9_.-]+(\[[^]]+\])?(===?|~=).+$`)
-	rpmVersionPatterns         = []*regexp.Regexp{
-		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-(\d+:)?(\d+\.)+\d+`),
-		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d+:\d[A-Za-z0-9_.~+^]*`),
+	aptZypperVersionPattern = regexp.MustCompile(`^[A-Za-z0-9_.+-]+(:[A-Za-z0-9_-]+)?~?=.+$`)
+	apkVersionPattern       = regexp.MustCompile(`^[A-Za-z0-9_.+-]+(~?=.+|~.+)$`)
+	pipVersionPattern       = regexp.MustCompile(`^[A-Za-z0-9_.-]+(\[[^]]+\])?(===?|~=).+$`)
+	rpmVersionPatterns      = []*regexp.Regexp{
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-(\d+:)?(\d+\.)+\d+[A-Za-z0-9.]*(-\d[A-Za-z0-9_.~+^]*)?$`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d+:\d[A-Za-z0-9_.~+^]*$`),
 		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\d[A-Za-z0-9.~+^]*-\d[A-Za-z0-9_~+^]*\.[A-Za-z0-9_.]+$`),
-		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\$.+`),
-		regexp.MustCompile(`^[A-Za-z0-9_.+-]+=.+`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+-\$.+$`),
+		regexp.MustCompile(`^[A-Za-z0-9_.+-]+=.+$`),
 	}
 	gemVersionPattern      = regexp.MustCompile(`^[A-Za-z0-9_.-]+:(\d|\$).+`)
 	nonRegistryNodePackage = regexp.MustCompile(`^(git(\+|:|@)|https?://|ssh://|-|\./|\.\./|/|file:|link:|workspace:|github:)`)
@@ -84,8 +90,12 @@ func set(words string) map[string]bool {
 	return result
 }
 
-func aptApkZypperPinned(arguments []Value, index int, _ []Option) bool {
-	return aptApkZypperVersionPattern.MatchString(arguments[index].Text)
+func aptZypperPinned(arguments []Value, index int, _ []Option) bool {
+	return aptZypperVersionPattern.MatchString(arguments[index].Text)
+}
+
+func apkPinned(arguments []Value, index int, _ []Option) bool {
+	return apkVersionPattern.MatchString(arguments[index].Text)
 }
 
 func pipPinned(arguments []Value, index int, _ []Option) bool {
@@ -173,6 +183,13 @@ func rpmAssumeYes(options []Option) bool {
 			}
 		case "--assumeno":
 			assumeYes = false
+		case "--setopt":
+			key, raw, found := strings.Cut(option.Value, "=")
+			if found && (strings.EqualFold(key, "assumeyes") || strings.EqualFold(key, "defaultyes")) {
+				if val, ok := parseOptionBool(raw); ok {
+					assumeYes = val
+				}
+			}
 		default:
 			if !strings.HasPrefix(option.Name, "--") && strings.HasPrefix(option.Name, "-") &&
 				option.Value == "" && strings.Contains(option.Name[1:], "y") {
@@ -187,9 +204,17 @@ func zypperAssumeYes(options []Option) bool {
 	assumeYes := false
 	for _, option := range options {
 		switch option.Name {
-		case "-y", "--no-confirm", "--non-interactive", "-n":
+		case "-y", "--no-confirm", "--non-interactive":
 			if val, ok := parseOptionBool(option.Value); ok {
 				assumeYes = val
+			}
+		case "-n":
+			// Before the subcommand, -n is --non-interactive; after the
+			// subcommand, -n is --name (package-name matching).
+			if option.Global {
+				if val, ok := parseOptionBool(option.Value); ok {
+					assumeYes = val
+				}
 			}
 		}
 	}
@@ -212,21 +237,36 @@ func nodePinned(arguments []Value, index int, _ []Option) bool {
 	return hasAt && version != ""
 }
 
-// gemPinned accepts a version given inline (name:1.0) or right after the gem it applies to.
+func isGemVersionFlag(token string) bool {
+	return token == optVersion || strings.HasPrefix(token, optVersion+"=") || strings.HasPrefix(token, "-v")
+}
+
+// gemPinned accepts a version given inline (name:1.0), right after the gem it
+// applies to (`gem install rails -v 7.0`), or as a leading version flag before
+// the gem (`gem install -v 7.0 rails`).
 func gemPinned(arguments []Value, index int, _ []Option) bool {
 	if gemVersionPattern.MatchString(arguments[index].Text) {
 		return true
 	}
-	if index+1 >= len(arguments) {
-		return false
+	if index+1 < len(arguments) && isGemVersionFlag(arguments[index+1].Text) {
+		return true
 	}
-	next := arguments[index+1].Text
-	return next == "--version" || strings.HasPrefix(next, "--version=") || strings.HasPrefix(next, "-v")
+	// Check whether a leading -v/--version immediately precedes this gem
+	// (with no earlier gem operand between it and this gem).
+	if index >= 1 && isGemVersionFlag(arguments[index-1].Text) &&
+		(strings.HasPrefix(arguments[index-1].Text, optVersion+"=") || len(arguments[index-1].Text) > 2) {
+		return index < 2 || strings.HasPrefix(arguments[index-2].Text, "-") || arguments[index-2].Text == actionInstall
+	}
+	if index >= 2 && (arguments[index-2].Text == "-v" || arguments[index-2].Text == optVersion) {
+		return index < 3 || strings.HasPrefix(arguments[index-3].Text, "-") || arguments[index-3].Text == actionInstall
+	}
+	return false
 }
 
 const nodeValues = "--registry --userconfig --globalconfig --cache --prefix -C --tag --proxy --https-proxy --noproxy " +
 	"--cafile --ca --cert --key --loglevel --logs-dir --fetch-retries --fetch-retry-factor --fetch-retry-mintimeout " +
-	"--fetch-retry-maxtimeout --fetch-timeout --maxsockets --install-strategy --script-shell --node-options --user-agent --before "
+	"--fetch-retry-maxtimeout --fetch-timeout --maxsockets --install-strategy --script-shell --node-options --user-agent --before " +
+	"--audit-level "
 
 const rpmValues = "--enablerepo --disablerepo --repo --repoid --repofrompath --releasever --setopt --installroot -c --config " +
 	"--exclude -x --disableexcludes --enableplugin --disableplugin --downloaddir --destdir --advisory --bz --cve " +
@@ -239,7 +279,7 @@ var (
 			"dist-upgrade": actionUpgrade, "full-upgrade": actionUpgrade, "autoclean": actionClean,
 		},
 		values:  set("-o --option -c --config-file -t --target-release -a --host-architecture"),
-		operand: registryName, pinned: aptApkZypperPinned, yes: aptAssumeYes,
+		operand: registryName, pinned: aptZypperPinned, yes: aptAssumeYes,
 	}
 	rpmGrammar = &managerGrammar{
 		actions: map[string]string{
@@ -256,7 +296,7 @@ var (
 		"apk": {
 			actions: map[string]string{subcmdAdd: actionInstall, "del": actionRemove},
 			values:  set("--virtual -t --repository -X --root -p --arch --keys-dir --cache-dir"),
-			operand: registryName, pinned: aptApkZypperPinned, yes: never,
+			operand: registryName, pinned: apkPinned, yes: never,
 		},
 		"yum": rpmGrammar, "dnf": rpmGrammar, "microdnf": rpmGrammar, "tdnf": rpmGrammar,
 		"zypper": {
@@ -265,8 +305,8 @@ var (
 				"ref": "refresh", "up": "update", "cc": actionClean,
 			},
 			values: set("--repo -r --root -R --releasever --from --config -c --reposd-dir --cache-dir --raw-cache-dir " +
-				"--solv-cache-dir --pkg-cache-dir --type -t --userdata --plus-repo --download --download-dir --solver-focus"),
-			operand: registryName, pinned: aptApkZypperPinned, yes: zypperAssumeYes,
+				"--solv-cache-dir --pkg-cache-dir --type -t --userdata -p --plus-repo --download --download-dir --solver-focus"),
+			operand: registryName, pinned: aptZypperPinned, yes: zypperAssumeYes,
 		},
 		pip: {
 			values: set("--index-url -i --extra-index-url --find-links -f --trusted-host --target -t --platform " +
@@ -290,9 +330,12 @@ var (
 			operand: nodePackage, pinned: nodePinned, yes: never,
 		},
 		"yarn": {
-			actions: map[string]string{subcmdAdd: actionInstall},
-			values:  set(nodeValues + "--cache-folder --cwd --modules-folder --network-timeout --mutex"),
-			operand: nodePackage, pinned: nodePinned, yes: never,
+			actions:          map[string]string{subcmdAdd: actionInstall},
+			values:           set(nodeValues + "--cache-folder --cwd --modules-folder --network-timeout --mutex"),
+			operand:          nodePackage,
+			pinned:           nodePinned,
+			yes:              never,
+			globalSubcommand: "global",
 		},
 		"gem": {
 			values: set("--source -s --install-dir -i --bindir -n --build-root --platform --without --config-file " +
@@ -313,6 +356,14 @@ func packageCommands(calls []Invocation) []PackageCommand {
 		command := grammar.read(calls[i].Arguments[offset:], offset)
 		command.Call, command.Manager = i, manager
 		command.Known = command.Known && !calls[i].DynamicArguments
+		for j := range command.Packages {
+			argIdx := command.Packages[j].Argument
+			if argIdx >= 0 && argIdx < len(calls[i].ArgumentSpans) {
+				command.Packages[j].Span = calls[i].ArgumentSpans[argIdx]
+			} else {
+				command.Packages[j].Span = calls[i].Span
+			}
+		}
 		result = append(result, command)
 	}
 	return result
@@ -387,6 +438,9 @@ func (grammar *managerGrammar) read(arguments []Value, offset int) PackageComman
 	if len(operands) == 0 {
 		return command
 	}
+	if grammar.globalSubcommand != "" && arguments[operands[0]].Text == grammar.globalSubcommand && len(operands) >= 2 {
+		operands = operands[1:]
+	}
 	command.Subcommand = arguments[operands[0]].Text
 	command.Action = command.Subcommand
 	if action, ok := grammar.actions[command.Subcommand]; ok {
@@ -432,6 +486,7 @@ func (grammar *managerGrammar) readOptions(command *PackageCommand, arguments []
 			continue
 		}
 		option, consumes := grammar.option(token)
+		option.Global = len(operands) == 0
 		if consumes && i+1 < len(arguments) {
 			i++
 			option.Value = arguments[i].Text

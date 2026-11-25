@@ -7,127 +7,24 @@ package shell
 
 import (
 	"path"
-	"sort"
+	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
 )
 
 const (
-	cdCommand        = "cd"
-	sourceCommand    = "source"
-	shellSetCommand  = "set"
-	evalCommand      = "eval"
-	sudoCommand      = "sudo"
-	envCommand       = "env"
-	execCommand      = "exec"
-	ashShell         = "ash"
-	dashShell        = "dash"
-	kshShell         = "ksh"
-	suCommand        = "su"
-	optionEnd        = "--"
-	commandFlag      = "-c"
-	shellOptionValue = "-o"
-	chrootCommand    = "chroot"
+	cdCommand       = "cd"
+	sourceCommand   = "source"
+	shellSetCommand = "set"
+	evalCommand     = "eval"
+
+	maxShellDepth    = 16
+	maxFactNodes     = 50000
 	maxFactNesting   = 256
-	successGuard     = "success"
-	xargsCommand     = "xargs"
+	maxSyntaxNesting = 512
+	maxScriptBytes   = 1 << 20
 )
-
-const (
-	maxShellDepth         = 16
-	maxFactNodes          = 50000
-	maxScriptBytes        = 1 << 20
-	maxOrderingPairChecks = 65536
-	maxOrderingRelations  = 16384
-)
-
-// Value distinguishes a statically known word from an expansion. Raw preserves
-// the source spelling; Text is useful only when Known is true.
-type Value struct {
-	Raw     string `json:"raw,omitempty"`
-	Pattern string `json:"pattern,omitempty"`
-	Text    string `json:"value"`
-	Known   bool   `json:"known"`
-}
-
-// Scope represents a lexical or execution scope within a parsed shell script.
-type Scope struct {
-	ID     int    `json:"id"`
-	Parent int    `json:"parent"`
-	Kind   string `json:"kind"`
-}
-
-// Guard records a success/failure dependency on another syntactic call.
-type Guard struct {
-	Kind string `json:"kind"`
-	Call int    `json:"call"`
-}
-
-// Span is a byte range of the analyzed script. Calls of nested scripts share
-// the span of the argument holding the script; exec-form calls have none.
-type Span struct {
-	Start, End int
-}
-
-// Invocation is syntactic, not proof that a branch executes.
-// Function bodies are deferred; scopes preserve isolation and conditionality.
-type Invocation struct {
-	Guards []Guard `json:"guards,omitempty"`
-	// SuccessPredecessors lists source call indexes whose successful completion
-	// is required before this call can run. It is deliberately narrower than
-	// source order: ordinary sequencing and failure branches do not imply that
-	// an earlier command succeeded.
-	SuccessPredecessors []int `json:"success_predecessors,omitempty"`
-	// OrderedPredecessors lists earlier calls whose ordering before this call
-	// is guaranteed by the syntax. It excludes conditional branches except for
-	// explicit success dependencies.
-	OrderedPredecessors []int    `json:"ordered_predecessors,omitempty"`
-	Name                string   `json:"name"`
-	Executable          Value    `json:"executable"`
-	Arguments           []Value  `json:"arguments"`
-	CDPath              *Value   `json:"cd_path,omitempty"`
-	DynamicArguments    bool     `json:"dynamic_arguments,omitempty"`
-	Wrappers            []string `json:"wrappers,omitempty"`
-	Scope               int      `json:"scope"`
-	Order               int      `json:"order"`
-	Function            bool     `json:"function"`
-	Deferred            bool     `json:"deferred"`
-	Conditional         bool     `json:"conditional"`
-	Span                Span     `json:"-"`
-	ArgumentSpans       []Span   `json:"-"`
-}
-
-// Pipeline records a shell pipeline and the pipefail option state in its scope.
-type Pipeline struct {
-	Scope    int    `json:"scope"`
-	Shell    string `json:"shell"`
-	Pipefail bool   `json:"pipefail"`
-	Known    bool   `json:"known"`
-	Deferred bool   `json:"deferred"`
-	Span     Span   `json:"-"`
-}
-
-type shellOptions struct {
-	shell    string
-	pipefail bool
-	known    bool
-}
-
-// Facts holds structured command, pipeline, scope, and package-manager facts
-// extracted from a shell script or exec-form argv.
-type Facts struct {
-	// EnvironmentMayChange records syntactic assignments or shell state
-	// operations. They may be conditional or deferred; this does not claim
-	// that the environment actually changes during execution.
-	EnvironmentMayChange bool             `json:"environment_may_change,omitempty"`
-	Pipelines            []Pipeline       `json:"pipelines,omitempty"`
-	Calls                []Invocation     `json:"calls"`
-	PackageCommands      []PackageCommand `json:"package_commands"`
-	Scopes               []Scope          `json:"scopes"`
-	Complete             bool             `json:"complete"`
-	Diagnostics          []string         `json:"diagnostics,omitempty"`
-}
 
 type factBuilder struct {
 	result    *Facts
@@ -139,18 +36,23 @@ type factBuilder struct {
 	nested *Span
 }
 
-// Analyze parses once and projects scanner-owned command facts.
-func Analyze(script, shellName string) *Facts {
-	builder := newFactBuilder()
-	builder.options[0] = shellOptions{shell: normalizeShell(shellName), known: true}
-	builder.script(script, shellName, 0, false, false, 0)
-	return builder.finish()
+// Analyze parses a shell script using a shell specification string (e.g. "sh",
+// "bash -o pipefail", "/usr/bin/bash") and projects scanner-owned command facts.
+func Analyze(script, shellSpec string) *Facts {
+	fields := strings.Fields(shellSpec)
+	if len(fields) == 0 {
+		builder := newFactBuilder()
+		builder.diagnostic("unsupported shell: " + shellSpec)
+		return builder.finish()
+	}
+	return AnalyzeShell(script, fields)
 }
 
-// AnalyzeShell retains explicit shell option state as well as the grammar.
+// AnalyzeShell parses a shell script while retaining explicit shell option
+// state from argv (e.g. []string{"/bin/bash", "-eo", "pipefail", "-c"}).
 func AnalyzeShell(script string, argv []string) *Facts {
 	if len(argv) == 0 {
-		return Analyze(script, sh)
+		return AnalyzeShell(script, []string{sh})
 	}
 	builder := newFactBuilder()
 	initial := shellOptions{shell: normalizeShell(argv[0]), known: true}
@@ -158,7 +60,7 @@ func AnalyzeShell(script string, argv []string) *Facts {
 	for i, arg := range argv {
 		values[i] = Value{Text: arg, Known: true}
 	}
-	builder.options[0] = optionState(initial, values)
+	builder.options[0] = parseShellArgv(initial, values).options
 	builder.script(script, argv[0], 0, false, false, 0)
 	return builder.finish()
 }
@@ -177,18 +79,13 @@ func AnalyzeArgv(argv []string) *Facts {
 
 func newFactBuilder() *factBuilder {
 	return &factBuilder{
-		result:    &Facts{Calls: []Invocation{}, Scopes: []Scope{{ID: 0, Parent: -1, Kind: "script"}}, Complete: true},
+		result:    &Facts{Calls: []Invocation{}, Scopes: []Scope{{ID: 0, Parent: -1, Kind: ScopeScript}}, Complete: true},
 		functions: make(map[int]map[string]bool),
 		options:   map[int]shellOptions{0: {known: true}},
 	}
 }
 
 func (b *factBuilder) finish() *Facts {
-	budget := orderingBudget{}
-	if !populateSuccessPredecessors(b.result, &budget) || !populateOrderedPredecessors(b.result, &budget) {
-		clearOrderingFacts(b.result)
-		b.diagnostic("command ordering analysis limit reached")
-	}
 	b.result.PackageCommands = packageCommands(b.result.Calls)
 	for i := range b.result.Calls {
 		call := &b.result.Calls[i]
@@ -208,164 +105,6 @@ func environmentChangingCommand(name string) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-type orderingBudget struct {
-	pairChecks int
-	relations  int
-}
-
-func (b *orderingBudget) checkPair() bool {
-	if b.pairChecks >= maxOrderingPairChecks {
-		return false
-	}
-	b.pairChecks++
-	return true
-}
-
-func (b *orderingBudget) addRelation() bool {
-	if b.relations >= maxOrderingRelations {
-		return false
-	}
-	b.relations++
-	return true
-}
-
-// populateSuccessPredecessors projects && guards into a transitive relation.
-// Calls in a shell pipeline are excluded because its stages execute
-// concurrently and pipeline status depends on shell options. Strict scope
-// matching keeps the relation within one subshell, nested script, or function.
-func populateSuccessPredecessors(facts *Facts, budget *orderingBudget) bool {
-	if facts == nil {
-		return true
-	}
-	for i := range facts.Calls {
-		if !populateCallSuccessPredecessors(facts, i, budget) {
-			return false
-		}
-	}
-	return true
-}
-
-func populateCallSuccessPredecessors(facts *Facts, callIndex int, budget *orderingBudget) bool {
-	call := &facts.Calls[callIndex]
-	if scopeHasKind(facts.Scopes, call.Scope, pipeline) {
-		return true
-	}
-	seen := make(map[int]bool)
-	stack := successGuardCalls(call.Guards)
-	for len(stack) > 0 {
-		last := len(stack) - 1
-		index := stack[last]
-		stack = stack[:last]
-		if !budget.checkPair() {
-			return false
-		}
-		if !validSuccessPredecessor(facts, callIndex, index, seen) {
-			continue
-		}
-		seen[index] = true
-		if !budget.addRelation() {
-			return false
-		}
-		call.SuccessPredecessors = append(call.SuccessPredecessors, index)
-		stack = append(stack, successGuardCalls(facts.Calls[index].Guards)...)
-	}
-	// Stable source order makes the serialized facts deterministic.
-	sort.Ints(call.SuccessPredecessors)
-	return true
-}
-
-func successGuardCalls(guards []Guard) []int {
-	var calls []int
-	for _, guard := range guards {
-		if guard.Kind == successGuard {
-			calls = append(calls, guard.Call)
-		}
-	}
-	return calls
-}
-
-func validSuccessPredecessor(facts *Facts, callIndex, predecessor int, seen map[int]bool) bool {
-	if predecessor < 0 || predecessor >= len(facts.Calls) || seen[predecessor] || predecessor == callIndex {
-		return false
-	}
-	call, previous := facts.Calls[callIndex], facts.Calls[predecessor]
-	return previous.Scope == call.Scope && !scopeHasKind(facts.Scopes, previous.Scope, pipeline)
-}
-
-func scopeHasKind(scopes []Scope, scope int, kind string) bool {
-	for scope >= 0 && scope < len(scopes) {
-		if scopes[scope].Kind == kind {
-			return true
-		}
-		scope = scopes[scope].Parent
-	}
-	return false
-}
-
-// populateOrderedPredecessors records guaranteed source ordering for calls in
-// one non-conditional execution scope. Within a conditional scope, only an
-// explicit && success dependency proves that one call precedes another: other
-// calls may be in mutually exclusive branches of the same if statement.
-func populateOrderedPredecessors(facts *Facts, budget *orderingBudget) bool {
-	if facts == nil {
-		return true
-	}
-	for i := range facts.Calls {
-		if !populateCallOrderedPredecessors(facts, i, budget) {
-			return false
-		}
-	}
-	return true
-}
-
-func populateCallOrderedPredecessors(facts *Facts, callIndex int, budget *orderingBudget) bool {
-	call := &facts.Calls[callIndex]
-	if scopeHasKind(facts.Scopes, call.Scope, pipeline) {
-		return true
-	}
-	conditionalScope := scopeHasKind(facts.Scopes, call.Scope, "conditional")
-	successSet := successPredecessorSet(call.SuccessPredecessors)
-	for predecessor := range facts.Calls {
-		if !budget.checkPair() {
-			return false
-		}
-		if !isOrderedPredecessor(facts, callIndex, predecessor, conditionalScope, successSet) {
-			continue
-		}
-		if !budget.addRelation() {
-			return false
-		}
-		call.OrderedPredecessors = append(call.OrderedPredecessors, predecessor)
-	}
-	return true
-}
-
-func successPredecessorSet(predecessors []int) map[int]bool {
-	set := make(map[int]bool, len(predecessors))
-	for _, predecessor := range predecessors {
-		set[predecessor] = true
-	}
-	return set
-}
-
-func isOrderedPredecessor(facts *Facts, callIndex, predecessor int, conditionalScope bool, successSet map[int]bool) bool {
-	if predecessor == callIndex {
-		return false
-	}
-	call, previous := facts.Calls[callIndex], facts.Calls[predecessor]
-	if previous.Scope != call.Scope || previous.Order >= call.Order || scopeHasKind(facts.Scopes, previous.Scope, pipeline) {
-		return false
-	}
-	return (!conditionalScope && !call.Conditional && !previous.Conditional) || successSet[predecessor]
-}
-
-func clearOrderingFacts(facts *Facts) {
-	for i := range facts.Calls {
-		facts.Calls[i].SuccessPredecessors = nil
-		facts.Calls[i].OrderedPredecessors = nil
 	}
 }
 
@@ -390,28 +129,15 @@ func (b *factBuilder) diagnostic(message string) {
 	b.result.Diagnostics = append(b.result.Diagnostics, message)
 }
 
-func (b *factBuilder) scope(parent int, kind string) int {
+func (b *factBuilder) scope(parent int, kind ScopeKind) int {
 	id := len(b.result.Scopes)
 	b.result.Scopes = append(b.result.Scopes, Scope{ID: id, Parent: parent, Kind: kind})
 	b.options[id] = b.options[parent]
 	return id
 }
 
-func shellLangVariant(shellName string) (syntax.LangVariant, bool) {
-	switch normalizeShell(shellName) {
-	case sh, ashShell, dashShell:
-		return syntax.LangPOSIX, true
-	case bashShell, zsh:
-		return syntax.LangBash, true
-	case kshShell:
-		return syntax.LangMirBSDKorn, true
-	default:
-		return 0, false
-	}
-}
-
 func (b *factBuilder) script(script, shellName string, scope int, deferred, conditional bool, depth int) {
-	if depth >= maxShellDepth || b.bytes+len(script) > maxScriptBytes {
+	if depth >= maxShellDepth || b.bytes+len(script) > maxScriptBytes || exceedsNestingLimit(script, maxSyntaxNesting) {
 		b.diagnostic("shell analysis limit reached")
 		return
 	}
@@ -448,7 +174,7 @@ func (b *factBuilder) walkStmt(stmt *syntax.Stmt, source string, scope int, defe
 	b.nodes++
 	stmtScope := scope
 	if stmt.Background || stmt.Coprocess {
-		stmtScope = b.scope(scope, "background")
+		stmtScope = b.scope(scope, ScopeBackground)
 	}
 	for _, redir := range stmt.Redirs {
 		b.walkSubstitutions(redir, source, stmtScope, deferred, conditional, depth, nesting+1)
@@ -476,14 +202,14 @@ func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, defe
 	case *syntax.CaseClause:
 		return b.walkCase(node, source, scope, deferred, conditional, depth, nesting)
 	case *syntax.Subshell:
-		subScope := b.scope(scope, "subshell")
+		subScope := b.scope(scope, ScopeSubshell)
 		b.walkStmts(node.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
 		return -1
 	case *syntax.Block:
 		return b.walkStmts(node.Stmts, source, scope, deferred, conditional, depth, nesting+1)
 	case *syntax.FuncDecl:
 		b.defineFunction(node, scope, conditional)
-		fnScope := b.scope(scope, "function")
+		fnScope := b.scope(scope, ScopeFunction)
 		b.walkStmt(node.Body, source, fnScope, true, conditional, depth, nesting+1)
 		return -1
 	case *syntax.CallExpr:
@@ -497,7 +223,7 @@ func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, defe
 	case *syntax.TimeClause:
 		return b.walkStmt(node.Stmt, source, scope, deferred, conditional, depth, nesting+1)
 	case *syntax.CoprocClause:
-		coprocScope := b.scope(scope, "coprocess")
+		coprocScope := b.scope(scope, ScopeCoprocess)
 		b.walkStmt(node.Stmt, source, coprocScope, deferred, conditional, depth, nesting+1)
 		return -1
 	default:
@@ -508,14 +234,14 @@ func (b *factBuilder) walkCmd(cmd syntax.Command, source string, scope int, defe
 
 func (b *factBuilder) walkBinaryCmd(node *syntax.BinaryCmd, source string, scope int, deferred, conditional bool, depth, nesting int) int {
 	if node.Op == syntax.Pipe || node.Op == syntax.PipeAll {
-		pipeScope := b.scope(scope, pipeline)
+		pipeScope := b.scope(scope, ScopePipeline)
 		options := b.options[pipeScope]
 		b.result.Pipelines = append(b.result.Pipelines, Pipeline{
 			Scope: pipeScope, Shell: options.shell, Pipefail: options.pipefail,
 			Known: options.known, Deferred: deferred, Span: b.nodeSpan(node),
 		})
 		for _, stage := range collectPipelineStages(node) {
-			stageScope := b.scope(pipeScope, "pipeline_stage")
+			stageScope := b.scope(pipeScope, ScopePipelineStage)
 			b.walkStmt(stage, source, stageScope, deferred, conditional, depth, nesting+1)
 		}
 		return -1
@@ -523,9 +249,9 @@ func (b *factBuilder) walkBinaryCmd(node *syntax.BinaryCmd, source string, scope
 	left := b.walkStmt(node.X, source, scope, deferred, conditional, depth, nesting+1)
 	firstRight := len(b.result.Calls)
 	right := b.walkStmt(node.Y, source, scope, deferred, true, depth, nesting+1)
-	guardKind := successGuard
+	guardKind := GuardSuccess
 	if node.Op == syntax.OrStmt {
-		guardKind = "failure"
+		guardKind = GuardFailure
 	}
 	for i := firstRight; i < len(b.result.Calls); i++ {
 		b.result.Calls[i].Guards = append(b.result.Calls[i].Guards, Guard{Kind: guardKind, Call: left})
@@ -538,18 +264,22 @@ func (b *factBuilder) walkBinaryCmd(node *syntax.BinaryCmd, source string, scope
 
 func collectPipelineStages(node *syntax.BinaryCmd) []*syntax.Stmt {
 	var stages []*syntax.Stmt
-	if left, ok := node.X.Cmd.(*syntax.BinaryCmd); ok && (left.Op == syntax.Pipe || left.Op == syntax.PipeAll) {
-		stages = append(stages, collectPipelineStages(left)...)
-	} else {
-		stages = append(stages, node.X)
+	for {
+		stages = append(stages, node.Y)
+		left, ok := node.X.Cmd.(*syntax.BinaryCmd)
+		if !ok || (left.Op != syntax.Pipe && left.Op != syntax.PipeAll) {
+			stages = append(stages, node.X)
+			break
+		}
+		node = left
 	}
-	stages = append(stages, node.Y)
+	slices.Reverse(stages)
 	return stages
 }
 
 func (b *factBuilder) walkConditionalScope(scope int, fn func(condScope int)) int {
 	parent := scope
-	condScope := b.scope(scope, "conditional")
+	condScope := b.scope(scope, ScopeConditional)
 	initial := b.options[parent]
 	fn(condScope)
 	if initial != b.options[condScope] {
@@ -631,13 +361,18 @@ func (b *factBuilder) walkCallExpr(node *syntax.CallExpr, source string, scope i
 	last := len(b.result.Calls)
 	values := make([]Value, 0, len(node.Args))
 	spans := make([]Span, 0, len(node.Args))
-	for _, arg := range node.Args {
+	for i, arg := range node.Args {
 		span := rawSpan(arg)
 		raw := ""
 		if span.Start >= 0 && span.End <= len(source) && span.Start <= span.End {
 			raw = source[span.Start:span.End]
 		}
-		values = append(values, wordValue(arg, raw))
+		if i == 0 && raw == "[" {
+			// `[` is a POSIX builtin command name, not a glob pattern.
+			values = append(values, Value{Text: "[", Known: true})
+		} else {
+			values = append(values, wordValue(arg, raw))
+		}
 		spans = append(spans, span)
 	}
 	b.call(values, spans, b.nodeSpan(node), scope, deferred, conditional, depth, true)
@@ -656,11 +391,11 @@ func (b *factBuilder) walkSubstitutions(root syntax.Node, source string, scope i
 	syntax.Walk(root, func(node syntax.Node) bool {
 		switch sub := node.(type) {
 		case *syntax.CmdSubst:
-			subScope := b.scope(scope, commandSubstitutionNode)
+			subScope := b.scope(scope, ScopeCommandSubstitution)
 			b.walkStmts(sub.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
 			return false
 		case *syntax.ProcSubst:
-			subScope := b.scope(scope, "process_substitution")
+			subScope := b.scope(scope, ScopeProcessSubstitution)
 			b.walkStmts(sub.Stmts, source, subScope, deferred, conditional, depth, nesting+1)
 			return false
 		}
@@ -707,7 +442,7 @@ func (b *factBuilder) call(values []Value, spans []Span, span Span, scope int, d
 	}
 	b.result.Calls = append(b.result.Calls, call)
 	if call.Name == shellSetCommand && !deferred {
-		options := optionState(b.options[scope], words)
+		options := parseShellArgv(b.options[scope], words).options
 		if conditional {
 			options.known = false
 		}
@@ -729,8 +464,28 @@ func (b *factBuilder) nestedScript(words []Value, name string, scope int, deferr
 	if !isScriptShell(name) && name != suCommand {
 		return
 	}
-	scriptIndex := shellScriptIndex(words, name)
+	shellName := name
+	if shellName == suCommand {
+		shellName = sh
+	}
+	initial := shellOptions{shell: shellName, known: true}
+
+	var scriptIndex int
+	var unknownOption bool
+	var childOpts shellOptions
+	if name == suCommand {
+		scriptIndex, unknownOption = suScriptIndex(words)
+		childOpts = initial
+	} else {
+		parsed := parseShellArgv(initial, words)
+		scriptIndex = parsed.scriptIndex
+		unknownOption = parsed.unknownOption
+		childOpts = parsed.options
+	}
 	if scriptIndex < 0 {
+		if unknownOption {
+			b.diagnostic("dynamic nested shell script")
+		}
 		return
 	}
 	script := words[scriptIndex]
@@ -738,13 +493,8 @@ func (b *factBuilder) nestedScript(words []Value, name string, scope int, deferr
 		b.diagnostic("dynamic nested shell script")
 		return
 	}
-	childScope := b.scope(scope, "shell_script")
-	shellName := name
-	if shellName == suCommand {
-		shellName = sh
-	}
-	initial := shellOptions{shell: shellName, known: true}
-	b.options[childScope] = optionState(initial, words[:scriptIndex])
+	childScope := b.scope(scope, ScopeShellScript)
+	b.options[childScope] = childOpts
 	if b.nested == nil {
 		call := b.result.Calls[len(b.result.Calls)-1]
 		nested := call.Span
@@ -766,350 +516,12 @@ func argumentSpans(spans []Span, count int) []Span {
 	return spans[len(spans)-count:]
 }
 
-func isScriptShell(name string) bool {
-	switch name {
-	case sh, bashShell, ashShell, dashShell, kshShell, zsh:
-		return true
-	}
-	return false
-}
-
-func shellScriptIndex(words []Value, name string) int {
-	if name == suCommand {
-		return suScriptIndex(words)
-	}
-	hasCommand := false
-	for i := 1; i < len(words); i++ {
-		if !words[i].Known {
-			if hasCommand {
-				return i
-			}
-			return -1
-		}
-		option := words[i].Text
-		if option == optionEnd || option == "-" {
-			if hasCommand && i+1 < len(words) {
-				return i + 1
-			}
-			return -1
-		}
-		if shellValueOptions[option] {
-			i++
-			continue
-		}
-		if commandOption(option) {
-			hasCommand = true
-			continue
-		}
-		if !strings.HasPrefix(option, "-") && !strings.HasPrefix(option, "+") {
-			if hasCommand {
-				return i
-			}
-			return -1
-		}
-	}
-	return -1
-}
-
-var shellValueOptions = map[string]bool{shellOptionValue: true, "+o": true, "-O": true, "+O": true, "--rcfile": true, "--init-file": true}
-
-var suValueOptions = map[string]bool{
-	"-s": true, "--shell": true, "-g": true, "--group": true,
-	"-G": true, "--supp-group": true, "-w": true, "--whitelist-environment": true,
-}
-
-func suScriptIndex(words []Value) int {
-	var operands []int
-	for i := 1; i < len(words); i++ {
-		if !words[i].Known {
-			return -1
-		}
-		arg := words[i].Text
-		if arg == optionEnd {
-			for j := i + 1; j < len(words); j++ {
-				operands = append(operands, j)
-			}
-			break
-		}
-		if arg == commandFlag || arg == "--command" || isSuBundledCommandFlag(arg) {
-			if i+1 < len(words) {
-				return i + 1
-			}
-			return -1
-		}
-		if suValueOptions[arg] {
-			i++
-			continue
-		}
-		if strings.HasPrefix(arg, "-") && arg != "-" {
-			continue
-		}
-		operands = append(operands, i)
-	}
-	return suForwardedScriptIndex(words, operands)
-}
-
-func isSuBundledCommandFlag(arg string) bool {
-	return len(arg) > 2 && strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, optionEnd) &&
-		strings.HasSuffix(arg, "c") && strings.Trim(arg[1:len(arg)-1], "lmpPf") == ""
-}
-
-// suForwardedScriptIndex resolves shell -c arguments forwarded after su's
-// optional login marker (`-`) and username operand.
-func suForwardedScriptIndex(words []Value, operands []int) int {
-	if len(operands) > 0 && words[operands[0]].Known && words[operands[0]].Text == "-" {
-		operands = operands[1:]
-	}
-	if len(operands) < 2 {
-		return -1
-	}
-	forwarded := make([]Value, 1, len(operands))
-	forwarded[0] = Value{Text: sh, Known: true}
-	for _, idx := range operands[1:] {
-		forwarded = append(forwarded, words[idx])
-	}
-	rel := shellScriptIndex(forwarded, sh)
-	if rel < 1 || rel >= len(forwarded) {
-		return -1
-	}
-	return operands[rel]
-}
-
-// Literal performs only quote removal for a single grammar-delimited word.
-// Expansion, globbing, ANSI-C quoting and command substitution remain unknown.
-func Literal(raw string) Value {
-	var parsed *syntax.Word
-	count := 0
-	err := syntax.NewParser().Words(strings.NewReader(raw), func(w *syntax.Word) bool {
-		count++
-		if count == 1 {
-			parsed = w
-		}
-		return count == 1
-	})
-	if err != nil || count != 1 || parsed == nil {
-		return Value{Raw: raw}
-	}
-	if int(parsed.Pos().Offset()) != 0 || int(parsed.End().Offset()) != len(raw) {
-		return Value{Raw: raw}
-	}
-	return wordValue(parsed, raw)
-}
-
-func wordValue(word *syntax.Word, raw string) Value {
-	result := Value{Raw: raw}
-	var text strings.Builder
-	pattern := false
-	for _, part := range word.Parts {
-		switch p := part.(type) {
-		case *syntax.SglQuoted:
-			if p.Dollar {
-				return result
-			}
-			text.WriteString(p.Value)
-		case *syntax.DblQuoted:
-			if p.Dollar || !appendDoubleQuoted(&text, p.Parts) {
-				return result
-			}
-		case *syntax.Lit:
-			if !appendUnquotedLit(&text, p.Value, &pattern) {
-				return result
-			}
-		default:
-			return result
-		}
-	}
-	if pattern {
-		result.Pattern = text.String()
-		return result
-	}
-	result.Text = text.String()
-	if result.Raw == result.Text {
-		result.Raw = ""
-	}
-	result.Known = true
-	return result
-}
-
-func appendDoubleQuoted(text *strings.Builder, parts []syntax.WordPart) bool {
-	for _, part := range parts {
-		lit, ok := part.(*syntax.Lit)
-		if !ok {
-			return false
-		}
-		escaped := false
-		for _, r := range lit.Value {
-			if escaped {
-				if !strings.ContainsRune("$`\"\\\n", r) {
-					text.WriteByte('\\')
-				}
-				if r != '\n' {
-					text.WriteRune(r)
-				}
-				escaped = false
-				continue
-			}
-			if r == '\\' {
-				escaped = true
-				continue
-			}
-			text.WriteRune(r)
-		}
-		if escaped {
-			return false
-		}
-	}
-	return true
-}
-
-func appendUnquotedLit(text *strings.Builder, value string, pattern *bool) bool {
-	escaped := false
-	var previous rune
-	for _, r := range value {
-		if escaped {
-			if r != '\n' {
-				text.WriteRune(r)
-				previous = r
-			}
-			escaped = false
-			continue
-		}
-		if r == '\\' {
-			escaped = true
-			continue
-		}
-		if r == '~' && (text.Len() == 0 || previous == '=' || previous == ':') {
-			return false
-		}
-		if r == '(' || r == ')' {
-			return false
-		}
-		if strings.ContainsRune("*?[]{}", r) {
-			*pattern = true
-		}
-		text.WriteRune(r)
-		previous = r
-	}
-	return !escaped
-}
-
-type wrapperSpec struct {
-	operands  int
-	values    map[string]bool
-	flags     string
-	longFlags map[string]bool
-}
-
-func wrapper(operands int, valueOptions, flags, longFlags string) wrapperSpec {
-	spec := wrapperSpec{operands: operands, values: map[string]bool{}, flags: flags, longFlags: map[string]bool{}}
-	for _, option := range strings.Fields(valueOptions) {
-		spec.values[option] = true
-	}
-	for _, option := range strings.Fields(longFlags) {
-		spec.longFlags[option] = true
-	}
-	return spec
-}
-
-var wrappers = map[string]wrapperSpec{
-	sudoCommand: wrapper(0, "u user g group h host p prompt C close-from D chdir R chroot", "nEHSkb", "non-interactive preserve-env"),
-	envCommand:  wrapper(0, "u unset C chdir argv0", "i0v", "ignore-environment null"),
-	execCommand: wrapper(0, "a", "cl", ""), command: wrapper(0, "", "p", ""),
-	"time":  wrapper(0, "f format o output", "pav", "portability append verbose"),
-	"nohup": {}, "setsid": wrapper(0, "", "cfw", "ctty fork wait"),
-	"nice":    wrapper(0, "n adjustment", "", ""),
-	"timeout": wrapper(1, "s signal k kill-after", "v", "foreground preserve-status verbose"),
-	"gosu":    {operands: 1}, "su-exec": {operands: 1},
-	chrootCommand: wrapper(1, "userspec groups", "", "skip-chdir"),
-	xargsCommand: wrapper(0,
-		"a arg-file d delimiter E I L max-lines n max-args P max-procs s max-chars",
-		"0rptx", "null no-run-if-empty verbose"),
-}
-
-func unwrap(values []Value, shellForm bool) ([]Value, []string, bool) {
-	chain := []string{}
-	for len(values) > 0 && values[0].Known {
-		name := path.Base(values[0].Text)
-		spec, found := wrappers[name]
-		if !found || (!shellForm && (name == execCommand || name == command)) {
-			break
-		}
-		start, ok := wrapperStart(values, name, spec)
-		if !ok {
-			return nil, nil, false
-		}
-		if start == 0 {
-			break
-		}
-		chain = append(chain, name)
-		values = values[start:]
-	}
-	return values, chain, len(values) > 0
-}
-
-func wrapperStart(values []Value, name string, spec wrapperSpec) (int, bool) {
-	i := 1
-	for i < len(values) {
-		if !values[i].Known {
-			return 0, false
-		}
-		arg := values[i].Text
-		if name == command && strings.ContainsAny(strings.TrimPrefix(arg, "-"), "vV") && strings.HasPrefix(arg, "-") {
-			return 0, true
-		}
-		if arg == optionEnd {
-			i++
-			break
-		}
-		if (name == envCommand || name == sudoCommand) && !strings.HasPrefix(arg, "-") && strings.Contains(arg, "=") {
-			i++
-			continue
-		}
-		if !strings.HasPrefix(arg, "-") {
-			break
-		}
-		consumed, ok := wrapperOption(arg, spec)
-		if !ok {
-			return 0, false
-		}
-		i += consumed
-	}
-	i += spec.operands
-	return i, i < len(values)
-}
-
-func wrapperOption(arg string, spec wrapperSpec) (int, bool) {
-	if strings.HasPrefix(arg, optionEnd) {
-		option, _, attached := strings.Cut(strings.TrimPrefix(arg, optionEnd), "=")
-		if spec.values[option] {
-			if attached {
-				return 1, true
-			}
-			return 2, true
-		}
-		return 1, spec.longFlags[option] && !attached
-	}
-	short := strings.TrimPrefix(arg, "-")
-	for i, r := range short {
-		if spec.values[string(r)] {
-			if i+1 < len(short) {
-				return 1, true
-			}
-			return 2, true
-		}
-		if !strings.ContainsRune(spec.flags, r) {
-			return 0, false
-		}
-	}
-	return 1, short != ""
-}
-
 func (b *factBuilder) isFunction(scope int, name string) bool {
 	for scope >= 0 {
 		if b.functions[scope][name] {
 			return true
 		}
-		if b.result.Scopes[scope].Kind == "shell_script" {
+		if b.result.Scopes[scope].Kind == ScopeShellScript {
 			return false
 		}
 		scope = b.result.Scopes[scope].Parent
@@ -1128,48 +540,4 @@ func (b *factBuilder) defineFunction(node *syntax.FuncDecl, scope int, condition
 		b.functions[scope] = map[string]bool{}
 	}
 	b.functions[scope][node.Name.Value] = true
-}
-
-func optionState(state shellOptions, words []Value) shellOptions {
-	for i := 1; i < len(words); i++ {
-		word := words[i]
-		if !word.Known {
-			state.known = false
-			return state
-		}
-		if word.Text == optionEnd || word.Text == "-" {
-			break
-		}
-		if !strings.HasPrefix(word.Text, "-") && !strings.HasPrefix(word.Text, "+") {
-			break
-		}
-		if strings.HasSuffix(word.Text, "o") && i+1 < len(words) {
-			i++
-			if !words[i].Known {
-				state.known = false
-				continue
-			}
-			if words[i].Text == "pipefail" {
-				state.pipefail = strings.HasPrefix(word.Text, "-")
-				state.known = true
-			}
-			continue
-		}
-		if shellValueOptions[word.Text] && i+1 < len(words) {
-			i++
-		}
-	}
-	return state
-}
-
-func commandOption(option string) bool {
-	if !strings.HasPrefix(option, "-") || strings.HasPrefix(option, optionEnd) || !strings.Contains(option, "c") {
-		return false
-	}
-	for _, letter := range option[1:] {
-		if !strings.ContainsRune("abcefhiklmnprstuvxBCEHPT", letter) {
-			return false
-		}
-	}
-	return true
 }

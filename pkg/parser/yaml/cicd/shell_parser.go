@@ -3,7 +3,7 @@
  *
  * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
  */
-package shell
+package cicd
 
 import (
 	"fmt"
@@ -19,55 +19,40 @@ import (
 var (
 	re                = regexp.MustCompile(`(\$|"|'|` + "`" + `)`)
 	redirectOperators = []string{">>", ">", "<", "&>", "&>>", "<>"}
-	lang              = sitter.NewLanguage(bash.Language())
 )
 
 const (
 	// Shells
-	bashShell  = "bash"
+	bash_shell = "bash"
 	sh         = "sh"
 	zsh        = "zsh"
 	pwsh       = "pwsh"
 	powershell = "powershell"
 
 	// Node kinds
-	command                 = "command"
-	stringNode              = "string"
-	expansion               = "expansion"
-	redirectedStatementNode = "redirected_statement"
-	pipeline                = "pipeline"
-	commandNameNode         = "command_name"
-	simpleExpansionNode     = "simple_expansion"
-	commandSubstitutionNode = "command_substitution"
-	word                    = "word"
-	rawStringNode           = "raw_string"
-	concatenation           = "concatenation"
-	fileRedirectNode        = "file_redirect"
-	variableNameNode        = "variable_name"
+	command              = "command"
+	string_kind          = "string"
+	expansion            = "expansion"
+	redirected_statement = "redirected_statement"
+	pipeline             = "pipeline"
+	command_name         = "command_name"
+	simple_expansion     = "simple_expansion"
+	command_substitution = "command_substitution"
+	word                 = "word"
+	raw_string           = "raw_string"
+	concatenation        = "concatenation"
+	file_redirect        = "file_redirect"
+	variable_name        = "variable_name"
 
 	// Types
-	stringWithExpansion = "string_with_expansion"
-	literal             = "literal"
+	string_with_expansion = "string_with_expansion"
+	literal               = "literal"
 )
 
-// parseTree parses a shell script with tree-sitter-bash and returns the syntax
-// tree and source bytes. Callers are responsible for closing the returned tree.
-func parseTree(script string) (*sitter.Tree, []byte, error) {
-	parser := sitter.NewParser()
-	defer parser.Close()
-	if err := parser.SetLanguage(lang); err != nil {
-		return nil, nil, err
-	}
-	source := []byte(script)
-	tree := parser.Parse(source, nil)
-	if tree == nil {
-		return nil, nil, fmt.Errorf("shell parse failed")
-	}
-	return tree, source, nil
-}
+var lang = sitter.NewLanguage(bash.Language())
 
-// Parse parses a shell script and returns structured command information.
-func Parse(runScript, shell string) *ParsedRun {
+// parseRunBlock parses a shell script and returns structured command information
+func parseRunBlock(runScript, shell string) *ParsedRun {
 	result := &ParsedRun{
 		Shell:    shell,
 		Commands: []ParsedCommand{},
@@ -78,7 +63,7 @@ func Parse(runScript, shell string) *ParsedRun {
 
 	// Select appropriate parser based on shell type
 	switch normalized {
-	case bashShell, sh, zsh:
+	case bash_shell, sh, zsh:
 		break
 	case pwsh, powershell:
 		// PowerShell not yet supported - Go bindings not available
@@ -91,9 +76,23 @@ func Parse(runScript, shell string) *ParsedRun {
 		return result
 	}
 
-	tree, scriptBytes, err := parseTree(runScript)
+	// Create parser
+	parser := sitter.NewParser()
+	defer parser.Close()
+	err := parser.SetLanguage(lang)
+
 	if err != nil {
-		result.Error = err
+		result.ParseOK = false
+		result.Error = fmt.Errorf("failed to set Parser language")
+		return result
+	}
+
+	// Parse the script
+	scriptBytes := []byte(runScript)
+	tree := parser.Parse(scriptBytes, nil)
+	if tree == nil {
+		result.ParseOK = false
+		result.Error = fmt.Errorf("failed to parse script")
 		return result
 	}
 	defer tree.Close()
@@ -105,7 +104,7 @@ func Parse(runScript, shell string) *ParsedRun {
 	return result
 }
 
-// extractCommands walks the tree and finds all commands.
+// extractCommands walks the tree and finds all commands
 func extractCommands(node *sitter.Node, source []byte) []ParsedCommand {
 	commands := []ParsedCommand{}
 
@@ -117,7 +116,7 @@ func extractCommands(node *sitter.Node, source []byte) []ParsedCommand {
 	return commands
 }
 
-// walkNode recursively walks the AST node by node.
+// walkNode recursively walks the AST node by node
 func walkNode(cursor *sitter.TreeCursor, source []byte, commands *[]ParsedCommand) {
 	node := cursor.Node()
 
@@ -133,7 +132,7 @@ func walkNode(cursor *sitter.TreeCursor, source []byte, commands *[]ParsedComman
 			*commands = append(*commands, *cmd)
 		}
 
-	case redirectedStatementNode:
+	case redirected_statement:
 		// Parse the full redirected statement including its command
 		cmd := parseRedirectedStatement(node, source)
 		if cmd != nil {
@@ -164,7 +163,7 @@ func walkNode(cursor *sitter.TreeCursor, source []byte, commands *[]ParsedComman
 	}
 }
 
-// parseCommand extracts a command with its arguments.
+// parseCommand extracts a command with its arguments
 func parseCommand(node *sitter.Node, source []byte) *ParsedCommand {
 	cmd := &ParsedCommand{
 		Type: command,
@@ -179,10 +178,10 @@ func parseCommand(node *sitter.Node, source []byte) *ParsedCommand {
 		}
 
 		switch child.Kind() {
-		case commandNameNode:
+		case command_name:
 			cmd.Command = child.Utf8Text(source)
-		case word, stringNode, rawStringNode, expansion, simpleExpansionNode,
-			commandSubstitutionNode, concatenation:
+		case word, string_kind, raw_string, expansion, simple_expansion,
+			command_substitution, concatenation:
 			arg := parseArg(child, source)
 			cmd.Args = append(cmd.Args, arg)
 		}
@@ -191,10 +190,10 @@ func parseCommand(node *sitter.Node, source []byte) *ParsedCommand {
 	return cmd
 }
 
-// parseRedirectedStatement extracts a command with redirection.
+// parseRedirectedStatement extracts a command with redirection
 func parseRedirectedStatement(node *sitter.Node, source []byte) *ParsedCommand {
 	cmd := &ParsedCommand{
-		Type: redirectedStatementNode,
+		Type: redirected_statement,
 	}
 
 	childCount := node.NamedChildCount()
@@ -212,7 +211,7 @@ func parseRedirectedStatement(node *sitter.Node, source []byte) *ParsedCommand {
 				cmd.Args = innerCmd.Args
 			}
 
-		case fileRedirectNode:
+		case file_redirect:
 			cmd.Redirect = parseRedirect(child, source)
 		}
 	}
@@ -220,7 +219,7 @@ func parseRedirectedStatement(node *sitter.Node, source []byte) *ParsedCommand {
 	return cmd
 }
 
-// parseRedirect extracts file redirection information.
+// parseRedirect extracts file redirection information
 func parseRedirect(node *sitter.Node, source []byte) *ParsedRedirect {
 	redirect := &ParsedRedirect{}
 
@@ -246,7 +245,7 @@ func parseRedirect(node *sitter.Node, source []byte) *ParsedRedirect {
 	return redirect
 }
 
-// parsePipeline extracts pipeline commands.
+// parsePipeline extracts pipeline commands
 func parsePipeline(node *sitter.Node, source []byte) *ParsedCommand {
 	cmd := &ParsedCommand{
 		Type:     pipeline,
@@ -271,7 +270,7 @@ func parsePipeline(node *sitter.Node, source []byte) *ParsedCommand {
 	return cmd
 }
 
-// parseArg classifies and extracts argument information.
+// parseArg classifies and extracts argument information
 func parseArg(node *sitter.Node, source []byte) ParsedArg {
 	arg := ParsedArg{
 		Type:  node.Kind(),
@@ -280,34 +279,34 @@ func parseArg(node *sitter.Node, source []byte) ParsedArg {
 
 	// For expansions, extract the variable name
 	switch node.Kind() {
-	case expansion, simpleExpansionNode:
+	case expansion, simple_expansion:
 		// Look for variable_name child
 		childCount := node.NamedChildCount()
 		for i := uint(0); i < childCount; i++ {
 			child := node.NamedChild(i)
-			if child != nil && child.Kind() == variableNameNode {
+			if child != nil && child.Kind() == variable_name {
 				arg.Var = child.Utf8Text(source)
 				break
 			}
 		}
 
-	case stringNode:
+	case string_kind:
 		// Check if string contains expansions
 		if hasExpansion(node) {
-			arg.Type = stringWithExpansion
+			arg.Type = string_with_expansion
 			arg.Var = re.ReplaceAllString(node.Utf8Text(source), "")
 		} else {
 			arg.Type = literal
 		}
 
-	case word, rawStringNode:
+	case word, raw_string:
 		arg.Type = literal
 	}
 
 	return arg
 }
 
-// hasExpansion checks if a node contains variable expansions.
+// hasExpansion checks if a node contains variable expansions
 func hasExpansion(node *sitter.Node) bool {
 	childCount := node.NamedChildCount()
 	for i := uint(0); i < childCount; i++ {
@@ -317,8 +316,8 @@ func hasExpansion(node *sitter.Node) bool {
 		}
 
 		childKind := child.Kind()
-		if childKind == expansion || childKind == simpleExpansionNode ||
-			childKind == commandSubstitutionNode {
+		if childKind == expansion || childKind == simple_expansion ||
+			childKind == command_substitution {
 			return true
 		}
 
