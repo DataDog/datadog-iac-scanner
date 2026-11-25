@@ -819,16 +819,19 @@ var suValueOptions = map[string]bool{
 }
 
 func suScriptIndex(words []Value) int {
-	seenUser := false
+	var operands []int
 	for i := 1; i < len(words); i++ {
 		if !words[i].Known {
 			return -1
 		}
 		arg := words[i].Text
 		if arg == optionEnd {
-			return suForwardedScriptIndex(words, i, seenUser)
+			for j := i + 1; j < len(words); j++ {
+				operands = append(operands, j)
+			}
+			break
 		}
-		if arg == commandFlag || arg == "--command" {
+		if arg == commandFlag || arg == "--command" || isSuBundledCommandFlag(arg) {
 			if i+1 < len(words) {
 				return i + 1
 			}
@@ -838,32 +841,38 @@ func suScriptIndex(words []Value) int {
 			i++
 			continue
 		}
-		if arg == "-" || strings.HasPrefix(arg, "-") {
+		if strings.HasPrefix(arg, "-") && arg != "-" {
 			continue
 		}
-		seenUser = true
+		operands = append(operands, i)
 	}
-	return -1
+	return suForwardedScriptIndex(words, operands)
 }
 
-// suForwardedScriptIndex resolves shell -c arguments forwarded after su's `--`
-// option terminator (e.g. `su -s /bin/sh -- root -c 'cmd'` or `su root -- -c 'cmd'`).
-func suForwardedScriptIndex(words []Value, termIndex int, seenUser bool) int {
-	start := termIndex
-	if !seenUser {
-		start++
-		if start < len(words) && words[start].Known && words[start].Text == "-" {
-			start++
-		}
+func isSuBundledCommandFlag(arg string) bool {
+	return len(arg) > 2 && strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, optionEnd) &&
+		strings.HasSuffix(arg, "c") && strings.Trim(arg[1:len(arg)-1], "lmpPf") == ""
+}
+
+// suForwardedScriptIndex resolves shell -c arguments forwarded after su's
+// optional login marker (`-`) and username operand.
+func suForwardedScriptIndex(words []Value, operands []int) int {
+	if len(operands) > 0 && words[operands[0]].Known && words[operands[0]].Text == "-" {
+		operands = operands[1:]
 	}
-	if start >= len(words) {
+	if len(operands) < 2 {
 		return -1
 	}
-	rel := shellScriptIndex(words[start:], sh)
-	if rel < 0 {
+	forwarded := make([]Value, 1, len(operands))
+	forwarded[0] = Value{Text: sh, Known: true}
+	for _, idx := range operands[1:] {
+		forwarded = append(forwarded, words[idx])
+	}
+	rel := shellScriptIndex(forwarded, sh)
+	if rel < 1 || rel >= len(forwarded) {
 		return -1
 	}
-	return start + rel
+	return operands[rel]
 }
 
 // Literal performs only quote removal for a single grammar-delimited word.

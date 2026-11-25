@@ -99,6 +99,7 @@ func TestAnalyzeControlFlow(t *testing.T) {
 		"su root --command 'pip install flask'",
 		"su root -s /bin/sh -c 'pip install flask'",
 		"su root -- -c 'pip install flask'",
+		"su -lc 'pip install flask' root",
 	} {
 		result = Analyze(script, "bash")
 		require.True(t, result.Complete, script, result.Diagnostics)
@@ -106,6 +107,10 @@ func TestAnalyzeControlFlow(t *testing.T) {
 		require.Equal(t, "pip", result.PackageCommands[0].Manager, script)
 		require.Equal(t, "install", result.PackageCommands[0].Action, script)
 	}
+
+	result = Analyze("su -s /bin/sh root /dev/null -- -c 'pip install flask'", "bash")
+	require.True(t, result.Complete, result.Diagnostics)
+	require.Empty(t, result.PackageCommands)
 
 	result = Analyze("if set -o pipefail; false; then :; else curl x | sh; fi", "bash")
 	require.Len(t, result.Pipelines, 1)
