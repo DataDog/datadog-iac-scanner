@@ -7,6 +7,7 @@ package cicd
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -328,10 +329,11 @@ func hasExpansion(node *sitter.Node) bool {
 	return false
 }
 
-// normalizeShell normalizes shell names to standard forms
+// normalizeShell extracts the base executable name from a shell command string.
 func normalizeShell(shell string) string {
-	normalized := strings.TrimPrefix(shell, "/bin/")
-	normalized = strings.TrimPrefix(normalized, "/usr/bin/")
-	normalized = strings.Fields(normalized)[0]
-	return normalized
+	fields := strings.Fields(shell)
+	if len(fields) == 0 {
+		return ""
+	}
+	return path.Base(fields[0])
 }

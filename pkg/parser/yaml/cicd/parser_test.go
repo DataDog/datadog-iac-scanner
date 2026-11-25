@@ -762,3 +762,24 @@ func TestParser_ParsedExpressionsOverwriteReservedKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestParser_Parse_EmptyShellDoesNotPanic(t *testing.T) {
+	content := `name: CI
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - shell: ""
+        run: echo hello
+`
+	doc := parseWorkflowDocument(t, content)
+	jobs := doc["jobs"].(map[string]interface{})
+	build := jobs["build"].(map[string]interface{})
+	steps := build["steps"].([]interface{})
+	step := steps[0].(map[string]interface{})
+	parsedRun, ok := step["_parsed_run"].(*ParsedRun)
+	require.True(t, ok)
+	require.False(t, parsedRun.ParseOK)
+	require.Error(t, parsedRun.Error)
+}
