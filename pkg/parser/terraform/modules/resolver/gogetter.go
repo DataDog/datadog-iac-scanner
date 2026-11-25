@@ -175,8 +175,11 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 	}
 
 	// Coalesce cacheable fetches; non-cacheable results carry per-call Cleanup.
+	// The cache key names the whole package, but a Resolution points at one
+	// subdirectory of it, so only calls selecting the same subdirectory may
+	// share a result.
 	if useCache {
-		key := moduleCacheKey(mod.Source, cacheVersion)
+		key := moduleCacheKey(mod.Source, cacheVersion) + "\x00" + filepath.ToSlash(filepath.Clean(selectedSubdir))
 		v, sfErr, _ := r.cfg.resolveSF.Do(key, func() (interface{}, error) {
 			return r.fetchAndCommit(ctx, st, mod, cacheVersion, selectedSubdir, useCache)
 		})
