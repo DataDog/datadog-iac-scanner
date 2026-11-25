@@ -211,12 +211,12 @@ func TestReferenceFilesystemAuthority(t *testing.T) {
 			dir := t.TempDir()
 			mainPath := filepath.Join(dir, "main."+ext)
 			assetPath := filepath.Join(dir, "asset."+ext)
-			main := `{"openapi":"3.0.0","info":{"title":"test","version":"1"},"paths":{},"definition":{"marker":"internal"},"internal":{"$ref":"#/definition"},"value":{"$ref":"./asset.json"}}`
+			main := `{"openapi":"3.0.0","info":{"title":"test","version":"1"},"paths":{},"definition":{"marker":"internal"},"internal":{"$ref":"#/definition"},"value":{"$ref":"./asset.json"},"scalar":"./asset.json"}`
 			nestedPath := filepath.Join(dir, "nested."+ext)
 			nested := `{"$ref":"./nested.json"}`
 			owned, host := `{"marker":"owned"}`, `{"marker":"host"}`
 			if ext == "yaml" {
-				main = "openapi: 3.0.0\ninfo: {title: test, version: '1'}\npaths: {}\ndefinition: {marker: internal}\ninternal: {$ref: '#/definition'}\nvalue: {$ref: './asset.yaml'}\n"
+				main = "openapi: 3.0.0\ninfo: {title: test, version: '1'}\npaths: {}\ndefinition: {marker: internal}\ninternal: {$ref: '#/definition'}\nvalue: {$ref: './asset.yaml'}\nscalar: ./asset.yaml\n"
 				owned, host = "marker: owned\n", "marker: host\n"
 				nested = "$ref: ./nested.yaml\n"
 			}
@@ -244,6 +244,13 @@ func TestReferenceFilesystemAuthority(t *testing.T) {
 						parsed, err := ps[0].Parse(t.Context(), mainPath, []byte(main), true, false, 15)
 						require.NoError(t, err)
 						require.Len(t, parsed.ResolvedFiles, tc.resolved+1) // Includes the internal reference to mainPath.
+						if tc.want == "" {
+							require.Equal(t, "./asset."+ext, parsed.Docs[0]["scalar"])
+						} else {
+							scalar, err := json.Marshal(parsed.Docs[0]["scalar"])
+							require.NoError(t, err)
+							require.Contains(t, string(scalar), `"marker":"`+tc.want+`"`)
+						}
 						encoded, err := json.Marshal(parsed.Docs)
 						require.NoError(t, err)
 						require.Contains(t, string(encoded), `"internal":{`)

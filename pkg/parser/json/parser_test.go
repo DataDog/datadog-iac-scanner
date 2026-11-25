@@ -162,9 +162,10 @@ func TestJSON_StringifyContent_ConcurrentNonPlan(t *testing.T) {
 
 func TestParser_mayResolve(t *testing.T) {
 	plan := filepath.FromSlash("/scan/plan.json")
-	p := &Parser{FS: vfs.NewMemFS(map[string][]byte{
+	fsys := vfs.NewMemFS(map[string][]byte{
 		filepath.FromSlash("/scan/policy.json"): []byte(`{"Version": "2012-10-17"}`),
-	})}
+	})
+	p := &Parser{FS: fsys}
 
 	for name, tc := range map[string]struct {
 		content string
@@ -184,6 +185,7 @@ func TestParser_mayResolve(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.Equal(t, tc.want, p.mayResolve([]byte(tc.content), plan))
+			require.Empty(t, fsys.MissingFiles(), "existence probes must not request extra files")
 		})
 	}
 
