@@ -77,3 +77,11 @@ func Test_ShouldScanTfPlans_ParameterPropagation(t *testing.T) {
 		})
 	}
 }
+
+func Test_ShouldScanTerragrunt_ParameterPropagation(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		client, err := NewClient(context.Background(), &Parameters{PreviewLines: 3, ShouldScanTerragrunt: enabled}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, enabled, client.ScanParams.ShouldScanTerragrunt)
+	}
+}

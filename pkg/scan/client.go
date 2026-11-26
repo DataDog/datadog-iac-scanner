@@ -91,8 +91,10 @@ type Parameters struct {
 	FlagEvaluator               featureflags.FlagEvaluator
 	Config                      config.IacConfig
 	ShouldScanTfPlans           bool
-	UseRulesCache               bool
-	TerraformModules            TerraformModulesSetting
+	// ShouldScanTerragrunt makes terragrunt.hcl units part of the Terraform scan.
+	ShouldScanTerragrunt bool
+	UseRulesCache        bool
+	TerraformModules     TerraformModulesSetting
 	// NetworkIsolation disables outbound module fetchers so scans stay offline.
 	NetworkIsolation           bool
 	RemoteModulesManifestPath  string

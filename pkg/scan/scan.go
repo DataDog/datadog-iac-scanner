@@ -378,6 +378,9 @@ func (c *Client) createService(
 	}
 
 	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)
+	if c.ScanParams.ShouldScanTerragrunt {
+		tfParser.EnableTerragrunt()
+	}
 	if c.inMemory {
 		tfParser.SetMergeAllow(append(append([]string{}, paths...), remoteModulePaths...))
 	} else {

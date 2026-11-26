@@ -282,3 +282,16 @@ func TestCreateOutputDirs(t *testing.T) {
 	require.Error(t, createOutputDirs(out, filepath.Join(blocker, "sub", "payload.json")),
 		"a payload directory that cannot be created stops the scan")
 }
+
+func TestXTerragruntFlag(t *testing.T) {
+	var found *cli.BoolFlag
+	for _, flag := range scanAction.Flags {
+		if boolFlag, ok := flag.(*cli.BoolFlag); ok && boolFlag.Name == "x-terragrunt" {
+			found = boolFlag
+		}
+	}
+	require.NotNil(t, found, "x-terragrunt flag should be defined")
+	assert.True(t, found.Hidden)
+	assert.False(t, found.Value)
+	assert.Equal(t, "(experimental) scan Terragrunt units", found.Usage)
+}
