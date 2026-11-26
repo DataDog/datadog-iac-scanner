@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -98,21 +99,36 @@ DatadogPolicy contains result if {
 }
 
 func TestHelmSprigKeysProduceStableDocumentIDsAndPayload(t *testing.T) {
+	for field, orderingField := range map[string]string{
+		"name":               "name: {{ $name }}",
+		"generateName":       "generateName: {{ $name }}-",
+		"sharedGenerateName": "generateName: shared-",
+		"unnamed":            "namespace: default",
+	} {
+		t.Run(field, func(t *testing.T) {
+			testHelmSprigDocumentOrder(t, orderingField)
+		})
+	}
+}
+
+func testHelmSprigDocumentOrder(t *testing.T, orderingField string) {
+	t.Helper()
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "templates"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "Chart.yaml"), []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"), 0o644))
-	const template = `{{- $configmaps := dict "gamma" "3" "alpha" "1" "beta" "2" "delta" "4" }}
+	const template = `{{- $configmaps := dict "gamma" "4" "alpha" "1" "beta" "2" "delta" "3" }}
 {{- range $name := keys $configmaps }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ $name }}
+  ORDERING_FIELD
 data:
   value: {{ index $configmaps $name | quote }}
 {{- end }}
 `
-	require.NoError(t, os.WriteFile(filepath.Join(root, "templates", "configmaps.yaml"), []byte(template), 0o644))
+	manifest := strings.Replace(template, "ORDERING_FIELD", orderingField, 1)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "templates", "configmaps.yaml"), []byte(manifest), 0o644))
 	payloadPath := filepath.Join(t.TempDir(), "payload.json")
 	var baseline []byte
 	for i := range 8 {
@@ -138,19 +154,19 @@ data:
 	}
 	var payload struct {
 		Document []struct {
-			ID       string
-			Metadata struct{ Name string }
+			ID   string
+			Data struct{ Value string }
 		}
 	}
 	require.NoError(t, json.Unmarshal(baseline, &payload))
-	var names, ids []string
+	var values, ids []string
 	for _, document := range payload.Document {
-		names = append(names, document.Metadata.Name)
+		values = append(values, document.Data.Value)
 		require.NotEmpty(t, document.ID)
 		require.NotContains(t, ids, document.ID)
 		ids = append(ids, document.ID)
 	}
-	require.Equal(t, []string{"alpha", "beta", "delta", "gamma"}, names)
+	require.Equal(t, []string{"1", "2", "3", "4"}, values)
 }
 
 func TestScanSymlinkPlaceholdersWithoutGitMetadata(t *testing.T) {

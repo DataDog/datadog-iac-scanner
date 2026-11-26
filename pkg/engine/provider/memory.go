@@ -90,7 +90,10 @@ func (m *MemorySourceProvider) WalkInventoryWithChartBatches(ctx context.Context
 		}
 	}
 	inScope, outOfScope := m.partitionChartRoots(ChartRoots(readable))
-	renderedRoots := renderChartWaves(ctx, inScope, render)
+	renderedRoots, err := renderChartWaves(ctx, inScope, render)
+	if err != nil {
+		return nil, err
+	}
 
 	files := make([]InventoryFile, 0, len(eligible))
 	for _, p := range eligible {

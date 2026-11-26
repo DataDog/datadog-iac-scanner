@@ -481,7 +481,7 @@ func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T)
 	require.Zero(t, resourceSplit.sourceDocumentIndex)
 }
 
-func TestHelmDocumentOrderKeepsUnnamedAndDuplicateDocumentsStable(t *testing.T) {
+func TestHelmDocumentOrderPreservesSourceAttribution(t *testing.T) {
 	const template = `apiVersion: v1
 kind: ConfigMap
 metadata: {name: zeta}
@@ -493,12 +493,12 @@ metadata: {generateName: first-}
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: alpha}
-data: {value: first}
+data: {value: second}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: alpha}
-data: {value: second}
+data: {value: first}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -514,8 +514,8 @@ metadata: {name: beta}
 		sourceIndex int
 		sourceLine  int
 	}{
-		{"data: {value: first}", 2, 8},
-		{"data: {value: second}", 3, 13},
+		{"data: {value: first}", 3, 13},
+		{"data: {value: second}", 2, 8},
 		{"name: beta", 5, 22},
 		{"name: zeta", 0, 0},
 		{"generateName: first-", 1, 4},
@@ -532,6 +532,12 @@ metadata: {name: beta}
 		require.True(t, ok)
 		require.Equal(t, want[i].sourceLine, stamp.Line)
 	}
+}
+
+func TestCanonicalManifestContentIgnoresMarkersAndMappingOrder(t *testing.T) {
+	first := []byte("# KICS_HELM_ID_0_8:\ndata: {b: two, a: one}\nmetadata: {generateName: shared-}\n")
+	second := []byte("# KICS_HELM_ID_0_13:\nmetadata: {generateName: shared-}\ndata: {a: one, b: two}\n")
+	require.Equal(t, canonicalManifestContent(first), canonicalManifestContent(second))
 }
 
 func TestLocalCRDFiles_fromLoadedFixture(t *testing.T) {

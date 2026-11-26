@@ -285,7 +285,10 @@ func (s *FileSystemSourceProvider) BuildInventoryFromPrebuilt(ctx context.Contex
 func (s *FileSystemSourceProvider) buildInventoryFromPrebuilt(ctx context.Context,
 	extensions model.Extensions, render ChartBatchRenderer) ([]InventoryFile, error) {
 	inScope, outOfScope := s.partitionChartRoots(s.chartRoots)
-	renderedRoots := renderChartWaves(ctx, inScope, render)
+	renderedRoots, err := renderChartWaves(ctx, inScope, render)
+	if err != nil {
+		return nil, err
+	}
 
 	files := make([]InventoryFile, 0, len(s.prebuiltPaths))
 	for _, path := range s.prebuiltPaths {
@@ -417,23 +420,24 @@ func IsNestedRenderedChart(root string, renderedRoots []string) bool {
 }
 
 // ChartBatchRenderer renders ordered chart roots and reports success at each
-// corresponding index. It may process the roots in smaller batches.
-type ChartBatchRenderer func(context.Context, []string) []bool
+// corresponding index. A false result leaves that chart's files available for
+// raw scanning. A batch error aborts inventory collection.
+type ChartBatchRenderer func(context.Context, []string) ([]bool, error)
 
 func parallelChartRenderer(pool utils.PoolOptions, chartFn func(context.Context, string) bool) ChartBatchRenderer {
-	return func(ctx context.Context, roots []string) []bool {
+	return func(ctx context.Context, roots []string) ([]bool, error) {
 		rendered := make([]bool, len(roots))
-		_ = utils.ForEach(ctx, roots, pool, func(ctx context.Context, root string, i int) error {
+		err := utils.ForEach(ctx, roots, pool, func(ctx context.Context, root string, i int) error {
 			rendered[i] = renderChart(ctx, chartFn, root)
 			return nil
 		})
-		return rendered
+		return rendered, err
 	}
 }
 
 // renderChartWaves offers parents before their subcharts. It returns the
 // successfully rendered roots whose Helm files are withheld from raw parsing.
-func renderChartWaves(ctx context.Context, roots []string, render ChartBatchRenderer) []string {
+func renderChartWaves(ctx context.Context, roots []string, render ChartBatchRenderer) ([]string, error) {
 	renderedRoots := make([]string, 0, len(roots))
 	for _, wave := range chartRootWaves(roots) {
 		pending := make([]string, 0, len(wave))
@@ -442,14 +446,17 @@ func renderChartWaves(ctx context.Context, roots []string, render ChartBatchRend
 				pending = append(pending, root)
 			}
 		}
-		rendered := render(ctx, pending)
+		rendered, err := render(ctx, pending)
+		if err != nil {
+			return nil, err
+		}
 		for i, root := range pending {
 			if rendered[i] {
 				renderedRoots = append(renderedRoots, root)
 			}
 		}
 	}
-	return renderedRoots
+	return renderedRoots, nil
 }
 
 // renderChart calls chartFn for the chart at root. A panic in it is logged and
@@ -614,7 +621,11 @@ func (s *FileSystemSourceProvider) WalkInventoryWithChartBatches(ctx context.Con
 
 		walkErr := s.walkDirectory(ctx, scanPath, extensions,
 			func(ctx context.Context, path string, resolved *[]string) error {
-				if render(ctx, []string{toSlash(path)})[0] {
+				rendered, err := render(ctx, []string{toSlash(path)})
+				if err != nil {
+					return err
+				}
+				if rendered[0] {
 					*resolved = append(*resolved, path)
 				}
 				return nil
