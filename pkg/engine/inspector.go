@@ -1151,6 +1151,12 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 	decodeStart := time.Now()
 	vulns, moduleRaised, moduleSeverity, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
 	decodeDuration := time.Since(decodeStart)
+	contextLogger.Debug().
+		Str("event", "query_complete").
+		Str("queryID", qCtx.Query.Metadata.Query).
+		Int64("evalNs", evalDuration.Nanoseconds()).
+		Int64("decodeNs", decodeDuration.Nanoseconds()).
+		Msg("query completed")
 
 	// Flag slow rules so they can be debugged/optimized later
 	if total := evalDuration + decodeDuration; total > slowQueryWarnThreshold {
