@@ -201,6 +201,9 @@ func (r *GoGetterResolver) resolveScanPackage(
 	if err != nil {
 		return Resolution{}, err
 	}
+	if sourceType == sourceTypeRegistry {
+		res.registryArchiveSubdir = subdir
+	}
 	return stampRegistryResolution(&res, sourceType, version, getterSource), nil
 }
 
