@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -142,7 +141,7 @@ func TestResolveModuleDocuments_ExternalModuleNoScannedFileCallsRecordsNoCalls(t
 	require.Empty(t, res.moduleFiles["helper-outputs"], "no scanned file calls the package")
 }
 
-func TestResolveModuleDocuments_NoExternalFilesRecordsNoCalls(t *testing.T) {
+func TestResolveModuleDocuments_DetectsExternalFilesWithoutFetchedPathRegistry(t *testing.T) {
 	repo, pkg, files := writeRemoteBucketPackage(t)
 	bucket := filepath.Join(pkg, "terraform-modules", "aws-bucket")
 	resolver := func(source, _, _, _ string) (string, string, bool) {
@@ -150,7 +149,7 @@ func TestResolveModuleDocuments_NoExternalFilesRecordsNoCalls(t *testing.T) {
 	}
 	res := resolveModuleDocumentsForTest(context.Background(), files, repo, resolver, nil, nil, nil, nil, nil)
 	require.True(t, res.ok)
-	require.Nil(t, res.moduleFiles)
+	require.Len(t, res.moduleFiles["helper-outputs"].calls, 2)
 }
 
 func TestAttributeModuleFileFindings(t *testing.T) {
@@ -372,27 +371,6 @@ func TestNewModuleCallIndexReturnsNilWithoutExternalFiles(t *testing.T) {
 	}, func(string) bool { return false })
 	require.Nil(t, idx)
 	require.Nil(t, newModuleCallIndex(nil, func(string) bool { return true }))
-}
-
-func TestDropUnattributedExternalFindings(t *testing.T) {
-	external := func(path string) bool { return strings.HasPrefix(path, "/pkg/") }
-	attr := &model.ModuleAttribution{}
-	vulns := []model.Vulnerability{
-		{QueryID: "caller", FileName: "/repo/stack/main.tf"},
-		{QueryID: "unreached", FileName: "/pkg/mod/main.tf"},
-		{QueryID: "attributed", FileName: "/pkg/mod/main.tf", ModuleAttribution: attr},
-	}
-
-	got := dropUnattributedExternalFindings(vulns, external)
-
-	require.Len(t, got, 2)
-	require.Equal(t, "caller", got[0].QueryID)
-	require.Equal(t, "attributed", got[1].QueryID)
-	require.Len(t, vulns, 3, "the findings given are not modified")
-
-	kept := vulns[:1:1]
-	require.Equal(t, &kept[0], &dropUnattributedExternalFindings(kept, external)[0], "nothing is copied when nothing is dropped")
-	require.Equal(t, vulns, dropUnattributedExternalFindings(vulns, nil), "without an external predicate nothing is dropped")
 }
 
 func TestAttributeModuleFileFindingsLeavesPreAttributedUnchanged(t *testing.T) {

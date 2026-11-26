@@ -5,6 +5,11 @@
  */
 package model
 
+import (
+	"io/fs"
+	"strings"
+)
+
 // SourceLocation is a filename plus an inclusive line/column range.
 type SourceLocation struct {
 	Filename    string `json:"filename,omitempty"`
@@ -12,6 +17,13 @@ type SourceLocation struct {
 	LineEnd     int    `json:"line_end,omitempty"`
 	ColumnStart int    `json:"column_start,omitempty"`
 	ColumnEnd   int    `json:"column_end,omitempty"`
+}
+
+// IsRepositoryFile reports whether name is a canonical slash-separated file
+// path within a repository. Report locations use this form, never absolute
+// paths, parent traversals, remote addresses or platform-specific volumes.
+func IsRepositoryFile(name string) bool {
+	return name != "." && fs.ValidPath(name) && !strings.ContainsAny(name, `\:`)
 }
 
 // ModulePathHop is one module call on the path to a finding. Name and
@@ -58,9 +70,9 @@ type ModuleArgument struct {
 // ModuleAttribution carries module provenance for instantiated Terraform
 // findings.
 //
-// CallSite is the call-site declaration the finding anchors on (SARIF primary
-// location, IDE code bit): the root call argument setting the finding's value
-// when it traces back to one, the root call's source argument otherwise.
+// CallSite is the candidate call-site declaration used by finding routing:
+// the root call argument setting the finding's value when it traces back to
+// one, the root call's source argument otherwise.
 //
 // ModulePath lists the module calls from the root file down to the module
 // holding the flagged resource, root first and never empty.

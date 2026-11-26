@@ -22,10 +22,12 @@ func TestModuleAttributionSerializationContract(t *testing.T) {
 
 	// Vulnerability is the content-push wire type: the IDE anchors instantiated
 	// findings on the call-site declaration, so the attribution must serialize.
-	vulnerabilityJSON, err := json.Marshal(Vulnerability{ModuleAttribution: attribution})
+	location := &SourceLocation{Filename: "infra/main.tf", LineStart: 2, LineEnd: 2}
+	vulnerabilityJSON, err := json.Marshal(Vulnerability{ModuleAttribution: attribution, ReportLocation: location})
 	require.NoError(t, err)
 	require.Contains(t, string(vulnerabilityJSON), "moduleAttribution")
 	require.Contains(t, string(vulnerabilityJSON), "call_site")
+	require.Contains(t, string(vulnerabilityJSON), "reportLocation")
 
 	// VulnerableFile is the report-side type: SARIF exposes the attribution as a
 	// dedicated properties payload (ModuleAttributionForSARIF), never inline.
@@ -264,7 +266,7 @@ func TestResolvePathForRemoteModuleFiles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for range 200 {
-				require.Equal(t, filepath.FromSlash(tt.want), replaceIfTemporaryPath(filepath.FromSlash(tt.file), modules),
+				require.Equal(t, filepath.FromSlash(tt.want), ReportPath(filepath.FromSlash(tt.file), modules, ""),
 					"the same file must always get the same name")
 			}
 		})
@@ -641,4 +643,55 @@ func TestCanonicalReportedPath(t *testing.T) {
 	// Outside every checkout: untouched, byte for byte.
 	require.Equal(t, "src/a/b/c.yaml", CanonicalReportedPath("src/a/b/c.yaml", extractionMap))
 	require.Equal(t, "src/a/b/c.yaml", CanonicalReportedPath("src/a/b/c.yaml", nil))
+}
+
+func TestCreateSummary_ModuleReportLocationPreservesIdentity(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	finding := Vulnerability{
+		FileName: filepath.Join(root, "modules", "main.tf"), QueryID: "q", QueryName: "q", Severity: SeverityHigh, Platform: "Terraform",
+		ResourceType: "aws_s3_bucket", ResourceName: "this", LineWithVulnerability: "acl = public-read",
+		ModuleCallChain: "stack/main.tf|module.bucket",
+	}
+	before := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, root, SCIInfo{})
+	finding.ReportLocation = &SourceLocation{Filename: "stack/main.tf", LineStart: 3, LineEnd: 3, ColumnStart: 2, ColumnEnd: 20}
+	after := CreateSummary(ctx, Counters{}, []Vulnerability{finding}, "test", nil, root, SCIInfo{})
+	file := after.Queries[0].Files[0]
+	require.Equal(t, before.Queries[0].Files[0].Fingerprint, file.Fingerprint)
+	require.Equal(t, finding.ReportLocation, file.ReportLocation)
+	require.NotSame(t, finding.ReportLocation, file.ReportLocation)
+	require.Equal(t, filepath.Join("modules", "main.tf"), file.FileName, "fixes still address the detected file")
+}
+
+func TestReportPathRepositoryRootForms(t *testing.T) {
+	base := t.TempDir()
+	repo, cache := filepath.Join(base, "repo"), filepath.Join(base, "cache")
+	require.NoError(t, os.MkdirAll(repo, 0o755))
+	file := filepath.Join(repo, "infra", "main.tf")
+	const source = "git::https://example.com/modules.git//selected?ref=v1"
+	for _, form := range []string{"absolute", "dot", "relative"} {
+		t.Run(form, func(t *testing.T) {
+			root := repo
+			switch form {
+			case "dot":
+				t.Chdir(repo)
+				root = "."
+			case "relative":
+				t.Chdir(base)
+				root = filepath.Join("repo", "..", "repo")
+			}
+			require.Equal(t, filepath.Join("infra", "main.tf"), ReportPath(file, nil, root))
+			modules := map[string]ExtractedPathObject{cache: {Path: source}}
+			require.Equal(t, filepath.FromSlash("git::https://example.com/modules.git//selected/sub/main.tf"),
+				ReportPath(filepath.Join(cache, "sub", "main.tf"), modules, root))
+			modules[cache] = ExtractedPathObject{Path: filepath.Join(repo, "archive.tar.gz"), LocalPath: true}
+			require.Equal(t, filepath.Join("archive.tar.gz", "sub", "main.tf"),
+				ReportPath(filepath.Join(cache, "sub", "main.tf"), modules, root))
+		})
+	}
+	t.Chdir(base)
+	require.Equal(t, filepath.Join("infra", "main.tf"), ReportPath(filepath.Join("repo", "infra", "main.tf"), nil, "repo"),
+		"two relative filesystem paths keep the same meaning")
+	require.Equal(t, file, ReportPath(file, nil, ""), "an empty root preserves absolute content-push names")
+	require.Equal(t, filepath.Join("infra", "main.tf"), ReportPath(filepath.Join("infra", "main.tf"), nil, ""))
 }

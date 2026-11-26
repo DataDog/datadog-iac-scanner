@@ -140,13 +140,9 @@ func TestInspect_RulePathFilterAppliesToCallSite(t *testing.T) {
 	require.Equal(t, "stack-b/main.tf", vulns[0].ModuleAttribution.CallSite.Filename)
 }
 
-// TestInspect_ExternalCallerBypassesRulePathFilter mirrors the file-side
-// external-module-path bypass (TestInspectorExternalModulePathBypassesRulePathFilter)
-// for the caller side: a scanned remote package's root module calls a local
-// submodule, and the caller-side only-paths filter must not drop the
-// submodule finding even though the caller file is outside the configured
-// paths.
-func TestInspect_ExternalCallerBypassesRulePathFilter(t *testing.T) {
+// A fetched package's root cannot be a caller without a call from the scanned
+// repository, regardless of the rule's path filters.
+func TestInspect_UnreachedExternalCallerIsNotReported(t *testing.T) {
 	repoRoot := t.TempDir()
 	packageRoot := t.TempDir()
 	callerPath := writeCallerFixture(t, packageRoot, "main.tf", `
@@ -191,6 +187,5 @@ resource "aws_s3_bucket" "this" {
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Empty(t, ins.GetFailedQueries())
-	require.Len(t, vulns, 1)
-	require.False(t, vulns[0].IsSuppressed)
+	require.Empty(t, vulns)
 }

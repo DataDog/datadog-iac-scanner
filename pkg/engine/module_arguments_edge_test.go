@@ -248,8 +248,8 @@ func TestModuleArgumentsAnalyzeEachInstanceOnce(t *testing.T) {
 }
 
 func TestModuleAttributionForResourceUsesNarrowestArgument(t *testing.T) {
-	attrs := map[string]*model.ModuleAttribution{
-		moduleAttributionKey("t", 1, 1): {
+	attrs := map[model.TerraformBlock]*model.ModuleAttribution{
+		moduleAttributionKey("t", "r"): {
 			Arguments: []model.ModuleArgument{
 				{LineStart: 2, LineEnd: 6, Control: model.ArgumentControlCaller, CallSite: model.SourceLocation{LineStart: 9}},
 				{LineStart: 4, LineEnd: 4, Control: model.ArgumentControlModule},
@@ -257,7 +257,7 @@ func TestModuleAttributionForResourceUsesNarrowestArgument(t *testing.T) {
 		},
 	}
 	vuln := func(line int) *model.Vulnerability {
-		v := &model.Vulnerability{ResourceType: "t", Line: line}
+		v := &model.Vulnerability{ResourceType: "t", Line: line, TerraformBlock: moduleAttributionKey("t", "r")}
 		v.BlockLocation.Start.Line, v.BlockLocation.Start.Col = 1, 1
 		return v
 	}

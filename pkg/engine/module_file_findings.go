@@ -31,21 +31,16 @@ type moduleFileCalls struct {
 // moduleCallIndex collects the evaluated calls of the directories holding
 // external module files. A nil index collects nothing.
 type moduleCallIndex struct {
-	external func(string) bool
-	files    map[string][]*model.FileMetadata
-	calls    map[string][]moduleCall
+	files map[string][]*model.FileMetadata
+	calls map[string][]moduleCall
 }
 
 // newModuleCallIndex indexes the directories of the files external reports,
-// or returns nil when there are none.
+// or returns nil when there are none. external includes repository containment.
 func newModuleCallIndex(filesByDir map[string][]*model.FileMetadata, external func(string) bool) *moduleCallIndex {
-	if external == nil {
-		return nil
-	}
 	idx := &moduleCallIndex{
-		external: external,
-		files:    make(map[string][]*model.FileMetadata),
-		calls:    make(map[string][]moduleCall),
+		files: make(map[string][]*model.FileMetadata),
+		calls: make(map[string][]moduleCall),
 	}
 	for dir, files := range filesByDir {
 		for _, f := range files {
@@ -75,11 +70,6 @@ func (idx *moduleCallIndex) record(
 		instance := &instances[i]
 		dir := filepath.Clean(instance.Dir)
 		if _, ok := idx.files[dir]; !ok {
-			continue
-		}
-		// A directory no scanned file calls is only reached from other
-		// external modules, so there is no call site in the scanned code.
-		if len(instance.CallChain) == 0 || idx.external(instance.CallChain[0].CalledFrom) {
 			continue
 		}
 		attr := callAttribution(instance.CallChain, dir, repoPath, lookup, cache)
@@ -154,32 +144,6 @@ func attributeModuleFileFindings(vulns []model.Vulnerability, files map[string]*
 		return vulns
 	}
 	return out
-}
-
-// dropUnattributedExternalFindings removes the findings on an external module
-// file that no call accounts for. The file is not part of the scanned
-// repository, so such a finding has no location to report.
-func dropUnattributedExternalFindings(vulns []model.Vulnerability, external func(string) bool) []model.Vulnerability {
-	if external == nil {
-		return vulns
-	}
-	var kept []model.Vulnerability
-	for i := range vulns {
-		v := &vulns[i]
-		if v.ModuleAttribution == nil && external(v.FileName) {
-			if kept == nil {
-				kept = append(make([]model.Vulnerability, 0, len(vulns)-1), vulns[:i]...)
-			}
-			continue
-		}
-		if kept != nil {
-			kept = append(kept, *v)
-		}
-	}
-	if kept == nil {
-		return vulns
-	}
-	return kept
 }
 
 // moduleFileAttribution returns the call's attribution with its code location
