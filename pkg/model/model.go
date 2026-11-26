@@ -349,6 +349,9 @@ type FileMetadata struct {
 	// Archive is the chart archive the file was rendered from, if any (see
 	// ResolvedHelm.Archive).
 	Archive string
+	// TerragruntTranslation is the Terraform a Terragrunt unit means (nil for
+	// other files). The engine does not read it yet.
+	TerragruntTranslation *TerragruntTranslation
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -1428,6 +1431,8 @@ type ParseOutput struct {
 	// TerraformPlan is false for content that only looks like a plan and falls
 	// back to plain documents, though such content keeps the plan kind.
 	TerraformPlan bool
+	// TerragruntTranslation is set for a Terragrunt unit that has one.
+	TerragruntTranslation *TerragruntTranslation
 }
 
 type SarifResourceLocation struct {

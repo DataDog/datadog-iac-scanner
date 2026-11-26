@@ -20,7 +20,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/ext/typeexpr"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	hcljson "github.com/hashicorp/hcl/v2/json"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/convert"
 
@@ -491,7 +490,7 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 		if err != nil {
 			continue
 		}
-		for attrName, attr := range parseVarsFile(src, p) {
+		for attrName, attr := range tfmodules.ParseVarsFile(src, p) {
 			v, attrDiags := attr.Expr.Value(emptyCtx)
 			if !attrDiags.HasErrors() && v.IsKnown() {
 				out[attrName] = v
@@ -502,23 +501,6 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 		maps.Copy(out, e.explicitRootVars)
 	}
 	return out
-}
-
-// parseVarsFile returns the assignments of a variable definitions file, in
-// native or JSON syntax.
-func parseVarsFile(src []byte, path string) hcl.Attributes {
-	var file *hcl.File
-	var diags hcl.Diagnostics
-	if tfpath.IsTFVarsJSON(path) {
-		file, diags = hcljson.Parse(src, path)
-	} else {
-		file, diags = hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
-	}
-	if diags.HasErrors() || file == nil {
-		return nil
-	}
-	attrs, _ := file.Body.JustAttributes()
-	return attrs
 }
 
 // parseResourceInstanceKey splits an expanded resource Name into its base label, instance key,

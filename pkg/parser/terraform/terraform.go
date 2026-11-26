@@ -65,6 +65,9 @@ type Parser struct {
 	// mergeAllow, when set, limits OpenTofu twin-shadowing to these paths.
 	mergeAllow    map[string]struct{}
 	shadowedFiles map[string]struct{}
+
+	// terragrunt makes the parser accept terragrunt.hcl units.
+	terragrunt bool
 }
 
 // SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
@@ -251,6 +254,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	if out, handled, unitErr := p.ParseUnit(ctx, fileContent, path); handled {
+		return out.Resolved, out.Documents, out.IgnoreLines, nil, unitErr
+	}
 	contextLogger := logger.FromContext(ctx)
 	resolved, inputVariables, err := p.Resolve(ctx, fileContent, path, resolveReferences, maxResolverDepth)
 	if errors.Is(err, tfmodules.ErrSkippedLinkPlaceholder) {
@@ -310,7 +316,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, path string,
 
 // SupportedExtensions returns Terraform/OpenTofu extensions.
 func (p *Parser) SupportedExtensions() []string {
-	return []string{tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFJSON, tfpath.ExtTofuJSON, tfpath.ExtTFVars}
+	exts := []string{tfpath.ExtTF, tfpath.ExtTofu, tfpath.ExtTFJSON, tfpath.ExtTofuJSON, tfpath.ExtTFVars}
+	if p.terragrunt {
+		exts = append(exts, tfpath.TerragruntUnit)
+	}
+	return exts
 }
 
 // SupportedTypes returns types supported by this parser, which are terraform

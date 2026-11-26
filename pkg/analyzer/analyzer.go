@@ -24,6 +24,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
@@ -151,6 +152,8 @@ type analyzerInfo struct {
 	// scanFiles is the analyzer's walked candidate set (slash paths); scopes
 	// the Docker Compose override guard to bases that are part of this scan.
 	scanFiles map[string]struct{}
+	// terragrunt: terragrunt.hcl units are scanned (--x-terragrunt).
+	terragrunt bool
 }
 
 // Analyzer keeps all the relevant info for the function Analyze
@@ -167,6 +170,8 @@ type Analyzer struct {
 	// CollectKustomizeRoots records the directories holding a kustomization
 	// file in AnalyzedPaths.KustomizeRoots.
 	CollectKustomizeRoots bool
+	// Terragrunt makes terragrunt.hcl units part of the inventory, as Terraform.
+	Terragrunt bool
 }
 
 // types is a map that contains the regex by type
@@ -451,7 +456,8 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			}
 
 			ext := utils.ExtensionFromPath(path)
-			if !utils.IsSupportedFileType(ext) {
+			isUnit := a.Terragrunt && ext == tfpath.TerragruntUnit
+			if !isUnit && !utils.IsSupportedFileType(ext) {
 				return nil
 			}
 
@@ -525,6 +531,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 					contentCache:    &contentCache,
 					helmCache:       &helmCacheLocal,
 					scanFiles:       scanFiles,
+					terragrunt:      a.Terragrunt,
 				}
 				analyzerInfo.worker(ctx, results, unwanted, locCount)
 				return nil
@@ -619,7 +626,15 @@ func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- stri
 		return
 	}
 
-	platform := classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
+	var platform string
+	if ext == tfpath.TerragruntUnit {
+		if !a.terragrunt {
+			return
+		}
+		platform = terraform
+	} else {
+		platform = classifyFile(ctx, vfs.DiskFS{}, a.filePath, content, a.typesFlag, a.helmCache, a.scanFiles)
+	}
 	if platform == "" {
 		unwanted <- a.filePath
 		return

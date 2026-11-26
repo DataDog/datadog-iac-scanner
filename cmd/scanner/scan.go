@@ -149,6 +149,12 @@ var scanAction = &cli.Command{
 			Usage:  "(experimental, will be removed soon) scan terraform plans",
 			Value:  false,
 		},
+		&cli.BoolFlag{
+			Name:   "x-terragrunt",
+			Hidden: true,
+			Usage:  "(experimental) scan Terragrunt units",
+			Value:  false,
+		},
 		&cli.StringSliceFlag{
 			Name:    "queries-path",
 			Aliases: []string{"q"},
@@ -398,6 +404,7 @@ func runScan(ctx context.Context, c *cli.Command) error {
 		FlagEvaluator:               featureflags.NewLocalEvaluator(),
 		Config:                      *cfg,
 		ShouldScanTfPlans:           c.Bool("x-terraform-plan"),
+		ShouldScanTerragrunt:        c.Bool("x-terragrunt"),
 		TerraformModules:            modulesSetting,
 		NetworkIsolation:            offlineBundlePath != "",
 		RemoteModulesManifestPath:   c.String("terraform-modules-manifest"),

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
@@ -1154,4 +1155,68 @@ func TestAnalyze_DockerfileVariants(t *testing.T) {
 	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "Dockerfile.prod", nil, platforms.Supported))
 	require.Equal(t, "", ClassifyFile(ctx, mem, "Dockerfile.txt", nil, platforms.Supported))
 	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "app.debian", nil, platforms.Supported))
+}
+
+func TestAnalyze_TerragruntUnitsNeedTheFlag(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+		return filepath.ToSlash(path)
+	}
+	unit := write("live/terragrunt.hcl", "terraform {\n  source = \"../m\"\n}\n")
+	nested := write("live/prod/terragrunt.hcl", "terraform {\n  source = \"../../m\"\n}\n")
+	main := write("m/main.tf", "resource \"a\" \"b\" {}\n")
+	others := []string{
+		write("live/root.hcl", "locals {}\n"),
+		write("live/Terragrunt.hcl", "locals {}\n"),
+		write("live/terragrunt.hcl.bak", "locals {}\n"),
+		write("live/packer.pkr.hcl", "source \"x\" \"y\" {}\n"),
+	}
+
+	run := func(terragrunt bool) model.AnalyzedPaths {
+		got, err := Analyze(context.Background(), &Analyzer{
+			RepoPath:    dir,
+			Paths:       []string{dir},
+			Types:       []string{""},
+			MaxFileSize: -1,
+			Terragrunt:  terragrunt,
+		})
+		require.NoError(t, err)
+		return got
+	}
+
+	off := run(false)
+	require.Equal(t, []string{main}, off.Inventory)
+	require.NotContains(t, off.FilePlatform, unit)
+	require.Equal(t, []string{terraform}, off.Types)
+
+	on := run(true)
+	require.ElementsMatch(t, []string{main, unit, nested}, on.Inventory)
+	require.Equal(t, terraform, on.FilePlatform[unit])
+	require.Equal(t, terraform, on.FilePlatform[nested])
+	for _, other := range others {
+		require.NotContains(t, on.Inventory, other)
+	}
+	// The flag only adds units: the same walk, one more file counted as scanned.
+	require.Equal(t, off.TotalFiles, on.TotalFiles)
+	require.Greater(t, on.ExpectedLOC, off.ExpectedLOC)
+}
+
+func TestAnalyze_TerragruntUnitNeedsTerraformPlatform(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "terragrunt.hcl")
+	require.NoError(t, os.WriteFile(path, []byte("terraform {}\n"), 0o600))
+
+	got, err := Analyze(context.Background(), &Analyzer{
+		RepoPath:    dir,
+		Paths:       []string{dir},
+		Types:       []string{"Kubernetes"},
+		MaxFileSize: -1,
+		Terragrunt:  true,
+	})
+	require.NoError(t, err)
+	require.Empty(t, got.Types)
+	require.NotContains(t, got.FilePlatform, filepath.ToSlash(path))
 }

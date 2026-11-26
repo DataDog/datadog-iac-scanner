@@ -63,6 +63,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 		ExcludeGitIgnore:  c.ScanParams.ExcludeGitIgnore,
 		MaxFileSize:       c.ScanParams.MaxFileSizeFlag,
 		NumWorkers:        c.ScanParams.ParallelScanFlag,
+		Terragrunt:        c.ScanParams.ShouldScanTerragrunt,
 	}
 
 	var pathTypes model.AnalyzedPaths
