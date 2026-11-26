@@ -177,11 +177,6 @@ func cloudFormationCollectionOccurrence(occurrences []*model.ResourceOccurrence,
 
 func terraformOccurrences(occurrences []*model.ResourceOccurrence, path model.SourcePath, key string) []*model.ResourceOccurrence {
 	block, _ := overrideFindingPath(path, key)
-	if path == nil {
-		// The dotted form can wrap the label just like the bracketed form.
-		// Leave the detector's written-location key untouched.
-		block.Name = strings.TrimSuffix(strings.TrimPrefix(block.Name, "{{"), "}}")
-	}
 	if block.Type == "" || block.Name == "" {
 		return nil
 	}

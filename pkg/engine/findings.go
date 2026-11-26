@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
@@ -132,8 +133,8 @@ type findingRouting struct {
 	moduleFiles map[string]*moduleFileCalls
 	callers     map[string]*model.FileMetadata
 	occurrences documentOccurrenceIndex
-	// external reports whether a path is an external module file, reported
-	// only through the calls that reach it. It may be nil.
+	// external includes both fetched paths and files outside the repository.
+	// Every routing instance has this predicate, including scans without a cache.
 	external func(string) bool
 }
 
@@ -143,17 +144,21 @@ func newFindingRouting(
 	extras map[string][]extraCallerInfo, moduleFiles map[string]*moduleFileCalls,
 	files model.FileMetadatas, repoPath string, external func(string) bool,
 ) *findingRouting {
+	outside := externalModuleFiles(repoPath, external)
 	callers := make(map[string]*model.FileMetadata)
 	for _, f := range files {
-		if f == nil || f.ModuleCallChain != "" {
+		if f == nil || f.ModuleCallChain != "" || outside(f.FilePath) {
 			continue
 		}
-		key := repoRelativeFile(f.FilePath, repoPath)
+		key, local := repositoryFileName(f.FilePath, repoPath)
+		if !local {
+			continue
+		}
 		if _, ok := callers[key]; !ok {
 			callers[key] = f
 		}
 	}
-	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers, external: external}
+	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers, external: outside}
 }
 
 // route turns one rule's decoded findings into the findings the scan reports
@@ -167,6 +172,80 @@ func (r *findingRouting) route(
 	}
 	vulns = expandModuleFindings(vulns, r.extras, r.occurrences)
 	vulns = attributeModuleFileFindings(vulns, r.moduleFiles)
-	vulns = dropUnattributedExternalFindings(vulns, r.external)
-	return c.filterAtCallSites(ctx, vulns, r.callers)
+	kept := vulns[:0]
+	for i := range vulns {
+		v := &vulns[i]
+		caller, reportable := r.resolveLocation(v)
+		if !reportable {
+			continue
+		}
+		if caller != nil {
+			if rc, found := lookupRuleConfig(c.ruleConfigs, v.QueryID, v.LegacyQueryID, v.LegacyQueryIDs); found &&
+				rulePathExcluded(caller.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
+				contextLogger := logger.FromContext(ctx)
+				contextLogger.Debug().Msgf("Dropping module finding called from %s for rule %s (rule path filter)",
+					caller.FilePath, v.QueryID)
+				continue
+			}
+			suppressAtCallSite(v, v.ModuleAttribution, caller)
+		}
+		kept = append(kept, *v)
+	}
+	return kept
+}
+
+// resolveLocation is the reporting policy for Terraform module findings. It
+// runs after caller expansion, before filters, identity reduction or reports.
+// A module finding must name an actual scanned repository caller. Attribution
+// alone is not proof of reachability: an evaluated external root can also have
+// a call chain. Files no repository call reaches have no reportable location.
+//
+// FileName and the detected ranges remain the module body, for fingerprints,
+// provenance and fixes. ReportLocation is the resolved user-facing location;
+// report writers must not derive it again or fall back to the module body.
+func (r *findingRouting) resolveLocation(v *model.Vulnerability) (*model.FileMetadata, bool) {
+	v.ReportLocation = nil
+	attr := v.ModuleAttribution
+	if attr == nil {
+		return nil, v.ModuleCallChain == "" && !r.external(v.FileName)
+	}
+	location := attr.CallSite
+	caller := r.callers[location.Filename]
+	if caller == nil {
+		return nil, false
+	}
+	location.LineStart = max(location.LineStart, 1)
+	location.LineEnd = max(location.LineEnd, location.LineStart)
+	location.ColumnStart = max(location.ColumnStart, 1)
+	location.ColumnEnd = max(location.ColumnEnd, 1)
+	if location.LineEnd == location.LineStart && location.ColumnEnd <= location.ColumnStart {
+		location.ColumnEnd = location.ColumnStart + 1
+	}
+	v.ReportLocation = &location
+	return caller, true
+}
+
+// expandModuleFindings clones findings from deduplicated OPA docs back to each
+// extra caller, so every call-site gets its own fingerprint/file attribution.
+func expandModuleFindings(
+	vulns []model.Vulnerability, extras map[string][]extraCallerInfo, occurrences documentOccurrenceIndex,
+) []model.Vulnerability {
+	if len(extras) == 0 {
+		return vulns
+	}
+	expanded := make([]model.Vulnerability, 0, len(vulns))
+	for i := range vulns {
+		expanded = append(expanded, vulns[i])
+		for _, ex := range extras[vulns[i].FileID] {
+			vCopy := vulns[i]
+			vCopy.ModuleCallChain = ex.callChain
+			vCopy.FileID = ex.docID
+			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
+			if occurrences != nil {
+				vCopy.ResourceOccurrences = callerOccurrences(vulns[i].ResourceOccurrences, occurrences[ex.docID])
+			}
+			expanded = append(expanded, vCopy)
+		}
+	}
+	return expanded
 }

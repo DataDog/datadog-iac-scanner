@@ -243,6 +243,9 @@ func TestPrintSarifReportPreservesModuleAttribution(t *testing.T) {
 					ResourceType:      "aws_lb",
 					ResourceName:      "nlb",
 					ModuleAttribution: tt.attribution,
+					ReportLocation: &model.SourceLocation{
+						Filename: "stack/main.tf", LineStart: 2, LineEnd: 5, ColumnStart: 1, ColumnEnd: 2,
+					},
 				}},
 			}}}
 

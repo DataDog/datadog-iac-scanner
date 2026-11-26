@@ -146,6 +146,12 @@ func mutationTable() []func(v *Vulnerability) {
 		func(v *Vulnerability) { v.SuppressionJustification = SuppressionJustificationIgnoreComment },
 		func(v *Vulnerability) { v.ModuleCallChain = "stack/main.tf|module.a" },
 		func(v *Vulnerability) { v.DetectedFileName = "modules/app/main.tf" },
+		func(v *Vulnerability) { v.ReportLocation = &SourceLocation{} },
+		func(v *Vulnerability) { v.ReportLocation = &SourceLocation{Filename: "stack/main.tf"} },
+		func(v *Vulnerability) { v.ReportLocation = &SourceLocation{Filename: "stack/main.tf", LineStart: 2} },
+		func(v *Vulnerability) { v.ReportLocation = &SourceLocation{Filename: "stack/main.tf", LineEnd: 3} },
+		func(v *Vulnerability) { v.ReportLocation = &SourceLocation{Filename: "stack/main.tf", ColumnStart: 2} },
+		func(v *Vulnerability) { v.ReportLocation = &SourceLocation{Filename: "stack/main.tf", ColumnEnd: 3} },
 		func(v *Vulnerability) { v.OrderPath = "registry.example.com/org/module/main.tf" },
 		func(v *Vulnerability) { v.DetectedLineWithVulnerability = "detected text" },
 		func(v *Vulnerability) {

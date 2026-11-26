@@ -336,20 +336,21 @@ module "bucket" {
 }
 
 func TestModuleAttributionForResourceSelectsMatchingResource(t *testing.T) {
-	attrs := map[string]*model.ModuleAttribution{
-		"aws_s3_bucket.5.1": {
+	attrs := map[model.TerraformBlock]*model.ModuleAttribution{
+		moduleAttributionKey("aws_s3_bucket", "first"): {
 			DependencyType:     "a",
 			ModuleCodeLocation: model.SourceLocation{Filename: "a.tf", LineStart: 5},
 		},
-		"aws_s3_bucket.5.3": {
+		moduleAttributionKey("aws_s3_bucket", "second"): {
 			DependencyType:     "b",
 			ModuleCodeLocation: model.SourceLocation{Filename: "b.tf", LineStart: 5},
 		},
 	}
 
 	vulnerability := &model.Vulnerability{
-		ResourceType:  "aws_s3_bucket",
-		BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 5, Col: 3}},
+		ResourceType:   "aws_s3_bucket",
+		TerraformBlock: moduleAttributionKey("aws_s3_bucket", "second"),
+		BlockLocation:  model.ResourceLocation{Start: model.ResourceLine{Line: 5, Col: 3}},
 	}
 	got := moduleAttributionForResource(attrs, vulnerability)
 	require.NotNil(t, got)
@@ -358,14 +359,15 @@ func TestModuleAttributionForResourceSelectsMatchingResource(t *testing.T) {
 }
 
 func TestModuleAttributionForResourceNarrowsCodeLocation(t *testing.T) {
-	attrs := map[string]*model.ModuleAttribution{
-		"aws_s3_bucket.2.1": {
+	attrs := map[model.TerraformBlock]*model.ModuleAttribution{
+		moduleAttributionKey("aws_s3_bucket", "this"): {
 			ModuleCodeLocation: model.SourceLocation{Filename: "modules/bucket/main.tf", LineStart: 2, LineEnd: 9, ColumnStart: 1, ColumnEnd: 2},
 		},
 	}
 	vulnerability := func() *model.Vulnerability {
 		return &model.Vulnerability{
 			ResourceType:          "aws_s3_bucket",
+			TerraformBlock:        moduleAttributionKey("aws_s3_bucket", "this"),
 			BlockLocation:         model.ResourceLocation{Start: model.ResourceLine{Line: 2, Col: 1}},
 			VulnerabilityLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 2, Col: 1}, End: model.ResourceLine{Line: 9, Col: 2}},
 		}
@@ -388,14 +390,14 @@ func TestModuleAttributionForResourceNarrowsCodeLocation(t *testing.T) {
 	t.Run("finding without a region keeps the definition", func(t *testing.T) {
 		v := vulnerability()
 		v.VulnerabilityLocation = model.ResourceLocation{}
-		require.Equal(t, attrs["aws_s3_bucket.2.1"].ModuleCodeLocation, moduleAttributionForResource(attrs, v).ModuleCodeLocation)
+		require.Equal(t, attrs[moduleAttributionKey("aws_s3_bucket", "this")].ModuleCodeLocation, moduleAttributionForResource(attrs, v).ModuleCodeLocation)
 	})
 
 	t.Run("shared attribution is not modified", func(t *testing.T) {
 		v := vulnerability()
 		v.RemediationLocation = model.ResourceLocation{Start: model.ResourceLine{Line: 6, Col: 5}, End: model.ResourceLine{Line: 6, Col: 27}}
 		_ = moduleAttributionForResource(attrs, v)
-		require.Equal(t, 2, attrs["aws_s3_bucket.2.1"].ModuleCodeLocation.LineStart)
+		require.Equal(t, 2, attrs[moduleAttributionKey("aws_s3_bucket", "this")].ModuleCodeLocation.LineStart)
 	})
 }
 
@@ -515,4 +517,78 @@ func TestEnrichModuleHopKeepsDeclaredSourceWhenCanonicalSourceDiffers(t *testing
 	require.Equal(t, pkg, root)
 	require.Equal(t, "https://github.com/upstream/repo", address)
 	require.Equal(t, "https://mirror.example.com/Org/Repo", declared)
+}
+
+func TestCallAttribution_RequiresRepositoryRootCaller(t *testing.T) {
+	repo := t.TempDir()
+	for _, caller := range []string{filepath.Join(t.TempDir(), "main.tf"), "../cache/main.tf", ""} {
+		chain := []tfeval.CallSite{{CalledFrom: caller, ModuleName: "child", Source: "./child"}}
+		require.Nil(t, callAttribution(chain, "/cache/child/main.tf", repo, nil, nil))
+	}
+}
+
+func TestRepositoryLocationsNormalizeRootForms(t *testing.T) {
+	base := t.TempDir()
+	repo := filepath.Join(base, "repo")
+	require.NoError(t, os.MkdirAll(repo, 0o755))
+	inside, outside := filepath.Join(repo, "stack", "main.tf"), filepath.Join(base, "cache", "main.tf")
+	for _, form := range []string{"absolute", "dot", "relative"} {
+		t.Run(form, func(t *testing.T) {
+			root := repo
+			switch form {
+			case "dot":
+				t.Chdir(repo)
+				root = "."
+			case "relative":
+				t.Chdir(base)
+				root = filepath.Join("repo", "..", "repo")
+			}
+			require.True(t, pathWithinRoot(inside, root))
+			require.False(t, pathWithinRoot(outside, root))
+			name, ok := repositoryFileName(inside, root)
+			require.True(t, ok)
+			require.Equal(t, "stack/main.tf", name)
+			require.Equal(t, name, repoRelativeFile(inside, root))
+			_, ok = repositoryFileName(outside, root)
+			require.False(t, ok)
+			external := externalModuleFiles(root, nil)
+			require.False(t, external(inside))
+			require.False(t, external(repo), "the repository directory is an evaluation root")
+			require.True(t, external(outside))
+		})
+	}
+	t.Run("content push preserves supplied paths", func(t *testing.T) {
+		for _, path := range []string{inside, filepath.Join("stack", "main.tf")} {
+			name, ok := repositoryFileName(path, "")
+			require.True(t, ok)
+			require.Equal(t, filepath.ToSlash(path), name)
+			require.Equal(t, name, repoRelativeFile(path, ""))
+			require.False(t, externalModuleFiles("", nil)(path))
+		}
+	})
+}
+
+func TestModuleAttributionFallbackRequiresUniqueDeclaration(t *testing.T) {
+	first := &model.ModuleAttribution{ModuleCodeLocation: model.SourceLocation{LineStart: 2, ColumnStart: 1}}
+	second := &model.ModuleAttribution{ModuleCodeLocation: model.SourceLocation{LineStart: 8, ColumnStart: 1}}
+	attrs := map[model.TerraformBlock]*model.ModuleAttribution{
+		moduleAttributionKey("aws_s3_bucket", "first"):  first,
+		moduleAttributionKey("aws_s3_bucket", "second"): second,
+	}
+	v := &model.Vulnerability{ResourceType: "aws_s3_bucket",
+		BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 2, Col: 1}}}
+	for _, key := range []model.TerraformBlock{
+		{}, {Type: "tags", Name: "Name"}, moduleAttributionKey("aws_s3_bucket", "absent"),
+	} {
+		v.TerraformBlock = key
+		require.Equal(t, first, moduleAttributionForResource(attrs, v),
+			"unmatched legacy paths retain exact HCL declaration matching")
+	}
+	second.ModuleCodeLocation = first.ModuleCodeLocation
+	require.Nil(t, moduleAttributionForResource(attrs, v), "shared JSON coordinates cannot choose a declaration")
+	v.TerraformBlock = moduleAttributionKey("aws_s3_bucket", "second")
+	v.ResourceName = "display-first"
+	second.DependencyType = "selected"
+	require.Equal(t, "selected", moduleAttributionForResource(attrs, v).DependencyType,
+		"declaration identity is independent of display names and source ranges")
 }
