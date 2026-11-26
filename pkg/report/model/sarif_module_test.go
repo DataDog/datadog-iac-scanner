@@ -8,6 +8,8 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -247,5 +249,47 @@ func TestBuildSarifIssue_RejectsInvalidModuleReportLocations(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, report.Runs[0].Results)
 		})
+	}
+}
+
+func TestBuildSarifIssue_RepositoryRootRepresentations(t *testing.T) {
+	for _, platform := range []string{"Terraform", "Kubernetes"} {
+		for _, rootForm := range []string{"absolute", "dot", "relative"} {
+			t.Run(platform+"/"+rootForm, func(t *testing.T) {
+				base := t.TempDir()
+				repo := filepath.Join(base, "repo")
+				require.NoError(t, os.MkdirAll(repo, 0o755))
+				root := repo
+				switch rootForm {
+				case "dot":
+					t.Chdir(repo)
+					root = "."
+				case "relative":
+					t.Chdir(base)
+					root = filepath.Join("repo", "..", "repo")
+				}
+				filename := "main.tf"
+				if platform == "Kubernetes" {
+					filename = "deployment.yaml"
+				}
+				finding := model.Vulnerability{
+					QueryID: "root", QueryName: "root", Platform: platform, Severity: model.SeverityHigh,
+					FileName: filepath.Join(repo, "infra", filename), Line: 1, LineWithVulnerability: "insecure",
+					VulnerabilityLocation: model.ResourceLocation{
+						Start: model.ResourceLine{Line: 1, Col: 1}, End: model.ResourceLine{Line: 2, Col: 2},
+					},
+				}
+				ctx := context.Background()
+				absolute := model.CreateSummary(ctx, model.Counters{}, []model.Vulnerability{finding}, "test", nil, repo, model.SCIInfo{})
+				summary := model.CreateSummary(ctx, model.Counters{}, []model.Vulnerability{finding}, "test", nil, root, model.SCIInfo{})
+				require.Equal(t, absolute, summary, "root spelling cannot change paths, fingerprints, or source-file mappings")
+				require.Equal(t, filepath.Join("infra", filename), model.ReportPath(finding.FileName, nil, root))
+				report := NewSarifReport().(*sarifReport)
+				_, err := report.BuildSarifIssue(ctx, &summary.Queries[0], model.SCIInfo{})
+				require.NoError(t, err)
+				require.Len(t, report.Runs[0].Results, 1)
+				require.Equal(t, "infra/"+filename, report.Runs[0].Results[0].ResultLocations[0].PhysicalLocation.ArtifactLocation.ArtifactURI)
+			})
+		}
 	}
 }

@@ -568,7 +568,7 @@ func TestRepositoryLocationsNormalizeRootForms(t *testing.T) {
 	})
 }
 
-func TestModuleAttributionWithoutBlockIdentityRequiresUniqueDeclaration(t *testing.T) {
+func TestModuleAttributionFallbackRequiresUniqueDeclaration(t *testing.T) {
 	first := &model.ModuleAttribution{ModuleCodeLocation: model.SourceLocation{LineStart: 2, ColumnStart: 1}}
 	second := &model.ModuleAttribution{ModuleCodeLocation: model.SourceLocation{LineStart: 8, ColumnStart: 1}}
 	attrs := map[model.TerraformBlock]*model.ModuleAttribution{
@@ -577,7 +577,13 @@ func TestModuleAttributionWithoutBlockIdentityRequiresUniqueDeclaration(t *testi
 	}
 	v := &model.Vulnerability{ResourceType: "aws_s3_bucket",
 		BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 2, Col: 1}}}
-	require.Equal(t, first, moduleAttributionForResource(attrs, v), "legacy attribute-only keys retain exact HCL declaration matching")
+	for _, key := range []model.TerraformBlock{
+		{}, {Type: "tags", Name: "Name"}, moduleAttributionKey("aws_s3_bucket", "absent"),
+	} {
+		v.TerraformBlock = key
+		require.Equal(t, first, moduleAttributionForResource(attrs, v),
+			"unmatched legacy paths retain exact HCL declaration matching")
+	}
 	second.ModuleCodeLocation = first.ModuleCodeLocation
 	require.Nil(t, moduleAttributionForResource(attrs, v), "shared JSON coordinates cannot choose a declaration")
 	v.TerraformBlock = moduleAttributionKey("aws_s3_bucket", "second")

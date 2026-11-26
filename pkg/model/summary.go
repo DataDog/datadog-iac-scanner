@@ -216,15 +216,6 @@ func getRelativePath(basePath, filePath string) string {
 	return returnPath
 }
 
-// replaceIfTemporaryPath names a file inside an extracted directory after where
-// that directory came from; see canonicalExtractedName.
-func replaceIfTemporaryPath(filePath string, pathExtractionMap map[string]ExtractedPathObject) string {
-	if name, ok := canonicalExtractedName(filePath, pathExtractionMap); ok {
-		return name
-	}
-	return filePath
-}
-
 // canonicalExtractedName names a file inside an extracted directory after
 // where that directory came from. Extracted directories can nest, a module
 // package and a module within it, so the innermost one containing the file
@@ -321,10 +312,23 @@ func ReportPath(filePath string, pathExtractionMap map[string]ExtractedPathObjec
 }
 
 func resolvePath(filePath string, pathExtractionMap map[string]ExtractedPathObject, repoDir string) string {
-	var returnPath string
-	returnPath = replaceIfTemporaryPath(filepath.FromSlash(filePath), pathExtractionMap)
-	returnPath = getRelativePath(repoDir, returnPath)
-	return returnPath
+	filePath = filepath.FromSlash(filePath)
+	if source, extracted := canonicalExtractedName(filePath, pathExtractionMap); extracted {
+		// Extracted names are already report locations (possibly remote
+		// addresses), not filesystem paths to relativize against the checkout.
+		return source
+	}
+	if repoDir != "" && !filepath.IsAbs(repoDir) {
+		// Relative filesystem inputs share the process working directory.
+		// Normalize both sides together; an empty root keeps content-push paths.
+		if root, err := filepath.Abs(repoDir); err == nil {
+			repoDir = root
+			if absolute, err := filepath.Abs(filePath); err == nil {
+				filePath = absolute
+			}
+		}
+	}
+	return getRelativePath(repoDir, filePath)
 }
 
 // CreateSummary creates a report for a single scan, based on its scanID

@@ -785,7 +785,9 @@ func moduleAttributionForResource(
 			attr = attrs[key]
 		}
 	}
-	if key.Name == "" {
+	if attr == nil {
+		// An attribute path such as tags.Name can look like a resource key.
+		// Retain the exact, unique declaration match when the key misses.
 		attr = moduleAttributionAtDeclaration(attrs, v)
 	}
 	clone := cloneModuleAttribution(attr)

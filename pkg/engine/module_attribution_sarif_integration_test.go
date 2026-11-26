@@ -389,7 +389,9 @@ resource "aws_s3_bucket" "root" {
 						"display-root": 2 * len(queries), "display-first": 2 * len(queries),
 						"display-second": 2 * len(queries), "display-data": 2 * len(queries),
 					}, counts)
-					summary := model.CreateSummary(ctx, model.Counters{}, findings, "test", nil, repo, model.SCIInfo{})
+					summary := model.CreateSummary(ctx, model.Counters{}, findings, "test", nil, repoPath, model.SCIInfo{})
+					absolute := model.CreateSummary(ctx, model.Counters{}, findings, "test", nil, repo, model.SCIInfo{})
+					require.Equal(t, absolute, summary, "report paths and fingerprints cannot depend on root spelling")
 					report := reportModel.NewSarifReport()
 					for i := range summary.Queries {
 						_, err = report.BuildSarifIssue(ctx, &summary.Queries[i], model.SCIInfo{})
@@ -402,4 +404,70 @@ resource "aws_s3_bucket" "root" {
 			}
 		}
 	}
+}
+
+func TestInspect_ModuleAttributionNestedAttributeKeys(t *testing.T) {
+	repo := t.TempDir()
+	moduleFile := writeCallerFixture(t, repo, "modules/bucket/main.tf", `variable "name" { type = string }
+resource "aws_s3_bucket" "this" {
+  bucket = "display-name"
+  tags = {
+    Name = var.name
+  }
+}
+`)
+	files := parseTerraform(t, moduleFile)
+	for _, stack := range []string{"stack-a", "stack-b"} {
+		path := writeCallerFixture(t, repo, stack+"/main.tf", `module "bucket" {
+  source = "../modules/bucket"
+  name = "insecure"
+}
+`)
+		files = append(files, parseTerraform(t, path)...)
+	}
+	var queries []model.QueryMetadata
+	for i, key := range []string{"tags.Name", "tags.{{Name}}"} {
+		id := fmt.Sprintf("nested-%d", i)
+		queries = append(queries, model.QueryMetadata{
+			Query: id, InputData: "{}", Platform: "terraform", Aggregation: 1,
+			Metadata: map[string]interface{}{"id": id, "platform": "Terraform"},
+			Content: `package datadog
+DatadogPolicy contains result if {
+  some i, label
+  bucket := input.document[i].resource.aws_s3_bucket[label]
+  bucket.tags.Name == "insecure"
+  result := {
+    "documentId": input.document[i].id,
+    "resourceType": "aws_s3_bucket",
+    "resourceName": bucket.bucket,
+    "searchKey": "` + key + `",
+  }
+}`,
+		})
+	}
+	ins := newTestInspector(t, inspectorOpts{
+		repoPath: repo, queries: queries, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	ctx := context.Background()
+	findings, err := ins.Inspect(ctx, "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Equal(t, 4, len(findings), "both nested key spellings retain both deduplicated callers")
+	callers := map[string]int{}
+	for _, finding := range findings {
+		require.Equal(t, "display-name", finding.ResourceName)
+		require.NotNil(t, finding.ReportLocation)
+		require.Equal(t, 3, finding.ReportLocation.LineStart, "the caller's name argument controls the value")
+		callers[finding.ReportLocation.Filename]++
+	}
+	require.Equal(t, map[string]int{"stack-a/main.tf": 2, "stack-b/main.tf": 2}, callers)
+	summary := model.CreateSummary(ctx, model.Counters{}, findings, "test", nil, repo, model.SCIInfo{})
+	report := reportModel.NewSarifReport()
+	for i := range summary.Queries {
+		_, err = report.BuildSarifIssue(ctx, &summary.Queries[i], model.SCIInfo{})
+		require.NoError(t, err)
+	}
+	raw, err := json.Marshal(report)
+	require.NoError(t, err)
+	require.Equal(t, 4, strings.Count(string(raw), `"partialFingerprints"`))
 }
