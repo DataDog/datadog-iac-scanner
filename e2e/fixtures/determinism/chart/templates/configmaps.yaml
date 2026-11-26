@@ -1,0 +1,11 @@
+{{- /* Sprig's keys returns map keys in an unspecified order. */ -}}
+{{- $settings := dict "alpha" "1" "beta" "2" "gamma" "3" "delta" "4" "epsilon" "5" "zeta" "6" "eta" "7" "theta" "8" -}}
+{{- range $name := keys $settings }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: order-{{ $name }}
+data:
+  value: {{ index $settings $name | quote }}
+{{- end }}

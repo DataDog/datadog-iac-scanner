@@ -13,8 +13,8 @@ go test ./e2e -count=1 -run Test_E2E_Config     # one group
 
 - **Skips.** Without a binary in `bin/`, every test is skipped. `-short` skips
   them too.
-- **Network.** The scans fetch their rules from the Datadog API, so the tests
-  need network access.
+- **Network.** The CLI and configuration suites need network access to the
+  Datadog API. The determinism test uses a pinned offline bundle.
 - **CI.** `.github/workflows/go-e2e.yaml` builds the binary and runs this
   suite, but the job ignores test failures (`|| cat results.json`). Check the
   results yourself.
@@ -25,6 +25,10 @@ go test ./e2e -count=1 -run Test_E2E_Config     # one group
 - **`config_test.go`** checks the exit codes for configuration errors:
   - an invalid local configuration exits with `127`;
   - an unreachable Datadog backend exits with `126`.
+- **`determinism_test.go`** compares payload bytes, including document IDs and
+  order, across repeated scans of Kubernetes, Dockerfile and Helm fixtures
+  with different `GOMAXPROCS` values. It also compares SARIF bytes after
+  normalising the scanner version and execution time.
 - **`testcases/`** has one file per case (`e2e-cli-NNN_<name>.go`). Each file's
   `init()` appends a `TestCase` to `testcases.Tests`.
 - **`fixtures/`** holds the inputs (`samples/`), the expected files (for
