@@ -35,6 +35,55 @@ func TestGetDatadogFingerprintHash_ModuleCallChain(t *testing.T) {
 	require.Equal(t, base, k8sWithChain, "non-Terraform platforms must ignore the module call chain")
 }
 
+// A Kustomize-rendered finding is identified by its render root and rendered
+// object, not by the file the object is written in; a document scanned as
+// written hashes exactly as it always did.
+func TestGetDatadogFingerprintHash_KustomizeIdentity(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+	require.Equal(t, "34a2f2ba8b757f4f7fac975a31a079b956ce5a5d3feb650c44fa0e0f0958d2a2",
+		GetDatadogFingerprintHash(sci, "base/deployment.yaml", "Kubernetes", "Deployment", "web", "rule-1", "", ""),
+		"raw Kubernetes fingerprint must not change")
+	require.Equal(t,
+		GetDatadogFingerprintHash(sci, "base/deployment.yaml", "Kubernetes", "Deployment", "web", "rule-1", "", ""),
+		GetDatadogFingerprintHash(sci, "base/deployment.yaml", "Kubernetes", "Deployment", "web", "rule-1", "", "",
+			KustomizeIdentity{ResourceID: "apps/Deployment|dev|dev-web"}),
+		"an identity without render root is not a rendered one")
+
+	sum := func(file, root, resourceName, resourceID string) string {
+		v := Vulnerability{FileName: "/repo/" + file, Platform: "Kubernetes", ResourceType: "Deployment",
+			ResourceName: resourceName, QueryID: "rule-1", RenderRoot: root, KustomizeResourceID: resourceID}
+		s := CreateSummary(context.Background(), Counters{}, []Vulnerability{v}, "scan", nil, "/repo", sci)
+		require.Equal(t, resourceID, s.Queries[0].Files[0].KustomizeResourceID)
+		require.Equal(t, root, s.Queries[0].Files[0].RenderRoot)
+		return s.Queries[0].Files[0].Fingerprint
+	}
+	dev := sum("base/deployment.yaml", "overlays/dev", "web", "apps/Deployment|dev|dev-web")
+	require.Equal(t, dev, sum("base/moved.yaml", "overlays/dev", "other", "apps/Deployment|dev|dev-web"),
+		"moving the manifest or a rule's resource name must keep the fingerprint")
+	require.Equal(t, stringToHash(`kustomize|["repo","overlays/dev","apps/Deployment|dev|dev-web","rule-1"]`), dev)
+	require.NotEqual(t, dev, sum("base/deployment.yaml", "overlays/prod", "web", "apps/Deployment|dev|dev-web"),
+		"two roots are two fingerprints")
+	require.NotEqual(t, dev, sum("base/deployment.yaml", "overlays/dev", "web", "apps/Deployment|prod|dev-web"))
+
+	// Truly unnamed or ambiguous objects carry an explicit source fallback.
+	unnamed := sum("base/kubelet.yaml", "overlays/dev", "n/a", "source:base%2Fkubelet.yaml#0")
+	require.Equal(t, unnamed, sum("base/other-location.yaml", "overlays/dev", "n/a", "source:base%2Fkubelet.yaml#0"))
+	require.NotEqual(t, unnamed, sum("base/other.yaml", "overlays/dev", "n/a", "source:base%2Fother.yaml#0"))
+
+	a := &Vulnerability{FileName: "base/a.yaml", Platform: "Kubernetes", ResourceName: "web", QueryID: "rule-1",
+		RenderRoot: "overlays/dev", KustomizeResourceID: "apps/Deployment|dev|dev-web"}
+	b := *a
+	b.FileName = "base/b.yaml"
+	require.Equal(t, FindingIdentity(a), FindingIdentity(&b))
+	id, ok := IdentityBeforeLine(a)
+	require.True(t, ok)
+	require.Equal(t, FindingIdentity(a), id.WithChain(a.ModuleCallChain))
+	a.LegacyQueryID = "old-rule"
+	b = *a
+	b.QueryID = "renamed-rule"
+	require.Equal(t, FindingIdentity(a), FindingIdentity(&b), "Kustomize keeps existing rule-ID alias selection")
+}
+
 // FindingIdentity (storage's grouping) and CreateSummary (the report's
 // persisted fingerprint) must group findings on exactly the same fields (see
 // fingerprintFields), or a finding storage reduced to one copy could still be
@@ -107,4 +156,28 @@ func TestIdentityBeforeLine_IsFindingIdentityUnderEveryChain(t *testing.T) {
 
 	_, ok := IdentityBeforeLine(&Vulnerability{Platform: "Dockerfile"})
 	require.False(t, ok, "a Dockerfile identity includes the line")
+}
+
+// Raw findings retain the legacy input byte-for-byte, even if a caller passes
+// a chain on a platform that historically ignored it.
+func TestFingerprintLegacyPlatforms(t *testing.T) {
+	sci := SCIInfo{RepositoryCommitInfo: RepositoryCommitInfo{RepositoryUrl: "repo"}}
+	for _, platform := range []string{"Ansible", "CICD", "CloudFormation", "DockerCompose", "Dockerfile", "Kubernetes", "kubernetes", "Terraform", "Helm", ""} {
+		for _, chain := range []string{"", "module.a", "module.a[\"key\"]"} {
+			want := "repo|file|kind|name|rule"
+			switch platform {
+			case "Dockerfile":
+				want += "|line"
+			case "Terraform":
+				if chain != "" {
+					want += "|" + chain
+				}
+			}
+			got := GetDatadogFingerprintHash(sci, "file", platform, "kind", "name", "rule", "line", chain)
+			require.Equal(t, stringToHash(want), got, platform)
+			if platform != "Kubernetes" && platform != "kubernetes" {
+				require.Equal(t, got, GetDatadogFingerprintHash(sci, "file", platform, "kind", "name", "rule", "line", chain, KustomizeIdentity{"root", "object"}))
+			}
+		}
+	}
 }

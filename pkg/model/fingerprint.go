@@ -8,6 +8,7 @@ package model
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -18,25 +19,43 @@ const (
 	terraformPlatform  = "Terraform"
 )
 
+// KustomizeIdentity identifies a logical object or rule subject within a
+// repository-relative render root. Empty values leave legacy identity untouched.
+type KustomizeIdentity struct {
+	RenderRoot string
+	ResourceID string
+}
+
+func (id KustomizeIdentity) resolved() bool { return id.RenderRoot != "" && id.ResourceID != "" }
+
+func vulnerabilityKustomizeIdentity(v *Vulnerability) KustomizeIdentity {
+	return KustomizeIdentity{RenderRoot: v.RenderRoot, ResourceID: v.KustomizeResourceID}
+}
+
 // GetDatadogFingerprintHash is the single source of truth for a finding's
 // stable identity. It is computed once when the summary is built and reused by
 // every report format, so the fingerprint never diverges across outputs.
 // nolint:gocritic
 func GetDatadogFingerprintHash(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
+	kustomizeIdentity ...KustomizeIdentity,
 ) string {
-	return stringToHash(fingerprintInput(sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain))
+	return stringToHash(fingerprintInput(
+		sciInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain, kustomizeIdentity...,
+	))
 }
 
 // FindingIdentity is what a scan reports one finding for: findings of equal
 // identity share a fingerprint, and only the last of them is reported.
 func FindingIdentity(v *Vulnerability) string {
 	fileName, line, ruleID := fingerprintFields(v)
-	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID); ok {
+	if id, ok := chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, vulnerabilityKustomizeIdentity(v)); ok {
 		return id.WithChain(v.ModuleCallChain)
 	}
 	// SCIInfo is constant within a scan; an empty value yields the same grouping.
-	return fingerprintInput(SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.ModuleCallChain)
+	return fingerprintInput(
+		SCIInfo{}, fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, line, v.ModuleCallChain, vulnerabilityKustomizeIdentity(v),
+	)
 }
 
 // ChainedIdentity is the FindingIdentity of a finding whose identity does not
@@ -51,21 +70,28 @@ type ChainedIdentity struct {
 // false when v's platform puts the line in the identity.
 func IdentityBeforeLine(v *Vulnerability) (ChainedIdentity, bool) {
 	fileName, _, ruleID := fingerprintFields(v)
-	return chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID)
+	return chainedIdentity(fileName, v.Platform, v.ResourceType, v.ResourceName, ruleID, vulnerabilityKustomizeIdentity(v))
 }
 
 // ChainedIdentityFor is IdentityBeforeLine for a finding that is not built
 // yet. ruleID is the id FindingIdentity would choose (see utils.ChooseQueryID).
-func ChainedIdentityFor(fileName, platform, resourceType, resourceName, queryID, legacyQueryID string) (ChainedIdentity, bool) {
-	return chainedIdentity(fileName, platform, resourceType, resourceName, utils.ChooseQueryID(queryID, legacyQueryID))
+func ChainedIdentityFor(
+	fileName, platform, resourceType, resourceName, queryID, legacyQueryID string,
+	kustomizeIdentity ...KustomizeIdentity,
+) (ChainedIdentity, bool) {
+	return chainedIdentity(
+		fileName, platform, resourceType, resourceName, utils.ChooseQueryID(queryID, legacyQueryID), kustomizeIdentity...,
+	)
 }
 
-func chainedIdentity(fileName, platform, resourceType, resourceName, ruleID string) (ChainedIdentity, bool) {
+func chainedIdentity(
+	fileName, platform, resourceType, resourceName, ruleID string, kustomizeIdentity ...KustomizeIdentity,
+) (ChainedIdentity, bool) {
 	if platform == dockerfilePlatform {
 		return ChainedIdentity{}, false
 	}
 	return ChainedIdentity{
-		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", ""),
+		prefix:  fingerprintInput(SCIInfo{}, fileName, platform, resourceType, resourceName, ruleID, "", "", kustomizeIdentity...),
 		chained: platform == terraformPlatform,
 	}, true
 }
@@ -101,7 +127,14 @@ func fingerprintFields(v *Vulnerability) (file, line, ruleID string) {
 // nolint:gocritic
 func fingerprintInput(
 	sciInfo SCIInfo, filePath, platform, resourceType, resourceName, ruleID, vulnLine, moduleCallChain string,
+	kustomizeIdentity ...KustomizeIdentity,
 ) string {
+	if strings.EqualFold(platform, "Kubernetes") && len(kustomizeIdentity) > 0 && kustomizeIdentity[0].resolved() {
+		id := kustomizeIdentity[0]
+		fields, _ := json.Marshal([4]string{sciInfo.RepositoryCommitInfo.RepositoryUrl, id.RenderRoot, id.ResourceID, ruleID})
+		return "kustomize|" + string(fields)
+	}
+
 	segments := []string{sciInfo.RepositoryCommitInfo.RepositoryUrl, filePath, resourceType, resourceName, ruleID}
 
 	switch platform {
