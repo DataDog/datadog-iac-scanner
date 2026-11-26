@@ -53,6 +53,8 @@ type ScanStats struct {
 	ViolationBreakdowns map[string]map[string]int
 	// ResourcesFound contains the number of resources that were analyzed.
 	ResourcesScanned int
+	// DuplicateDocumentIDs counts documents rejected for ID reuse.
+	DuplicateDocumentIDs int
 }
 
 type RuleStats struct {

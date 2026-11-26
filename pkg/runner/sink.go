@@ -20,7 +20,6 @@ import (
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
@@ -216,10 +215,12 @@ func (s *Service) sinkDocument(
 		preparedDocument = newTreeHashCons().consChildren(preparedDocument)
 	}
 
+	key := s.documentKey(filename, documents.Kind, docIdx)
 	file := model.FileMetadata{
 		SourceDocumentIndex: docIdx,
 
-		ID:            uuid.New().String(),
+		DocumentKey:   key,
+		ID:            key.ID(),
 		ScanID:        scanID,
 		Document:      preparedDocument,
 		OriginalData:  s.internContent(documents.Content),
@@ -262,10 +263,12 @@ func (s *Service) sinkSharedParse(
 	content []byte,
 ) error {
 	for docIdx, sharedDoc := range shared.docs {
+		docKey := s.documentKey(filename, shared.kind, docIdx)
 		file := model.FileMetadata{
 			SourceDocumentIndex: docIdx,
 
-			ID:           uuid.New().String(),
+			DocumentKey:  docKey,
+			ID:           docKey.ID(),
 			ScanID:       scanID,
 			Document:     cloneSharedParseDocument(sharedDoc, filename),
 			OriginalData: key,

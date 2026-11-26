@@ -7,6 +7,7 @@ package runner
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -24,7 +25,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
@@ -92,6 +92,10 @@ func (s *Service) storeResolvedFiles(
 		}
 		platform := s.classifyPlatform(ctx, kind, rfile.FileName, rfile.Content)
 		ownedRenderedContent := ownedHelmRenderedContent(kind, rfile.IsCRD, rfile.Content)
+		key := s.documentKey(rfile.FileName, kind, 0)
+		key.ResolverRoot = s.documentPath(rfile.ResolverRoot)
+		key.RenderedPath = rfile.RenderedPath
+		key.SplitPosition = cmp.Or(rfile.SplitPosition, i+1)
 
 		for docIdx, document := range documents.Docs {
 			preparedDocument, prepareErr := prepareResolvedScanDocument(document, kind)
@@ -105,8 +109,10 @@ func (s *Service) storeResolvedFiles(
 			if kind == model.KindHELM {
 				lineInfoDocument = nil
 			}
+			key.DocumentIndex = docIdx
 			file := model.FileMetadata{
-				ID:                uuid.New().String(),
+				DocumentKey:       key,
+				ID:                key.ID(),
 				ScanID:            scanID,
 				Document:          preparedDocument,
 				OriginalData:      cached.originalData,

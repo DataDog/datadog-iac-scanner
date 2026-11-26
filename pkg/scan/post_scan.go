@@ -198,12 +198,13 @@ func (c *Client) generateStats(scanResults *Results, scanDuration time.Duration)
 	}
 
 	return ScanStats{
-		Violations:          violations,
-		Files:               c.Tracker.FoundFiles,
-		Rules:               c.Tracker.ExecutedQueries,
-		Duration:            scanDuration,
-		ViolationBreakdowns: violationBreakdowns,
-		ResourcesScanned:    c.Tracker.FoundResources,
+		Violations:           violations,
+		Files:                c.Tracker.FoundFiles,
+		Rules:                c.Tracker.ExecutedQueries,
+		Duration:             scanDuration,
+		ViolationBreakdowns:  violationBreakdowns,
+		ResourcesScanned:     c.Tracker.FoundResources,
+		DuplicateDocumentIDs: scanResults.DuplicateDocumentIDs,
 	}
 }
 

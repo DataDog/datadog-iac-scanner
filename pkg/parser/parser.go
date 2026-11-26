@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -128,10 +130,11 @@ func (b *Builder) Build(types, cloudProviders []string) ([]*Parser, error) {
 				}
 			}
 			parserSlice = append(parserSlice, &Parser{
-				Parsers:    parser,
-				extensions: extensions,
-				Platform:   platforms,
-				fsys:       b.fsys,
+				Parsers:          parser,
+				extensions:       extensions,
+				Platform:         platforms,
+				documentPlatform: strings.Join(slices.Sorted(maps.Keys(supportedTypes)), ","),
+				fsys:             b.fsys,
 			})
 		}
 	}
@@ -145,11 +148,18 @@ var ErrNotSupportedFile = errors.New("unsupported file to parse")
 // Parser is a struct that associates a parser to its supported extensions
 type Parser struct {
 	// Parsers is public because necessary for testing purposes
-	Parsers    kindParser
-	extensions model.Extensions
-	Platform   []string
-	SCIInfo    model.SCIInfo
-	fsys       vfs.FS
+	Parsers          kindParser
+	extensions       model.Extensions
+	Platform         []string
+	SCIInfo          model.SCIInfo
+	fsys             vfs.FS
+	documentPlatform string
+}
+
+// DocumentPlatform identifies the parser's platform set independently of the
+// platforms selected for a particular scan.
+func (c *Parser) DocumentPlatform() string {
+	return c.documentPlatform
 }
 
 // FS returns the filesystem used for extension detection. The HTTP server

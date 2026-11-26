@@ -510,6 +510,11 @@ func (r *PrefetchedResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 	if err != nil {
 		return Resolution{}, err
 	}
+	if root := r.manifest.Dir; root != "" {
+		if rel, relErr := filepath.Rel(root, entry.LocalPath); relErr == nil && filepath.IsLocal(rel) {
+			resolution.ManifestPath = filepath.ToSlash(rel)
+		}
+	}
 	if usage, ok := r.manifest.usage[entry.PackageRoot]; ok {
 		resolution.Usage = &usage
 	}

@@ -122,6 +122,8 @@ type Client struct {
 	Storage       *storage.MemoryStorage
 	Printer       *consolePrinter.Printer
 	FlagEvaluator featureflags.FlagEvaluator
+	// documentRoot overrides the ID root for a custom scan's temporary input.
+	documentRoot string
 	// querySourceFactory overrides createQuerySource; set in tests and custom scans.
 	querySourceFactory func(ctx context.Context, platforms []string) (source.QueriesSource, error)
 	// analyzerOverride skips the file-extension analyzer and returns a pre-known platform list.

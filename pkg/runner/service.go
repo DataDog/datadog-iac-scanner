@@ -93,6 +93,7 @@ type Service struct {
 	RenderedFileFilter provider.FileFilter
 	files              model.FileMetadatas
 	filesMu            sync.Mutex
+	ScanRoot           string
 	MaxFileSize        int
 	// Platforms is the scan's effective platform set, used to classify each
 	// parsed file's platform consistently with the analyzer so the engine can
@@ -375,6 +376,7 @@ func (s *Service) StartScan(
 	contextLogger.Debug().Msg("service.StartScan()")
 	defer wg.Done()
 
+	s.files.SortByDocumentKey()
 	vulnerabilities, err := s.Inspector.Inspect(
 		ctx,
 		scanID,
@@ -506,6 +508,19 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 		s.filesMu.Lock()
 		s.files = append(s.files, file)
 		s.filesMu.Unlock()
+	}
+}
+
+func (s *Service) documentPath(path string) string {
+	return model.DocumentPath(path, s.ScanRoot, s.PathExtractionMap)
+}
+
+func (s *Service) documentKey(path string, kind model.FileKind, index int) model.DocumentKey {
+	return model.DocumentKey{
+		Path:          s.documentPath(path),
+		Kind:          kind,
+		Platform:      s.Parser.DocumentPlatform(),
+		DocumentIndex: index,
 	}
 }
 

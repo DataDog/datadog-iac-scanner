@@ -6,7 +6,9 @@
 package scan
 
 import (
+	"cmp"
 	"context"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -92,6 +94,7 @@ func (c *Client) resolveTerraformModulesForScan(
 			LocalPath: false,
 		}
 	}
+	setModuleDocumentSources(extractedPaths.ExtractionMap, result.Modules, c.ScanParams.RepoPath)
 	remoteSourceDirs = make(map[string]engine.RemoteModuleDirectory, len(result.Modules)*3)
 	remoteModuleProvenance = make(map[string]engine.RemoteModuleProvenance, len(result.Modules)*3)
 	for i := range result.Modules {
@@ -120,6 +123,84 @@ func (c *Client) resolveTerraformModulesForScan(
 		}
 	}
 	return result.Cleanup, result.ScanPaths, remoteSourceDirs, remoteModuleProvenance, nil
+}
+
+func setModuleDocumentSources(paths map[string]model.ExtractedPathObject, modules []modulegraph.ResolvedModule, repoRoot string) {
+	for i := range modules {
+		setModuleDocumentSource(paths, &modules[i])
+	}
+	// One acquired directory can serve several callers. Count directories so
+	// a shared acquisition keeps its source key.
+	counts := make(map[string]int, len(modules))
+	hasCollision := false
+	for _, extracted := range paths {
+		if extracted.DocumentSource != "" {
+			counts[extracted.DocumentSource]++
+			hasCollision = hasCollision || counts[extracted.DocumentSource] > 1
+		}
+	}
+	if !hasCollision {
+		return
+	}
+
+	callPaths := modulePackageCallPaths(modules, repoRoot)
+	for dir, extracted := range paths {
+		if counts[extracted.DocumentSource] < 2 {
+			continue
+		}
+		if callPath, ok := callPaths[extracted.DocumentPackageRoot]; ok {
+			selectedPath := model.DocumentPath(dir, extracted.DocumentPackageRoot, nil)
+			extracted.DocumentSource += "\x00installation\x00" + callPath + "\x00" + selectedPath
+			paths[dir] = extracted
+		}
+	}
+}
+
+func setModuleDocumentSource(paths map[string]model.ExtractedPathObject, module *modulegraph.ResolvedModule) {
+	extracted, ok := paths[module.LocalPath]
+	if !ok {
+		return
+	}
+	source := strings.Join([]string{
+		model.RedactURLCredentials(module.CanonicalSource), module.Version, module.ResolvedRef, module.ManifestPath,
+	}, "\x00")
+	// Several call sites can share one acquired directory.
+	if extracted.DocumentSource == "" || source < extracted.DocumentSource {
+		extracted.DocumentSource = source
+		extracted.DocumentPackageRoot = module.PackageRoot
+		paths[module.LocalPath] = extracted
+	}
+}
+
+// modulePackageCallPaths names each acquisition by the first call chain in
+// lexical order among those with the fewest remote hops. Each call is relative
+// to the checkout or its declaring package.
+func modulePackageCallPaths(modules []modulegraph.ResolvedModule, repoRoot string) map[string]string {
+	byParent := make(map[string][]*modulegraph.ResolvedModule)
+	for i := range modules {
+		module := &modules[i]
+		byParent[module.ParentPackageRoot] = append(byParent[module.ParentPackageRoot], module)
+	}
+	callPaths := map[string]string{"": ""}
+	frontier := map[string]string{"": ""}
+	for len(frontier) > 0 {
+		next := make(map[string]string)
+		for parent, prefix := range frontier {
+			for _, module := range byParent[parent] {
+				if _, visited := callPaths[module.PackageRoot]; visited {
+					continue
+				}
+				file := model.DocumentPath(module.CallerFile, cmp.Or(parent, repoRoot), nil)
+				callPath := prefix + "\x00" + file + "\x00" + module.Name
+				if previous, ok := next[module.PackageRoot]; !ok || callPath < previous {
+					next[module.PackageRoot] = callPath
+				}
+			}
+		}
+		maps.Copy(callPaths, next)
+		frontier = next
+	}
+	return callPaths
 }
 
 func remoteModulePackageRoots(directories map[string]engine.RemoteModuleDirectory) []string {

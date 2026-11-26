@@ -7,8 +7,11 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sync"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/rs/zerolog/log"
 )
@@ -19,8 +22,10 @@ var (
 
 // MemoryStorage is scans' results representation
 type MemoryStorage struct {
-	vulnerabilities []model.Vulnerability
-	allFiles        model.FileMetadatas
+	vulnerabilities      []model.Vulnerability
+	allFiles             model.FileMetadatas
+	documentIDs          map[string]struct{}
+	duplicateDocumentIDs int
 	// recordDuplicates keeps all occurrence references for each finding
 	// identity (see RecordDuplicates).
 	recordDuplicates bool
@@ -35,18 +40,40 @@ func (m *MemoryStorage) RecordDuplicates() {
 }
 
 // SaveFile adds a new file metadata to files collection
-func (m *MemoryStorage) SaveFile(_ context.Context, metadata *model.FileMetadata) error {
+func (m *MemoryStorage) SaveFile(ctx context.Context, metadata *model.FileMetadata) error {
 	memoryMu.Lock()
 	defer memoryMu.Unlock()
+	if metadata.ID != "" {
+		if _, exists := m.documentIDs[metadata.ID]; exists {
+			m.duplicateDocumentIDs++
+			err := fmt.Errorf("duplicate document ID %q for %q", metadata.ID, metadata.FilePath)
+			contextLogger := logger.FromContext(ctx)
+			contextLogger.Error().Err(err).Send()
+			return err
+		}
+		if m.documentIDs == nil {
+			m.documentIDs = make(map[string]struct{})
+		}
+		m.documentIDs[metadata.ID] = struct{}{}
+	}
 	m.allFiles = append(m.allFiles, metadata)
 	return nil
+}
+
+// DuplicateDocumentIDs returns the number of documents rejected for ID reuse.
+func (m *MemoryStorage) DuplicateDocumentIDs() int {
+	memoryMu.Lock()
+	defer memoryMu.Unlock()
+	return m.duplicateDocumentIDs
 }
 
 // GetFiles returns a collection of files saved on MemoryStorage
 func (m *MemoryStorage) GetFiles(_ context.Context, _ string) (model.FileMetadatas, error) {
 	memoryMu.Lock()
-	defer memoryMu.Unlock()
-	return m.allFiles, nil
+	files := slices.Clone(m.allFiles)
+	memoryMu.Unlock()
+	files.SortByDocumentKey()
+	return files, nil
 }
 
 // SaveVulnerabilities adds a list of vulnerabilities to vulnerabilities collection

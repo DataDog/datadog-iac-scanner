@@ -32,7 +32,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/runner"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"github.com/google/uuid"
 	cli "github.com/urfave/cli/v3"
 )
 
@@ -305,6 +304,7 @@ func runFiles(
 		return nil, nil, err
 	}
 
+	allFiles.SortByDocumentKey()
 	vulns, err := inspector.Inspect(ctx, "test", allFiles, []string{platformStr})
 	if err != nil {
 		return nil, nil, err
@@ -431,9 +431,16 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 		// Computed once per file and shared across every document's
 		// FileMetadata below; docs.Content is identical for every document.
 		linesOriginalData := scanUtils.SplitLines(docs.Content)
-		for _, doc := range docs.Docs {
+		for i, doc := range docs.Docs {
+			key := model.DocumentKey{
+				Path:          filepath.ToSlash(rel),
+				Kind:          docs.Kind,
+				Platform:      p.DocumentPlatform(),
+				DocumentIndex: i,
+			}
 			files = append(files, &model.FileMetadata{
-				ID:                uuid.NewString(),
+				DocumentKey:       key,
+				ID:                key.ID(),
 				ScanID:            "test",
 				Document:          runner.PrepareScanDocument(ctx, doc, docs.Kind),
 				LineInfoDocument:  doc,

@@ -373,6 +373,148 @@ resource "aws_vpc" "this" {
 	require.Equal(t, legacySummary.Queries[0].Files[0].ModuleAttribution, v1Summary.Queries[0].Files[0].ModuleAttribution)
 }
 
+func TestScanKeepsSeparatePrefetchedCopiesOfSameModuleVersion(t *testing.T) {
+	scan := func(base string) map[string]string {
+		t.Helper()
+		root, modules := filepath.Join(base, "repo"), filepath.Join(base, "modules")
+		const sourceName = "example/vpc/aws//entry"
+		var entries []resolver.ManifestModule
+		for _, name := range []string{"first", "second"} {
+			caller := filepath.Join(root, name)
+			packageDir := filepath.Join(modules, name)
+			entry, sibling := filepath.Join(packageDir, "entry"), filepath.Join(packageDir, "sibling")
+			require.NoError(t, os.MkdirAll(caller, 0o755))
+			require.NoError(t, os.MkdirAll(entry, 0o755))
+			require.NoError(t, os.MkdirAll(sibling, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(caller, "main.tf"), []byte(`module "vpc" {
+  source = "`+sourceName+`"
+  version = "1.0.0"
+}
+`), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(entry, "main.tf"), []byte(`module "sibling" {
+  source = "../sibling"
+}
+`), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(sibling, "main.tf"),
+				[]byte(`resource "aws_vpc" "`+name+`" { cidr_block = "10.0.0.0/16" }`), 0o644))
+			digest, err := resolver.ComputePackageDigest(t.Context(), packageDir)
+			require.NoError(t, err)
+			entries = append(entries, resolver.ManifestModule{
+				Source: sourceName, SourceType: "registry", RequestedVersion: "1.0.0", ResolvedVersion: "1.0.0",
+				PackageRoot: name,
+				LocalPath:   name + "/entry", ContentDigest: digest, Status: resolver.ManifestStatusResolved,
+				Declarations: []resolver.ManifestDeclaration{{
+					Filename: name + "/main.tf", ModuleName: "vpc", LineStart: 1, LineEnd: 4,
+				}},
+			})
+		}
+		manifestPath := filepath.Join(base, "manifest.json")
+		writeJSONFile(t, manifestPath, map[string]any{
+			"schema_version": resolver.ManifestSchemaVersion, "root": "modules", "modules": entries,
+		})
+		params := remoteModuleScanParams(root)
+		params.TerraformModules = TerraformModulesOn
+		params.NetworkIsolation = true
+		params.RemoteModulesManifestPath = manifestPath
+		results := executeRemoteModuleScan(t, params)
+		require.Zero(t, results.DuplicateDocumentIDs)
+		require.Len(t, results.Results, 2)
+		ids := make(map[string]string)
+		for _, file := range results.Files {
+			rel, err := filepath.Rel(modules, filepath.FromSlash(file.FilePath))
+			if err == nil && filepath.IsLocal(rel) {
+				ids[filepath.ToSlash(rel)] = file.ID
+			}
+		}
+		require.Len(t, ids, 4)
+		for _, path := range []string{"entry/main.tf", "sibling/main.tf"} {
+			require.NotEmpty(t, ids["first/"+path])
+			require.NotEmpty(t, ids["second/"+path])
+			require.NotEqual(t, ids["first/"+path], ids["second/"+path])
+		}
+		return ids
+	}
+	require.Equal(t, scan(t.TempDir()), scan(t.TempDir()))
+}
+
+type uncachedModuleCopies map[string]resolver.Resolution
+
+func (copies uncachedModuleCopies) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	if resolution, ok := copies[mod.FileName]; ok {
+		return resolution, nil
+	}
+	return resolver.Resolution{}, &tfmodules.UnresolvedError{Reason: "unexpected module declaration"}
+}
+
+func TestModuleDocumentSourcesKeepUncachedCopiesDistinct(t *testing.T) {
+	documentIDs := func(root string) map[string]string {
+		t.Helper()
+		writeModule := func(dir, content string) string {
+			t.Helper()
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			path := filepath.Join(dir, "main.tf")
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+			return path
+		}
+		var discovery []string
+		copies := make(uncachedModuleCopies)
+		labels := make(map[string]string)
+		for _, workspace := range []string{"first", "second"} {
+			caller := writeModule(filepath.Join(root, workspace), `module "parent" {
+  source = "example/parent/aws//entry"
+  version = "1.0.0"
+}
+`)
+			discovery = append(discovery, caller)
+			for _, module := range []string{"parent", "child"} {
+				pkg := t.TempDir()
+				entry := filepath.Join(pkg, "entry")
+				copies[caller] = resolver.Resolution{LocalPath: entry, PackageRoot: pkg, ResolvedVersion: "1.0.0"}
+				content := `module "sibling" {
+  source = "../sibling"
+}
+`
+				if module == "parent" {
+					content += `module "child" {
+  source = "example/child/aws//entry"
+  version = "1.0.0"
+}
+`
+				}
+				caller = writeModule(entry, content)
+				labels[caller] = workspace + "/" + module + "/entry"
+				sibling := writeModule(filepath.Join(pkg, "sibling"), `resource "aws_vpc" "example" {}`)
+				labels[sibling] = workspace + "/" + module + "/sibling"
+			}
+		}
+
+		graph := modulegraph.Resolve(t.Context(), &modulegraph.Request{
+			RootPaths: []string{root}, DiscoveryPaths: discovery, Resolver: copies, MaxDepth: 4,
+		})
+		t.Cleanup(graph.Cleanup)
+		require.Empty(t, graph.Failures)
+		require.Len(t, graph.Modules, 4)
+		require.Len(t, graph.ScanPaths, len(labels))
+		paths := make(map[string]model.ExtractedPathObject, len(graph.SourceMappings))
+		for dir, source := range graph.SourceMappings {
+			paths[dir] = model.ExtractedPathObject{Path: source}
+		}
+		setModuleDocumentSources(paths, graph.Modules, root)
+		ids := make(map[string]string, len(labels))
+		seen := make(map[string]string, len(labels))
+		for _, path := range graph.ScanPaths {
+			label := labels[path]
+			require.NotEmpty(t, label)
+			key := model.DocumentKey{Path: model.DocumentPath(path, root, paths), Kind: model.KindTerraform, Platform: "terraform"}
+			id := key.ID()
+			require.NotContains(t, seen, id, "%s shares a document ID with %s", label, seen[id])
+			seen[id], ids[label] = label, id
+		}
+		return ids
+	}
+	require.Equal(t, documentIDs(t.TempDir()), documentIDs(t.TempDir()))
+}
+
 func TestRemoteModuleMaxDepthZeroDisablesTraversal(t *testing.T) {
 	root := t.TempDir()
 	_, manifestPath := writeRemoteModuleFixture(t, root)

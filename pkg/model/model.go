@@ -136,6 +136,11 @@ type ResourceLine struct {
 type ExtractedPathObject struct {
 	Path      string
 	LocalPath bool
+	// DocumentSource includes the selected ref or package location when
+	// the shorter reporting path can refer to more than one installation.
+	DocumentSource string
+	// DocumentPackageRoot extends that identity to sibling modules in the package.
+	DocumentPackageRoot string
 }
 
 // CommentsCommands list of commands on a file that will be parsed
@@ -308,6 +313,8 @@ func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
 
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
+	DocumentKey DocumentKey `json:"-"`
+
 	// SourceDocumentIndex selects the written document within a source snapshot.
 	// It is location metadata only and never participates in finding identity.
 	SourceDocumentIndex int `json:"-"`
@@ -447,6 +454,7 @@ func (f *FileMetadata) WithoutLineInfoView() *FileMetadata {
 		linesOrig = f.LinesOriginalData
 	}
 	return &FileMetadata{
+		DocumentKey:         f.DocumentKey,
 		ID:                  f.ID,
 		ScanID:              f.ScanID,
 		Document:            f.Document,
@@ -1105,6 +1113,12 @@ type ResolvedFiles struct {
 // ResolvedHelm keeps the information of a file/template resolved
 type ResolvedHelm struct {
 	FileName string
+	// ResolverRoot is the location of the chart that produced this split.
+	ResolverRoot string
+	// RenderedPath is Helm's source path within the render, including aliases.
+	RenderedPath string
+	// SplitPosition is the one-based position in the ordered manifest.
+	SplitPosition int
 	// Reported is where findings are reported when FileName is not a place in
 	// the repository: a dependency packaged as an archive renders from unpacked
 	// file names that exist only inside the archive.
