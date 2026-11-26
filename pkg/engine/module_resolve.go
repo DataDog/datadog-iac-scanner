@@ -50,8 +50,10 @@ type moduleResolutionResult struct {
 	unresolvedModuleDirs map[string]bool
 	extras               map[string][]extraCallerInfo
 	// moduleFiles holds, by file ID, the calls reaching each external module file.
-	moduleFiles   map[string]*moduleFileCalls
-	overrides     *terraformOverrides
+	moduleFiles map[string]*moduleFileCalls
+	overrides   *terraformOverrides
+	// fsys is the filesystem the evaluation read, with the virtual files of units.
+	fsys          vfs.FS
 	resourceCount int
 	rootCount     int
 	ok            bool
@@ -91,7 +93,7 @@ func (c *Inspector) instantiateLocalModules(
 	}
 	rootDirs := newRootIndex(res.rootDirs)
 	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
+		if !isTerraformSource(f) {
 			continue
 		}
 		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
@@ -113,7 +115,7 @@ func (c *Inspector) instantiateLocalModules(
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
 		// module blocks must remain so the corresponding Rego branches can still fire.
-		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, c.fsys)
+		stripModuleCalls(ctx, f.Document, f.FilePath, c.repoPath, res.calledDirs, res.successfulRoots, rootDirs, resolver, res.fsys)
 	}
 	res.overrides.apply(files, res.docs, res.syntheticFiles)
 	return res.docs, res.syntheticFiles, res.extras, res.moduleFiles
@@ -398,6 +400,7 @@ func evaluateRootModules(
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
 	lookup moduleProvenanceLookup,
+	sites *unitSites,
 	byAbsPath map[string]*model.FileMetadata,
 	seen map[docContentKey]string,
 	extras map[string][]extraCallerInfo,
@@ -419,7 +422,7 @@ func evaluateRootModules(
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
-		overrides: overrides,
+		overrides: overrides, sites: sites,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -467,6 +470,7 @@ type rootMerge struct {
 	moduleCalls          *moduleCallIndex
 	inventory            *terraformInventory
 	overrides            *terraformOverrides
+	sites                *unitSites
 }
 
 func (m *rootMerge) merge(
@@ -504,7 +508,7 @@ func (m *rootMerge) merge(
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
-	attributions := newModuleAttributionCache()
+	attributions := newModuleAttributionCache().withSites(m.sites)
 	docs, syn, count := instantiatedDocs(
 		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup,
 		attributions, occurrences, occurrenceDocuments)
@@ -704,8 +708,11 @@ func resolveModuleDocuments(
 	if len(dirsWithTf) == 0 {
 		return moduleResolutionResult{}
 	}
+	// Units are served as virtual files, so every read below goes through fsys.
+	fsys, sites := overlayTranslations(files, repoPath, fsys)
 	if inv != nil {
 		inv.files = byAbsPath
+		inv.sites = sites
 	}
 	// Evaluating a module tree is the expensive part, and it is pure waste when
 	// the repository declares nothing any rule can match by name. The block
@@ -757,7 +764,7 @@ func resolveModuleDocuments(
 	}
 
 	evaluateRootModules(
-		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
+		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup, sites,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv, overrides,
@@ -817,6 +824,7 @@ func resolveModuleDocuments(
 		extras:               extras,
 		moduleFiles:          moduleCalls.fileCalls(),
 		overrides:            overrides,
+		fsys:                 fsys,
 		resourceCount:        resourceCount,
 		rootCount:            len(roots),
 		ok:                   true,
@@ -1033,7 +1041,7 @@ func instantiatedDocs(
 		if !ok {
 			continue
 		}
-		cck := callChainKey(r, repoPath)
+		cck := callChainKey(r, repoPath, attributions.unitSites())
 		base := tfeval.ResourceBaseName(r.Name)
 		attrs := tfeval.AttributesToDocumentWithContext(ctx, r)
 		entry := instantiatedResource{
@@ -1215,15 +1223,15 @@ func newInstanceFileMetadata(
 }
 
 // callChainKey is repo-relative outer caller + "|" + module address (no line numbers, to keep fingerprints stable).
-func callChainKey(r *tfeval.ResolvedResource, repoPath string) string {
-	return moduleCallChainKey(r.CallChain, r.ModuleAddress, repoPath)
+func callChainKey(r *tfeval.ResolvedResource, repoPath string, sites *unitSites) string {
+	return moduleCallChainKey(r.CallChain, r.ModuleAddress, repoPath, sites)
 }
 
-func moduleCallChainKey(chain []tfeval.CallSite, moduleAddress, repoPath string) string {
+func moduleCallChainKey(chain []tfeval.CallSite, moduleAddress, repoPath string, sites *unitSites) string {
 	if len(chain) == 0 {
 		return moduleAddress
 	}
-	root := absPath(chain[0].CalledFrom, repoPath)
+	root := absPath(sites.callRange(&chain[0]).Filename, repoPath)
 	rel := root
 	if rp, err := filepath.Rel(repoPath, root); err == nil {
 		rel = rp
@@ -1418,7 +1426,7 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 	filesByDir = make(map[string][]*model.FileMetadata)
 	dirsWithTf = make(map[string]bool)
 	for _, f := range files {
-		if f == nil || !tfpath.IsConfig(f.FilePath) {
+		if !isTerraformSource(f) {
 			continue
 		}
 		abs := absPath(f.FilePath, repoPath)
