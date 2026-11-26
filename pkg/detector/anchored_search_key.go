@@ -56,23 +56,8 @@ func detectAnchoredLine(searchKey string, file *model.FileMetadata, resolvedFile
 // the key on dots, each group replaced by its {{index}} placeholder. The
 // split is bracket-aware, so dots inside groups like labels["foo.bar"] are
 // preserved (mirroring expandSearchKeyPath).
-func splitSearchKeySegments(searchKey string) (split []string, extracted [][]string) {
-	extracted = GetBracketValues(searchKey, nil, "")
-	sanitized := searchKey
-	for idx, str := range extracted {
-		sanitized = strings.ReplaceAll(sanitized, str[0], `{{`+strconv.Itoa(idx)+`}}`)
-	}
-	split = splitTopLevelDots(sanitized)
-
-	// Re-join $ref segments split by dot (e.g. "$ref=#/schemas/v1.0.Foo").
-	for index, seg := range split {
-		if strings.Contains(seg, "$ref") {
-			split[index] = strings.Join(split[index:], ".")
-			split = split[:index+1]
-			break
-		}
-	}
-	return split, extracted
+func splitSearchKeySegments(searchKey string) (segments []string, extracted [][]string) {
+	return splitLegacySearchKey(searchKey, splitTopLevelDots)
 }
 
 // LegacyPathComponents reads the structural components of a legacy result.
@@ -88,7 +73,7 @@ func LegacyPathComponents(searchKey string) (parts []string, anchored bool) {
 				segment, anchored = segment[:j], true
 			}
 		}
-		parts = append(parts, expandBracketSegmentResolving(segment, extracted)...)
+		parts = appendBracketSegment(parts, segment, extracted, unquoteWrappedBracketKey)
 	}
 	return parts, anchored
 }
@@ -152,21 +137,12 @@ func parseAnchoredPrefix(segments []string, extracted [][]string) (prefix anchor
 	return prefix, rest, true
 }
 
-// resolvePlaceholders substitutes every {{index}} placeholder in seg with the
-// inner value of the corresponding extracted group.
-func resolvePlaceholders(seg string, extracted [][]string) string {
-	for i, ext := range extracted {
-		seg = strings.ReplaceAll(seg, `{{`+strconv.Itoa(i)+`}}`, ext[1])
-	}
-	return seg
-}
-
 // expandKeyPath resolves placeholders in and expands the bracket groups of the
 // trailing path segments: "Statement[0].Principal" → ["Statement", "0", "Principal"].
 func expandKeyPath(segments []string, extracted [][]string) []string {
 	out := make([]string, 0, len(segments))
 	for _, seg := range segments {
-		out = append(out, expandBracketSegment(resolvePlaceholders(seg, extracted))...)
+		out = appendBracketSegment(out, resolvePlaceholders(seg, extracted), nil, unquoteWrappedBracketKey)
 	}
 	return out
 }
@@ -180,38 +156,6 @@ func hasNumericIndex(parts []string) bool {
 		}
 	}
 	return false
-}
-
-// expandBracketSegment expands the bracket groups of one path segment,
-// mirroring expandSearchKeyPath: "Statement[0]" → ["Statement", "0"].
-func expandBracketSegment(seg string) []string {
-	return expandBracketSegmentResolving(seg, nil)
-}
-
-func expandBracketSegmentResolving(seg string, extracted [][]string) []string {
-	var out []string
-	for seg != "" {
-		open := strings.Index(seg, "[")
-		if open < 0 {
-			out = append(out, resolvePlaceholders(seg, extracted))
-			break
-		}
-		if head := seg[:open]; head != "" {
-			out = append(out, resolvePlaceholders(head, extracted))
-		}
-		closeIdx := findMatchingBracket(seg, open)
-		if closeIdx < 0 {
-			break
-		}
-		inner := resolvePlaceholders(seg[open+1:closeIdx], extracted)
-		inner = strings.TrimSuffix(strings.TrimPrefix(inner, "{{"), "}}")
-		inner = unquoteKey(inner)
-		if inner != "" {
-			out = append(out, inner)
-		}
-		seg = seg[closeIdx+1:]
-	}
-	return out
 }
 
 // findAnchoredElement locates the array element selected by the anchors and
@@ -246,18 +190,6 @@ func findAnchoredElement(node interface{}, anchorKey, anchorValue, variant strin
 		}
 	}
 	return nil, false
-}
-
-// unquoteKey strips the quotes of a quoted bracket key: labels["foo.bar"]
-// addresses the map key foo.bar.
-func unquoteKey(inner string) string {
-	if len(inner) < 2 || inner[0] != '"' || inner[len(inner)-1] != '"' {
-		return inner
-	}
-	if unquoted, err := strconv.Unquote(inner); err == nil {
-		return unquoted
-	}
-	return inner[1 : len(inner)-1]
 }
 
 // anchorElementMatches reports whether an array element is the one selected by
