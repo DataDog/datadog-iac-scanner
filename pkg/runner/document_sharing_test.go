@@ -166,7 +166,7 @@ func TestSanitizeScanDocumentInPlaceRejectsCyclicAnchorTree(t *testing.T) {
 	cyclic["self"] = cyclic
 	_, err := sanitizeScanDocumentInPlace(cyclic, model.KindYAML)
 	require.ErrorIs(t, err, errCyclicDocument)
-	_, err = sanitizeSharedScanDocumentInPlace(cyclic, model.KindYAML)
+	_, err = newSharedScanDocumentSanitizer()(cyclic, model.KindYAML)
 	require.ErrorIs(t, err, errCyclicDocument)
 }
 
@@ -182,12 +182,28 @@ func TestSanitizeSharedScanDocumentInPlaceVisitsMapsOnce(t *testing.T) {
 		maps[i] = map[string]interface{}{"a": maps[i+1], "b": []interface{}{maps[i+1]}, "_dd_lines": "x"}
 	}
 
-	_, err := sanitizeSharedScanDocumentInPlace(maps[0], model.KindYAML)
+	_, err := newSharedScanDocumentSanitizer()(maps[0], model.KindYAML)
 
 	require.NoError(t, err)
 	for _, m := range maps {
 		require.NotContains(t, m, "_dd_lines")
 	}
+
+	// Shared slice DAG (2^40 paths through []interface{}) also sanitizes linearly.
+	slices := make([][]interface{}, depth+1)
+	slices[depth] = []interface{}{"leaf"}
+	for i := depth - 1; i >= 0; i-- {
+		slices[i] = []interface{}{slices[i+1], slices[i+1]}
+	}
+	_, err = newSharedScanDocumentSanitizer()(map[string]interface{}{"root": slices[0]}, model.KindYAML)
+	require.NoError(t, err)
+
+	// Direct map-valued list elements keep exact integer types (e.g. Terraform > 2^53).
+	const bigInt int64 = 9007199254740993
+	tfBody := map[string]interface{}{"ids": []interface{}{bigInt}}
+	got, err := sanitizeScanDocumentInPlace(tfBody, model.KindTerraform)
+	require.NoError(t, err)
+	require.Equal(t, bigInt, got["ids"].([]interface{})[0])
 }
 
 // TestShareableParse verifies the sharing gate: only parses that are pure
@@ -263,4 +279,17 @@ func TestCloneSharedParseDocumentRefreshesPath(t *testing.T) {
 	require.Equal(t, "second.yaml", clone["_path"])
 	require.Equal(t, "first.yaml", cached["_path"])
 	require.Equal(t, reflect.ValueOf(child).Pointer(), reflect.ValueOf(clone["metadata"]).Pointer())
+}
+
+func TestSanitizeSharedParserResults(t *testing.T) {
+	type parsed struct {
+		Commands []string `json:"commands"`
+	}
+	value := &parsed{Commands: []string{"echo", "test"}}
+	first := map[string]interface{}{"_parsed_script": value}
+	second := map[string]interface{}{"_parsed_script": value}
+	_, err := newSharedScanDocumentSanitizer()(map[string]interface{}{"a": first, "b": second}, model.KindYAML)
+	require.NoError(t, err)
+	require.Equal(t, reflect.ValueOf(first["_parsed_script"]).Pointer(), reflect.ValueOf(second["_parsed_script"]).Pointer())
+	require.Equal(t, map[string]interface{}{"commands": []interface{}{"echo", "test"}}, first["_parsed_script"])
 }

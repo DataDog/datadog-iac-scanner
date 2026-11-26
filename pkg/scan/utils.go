@@ -94,6 +94,7 @@ func (c *Client) prepareAndAnalyzePaths(ctx context.Context) (provider.Extracted
 	c.walkInventory = pathTypes.Inventory
 	c.chartRoots = pathTypes.ChartRoots
 	c.chartFilter = chartFilter
+	c.sourceExcluded = a.GitIgnored
 	c.contentCache = pathTypes.ContentCache
 
 	return allPaths, pathTypes.FilePlatform, nil

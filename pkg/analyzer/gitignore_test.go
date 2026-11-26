@@ -91,6 +91,8 @@ abc/**
 		t.Run(tt.path, func(t *testing.T) {
 			require.Equal(t, tt.want, ignoredDuringWalk(matcher, tt.path))
 			require.Equal(t, tt.want, ignoredDuringWalk(matcher, filepath.FromSlash(tt.path)))
+			a := &Analyzer{RepoPath: dir, gitIgnoreMatcher: matcher}
+			require.Equal(t, tt.want, a.GitIgnored(filepath.Join(dir, filepath.FromSlash(tt.path))))
 		})
 	}
 }

@@ -6,13 +6,18 @@
 
 package model
 
-// Why a file the scan found gave no documents to scan, as the parse log
-// classes it. Exporters such as the inventory report these values.
+// Parse diagnostics classify unavailable coverage. Some retain usable documents,
+// such as the unconditional branch of an undecidable include. Exporters and
+// completeness accounting use these values.
 const (
-	ParseFailureParseError       = "parse_error"
-	ParseFailureHelmRenderFailed = "helm_render_failed"
-	ParseFailureTestFixture      = "test_fixture"
-	ParseFailureTemplateSyntax   = "template_syntax"
+	ParseFailureParseError        = "parse_error"
+	ParseFailureResourceLimit     = "resource_limit"
+	ParseFailureInvalidInclude    = "invalid_include"
+	ParseFailureInvalidPipeline   = "invalid_pipeline"
+	ParseFailureUnresolvedInclude = "unresolved_include"
+	ParseFailureHelmRenderFailed  = "helm_render_failed"
+	ParseFailureTestFixture       = "test_fixture"
+	ParseFailureTemplateSyntax    = "template_syntax"
 	// ParseFailureTooLarge marks a file skipped for its size.
 	ParseFailureTooLarge = "too_large"
 	// ParseFailureUnknown marks a file that gave no documents for no

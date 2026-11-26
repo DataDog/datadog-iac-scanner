@@ -1464,3 +1464,383 @@ func TestAnalyze_ReferenceFilesystemIsolation(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyze_GitLabCI_AndLocalIncludeEscalation(t *testing.T) {
+	rule := datadog.Rule{
+		ID:               "test-gitlab-curl-pipe",
+		Name:             "test-gitlab-curl-pipe",
+		ShortDescription: "Detects curl pipeline in GitLab CI script",
+		Platform:         "CICD",
+		Severity:         "HIGH",
+		Category:         "Supply-Chain",
+		IsPublished:      true,
+		RegoQuery: []byte(`package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	doc := input.document[i]
+	job := doc.gitlab[job_name]
+	cmd := job._parsed_script.commands[_]
+	cmd.type == "pipeline"
+	cmd.pipeline[0].command == "curl"
+	result := {
+		"documentId": doc.id,
+		"resourceType": "gitlab_ci_job",
+		"resourceName": job_name,
+		"searchKey": sprintf("gitlab.%s.script", [job_name]),
+	}
+}`),
+	}
+	libs := []datadog.Library{
+		{ID: "common", RegoCode: "package generic.common\nimport rego.v1\n"},
+		{ID: "cicd", RegoCode: "package generic.cicd\nimport rego.v1\n"},
+	}
+
+	gitlabCI := `include:
+  - local: .gitlab/ci/templates.yml
+
+install:
+  script:
+    - !reference [.install, script]
+dispatch:
+  trigger:
+    project: example/downstream
+    inputs:
+      items: [[one, two]]
+`
+	included := `.install:
+  script:
+    - curl -fsSL https://example.invalid/install.sh | sh
+`
+
+	// First push only .gitlab-ci.yml: the missing local include is escalated.
+	req1 := analyzeRequest{
+		Files:     []analyzeFile{{Path: ".gitlab-ci.yml", Content: gitlabCI}},
+		Ruleset:   ruleset(rule),
+		Libraries: libs,
+		Platform:  []string{"cicd"},
+	}
+	body1, err := json.Marshal(req1)
+	require.NoError(t, err)
+	w1 := httptest.NewRecorder()
+	newTestServer(t).http.Handler.ServeHTTP(w1, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body1)))
+	require.Equal(t, http.StatusOK, w1.Code, w1.Body.String())
+	var out1 analyzeResponse
+	require.NoError(t, json.Unmarshal(w1.Body.Bytes(), &out1))
+	require.Empty(t, out1.FailedQueries)
+	require.Empty(t, out1.Findings)
+	require.Contains(t, out1.MissingFiles, ".gitlab/ci/templates.yml")
+
+	// Second push includes the local template: !reference resolves and the rule fires.
+	req2 := analyzeRequest{
+		Files: []analyzeFile{
+			{Path: ".gitlab-ci.yml", Content: gitlabCI},
+			{Path: ".gitlab/ci/templates.yml", Content: included},
+		},
+		Ruleset:   ruleset(rule),
+		Libraries: libs,
+		Platform:  []string{"cicd"},
+	}
+	body2, err := json.Marshal(req2)
+	require.NoError(t, err)
+	w2 := httptest.NewRecorder()
+	newTestServer(t).http.Handler.ServeHTTP(w2, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body2)))
+	require.Equal(t, http.StatusOK, w2.Code, w2.Body.String())
+	var out2 analyzeResponse
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &out2))
+	require.Empty(t, out2.FailedQueries)
+	require.Empty(t, out2.MissingFiles)
+	// Hidden templates contribute to the concrete job; they are not scanned a
+	// second time as independent pipelines just because the IDE pushed them.
+	require.Len(t, out2.Findings, 1)
+	require.Equal(t, "install", out2.Findings[0].ResourceName)
+	require.Equal(t, ".gitlab-ci.yml", out2.Findings[0].FileName)
+	require.Equal(t, 6, out2.Findings[0].Line)
+	for _, tc := range []struct {
+		name, job, expression string
+		findings              int
+	}{
+		{"plain boolean", "script: echo ok, allow_failure: yes", "doc.gitlab.install.allow_failure == true", 1},
+		{"quoted boolean", "script: echo ok, allow_failure: 'yes'", "doc.gitlab.install.allow_failure == true", 0},
+		{"status mirror", "needs: {pipeline: group/project}", `doc.gitlab.install.needs.pipeline == "group/project"`, 1},
+	} {
+		for _, included := range []bool{false, true} {
+			t.Run(fmt.Sprintf("rule contract/%s/included=%t", tc.name, included), func(t *testing.T) {
+				request := req2
+				body := "install: {" + tc.job + "}\n"
+				request.Files = []analyzeFile{{Path: ".gitlab-ci.yml", Content: body}}
+				if included {
+					request.Files = []analyzeFile{{Path: ".gitlab-ci.yml", Content: "include: [ci/jobs.yml]\n"}, {Path: "ci/jobs.yml", Content: body}}
+				}
+				contractRule := rule
+				contractRule.RegoQuery = []byte(`package datadog
+DatadogPolicy contains {"documentId":doc.id,"searchKey":"gitlab.install"} if {some doc in input.document;` + tc.expression + `}`)
+				request.Ruleset = ruleset(contractRule)
+				bodyBytes, err := json.Marshal(request)
+				require.NoError(t, err)
+				response := httptest.NewRecorder()
+				newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(bodyBytes)))
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+				var got analyzeResponse
+				require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+				require.False(t, got.Incomplete)
+				require.Empty(t, got.FailedQueries)
+				require.Len(t, got.Findings, tc.findings)
+			})
+		}
+	}
+	for _, root := range []string{"/repo", "workspace"} {
+		t.Run("repository root/"+root, func(t *testing.T) {
+			request := req2
+			request.RepoRoot = root
+			request.Files = []analyzeFile{
+				{Path: filepath.Join(root, "pipelines/check.gitlab-ci.yml"), Content: strings.ReplaceAll(gitlabCI, ".gitlab/ci/templates.yml", "/shared.yml")},
+				{Path: filepath.Join(root, "shared.yml"), Content: included},
+			}
+			body, err := json.Marshal(request)
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var got analyzeResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+			require.False(t, got.Incomplete)
+			require.Empty(t, got.MissingFiles)
+			require.Empty(t, got.FailedQueries)
+			require.Len(t, got.Findings, 1)
+			require.Equal(t, "install", got.Findings[0].ResourceName)
+			require.Equal(t, filepath.ToSlash(filepath.Join(root, "pipelines/check.gitlab-ci.yml")), got.Findings[0].FileName)
+		})
+	}
+	// A partially supplied include directory still needs escalation when its
+	// supplied entries do not match the requested wildcard.
+	for _, name := range []string{".gitlab-ci.YML", ".gitlab/ci/STANDALONE.YAML", "pipelines/check.GitLab-CI.YmL"} {
+		t.Run("standalone routing/"+name, func(t *testing.T) {
+			request := req2
+			request.Files = []analyzeFile{{Path: name, Content: "install: {script: ['curl https://example.invalid/install.sh | sh']}\n"}}
+			body, err := json.Marshal(request)
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var got analyzeResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+			require.False(t, got.Incomplete)
+			require.Empty(t, got.MissingFiles)
+			require.Empty(t, got.FailedQueries)
+			require.Len(t, got.Findings, 1)
+		})
+	}
+	for _, tc := range []struct {
+		name, rules          string
+		files                []analyzeFile
+		complete, incomplete bool
+		findings             int
+	}{
+		{"known absent", "[{exists: [optional.yml]}]", nil, true, false, 1},
+		{"unknown absent", "[{exists: [optional.yml]}]", nil, false, true, 1},
+		{"known absent glob", "[{exists: ['**/*.md']}]", nil, true, false, 1},
+		{"paths mapping", "[{exists: {paths: [optional.yml]}}]", nil, true, false, 1},
+		{"false conjunction", "[{if: '$UNKNOWN', exists: [optional.yml]}]", nil, true, false, 1},
+		{"later match", "[{exists: [absent.md]}, {when: always}]", nil, true, true, 0},
+		{"matched required file", "[{exists: [marker.md]}]", []analyzeFile{{Path: "marker.md", Content: "present"}}, true, true, 0},
+		{"matched glob", "[{exists: ['**/*.md']}]", []analyzeFile{{Path: "nested/marker.md", Content: "present"}}, true, true, 0},
+		{"matched brace glob", "[{exists: ['ci/**/*.{rb,py}']}]", []analyzeFile{{Path: "ci/nested/build.rb", Content: "present"}}, true, true, 0},
+		{"terminal stars are not recursive", "[{exists: ['ci/**']}]", []analyzeFile{{Path: "ci/nested/build.rb", Content: "present"}}, true, false, 1},
+		{"partial brace glob", "[{exists: ['ci/**/*.{rb,py}']}]", []analyzeFile{{Path: "ci/nested/build.txt", Content: "present"}}, false, true, 1},
+		{"matched recursive glob", "[{exists: ['**']}]", nil, true, true, 0},
+		{"matched recursive directory", "[{exists: ['**/']}]", []analyzeFile{{Path: "nested/marker.md", Content: "present"}}, true, true, 0},
+		{"matched directory", "[{exists: ['nested/']}]", []analyzeFile{{Path: "nested/marker.md", Content: "present"}}, true, true, 0},
+		{"unknown positive alternatives", "[{exists: [unknown.md]}, {when: always}]", []analyzeFile{{Path: "optional.yml", Content: "helper: {script: echo ok}"}}, false, false, 1},
+		{"unknown negative alternatives", "[{exists: [unknown.md], when: never}, {when: never}]", nil, false, false, 1},
+		{"unknown condition absent complete", "[{if: '$UNKNOWN'}]", nil, true, true, 1},
+		{"unknown condition absent partial", "[{if: '$UNKNOWN'}]", nil, false, true, 1},
+		{"unknown condition override", "[{if: '$UNKNOWN'}]", []analyzeFile{{Path: "optional.yml", Content: "install: {script: echo safe}"}}, true, true, 1},
+	} {
+		t.Run("conditional include/"+tc.name, func(t *testing.T) {
+			request := req2
+			request.Files = append([]analyzeFile{{Path: ".gitlab-ci.yml", Content: "include: [{local: optional.yml, rules: " + tc.rules + "}]\ninstall: {script: ['curl https://example.invalid/install.sh | sh']}\n"}}, tc.files...)
+			if tc.complete {
+				request.CompleteDirectories = []string{"."}
+			}
+			body, err := json.Marshal(request)
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var got analyzeResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+			require.Equal(t, tc.incomplete, got.Incomplete)
+			require.Len(t, got.Findings, tc.findings)
+			if !tc.incomplete {
+				require.Empty(t, got.MissingFiles)
+			}
+		})
+	}
+	for _, kind := range []string{"scalar alias", "root default", "included default"} {
+		for _, protocol := range []string{"legacy", "source"} {
+			for _, ignored := range []bool{false, true} {
+				t.Run(fmt.Sprintf("effective script/%s/%s/ignore=%t", kind, protocol, ignored), func(t *testing.T) {
+					comment := "# ordinary comment"
+					if ignored {
+						comment = "# dd-iac-scan ignore-line"
+					}
+					body := "default:\n  before_script:\n    " + comment + "\n    - echo default\n"
+					key, path, expression, line := "gitlab.install.before_script.0", `["gitlab","install","before_script",0]`, "doc.gitlab.install.before_script[0]", 4
+					file := ".gitlab-ci.yml"
+					request := req2
+					if kind == "scalar alias" {
+						body = ".commands: &commands echo alias\ninstall:\n  script:\n    " + comment + "\n    *commands\n"
+						key, path, expression, line = "gitlab.install.script", `["gitlab","install","script"]`, "doc.gitlab.install.script", 5
+						request.Files = []analyzeFile{{Path: file, Content: body}}
+					} else if kind == "included default" {
+						file = "ci/defaults.yml"
+						request.Files = []analyzeFile{{Path: ".gitlab-ci.yml", Content: "# dd-iac-scan ignore\ninclude: [ci/defaults.yml]\ninstall: {script: echo own}\n"}, {Path: file, Content: body}}
+					} else {
+						request.Files = []analyzeFile{{Path: file, Content: body + "install: {script: echo own}\n"}}
+					}
+					result := fmt.Sprintf(`{"documentId":doc.id,"searchKey":%q}`, key)
+					if protocol == "source" {
+						result = fmt.Sprintf(`{"_dd_id":doc.id,"path":%s}`, path)
+					}
+					scriptRule := rule
+					scriptRule.RegoQuery = []byte(fmt.Sprintf("package datadog\nDatadogPolicy contains %s if {some doc in input.document; %s}\n", result, expression))
+					request.Ruleset = ruleset(scriptRule)
+					bodyBytes, err := json.Marshal(request)
+					require.NoError(t, err)
+					response := httptest.NewRecorder()
+					newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(bodyBytes)))
+					require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+					var got analyzeResponse
+					require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+					require.False(t, got.Incomplete)
+					require.Len(t, got.Findings, 1)
+					require.Equal(t, ignored, got.Findings[0].IsSuppressed)
+					require.Equal(t, file, filepath.ToSlash(got.Findings[0].FileName))
+					require.Equal(t, line, got.Findings[0].Line)
+				})
+			}
+		}
+	}
+	t.Run("exact legacy run step", func(t *testing.T) {
+		request := req2
+		request.Files = []analyzeFile{{Path: ".gitlab-ci.yml", Content: "build:\n  run:\n    - name: test-setup\n      # dd-iac-scan ignore-line\n      script: echo prefix\n    - name: test\n      script: echo exact\n"}}
+		exact := rule
+		exact.RegoQuery = []byte(`package datadog
+DatadogPolicy contains {"documentId":doc.id,"searchKey":"gitlab.build.run.name={{test}}.script"} if {some doc in input.document;doc.gitlab.build.run[1].script}`)
+		request.Ruleset = ruleset(exact)
+		body, err := json.Marshal(request)
+		require.NoError(t, err)
+		response := httptest.NewRecorder()
+		newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		var got analyzeResponse
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+		require.Len(t, got.Findings, 1)
+		require.Equal(t, 7, got.Findings[0].Line)
+		require.False(t, got.Findings[0].IsSuppressed)
+	})
+	for _, tc := range []struct {
+		name       string
+		files      []analyzeFile
+		missing    string
+		incomplete bool
+		findings   int
+	}{
+		{"partial wildcard directory", []analyzeFile{{Path: ".gitlab-ci.yml", Content: strings.ReplaceAll(gitlabCI, ".gitlab/ci/templates.yml", ".gitlab/ci/*.yml")}, {Path: ".gitlab/ci/README.md", Content: "read me"}}, ".gitlab/ci", true, 0},
+		{"partial wildcard with match", []analyzeFile{{Path: ".gitlab-ci.yml", Content: strings.ReplaceAll(gitlabCI, ".gitlab/ci/templates.yml", ".gitlab/ci/*.yml")}, {Path: ".gitlab/ci/templates.yml", Content: included}}, ".gitlab/ci", true, 1},
+		{"complete wildcard directory", []analyzeFile{{Path: ".gitlab-ci.yml", Content: strings.ReplaceAll(gitlabCI, ".gitlab/ci/templates.yml", ".gitlab/ci/*.yml")}, {Path: ".gitlab/ci/README.md", Content: "read me"}, {Path: ".gitlab/ci/templates.yml", Content: included}}, "", false, 1},
+		{"invalid include", []analyzeFile{{Path: ".gitlab-ci.yml", Content: gitlabCI}, {Path: ".gitlab/ci/templates.yml", Content: ".install: [unterminated"}}, "", true, 0},
+		{"invalid entrypoint", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "install: [unterminated"}}, "", true, 0},
+		{"later invalid entrypoint document", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "install: {script: ['curl https://example.invalid/install.sh | sh']}\n---\ninstall: [unterminated"}}, "", true, 0},
+		{"nonmapping entrypoint", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "- invalid"}}, "", true, 0},
+		{"explicit null entrypoint", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "null"}}, "", true, 0},
+		{"explicit empty entrypoint", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "\"\""}}, "", true, 0},
+		{"later explicit null", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "install: {script: ['curl https://example.invalid/install.sh | sh']}\n---\nnull"}}, "", true, 0},
+		{"later explicit tilde", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "install: {script: ['curl https://example.invalid/install.sh | sh']}\n---\n~"}}, "", true, 0},
+		{"later explicit empty string", []analyzeFile{{Path: ".gitlab-ci.yml", Content: "install: {script: ['curl https://example.invalid/install.sh | sh']}\n---\n\"\""}}, "", true, 0},
+		{"sequence include", []analyzeFile{{Path: ".gitlab-ci.yml", Content: gitlabCI}, {Path: ".gitlab/ci/templates.yml", Content: "- script: echo invalid"}}, "", true, 0},
+		{"scalar include", []analyzeFile{{Path: ".gitlab-ci.yml", Content: gitlabCI}, {Path: ".gitlab/ci/templates.yml", Content: "invalid configuration"}}, "", true, 0},
+		{"known absent include", []analyzeFile{{Path: ".gitlab-ci.yml", Content: gitlabCI}}, "", true, 0},
+		{"invalid unclassified include", []analyzeFile{{Path: ".gitlab-ci.yml", Content: strings.ReplaceAll(gitlabCI, ".gitlab/ci/templates.yml", "templates.yml")}, {Path: "templates.yml", Content: ".install: [unterminated"}}, "", true, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := req2
+			request.Files = tc.files
+			if tc.name == "complete wildcard directory" || tc.name == "known absent include" {
+				request.CompleteDirectories = []string{".gitlab/ci"}
+			}
+			body, err := json.Marshal(request)
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var got analyzeResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+			require.Equal(t, tc.incomplete, got.Incomplete)
+			require.Len(t, got.Findings, tc.findings)
+			if tc.missing != "" {
+				require.Contains(t, got.MissingFiles, tc.missing)
+			} else {
+				require.Empty(t, got.MissingFiles)
+			}
+		})
+	}
+	// Typed traversal is validated after the server releases native maps too.
+	for _, tc := range []struct {
+		name, path string
+		valid      bool
+	}{
+		{"element", `["install","script",0]`, true},
+		{"nested array element", `["dispatch","trigger","inputs","items",0,1]`, true},
+		{"missing property", `["install","missing"]`, true},
+		{"out of bounds", `["install","script",999]`, false},
+		{"object index", `["install",0]`, false},
+		{"array property", `["install","script","0"]`, false},
+		{"scalar intermediate", `["install","script",0,"value"]`, false},
+		{"missing intermediate", `["install","missing","value"]`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			typedRule := rule
+			path := `["gitlab",` + strings.TrimPrefix(tc.path, "[")
+			typedRule.RegoQuery = []byte(fmt.Sprintf("package datadog\nDatadogPolicy contains {\"_dd_id\":doc.id,\"path\":%s} if { some doc in input.document; doc.gitlab.install.script }", path))
+			request := req2
+			request.Ruleset = ruleset(typedRule)
+			body, err := json.Marshal(request)
+			require.NoError(t, err)
+			response := httptest.NewRecorder()
+			newTestServer(t).http.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body)))
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var got analyzeResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &got))
+			if tc.valid {
+				require.Len(t, got.Findings, 1)
+				require.Empty(t, got.FailedQueries)
+			} else {
+				require.Empty(t, got.Findings)
+				require.NotEmpty(t, got.FailedQueries)
+			}
+		})
+	}
+
+	// Resource exhaustion must reach the IDE as incomplete, never an apparently
+	// clean successful analysis with empty commands.
+	var bomb strings.Builder
+	bomb.WriteString("s0: &s0 [echo a, echo b]\n")
+	for i := 1; i <= 30; i++ {
+		fmt.Fprintf(&bomb, "s%d: &s%d [*s%d, *s%d]\n", i, i, i-1, i-1)
+	}
+	bomb.WriteString("job:\n  _parsed_script: spoofed\n  script: *s30\n")
+	req2.Files = []analyzeFile{{Path: ".gitlab-ci.yml", Content: bomb.String()}}
+	body3, err := json.Marshal(req2)
+	require.NoError(t, err)
+	w3 := httptest.NewRecorder()
+	newTestServer(t).http.Handler.ServeHTTP(w3, httptest.NewRequest(http.MethodPost, "/ide/v1/iac/analyze", bytes.NewReader(body3)))
+	require.Equal(t, http.StatusOK, w3.Code, w3.Body.String())
+	var out3 analyzeResponse
+	require.NoError(t, json.Unmarshal(w3.Body.Bytes(), &out3))
+	require.True(t, out3.Incomplete)
+	require.Empty(t, out3.Findings)
+
+}

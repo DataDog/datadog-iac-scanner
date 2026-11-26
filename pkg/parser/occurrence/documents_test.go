@@ -308,6 +308,115 @@ func TestAnsibleTaskPaths(t *testing.T) {
 		{Key: "tasks"}, {Index: 1, IsIndex: true}, {Key: "block"}, {Index: 0, IsIndex: true}}, rows[1].StructuralPath)
 }
 
+func TestGitLabCIJobOccurrences(t *testing.T) {
+	const source = `spec:
+  inputs:
+    env:
+      default: prod
+---
+stages:
+  - build
+  - deploy
+
+default:
+  image: alpine:3.19
+
+.template:
+  script:
+    - echo hidden
+
+build:
+  stage: build
+  script:
+    - make
+
+pages:
+  stage: deploy
+  script:
+    - mkdir public
+`
+	specDoc := model.Document{"spec": map[string]interface{}{"inputs": map[string]interface{}{"env": map[string]interface{}{"default": "prod"}}}}
+	pipeDoc := model.Document{
+		"stages":  []interface{}{"build", "deploy"},
+		"default": map[string]interface{}{"image": "alpine:3.19"},
+		".template": map[string]interface{}{
+			"script": []interface{}{"echo hidden"},
+		},
+		"build": map[string]interface{}{
+			"stage":  "build",
+			"script": []interface{}{"make"},
+		},
+		"pages": map[string]interface{}{
+			"stage":  "deploy",
+			"script": []interface{}{"mkdir public"},
+		},
+	}
+	files := model.FileMetadatas{
+		{ID: "spec", FilePath: ".gitlab-ci.yml", OriginalData: source, Document: specDoc, Kind: model.KindYAML, Platform: platforms.CICD},
+		{ID: "pipe", FilePath: ".gitlab-ci.yml", OriginalData: source, Document: pipeDoc, Kind: model.KindYAML, Platform: platforms.CICD},
+	}
+
+	rows := collectDocumentResources(files)
+	require.Len(t, rows, 2)
+	require.Equal(t, "build", rows[0].ResourcePath)
+	require.Equal(t, "gitlab_ci_job", rows[0].ResourceType)
+	require.Equal(t, "build", rows[0].ResourceName)
+	require.Equal(t, 17, rows[0].Source.Start.Line)
+	require.Equal(t, 20, rows[0].Source.End.Line)
+
+	require.Equal(t, "pages", rows[1].ResourcePath)
+	require.Equal(t, "gitlab_ci_job", rows[1].ResourceType)
+	require.Equal(t, 22, rows[1].Source.Start.Line)
+	require.Equal(t, 25, rows[1].Source.End.Line)
+}
+
+func TestGitLabCIInterpolatedAndKeywordJobOccurrences(t *testing.T) {
+	const source = `spec:
+  inputs:
+    env:
+      default: prod
+---
+build-$[[ inputs.env ]]:
+  stage: build
+  script:
+    - make
+
+release:
+  stage: deploy
+  script:
+    - ./release.sh
+`
+	specDoc := model.Document{"spec": map[string]interface{}{"inputs": map[string]interface{}{"env": map[string]interface{}{"default": "prod"}}}}
+	pipeDoc := model.Document{
+		"_dd_lines": map[string]*model.LineObject{
+			"_dd_build-prod": {Line: 6},
+			"_dd_release":    {Line: 11},
+		},
+		"build-prod": map[string]interface{}{
+			"stage":  "build",
+			"script": []interface{}{"make"},
+		},
+		"release": map[string]interface{}{
+			"stage":  "deploy",
+			"script": []interface{}{"./release.sh"},
+		},
+	}
+	files := model.FileMetadatas{
+		{ID: "spec", FilePath: ".gitlab-ci.yml", OriginalData: source, Document: specDoc, Kind: model.KindYAML, Platform: platforms.CICD},
+		{ID: "pipe", FilePath: ".gitlab-ci.yml", OriginalData: source, Document: pipeDoc, Kind: model.KindYAML, Platform: platforms.CICD},
+	}
+
+	rows := collectDocumentResources(files)
+	require.Len(t, rows, 2)
+	require.Equal(t, "build-prod", rows[0].ResourcePath)
+	require.Equal(t, 6, rows[0].Source.Start.Line)
+	require.Equal(t, 9, rows[0].Source.End.Line)
+
+	require.Equal(t, "release", rows[1].ResourcePath)
+	require.Equal(t, 11, rows[1].Source.Start.Line)
+	require.Equal(t, 14, rows[1].Source.End.Line)
+}
+
 func lazyCloudFormationFile(t *testing.T, source string) *model.FileMetadata {
 	t.Helper()
 	ctx := context.Background()
@@ -332,4 +441,20 @@ func collectDocumentResources(files model.FileMetadatas) []model.ResourceOccurre
 	var rows []model.ResourceOccurrence
 	Documents(context.Background(), files, func(_ *model.FileMetadata, r *model.ResourceOccurrence) { rows = append(rows, *r) })
 	return rows
+}
+
+func TestCICDInventoryUsesParserDialect(t *testing.T) {
+	for _, path := range []string{".github/workflows/ci.yml", ".github/workflows/check.gitlab-ci.yml", ".gitlab/ci/workflow.yml"} {
+		source := "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: [{run: echo ok}]\n"
+		file := &model.FileMetadata{ID: path, FilePath: path, OriginalData: source, Kind: model.KindYAML, Platform: platforms.CICD, Document: model.Document{"on": "push", "jobs": map[string]interface{}{"build": map[string]interface{}{"runs-on": "ubuntu-latest", "steps": []interface{}{map[string]interface{}{"run": "echo ok"}}}}}}
+		rows := collectDocumentResources(model.FileMetadatas{file})
+		require.Len(t, rows, 1, path)
+		require.Equal(t, "github_actions_job", rows[0].ResourceType, path)
+	}
+	file := &model.FileMetadata{ID: "included", FilePath: "ci/jobs.yml", OriginalData: "on: {script: [echo on]}\njobs: {script: [echo jobs]}\n", Kind: model.KindYAML, Platform: platforms.CICD, DocumentDialect: "gitlab", Document: model.Document{"on": map[string]interface{}{"script": []interface{}{"echo on"}}, "jobs": map[string]interface{}{"script": []interface{}{"echo jobs"}}}}
+	rows := collectDocumentResources(model.FileMetadatas{file})
+	require.Len(t, rows, 2)
+	for _, row := range rows {
+		require.Equal(t, "gitlab_ci_job", row.ResourceType)
+	}
 }

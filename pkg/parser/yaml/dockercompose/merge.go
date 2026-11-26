@@ -8,6 +8,7 @@ package dockercompose
 import (
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/yamlnode"
 	"gopkg.in/yaml.v3"
 )
 
@@ -81,12 +82,12 @@ func mergeMappings(base, override *yaml.Node, crossFile bool, policy mergePolicy
 	for i := 0; i+1 < len(override.Content); i += 2 {
 		keyNode, valNode := override.Content[i], override.Content[i+1]
 		key := keyNode.Value
-		baseIdx := mappingKeyIndex(base, key)
+		baseIdx := yamlnode.MappingKeyIndex(base, key)
 		if baseIdx < 0 {
 			// Key only in the override: append as-is with its own position.
 			if crossFile {
-				rewriteLines(keyNode, base.Line)
-				rewriteLines(valNode, base.Line)
+				yamlnode.RewriteLines(keyNode, base.Line)
+				yamlnode.RewriteLines(valNode, base.Line)
 			}
 			base.Content = append(base.Content, keyNode, valNode)
 			continue
@@ -147,7 +148,7 @@ func unionSequences(base, override *yaml.Node, crossFile, dedup bool) {
 	if !dedup {
 		for _, e := range override.Content {
 			if crossFile {
-				rewriteLines(e, base.Line)
+				yamlnode.RewriteLines(e, base.Line)
 			}
 			base.Content = append(base.Content, e)
 		}
@@ -171,7 +172,7 @@ func unionSequences(base, override *yaml.Node, crossFile, dedup bool) {
 		} else {
 			dup := false
 			for _, b := range nonScalars {
-				if nodeEqual(b, e) {
+				if yamlnode.Equal(b, e) {
 					dup = true
 					break
 				}
@@ -182,7 +183,7 @@ func unionSequences(base, override *yaml.Node, crossFile, dedup bool) {
 			nonScalars = append(nonScalars, e)
 		}
 		if crossFile {
-			rewriteLines(e, base.Line)
+			yamlnode.RewriteLines(e, base.Line)
 		}
 		base.Content = append(base.Content, e)
 	}
@@ -221,104 +222,4 @@ func envEntryKey(entry string) string {
 		return entry[:eq]
 	}
 	return entry
-}
-
-// nodeEqual compares kind, tag, value and children in order; positions and
-// comments are ignored on purpose.
-func nodeEqual(a, b *yaml.Node) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	if a.Kind != b.Kind || a.Tag != b.Tag || a.Value != b.Value {
-		return false
-	}
-	if len(a.Content) != len(b.Content) {
-		return false
-	}
-	for i := range a.Content {
-		if !nodeEqual(a.Content[i], b.Content[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-// mappingKeyIndex returns the index of the key node for key in a mapping
-// node's content slice, or -1 when absent.
-func mappingKeyIndex(m *yaml.Node, key string) int {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return -1
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			return i
-		}
-	}
-	return -1
-}
-
-// mappingValue returns the value node for key, or nil.
-func mappingValue(m *yaml.Node, key string) *yaml.Node {
-	if idx := mappingKeyIndex(m, key); idx >= 0 {
-		return m.Content[idx+1]
-	}
-	return nil
-}
-
-// removeMappingKey deletes key (and its value) from a mapping node.
-func removeMappingKey(m *yaml.Node, key string) {
-	idx := mappingKeyIndex(m, key)
-	if idx < 0 {
-		return
-	}
-	m.Content = append(m.Content[:idx], m.Content[idx+2:]...)
-}
-
-// copyNode deep-copies n with positions intact, so shared cached trees are
-// never mutated by merging. Alias edges are followed, not preserved: the
-// copy gets a copy of the alias target, never an alias into the original.
-// Completed copies are memoized within each call, so a shared anchor block is
-// copied once and reused: without the memo, stacked anchor reuse (a block
-// referenced k times per level over d levels) costs k^d copies — exponential
-// in practice (a 6-references-per-level, 9-level file was measured at 19 GB
-// of copies) — instead of linear. Cyclic back-edges are dropped (the caller
-// breaks cycles first; this is a defensive guard).
-func copyNode(n *yaml.Node) *yaml.Node {
-	return copyNodeGuarded(n, map[*yaml.Node]struct{}{}, map[*yaml.Node]*yaml.Node{})
-}
-
-func copyNodeGuarded(n *yaml.Node, inProgress map[*yaml.Node]struct{}, memo map[*yaml.Node]*yaml.Node) *yaml.Node {
-	if n == nil {
-		return nil
-	}
-	// The gray check must precede the memo lookup: memo[n] is set while n is
-	// still being copied, and a back-edge must be dropped rather than handed
-	// the incomplete copy.
-	if _, gray := inProgress[n]; gray {
-		return nil
-	}
-	if out, ok := memo[n]; ok {
-		return out
-	}
-	inProgress[n] = struct{}{}
-	out := &yaml.Node{
-		Kind:        n.Kind,
-		Style:       n.Style,
-		Tag:         n.Tag,
-		Value:       n.Value,
-		Anchor:      n.Anchor,
-		Alias:       copyNodeGuarded(n.Alias, inProgress, memo),
-		Content:     make([]*yaml.Node, len(n.Content)),
-		HeadComment: n.HeadComment,
-		LineComment: n.LineComment,
-		FootComment: n.FootComment,
-		Line:        n.Line,
-		Column:      n.Column,
-	}
-	memo[n] = out
-	for i, child := range n.Content {
-		out.Content[i] = copyNodeGuarded(child, inProgress, memo)
-	}
-	delete(inProgress, n)
-	return out
 }

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/yamlnode"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
@@ -62,7 +63,7 @@ func (t *transformer) transform(doc *yaml.Node) {
 	// (merge, extends, env_file, interpolation) would risk unbounded recursion
 	// following them, so cut back-edges up front. Non-cyclic sharing is left
 	// intact.
-	breakAliasCycles(doc)
+	yamlnode.BreakAliasCycles(doc)
 
 	var overrideRoot *yaml.Node
 	if t.overrideContent != nil {
@@ -77,7 +78,7 @@ func (t *transformer) transform(doc *yaml.Node) {
 		mergeMappings(doc, overrideRoot, true, fileMergePolicy)
 	}
 
-	if services := mappingValue(doc, "services"); isServiceMapping(services) {
+	if services := yamlnode.MappingValue(doc, "services"); isServiceMapping(services) {
 		for i := 0; i+1 < len(services.Content); i += 2 {
 			if svc := services.Content[i+1]; isServiceMapping(svc) {
 				t.mergeEnvFiles(svc)
@@ -92,7 +93,7 @@ func (t *transformer) transform(doc *yaml.Node) {
 // root, looking targets up in that document's own services mapping (per-file
 // extends resolution). file names the document for cycle keys.
 func (t *transformer) resolveExtendsInDoc(doc *yaml.Node, file string) {
-	services := mappingValue(doc, "services")
+	services := yamlnode.MappingValue(doc, "services")
 	if !isServiceMapping(services) {
 		return
 	}
@@ -106,64 +107,6 @@ func (t *transformer) resolveExtendsInDoc(doc *yaml.Node, file string) {
 // isServiceMapping reports whether n is a usable service/config mapping node.
 func isServiceMapping(n *yaml.Node) bool {
 	return n != nil && n.Kind == yaml.MappingNode
-}
-
-// rewriteLines sets every node's line to line. Nodes merged in from another
-// file carry that file's coordinates, which mean nothing in the file being
-// scanned; only the merged-in subtree is walked.
-func rewriteLines(n *yaml.Node, line int) {
-	if n == nil {
-		return
-	}
-	n.Line = line
-	for _, child := range n.Content {
-		rewriteLines(child, line)
-	}
-}
-
-// breakAliasCycles cuts alias back-edges in place: any alias whose target is
-// an ancestor of the alias occurrence is replaced with a null node. In yaml.v3
-// an alias node carries no Content — the back-edge runs through its .Alias
-// pointer — so the walk follows both Content children and alias targets.
-// Fully-walked (black) nodes are skipped on later visits: without that, an
-// anchor block referenced k times per level over d levels is walked k^d times.
-// Cycles are safe to miss on later visits because they are cut the first time
-// their target is on the walk's path (standard white/gray/black DFS). Plain
-// sharing is left intact.
-func breakAliasCycles(root *yaml.Node) {
-	inProgress := map[*yaml.Node]struct{}{}
-	done := map[*yaml.Node]struct{}{}
-	var walk func(n *yaml.Node)
-	walk = func(n *yaml.Node) {
-		if n == nil {
-			return
-		}
-		if _, black := done[n]; black {
-			return
-		}
-		inProgress[n] = struct{}{}
-		if a := n.Alias; a != nil {
-			if _, gray := inProgress[a]; gray {
-				line, column := n.Line, n.Column
-				*n = yaml.Node{Kind: yaml.ScalarNode, Tag: nullTag, Line: line, Column: column}
-			} else {
-				walk(a)
-			}
-		}
-		for i, child := range n.Content {
-			if child == nil {
-				continue
-			}
-			if _, gray := inProgress[child]; gray {
-				n.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: nullTag, Line: child.Line, Column: child.Column}
-				continue
-			}
-			walk(child)
-		}
-		delete(inProgress, n)
-		done[n] = struct{}{}
-	}
-	walk(root)
 }
 
 // lookupVar resolves a variable from the .env file only, never the host
@@ -222,7 +165,7 @@ func (t *transformer) siblingRoot(path string) *yaml.Node {
 
 // removeExtends deletes the resolved extends declaration from a service node.
 func removeExtends(m *yaml.Node) {
-	removeMappingKey(m, "extends")
+	yamlnode.RemoveMappingKey(m, "extends")
 }
 
 // extendsTarget extracts the (service, file) pair from an extends
@@ -233,10 +176,10 @@ func extendsTarget(extendsNode *yaml.Node) (service, file string) {
 		return extendsNode.Value, ""
 	case yaml.MappingNode:
 		service, file = "", ""
-		if s := mappingValue(extendsNode, "service"); s != nil {
+		if s := yamlnode.MappingValue(extendsNode, "service"); s != nil {
 			service = s.Value
 		}
-		if f := mappingValue(extendsNode, "file"); f != nil {
+		if f := yamlnode.MappingValue(extendsNode, "file"); f != nil {
 			file = f.Value
 		}
 		return service, file
@@ -249,7 +192,7 @@ func extendsTarget(extendsNode *yaml.Node) (service, file string) {
 // otherwise), so nested extends resolve in the right file.
 func (t *transformer) extendsTargetNode(services *yaml.Node, targetService, targetFile string) (target, targetServices *yaml.Node) {
 	if targetFile == "" {
-		if idx := mappingKeyIndex(services, targetService); idx >= 0 {
+		if idx := yamlnode.MappingKeyIndex(services, targetService); idx >= 0 {
 			return services.Content[idx+1], services
 		}
 		return nil, nil
@@ -258,7 +201,7 @@ func (t *transformer) extendsTargetNode(services *yaml.Node, targetService, targ
 	if targetRoot == nil {
 		return nil, nil
 	}
-	return serviceNode(targetRoot, targetService), mappingValue(targetRoot, "services")
+	return serviceNode(targetRoot, targetService), yamlnode.MappingValue(targetRoot, "services")
 }
 
 // resolveExtends merges a service's extends target into svc, svc winning.
@@ -269,7 +212,7 @@ func (t *transformer) extendsTargetNode(services *yaml.Node, targetService, targ
 // resolve fully and only cycles are cut — with a warning, since inherited
 // values otherwise silently disappear from the merged document.
 func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, visited map[string]struct{}) {
-	extendsNode := mappingValue(svc, "extends")
+	extendsNode := yamlnode.MappingValue(svc, "extends")
 	if extendsNode == nil {
 		return
 	}
@@ -305,7 +248,7 @@ func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, visi
 
 	// Deep-copy the target before mutating: it may be shared via the content
 	// cache, and sibling services may extend the same target.
-	targetCopy := copyNode(target)
+	targetCopy := yamlnode.CopyNode(target)
 	if targetCopy == nil || targetCopy.Kind != yaml.MappingNode {
 		return
 	}
@@ -317,7 +260,7 @@ func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, visi
 	// Values inherited from a sibling file are attributed to the extends
 	// declaration's line, which is in this file.
 	if targetFile != "" {
-		rewriteLines(targetCopy, declLine)
+		yamlnode.RewriteLines(targetCopy, declLine)
 	}
 
 	// Merge svc over the target (svc wins) and take over the merged content.
@@ -327,11 +270,11 @@ func (t *transformer) resolveExtends(services, svc *yaml.Node, file string, visi
 
 // serviceNode finds services.<name> in a document root.
 func serviceNode(root *yaml.Node, name string) *yaml.Node {
-	services := mappingValue(root, "services")
+	services := yamlnode.MappingValue(root, "services")
 	if services == nil || services.Kind != yaml.MappingNode {
 		return nil
 	}
-	if idx := mappingKeyIndex(services, name); idx >= 0 {
+	if idx := yamlnode.MappingKeyIndex(services, name); idx >= 0 {
 		return services.Content[idx+1]
 	}
 	return nil
@@ -346,7 +289,7 @@ type envFileRef struct {
 // mergeEnvFiles materializes env_file variables into the service's
 // environment; explicit environment entries win, per Compose precedence.
 func (t *transformer) mergeEnvFiles(svc *yaml.Node) {
-	envFileNode := mappingValue(svc, "env_file")
+	envFileNode := yamlnode.MappingValue(svc, "env_file")
 	if envFileNode == nil {
 		return
 	}
@@ -376,7 +319,7 @@ func (t *transformer) mergeEnvFiles(svc *yaml.Node) {
 		return
 	}
 
-	envNode := mappingValue(svc, "environment")
+	envNode := yamlnode.MappingValue(svc, "environment")
 	switch {
 	case envNode == nil:
 		// Materialize the whole env_file as a list environment node.
@@ -485,12 +428,12 @@ func parseEnvFileRefs(node *yaml.Node) []envFileRef {
 				refs = append(refs, envFileRef{path: n.Value, required: true})
 			}
 		case yaml.MappingNode:
-			pathNode := mappingValue(n, "path")
+			pathNode := yamlnode.MappingValue(n, "path")
 			if pathNode == nil || pathNode.Value == "" {
 				return
 			}
 			required := true
-			if req := mappingValue(n, "required"); req != nil {
+			if req := yamlnode.MappingValue(n, "required"); req != nil {
 				// Only an actual YAML boolean counts: a quoted "false" is a
 				// string and Compose would reject it, so it stays required.
 				required = req.Tag != boolTag || !strings.EqualFold(req.Value, "false")
@@ -529,7 +472,7 @@ func firstMappingDoc(content []byte) *yaml.Node {
 		root := node.Content[0]
 		if root.Kind == yaml.MappingNode {
 			// Cut alias cycles so later walks terminate.
-			breakAliasCycles(root)
+			yamlnode.BreakAliasCycles(root)
 			return root
 		}
 		return nil

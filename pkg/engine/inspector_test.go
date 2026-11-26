@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -39,6 +40,47 @@ import (
 
 	"github.com/open-policy-agent/opa/v1/cover"
 )
+
+func TestReleasePostEvalFileData(t *testing.T) {
+	for _, release := range []bool{false, true} {
+		t.Run(fmt.Sprint(release), func(t *testing.T) {
+			text := strings.Repeat("source line\n", 10000)
+			line := text[12:23]
+			snippet := []model.CodeLine{{Position: 2, Line: line}}
+			findings := []model.Vulnerability{{LineWithVulnerability: line, DetectedLineWithVulnerability: line, VulnLines: &snippet}}
+			empty, nilLines := []model.CodeLine{}, []model.CodeLine(nil)
+			findings = append(findings, model.Vulnerability{VulnLines: &empty}, model.Vulnerability{VulnLines: &nilLines}, model.Vulnerability{})
+			before, err := json.Marshal(findings)
+			require.NoError(t, err)
+			snapshot := &model.SourceSnapshot{Path: "ci/source.yml", Content: text}
+			file := &model.FileMetadata{OriginalData: text, SourceFiles: map[*model.SourceSnapshot]*model.FileMetadata{snapshot: {}},
+				LineOverlay: &model.LineOverlay{Snapshot: snapshot}}
+			inspector := &Inspector{releasePostEvalData: release}
+			inspector.releasePostEvalFileData(map[string]*model.FileMetadata{"file": file}, findings)
+			after, err := json.Marshal(findings)
+			require.NoError(t, err)
+			require.Equal(t, string(before), string(after), "report serialization is unchanged, including empty/nil snippets")
+			require.Equal(t, line, findings[0].LineWithVulnerability)
+			require.Equal(t, snippet, *findings[0].VulnLines)
+			for _, retained := range []string{findings[0].LineWithVulnerability, findings[0].DetectedLineWithVulnerability, (*findings[0].VulnLines)[0].Line} {
+				if release {
+					require.NotEqual(t, reflect.ValueOf(line).Pointer(), reflect.ValueOf(retained).Pointer())
+				} else {
+					require.Equal(t, reflect.ValueOf(line).Pointer(), reflect.ValueOf(retained).Pointer())
+				}
+			}
+			if release {
+				require.Empty(t, file.OriginalData)
+				require.Nil(t, file.SourceFiles)
+				require.Nil(t, file.LineOverlay)
+			} else {
+				require.Equal(t, text, file.OriginalData)
+				require.NotEmpty(t, file.SourceFiles)
+				require.NotNil(t, file.LineOverlay)
+			}
+		})
+	}
+}
 
 // stubQueriesSource is an in-memory [source.QueriesSource] that returns a
 // fixed slice of query metadata and a trivial rego library for any platform.
@@ -415,6 +457,29 @@ func TestInterfaceToPayloadValueMatchesExistingTransformation(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, want.String(), got.String())
+
+	// Named Document maps inside the GitLab envelope must retain DAG sharing
+	// through the production OPA conversion, including normalized shell analysis.
+	commands := make([]interface{}, 5000)
+	for i := range commands {
+		commands[i] = fmt.Sprintf("echo %d", i)
+	}
+	parsed := map[string]interface{}{"commands": commands, "parse_ok": true}
+	pipeline := model.Document{}
+	for i := range 150 {
+		pipeline[fmt.Sprintf("job%d", i)] = map[string]interface{}{"script": commands, "_parsed_script": parsed}
+	}
+	file := &model.FileMetadata{DocumentDialect: model.GitLabDialect}
+	payload, err := inspector.interfaceToPayloadValue(t.Context(), file.RuleInputDocument(pipeline), newPayloadHashCons())
+	require.NoError(t, err)
+	jobs := payload.(ast.Object).Get(ast.StringTerm(model.GitLabInputKey)).Value.(ast.Object)
+	first := jobs.Get(ast.StringTerm("job0")).Value.(ast.Object)
+	for i := range 150 {
+		job := jobs.Get(ast.StringTerm(fmt.Sprintf("job%d", i))).Value.(ast.Object)
+		for _, field := range []string{"script", "_parsed_script"} {
+			require.Same(t, first.Get(ast.StringTerm(field)).Value, job.Get(ast.StringTerm(field)).Value)
+		}
+	}
 }
 
 func TestTransformJsonencodeInPayloadLeavesSuffixExpressionUnchanged(t *testing.T) {

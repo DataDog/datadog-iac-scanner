@@ -116,7 +116,7 @@ func isCloudFormationDocument(value *yaml.Node) bool {
 // GetIgnoreLines recomputes YAML ignore comments from OriginalData after reference resolution shifted line numbers.
 func GetIgnoreLines(file *FileMetadata) []int {
 	ignoreLines := file.LinesIgnore
-	if !utils.Contains(filepath.Ext(file.FilePath), []string{".yml", ".yaml"}) {
+	if !utils.Contains(strings.ToLower(filepath.Ext(file.FilePath)), []string{".yml", ".yaml"}) {
 		return ignoreLines
 	}
 
@@ -138,14 +138,10 @@ func GetIgnoreLines(file *FileMetadata) []int {
 }
 
 func walkIgnoreCommentsYAML(node *yaml.Node, ignore *Ignore, visited map[*yaml.Node]bool) {
-	if node == nil {
-		return
-	}
-	if visited[node] {
+	if node == nil || visited[node] {
 		return
 	}
 	visited[node] = true
-	defer delete(visited, node)
 
 	ignore.ignoreCommentsYAML(node)
 	switch node.Kind {
@@ -175,8 +171,16 @@ func (m *Document) UnmarshalSharedYAML(ctx context.Context, value *yaml.Node) er
 	return m.unmarshalYAML(ctx, value, newSharedNodes(), nil)
 }
 
+// UnmarshalSharedNativeYAML preserves YAML collection types without Ansible or
+// CloudFormation adaptation, while retaining graph sharing.
+func (m *Document) UnmarshalSharedNativeYAML(ctx context.Context, value *yaml.Node) error {
+	shared := newSharedNodes()
+	shared.native = true
+	return m.unmarshalYAML(ctx, value, shared, nil)
+}
+
 func (m *Document) unmarshalYAML(ctx context.Context, value *yaml.Node, shared *sharedNodes, ignore *Ignore) error {
-	ctx = withCloudFormation(ctx, isCloudFormationDocument(value))
+	ctx = withCloudFormation(ctx, (shared == nil || !shared.native) && isCloudFormationDocument(value))
 	skipLines := IsLazyLineInfo(ctx)
 	dpc := unmarshal(ctx, value, shared, ignore, skipLines)
 	if mapDcp, ok := dpc.(map[string]interface{}); ok {
@@ -454,8 +458,10 @@ func replaceForEachVars(template string, bindings map[string]string) string {
 // converting them on every path made it grow exponentially with the nesting
 // depth of the references. It is nil for other documents.
 type sharedNodes struct {
-	values map[*yaml.Node]interface{}
-	lines  map[linesKey]map[string]*LineObject
+	native    bool
+	values    map[*yaml.Node]interface{}
+	sequences map[*yaml.Node][]interface{}
+	lines     map[linesKey]map[string]*LineObject
 }
 
 type linesKey struct {
@@ -465,8 +471,9 @@ type linesKey struct {
 
 func newSharedNodes() *sharedNodes {
 	return &sharedNodes{
-		values: make(map[*yaml.Node]interface{}),
-		lines:  make(map[linesKey]map[string]*LineObject),
+		values:    make(map[*yaml.Node]interface{}),
+		sequences: make(map[*yaml.Node][]interface{}),
+		lines:     make(map[linesKey]map[string]*LineObject),
 	}
 }
 
@@ -476,7 +483,9 @@ func (s *sharedNodes) forAlias() *sharedNodes {
 	if s == nil {
 		return nil
 	}
-	return newSharedNodes()
+	child := newSharedNodes()
+	child.native = s.native
+	return child
 }
 
 // unmarshal is the function that will parse the yaml elements and call the functions needed
@@ -506,6 +515,9 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 	// which need to be placed inside "playbooks"
 	// nolint:staticcheck
 	if val.Kind == yaml.SequenceNode {
+		if shared != nil && shared.native {
+			return unmarshalSequence(ctx, val, visited, shared, ignore, skipLines)
+		}
 		contentArray := make([]interface{}, 0, len(val.Content))
 		for _, contentEntry := range val.Content {
 			contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, shared, ignore, skipLines))
@@ -550,12 +562,7 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 				}
 			// in case value iteration is an array
 			case yaml.SequenceNode:
-				contentArray := make([]interface{}, 0, len(val.Content[i+1].Content))
-				// unmarshall each iteration of the array
-				for _, contentEntry := range val.Content[i+1].Content {
-					contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, shared, ignore, skipLines))
-				}
-				tmp[internYAMLScalar(val.Content[i].Value)] = contentArray
+				tmp[internYAMLScalar(val.Content[i].Value)] = unmarshalSequence(ctx, val.Content[i+1], visited, shared, ignore, skipLines)
 			case yaml.AliasNode:
 				if val.Content[i+1].Alias != nil {
 					aliasShared := shared.forAlias()
@@ -823,4 +830,23 @@ func decodeIntrinsicChild(ctx context.Context, val *yaml.Node, visited map[*yaml
 		return seq
 	}
 	return nil
+}
+
+// unmarshalSequence preserves DAG sharing for mapping-valued sequence fields;
+// otherwise a shared command list is materialized afresh for every job.
+func unmarshalSequence(ctx context.Context, seq *yaml.Node, visited map[*yaml.Node]bool,
+	shared *sharedNodes, ignore *Ignore, skipLines bool) []interface{} {
+	if shared != nil {
+		if cached, ok := shared.sequences[seq]; ok {
+			return cached
+		}
+	}
+	items := make([]interface{}, 0, len(seq.Content))
+	for _, child := range seq.Content {
+		items = append(items, unmarshalWithDepth(ctx, child, visited, shared, ignore, skipLines))
+	}
+	if shared != nil {
+		shared.sequences[seq] = items
+	}
+	return items
 }

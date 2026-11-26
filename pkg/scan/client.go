@@ -124,6 +124,8 @@ type Client struct {
 	FlagEvaluator featureflags.FlagEvaluator
 	// documentRoot overrides the ID root for a custom scan's temporary input.
 	documentRoot string
+	// repositoryRoot resolves root-relative configuration includes without Git.
+	repositoryRoot string
 	// querySourceFactory overrides createQuerySource; set in tests and custom scans.
 	querySourceFactory func(ctx context.Context, platforms []string) (source.QueriesSource, error)
 	// analyzerOverride skips the file-extension analyzer and returns a pre-known platform list.
@@ -143,8 +145,9 @@ type Client struct {
 	// chartFilter holds the user's own path filters. The analyzer's exclusions
 	// also list raw templates it does not classify and gitignored files, whose
 	// rendered documents are still scanned.
-	chartFilter  *provider.PathFilter
-	contentCache map[string][]byte
+	chartFilter    *provider.PathFilter
+	contentCache   map[string][]byte
+	sourceExcluded func(string) bool
 	// inventory is set while a scan that asked for an inventory runs.
 	inventory *inventoryRun
 }
@@ -169,6 +172,12 @@ func WithFS(fsys vfs.FS) ClientOption {
 			c.fsys = fsys
 		}
 	}
+}
+
+// WithRepositoryRoot supplies the repository boundary for cross-file resolution.
+// Unlike ScanParams.RepoPath, it does not enable Git or disk discovery.
+func WithRepositoryRoot(root string) ClientOption {
+	return func(c *Client) { c.repositoryRoot = root }
 }
 
 // WithInMemoryScan marks the scan as content-push: initScan builds its file set

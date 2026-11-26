@@ -20,6 +20,9 @@ import (
 // finding, and the document can be hundreds of KB. Returns -1 when no line
 // marker matches.
 func GetLineBySearchLine(pathComponents []string, file *model.FileMetadata) int {
+	if line := file.LineOverlay.Lookup(pathComponents); line > 0 {
+		return line
+	}
 	if len(pathComponents) == 0 {
 		return 1
 	}

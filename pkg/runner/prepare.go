@@ -147,10 +147,17 @@ func prepareSources(ctx context.Context,
 	contextLogger.Info().Msgf("Collected %d files to process across %d parsers", len(files), len(services))
 
 	routing := buildExtensionRouting(services)
-	return utils.ForEach(ctx, files, filePool,
+	err = utils.ForEach(ctx, files, filePool,
 		func(ctx context.Context, f provider.InventoryFile, _ int) error {
 			return dispatchFile(ctx, src, routing[f.Ext], f.Path, scanID, openAPIResolveReferences, maxResolverDepth)
 		})
+	if err != nil {
+		return err
+	}
+	for _, service := range services {
+		service.finalizeCompilations(ctx)
+	}
+	return nil
 }
 
 // renderCoverage collects the Helm template paths that successful renders

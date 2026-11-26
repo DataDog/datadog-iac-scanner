@@ -70,6 +70,73 @@ datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR1 -q QUERYDIR2
 
 Run `datadog-iac-scanner scan --help` to see all available flags.
 
+### GitLab CI parsing
+
+The CI/CD platform recognizes `.gitlab-ci.yml`, `.gitlab-ci.yaml`, files ending in
+`.gitlab-ci.yml` or `.gitlab-ci.yaml`, and GitLab CI templates under `.gitlab/ci/`.
+Standalone templates can contain only hidden definitions or pipeline globals.
+It resolves local includes within the repository (including wildcard patterns),
+YAML anchors, `extends`, `!reference`, and simple input defaults and overrides.
+Scalar values follow GitLab's Psych boolean resolution: plain `yes`/`on` and
+`no`/`off` become booleans, while quoted strings retain their type, including
+through includes and whole-value input substitutions. Status-mirroring
+`needs:pipeline` jobs are included even without an explicit stage or script.
+After inheritance, jobs receive missing `default` keywords (or deprecated global
+defaults), respecting `inherit:default` and preserving explicit job values.
+Inherited defaults retain their declaring sources and shared command analysis.
+Included executable jobs retain their source file paths and obey scan path filters.
+Findings use the contributing field’s source and suppression directives, including
+merged jobs and pipeline globals. Rules see one compiled pipeline per
+YAML document under `input.document[i].gitlab`; scanner `id` and `file` metadata
+remain on the outer document, so jobs with those names are preserved. Typed
+finding paths begin with `"gitlab"`, such as `["gitlab", "build", "script", 0]`.
+Source positions are stored outside the configuration. Parsed pipeline-wide
+`before_script` and `after_script` analysis is available under the outer
+`input.document[i].gitlab_scripts` object, keyed by the original field name;
+job-local analysis remains in each job's `_parsed_*` fields. This preserves jobs
+named `_dd_lines`, `_parsed_before_script`, or `_parsed_after_script`.
+Source files remain location metadata. Included files are registered once per pipeline
+compilation, while files scanned without their parent retain standalone coverage. An include whose first
+rule unconditionally says `when: never` is skipped. Locally decidable
+`rules:exists` conditions support files, directory paths and globs, including
+the `paths` form and ordered `when` decisions. Globs follow Ruby's pathname,
+dotmatch and brace-alternative semantics; terminal `**` does not recurse.
+Brace alternatives share a graph rather than expanding every combination.
+Patterned existence predicates follow GitLab's own comparison-budget match
+behavior, including per-rule pattern counts and its suffix/top-level shortcuts.
+Partial snapshots retain uncertainty when the repository total is unknown.
+File symlinks count as repository
+entries without following their contents or traversing symlinked directories.
+An undecidable conditional include is not merged: unconditional configuration
+remains available for rules, while scan metadata and IDE responses report
+`incomplete` with an `unresolved_include` diagnostic. Partial IDE snapshots request
+missing existence predicates. External projects/refs, remote includes and input
+functions are not evaluated. This adds parsing and `gitlab_ci_job` inventory;
+GitLab-specific security findings require rules that consume that structure.
+
+Parsing preserves repeated commands and shares reusable templates and shell
+analysis, including inline scripts in `run` steps. A file-wide work and allocation allowance protects against excessive
+expansion, alongside per-field materialization limits. If a limit is reached,
+the file produces no partial documents: its inventory status is `failed` with
+reason `resource_limit`, and scan metadata and IDE responses report `incomplete`.
+Malformed or non-mapping entrypoints fail atomically with reason `invalid_pipeline`;
+invalid or unreadable required includes use `invalid_include`. Disk includes must
+be regular files. Both failures produce an incomplete result, which must not
+be interpreted as a clean security assessment.
+Local include reads also honor the configured scan file-size limit.
+Source graphs, buffers and lazy loaders are released after finding decoding when
+line-info export is disabled; report snippets retain independent text copies.
+Whole-file ignore directives apply to the contributing source independently
+for root and included files. IDE snapshots continue requesting missing includes.
+IDE requests with absolute file paths should supply `repo_root`, using the same
+path convention as `files`, so includes in nested pipelines resolve from the
+repository boundary without requiring a pushed `.git` marker.
+For wildcard includes, a pushed match does not prove that the directory is complete.
+IDE requests may declare fully supplied directory trees in the optional
+`complete_directories` array (using the same path convention as `files`). Until
+then the response requests the directory in `missing_files` and reports
+`incomplete`. Missing required includes inside a declared complete tree are errors.
+
 ### Configuring the scan
 
 Create a file named `code-security.datadog.yaml` at the root of your repository to customize scanner behavior. Use this file to choose which rules run, restrict scanning to specific paths, or filter findings by severity and category.

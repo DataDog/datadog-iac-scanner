@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/analyzer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -18,6 +19,7 @@ import (
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/pkg/errors"
@@ -32,6 +34,11 @@ var (
 		"YAML":   {"filter_pattern", "FilterPattern"},
 	}
 )
+
+type compilationFailure struct {
+	path, reason string
+	err          error
+}
 
 // redactErrorForLog renders err for logging with URL credentials stripped.
 //
@@ -56,6 +63,8 @@ func redactErrorForLog(err error) string {
 func (s *Service) logParseFailure(ctx context.Context, filename, reason string, err error) {
 	contextLogger := logger.FromContext(ctx)
 	switch reason {
+	case model.ParseFailureUnresolvedInclude:
+		contextLogger.Warn().Msgf("conditional include unresolved; retained unconditional pipeline: %s", filename)
 	case model.ParseFailureHelmRenderFailed:
 		contextLogger.Debug().Str(zerolog.ErrorFieldName, redactErrorForLog(err)).
 			Msgf("skipping unparseable raw Helm template: %s", filename)
@@ -70,8 +79,16 @@ func (s *Service) logParseFailure(ctx context.Context, filename, reason string, 
 
 // parseFailureReason classifies a parse failure, for its log level and for
 // the exporters, such as the inventory.
-func (s *Service) parseFailureReason(filename string, content []byte) string {
+func (s *Service) parseFailureReason(filename string, content []byte, err error) string {
 	switch {
+	case errors.Is(err, gitlab.ErrInvalidPipeline):
+		return model.ParseFailureInvalidPipeline
+	case errors.Is(err, gitlab.ErrConditionalInclude):
+		return model.ParseFailureUnresolvedInclude
+	case errors.Is(err, gitlab.ErrInvalidInclude):
+		return model.ParseFailureInvalidInclude
+	case errors.Is(err, gitlab.ErrLimitExceeded):
+		return model.ParseFailureResourceLimit
 	case s.isUnderFailedHelmChart(filename):
 		return model.ParseFailureHelmRenderFailed
 	case utils.IsTestFixturePath(filename):
@@ -81,6 +98,29 @@ func (s *Service) parseFailureReason(filename string, content []byte) string {
 	default:
 		return model.ParseFailureParseError
 	}
+}
+
+// Compiled failures are published only if their invocation survives selection.
+// Ordinary parse failures retain immediate tracking and logging.
+func (s *Service) recordParseFailure(ctx context.Context, filename string, content []byte, err error) {
+	reason := s.parseFailureReason(filename, content, err)
+	if isGitLabCompilationError(err) {
+		s.filesMu.Lock()
+		s.pendingCompilationFailures = append(s.pendingCompilationFailures, compilationFailure{filename, reason, err})
+		s.filesMu.Unlock()
+		return
+	}
+	s.logParseFailure(ctx, filename, reason, err)
+	if errors.Is(err, yamlparser.ErrNoDocuments) {
+		s.Tracker.TrackFileEmpty(filename)
+	} else {
+		s.Tracker.TrackFileFailed(filename, reason)
+	}
+}
+
+func isGitLabCompilationError(err error) bool {
+	return errors.Is(err, gitlab.ErrInvalidInclude) || errors.Is(err, gitlab.ErrLimitExceeded) ||
+		errors.Is(err, gitlab.ErrConditionalInclude) || errors.Is(err, gitlab.ErrInvalidPipeline)
 }
 
 // sinkContent parses already-read file content; used when one read feeds several parsers.
@@ -110,19 +150,22 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 
 	// Line info is rebuilt on demand (see SetLineInfoLoader below), so the
 	// documents' line markers are never read.
+	ctx = gitlab.WithDeferredMissingRequests(ctx, func(publish func()) {
+		s.filesMu.Lock()
+		defer s.filesMu.Unlock()
+		if s.pendingCompilationRequests == nil {
+			s.pendingCompilationRequests = make(map[string][]func())
+		}
+		root := filepath.Clean(filepath.FromSlash(filename))
+		s.pendingCompilationRequests[root] = append(s.pendingCompilationRequests[root], publish)
+	})
 	documents, err := s.Parser.Parse(iacparser.WithLazyLineInfo(ctx), filename, *content,
 		openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
-		reason := s.parseFailureReason(filename, *content)
-		s.logParseFailure(ctx, filename, reason, err)
-		if errors.Is(err, yamlparser.ErrNoDocuments) {
-			// Nothing is missing from a file that holds no document.
-			s.Tracker.TrackFileEmpty(filename)
-		} else {
-			s.Tracker.TrackFileFailed(filename, reason)
-		}
+		s.recordParseFailure(ctx, filename, *content, err)
 		return nil
 	}
+	s.recordCompilationDiagnostics(ctx, filename, *content, documents.Sources)
 	var fileCommands model.CommentsCommands
 	if documents.Kind == model.KindTerraform {
 		// Checkout placeholders carry only the target path. File directives,
@@ -146,12 +189,15 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		sort.Ints(documents.IgnoreLines)
 	}
 
+	documents.Content = s.internContent(documents.Content)
+	sourceFiles := s.compiledSourceFiles(ctx, filename, &documents, fileCommands)
+	sanitize := documentSanitizer(&documents)
 	shareable := len(*content) > 0 && shareableParse(&documents)
 	var sharedDocs []model.Document
 
 	for docIdx := range documents.Docs {
 		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, shareable,
-			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands); doc != nil {
+			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands, sourceFiles, sanitize); doc != nil {
 			sharedDocs = append(sharedDocs, doc)
 		}
 	}
@@ -171,6 +217,28 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	return nil
 }
 
+func (s *Service) recordCompilationDiagnostics(ctx context.Context, filename string, content []byte, sources []model.ParsedSource) {
+	for index := range sources {
+		if sources[index].Incomplete {
+			s.recordParseFailure(ctx, filename, content, gitlab.ErrConditionalInclude)
+			return
+		}
+	}
+}
+
+// documentSanitizer shares normalization state for the full compiled DAG.
+func documentSanitizer(documents *iacparser.ParsedDocument) func(map[string]interface{}, model.FileKind) (map[string]interface{}, error) {
+	for index := range documents.Sources {
+		if documents.Sources[index].Dialect == model.GitLabDialect {
+			return newCompiledDocumentSanitizer(true)
+		}
+	}
+	if len(documents.ResolvedFiles) > 0 || documents.SharedNodes {
+		return newSharedScanDocumentSanitizer()
+	}
+	return sanitizeScanDocumentInPlace
+}
+
 // sinkDocument sanitizes, canonicalizes and registers one parsed document of
 // a freshly parsed file, returning its top-level map for the shared-parse
 // cache (nil when the document was skipped or the parse is not shareable).
@@ -183,19 +251,14 @@ func (s *Service) sinkDocument(
 	maxResolverDepth int,
 	content []byte,
 	fileCommands model.CommentsCommands,
+	sourceFiles map[*model.SourceSnapshot]*model.FileMetadata,
+	sanitize func(map[string]interface{}, model.FileKind) (map[string]interface{}, error),
 ) model.Document {
 	contextLogger := logger.FromContext(ctx)
 	document := documents.Docs[docIdx]
 
 	// Sanitize in place — safe because the tree is exclusively owned (line info is
 	// lazily reparsed) — and reject cycles, as json.Marshal would.
-	sanitize := sanitizeScanDocumentInPlace
-	if len(documents.ResolvedFiles) > 0 {
-		// Documents are only built from shared nodes when files were resolved
-		// (see file.Resolver.ResolveYAML); for the others this is the same
-		// walk, only costlier.
-		sanitize = sanitizeSharedScanDocumentInPlace
-	}
 	preparedDocument, err := sanitize(document, documents.Kind)
 	if err != nil {
 		contextLogger.Err(err).Msgf("failed to sanitize document for file: %s", filename)
@@ -223,7 +286,7 @@ func (s *Service) sinkDocument(
 		ID:            key.ID(),
 		ScanID:        scanID,
 		Document:      preparedDocument,
-		OriginalData:  s.internContent(documents.Content),
+		OriginalData:  documents.Content,
 		Kind:          documents.Kind,
 		FilePath:      filename,
 		Commands:      fileCommands,
@@ -234,6 +297,41 @@ func (s *Service) sinkDocument(
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
 		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+	if docIdx < len(documents.Sources) {
+		source := documents.Sources[docIdx]
+		file.FilePath = source.Path
+		file.OriginalData = source.Content
+		file.SourceDocumentIndex = source.DocumentIndex
+		file.SourceDocumentIndexKnown = true
+		file.LineOverlay = source.LineOverlay
+		file.DocumentDialect = source.Dialect
+		if source.GlobalScripts != nil {
+			file.GlobalScripts, err = sanitize(source.GlobalScripts, documents.Kind)
+			if err != nil {
+				contextLogger.Err(err).Msgf("failed to sanitize global scripts for file: %s", filename)
+				return nil
+			}
+		}
+		file.SourceFiles = sourceFiles
+		file.CompilationRoot = filename
+		file.SourceDependencies = source.Dependencies
+		if cached := sourceFiles[source.Snapshot]; cached != nil {
+			file.OriginalData = cached.OriginalData
+			file.LinesIgnore = cached.LinesIgnore
+			file.Commands = cached.Commands
+		}
+
+		rootContent := documents.Content
+		file.SetLineInfoLoader(newLineInfoLoaderWithReparser(filename, docIdx,
+			func(ctx context.Context, _ *model.FileMetadata) (iacparser.ParsedDocument, error) {
+				ctx = iacparser.WithLineInfoOnly(ctx)
+				if s.LineInfoPayload {
+					ctx = iacparser.WithLineInfoExport(ctx)
+				}
+				return s.Parser.Parse(ctx, filename, []byte(rootContent), openAPIResolveReferences, isMinified, maxResolverDepth)
+			}))
+	}
+
 	file.SetLineInfoOptional()
 	if documents.Kind == model.KindTerraformPlan {
 		file.SetLineInfoRetention(s.planLineInfoRetention())
@@ -244,6 +342,7 @@ func (s *Service) sinkDocument(
 	// Lazy lines, as in sinkContent.
 	file.SetLazyLines()
 
+	s.filterCompiledJobs(&file)
 	s.saveToFile(ctx, &file)
 	if !shareable {
 		return nil
@@ -339,4 +438,112 @@ func resolveJSONFilter(jsonFilter string) string {
 	}
 
 	return string(parsedByte)
+}
+
+// compiledSourceFiles builds directives once per immutable input snapshot.
+func (s *Service) compiledSourceFiles(
+	ctx context.Context, filename string, documents *iacparser.ParsedDocument, rootCommands model.CommentsCommands,
+) map[*model.SourceSnapshot]*model.FileMetadata {
+	if len(documents.Sources) == 0 {
+		return nil
+	}
+	sources := documents.Sources[0].Snapshots
+	files := make(map[*model.SourceSnapshot]*model.FileMetadata, len(sources))
+	for _, snapshot := range sources {
+		commands := rootCommands
+		if snapshot.Path != filename {
+			ext := filepath.Ext(snapshot.Path)
+			yamlPath := snapshot.Path[:len(snapshot.Path)-len(ext)] + strings.ToLower(ext)
+			commands = s.Parser.CommentsCommandsFromString(ctx, yamlPath, snapshot.Content)
+		}
+		excluded := s.RenderedFileFilter != nil && s.RenderedFileFilter.ExcludesAny(snapshot.Path)
+		if s.SourceExcluded != nil && s.SourceExcluded(snapshot.Path) {
+			excluded = true
+		}
+		files[snapshot] = &model.FileMetadata{FilePath: snapshot.Path, OriginalData: s.internContent(snapshot.Content),
+			LinesOriginalData: snapshot.Lines(), LinesIgnore: snapshot.IgnoreLines, Commands: commands, SourceExcluded: excluded}
+	}
+	return files
+}
+
+// filterCompiledJobs keeps the effective pipeline together while removing jobs
+// with no in-scope contributing declaration. A later excluded override cannot
+// hide an earlier in-scope script; individual finding filters still apply.
+func (s *Service) filterCompiledJobs(file *model.FileMetadata) {
+	if len(file.SourceFiles) == 0 || file.LineOverlay == nil {
+		return
+	}
+	var replacement *model.LineOverlay
+	for key, value := range file.Document {
+		if !gitlab.IsExecutableJob(key, value) {
+			continue
+		}
+		position := file.LineOverlay.LookupSource([]string{key})
+		source := file.SourceFiles[position.Snapshot]
+		if source == nil || !source.SourceExcluded {
+			continue
+		}
+		candidate := inScopeJobSource(file, file.LineOverlay.Children[key])
+		if candidate.Snapshot == nil {
+			delete(file.Document, key)
+			continue
+		}
+		if replacement == nil {
+			updated := *file.LineOverlay
+			updated.Children = make(map[string]*model.LineOverlay, len(file.LineOverlay.Children))
+			for name, child := range file.LineOverlay.Children {
+				updated.Children[name] = child
+			}
+			replacement = &updated
+		}
+		job := *file.LineOverlay.Children[key]
+		candidate.Line, _ = candidate.Snapshot.DeclarationSpan(candidate.DocumentIndex, candidate.Line)
+		job.Line = candidate.Line
+		job.Snapshot = candidate.Snapshot
+		job.DocumentIndex = candidate.DocumentIndex
+		replacement.Children[key] = &job
+	}
+	if replacement != nil {
+		file.LineOverlay = replacement
+	}
+}
+func earlierSource(position, best model.SourcePosition) bool {
+	if best.Snapshot == nil {
+		return true
+	}
+	if position.Snapshot.Path != best.Snapshot.Path {
+		return position.Snapshot.Path < best.Snapshot.Path
+	}
+	if position.DocumentIndex != best.DocumentIndex {
+		return position.DocumentIndex < best.DocumentIndex
+	}
+	return position.Line < best.Line
+}
+
+func inScopeJobSource(file *model.FileMetadata, root *model.LineOverlay) model.SourcePosition {
+	var best model.SourcePosition
+	consider := func(position model.SourcePosition) {
+		source := file.SourceFiles[position.Snapshot]
+		if source != nil && !source.SourceExcluded && position.Line > 0 && earlierSource(position, best) {
+			best = position
+		}
+	}
+	seen := make(map[*model.LineOverlay]bool)
+	pending := []*model.LineOverlay{root}
+	for len(pending) > 0 {
+		node := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if node == nil || node.InheritedDefault || seen[node] {
+			continue
+		}
+		seen[node] = true
+		consider(node.Position())
+		for _, child := range node.Children {
+			pending = append(pending, child)
+		}
+		for _, span := range node.Ranges {
+			consider(span.Position)
+		}
+	}
+	return best
 }

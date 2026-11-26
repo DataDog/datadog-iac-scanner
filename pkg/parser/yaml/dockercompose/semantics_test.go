@@ -17,6 +17,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose/names"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/yamlnode"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -697,7 +698,7 @@ func TestBreakAliasCycles_CutsAliasBackEdge(t *testing.T) {
 	src := "a: &x\n  b: *x\n"
 	require.NoError(t, yaml.Unmarshal([]byte(src), &doc))
 	root := doc.Content[0]
-	breakAliasCycles(root)
+	yamlnode.BreakAliasCycles(root)
 
 	val := root.Content[1] // mapping value of "a"
 	require.Equal(t, yaml.MappingNode, val.Kind)
@@ -712,7 +713,7 @@ func TestBreakAliasCycles_KeepsPlainAliases(t *testing.T) {
 	src := "opts: &o {k: v}\nservices:\n  a: *o\n"
 	require.NoError(t, yaml.Unmarshal([]byte(src), &doc))
 	root := doc.Content[0]
-	breakAliasCycles(root)
+	yamlnode.BreakAliasCycles(root)
 
 	svc := root.Content[3] // services value
 	alias := svc.Content[1]
@@ -857,7 +858,7 @@ func TestCopyNode_MemoizesSharedAnchors(t *testing.T) {
 
 	done := make(chan *yaml.Node)
 	go func() {
-		done <- copyNode(base)
+		done <- yamlnode.CopyNode(base)
 	}()
 	var copied *yaml.Node
 	select {

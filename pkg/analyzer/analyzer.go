@@ -162,6 +162,7 @@ type Analyzer struct {
 	Only              []string
 	GitIgnoreFileName string
 	ExcludeGitIgnore  bool
+	gitIgnoreMatcher  *gitIgnoreMatcher
 	MaxFileSize       int
 	NumWorkers        int
 	// CollectKustomizeRoots records the directories holding a kustomization
@@ -342,6 +343,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 	ignoreFiles := make([]string, 0)
 	projectConfigFiles := make([]string, 0)
 	hasGitIgnoreFile, gitIgnore := shouldConsiderGitIgnoreFile(ctx, a.RepoPath, a.GitIgnoreFileName, a.ExcludeGitIgnore)
+	a.gitIgnoreMatcher = gitIgnore
 	if a.Exc, err = expandPaths(a.Exc); err != nil {
 		return returnAnalyzedPaths, fmt.Errorf("failed to expand ignore-paths: %w", err)
 	}
@@ -380,8 +382,8 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 
 			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
 			insideRepo := relErr == nil &&
-				trimmedPath != ".." &&
-				!strings.HasPrefix(trimmedPath, ".."+string(os.PathSeparator))
+				trimmedPath != parentDirectory &&
+				!strings.HasPrefix(trimmedPath, parentDirectory+string(os.PathSeparator))
 
 			// One scope predicate shared by the file inventory and the
 			// Kustomize root collector: gitignore (with the single-file
@@ -450,7 +452,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 				chartRoots = append(chartRoots, filepath.ToSlash(filepath.Dir(path)))
 			}
 
-			ext := utils.ExtensionFromPath(path)
+			ext := gitlabFileExtension(path, utils.ExtensionFromPath(path))
 			if !utils.IsSupportedFileType(ext) {
 				return nil
 			}
@@ -590,7 +592,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 // writes the answer to the results channel
 // if no types were found, the worker will write the path of the file in the unwanted channel
 func (a *analyzerInfo) worker(ctx context.Context, results, unwanted chan<- string, locCount chan<- int) {
-	ext := utils.ExtensionFromPath(a.filePath)
+	ext := gitlabFileExtension(a.filePath, utils.ExtensionFromPath(a.filePath))
 	if ext == "" {
 		return
 	}
@@ -771,6 +773,13 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
 func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []byte, ext string,
 	typesFlag []string, hc *sync.Map, scanFiles map[string]struct{}) string {
+	// GitLab CI files can embed Kubernetes or CloudFormation manifests inside
+	// shell scripts (e.g. kubectl heredocs). Classify canonical GitLab CI files
+	// before generic content regexes so embedded snippets cannot steal them.
+	if platform, handled := classifyGitLabCI(ext, path, content, typesFlag); handled {
+		return platform
+	}
+
 	returnType := ""
 
 	// Sort map so that CloudFormation (type that as less requireds) goes last
@@ -905,6 +914,7 @@ func classifyFile(ctx context.Context, fsys vfs.FS, path string, content []byte,
 	if err != nil {
 		return ""
 	}
+	ext = gitlabFileExtension(path, ext)
 	check := utils.ContentCheckForFileType(ext)
 	if v, ok := contentValidators[check]; ok {
 		if content == nil {
@@ -948,7 +958,7 @@ func ClassifyParsedFile(ctx context.Context, fsys vfs.FS, enabled []string, kind
 // .ini that is not Ansible configuration or inventory, or service catalog YAML.
 // The analyzer leaves these out of a CLI scan; pushed files skip them the same way.
 func ExcludedByContent(path string, content []byte) bool {
-	check := utils.ContentCheckForFileType(utils.ExtensionFromPath(path))
+	check := utils.ContentCheckForFileType(gitlabFileExtension(path, utils.ExtensionFromPath(path)))
 	if v, ok := contentValidators[check]; ok {
 		return !v.validate(path, content)
 	}

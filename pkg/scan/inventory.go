@@ -354,20 +354,25 @@ func (c *Client) recordManifest(run *inventoryRun, files model.FileMetadatas) {
 
 	if t := c.Tracker; t != nil {
 		for path := range t.BagOfFilesFound {
-			switch {
-			case t.BagOfFilesParse[path] > 0 || t.EmptyFiles[path]:
-				record(path, "", inventory.FileScanned, "")
-			case t.FailedFiles[path] != "":
-				record(path, "", inventory.FileFailed, t.FailedFiles[path])
-			default:
-				record(path, "", inventory.FileFailed, inventory.ReasonUnknown)
-			}
+			status, reason := c.trackedFileOutcome(path)
+			record(path, "", status, reason)
 		}
 		recordFailedRenders(run, t.FailedRenders)
 	}
 	for path, platform := range run.tooLarge {
 		record(path, platform, inventory.FileFailed, inventory.ReasonTooLarge)
 	}
+}
+
+func (c *Client) trackedFileOutcome(path string) (status, reason string) {
+	reason = c.Tracker.FailedFiles[path]
+	if reason == model.ParseFailureUnresolvedInclude {
+		return inventory.FileFailed, reason
+	}
+	if c.Tracker.BagOfFilesParse[path] > 0 || c.Tracker.EmptyFiles[path] {
+		return inventory.FileScanned, ""
+	}
+	return inventory.FileFailed, cmp.Or(reason, inventory.ReasonUnknown)
 }
 
 // recordFailedRenders lists each chart whose render failed as a source the

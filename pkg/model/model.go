@@ -317,7 +317,8 @@ type FileMetadata struct {
 
 	// SourceDocumentIndex selects the written document within a source snapshot.
 	// It is location metadata only and never participates in finding identity.
-	SourceDocumentIndex int `json:"-"`
+	SourceDocumentIndex      int  `json:"-"`
+	SourceDocumentIndexKnown bool `json:"-"`
 
 	ID               string `db:"id"`
 	ScanID           string `db:"scan_id"`
@@ -328,16 +329,23 @@ type FileMetadata struct {
 	// purely to resolve a confirmed finding's source line) on first access via
 	// EnsureLineInfoDocument. nil means LineInfoDocument is already populated
 	// (or intentionally left unset).
-	lineInfo          *lineInfoState `json:"-"`
-	OriginalData      string         `db:"orig_data"`
-	Kind              FileKind       `db:"kind"`
-	FilePath          string         `db:"file_path"`
-	HelmID            string
-	IDInfo            map[int]interface{}
-	Commands          CommentsCommands
-	LinesIgnore       []int
-	ResolvedFiles     map[string]ResolvedFile
-	LinesOriginalData *[]string
+	lineInfo           *lineInfoState `json:"-"`
+	OriginalData       string         `db:"orig_data"`
+	Kind               FileKind       `db:"kind"`
+	FilePath           string         `db:"file_path"`
+	HelmID             string
+	IDInfo             map[int]interface{}
+	Commands           CommentsCommands
+	LinesIgnore        []int
+	ResolvedFiles      map[string]ResolvedFile
+	LineOverlay        *LineOverlay                      `json:"-"`
+	DocumentDialect    string                            `json:"-"`
+	GlobalScripts      map[string]interface{}            `json:"-"`
+	SourceFiles        map[*SourceSnapshot]*FileMetadata `json:"-"`
+	CompilationRoot    string                            `json:"-"`
+	SourceDependencies []string                          `json:"-"`
+	SourceExcluded     bool                              `json:"-"`
+	LinesOriginalData  *[]string
 	// linesLazy, when set, defers the SplitLines(OriginalData) computation to
 	// first access via Lines(). nil means LinesOriginalData is already populated
 	// (or intentionally left unset).
@@ -454,31 +462,39 @@ func (f *FileMetadata) WithoutLineInfoView() *FileMetadata {
 		linesOrig = f.LinesOriginalData
 	}
 	return &FileMetadata{
-		DocumentKey:         f.DocumentKey,
-		ID:                  f.ID,
-		ScanID:              f.ScanID,
-		Document:            f.Document,
-		OriginalData:        f.OriginalData,
-		LinesOriginalData:   linesOrig,
-		linesLazy:           f.linesLazy,
-		Kind:                f.Kind,
-		FilePath:            f.FilePath,
-		Commands:            f.Commands,
-		LinesIgnore:         f.LinesIgnore,
-		ResolvedFiles:       f.ResolvedFiles,
-		IsMinified:          f.IsMinified,
-		HelmID:              f.HelmID,
-		IDInfo:              f.IDInfo,
-		HelmAttribution:     f.HelmAttribution,
-		SourceDocumentIndex: f.SourceDocumentIndex,
-		Reported:            f.Reported,
-		Archive:             f.Archive,
-		ModuleCallChain:     f.ModuleCallChain,
-		ModuleAttributions:  f.ModuleAttributions,
-		TerraformScope:      f.TerraformScope,
-		TerraformInstances:  f.TerraformInstances,
-		TerraformOverrides:  f.TerraformOverrides,
-		Platform:            f.Platform,
+		DocumentKey:              f.DocumentKey,
+		ID:                       f.ID,
+		ScanID:                   f.ScanID,
+		Document:                 f.Document,
+		OriginalData:             f.OriginalData,
+		LinesOriginalData:        linesOrig,
+		linesLazy:                f.linesLazy,
+		Kind:                     f.Kind,
+		FilePath:                 f.FilePath,
+		Commands:                 f.Commands,
+		LinesIgnore:              f.LinesIgnore,
+		ResolvedFiles:            f.ResolvedFiles,
+		IsMinified:               f.IsMinified,
+		HelmID:                   f.HelmID,
+		IDInfo:                   f.IDInfo,
+		HelmAttribution:          f.HelmAttribution,
+		SourceDocumentIndex:      f.SourceDocumentIndex,
+		SourceDocumentIndexKnown: f.SourceDocumentIndexKnown,
+		LineOverlay:              f.LineOverlay,
+		DocumentDialect:          f.DocumentDialect,
+		GlobalScripts:            f.GlobalScripts,
+		SourceFiles:              f.SourceFiles,
+		CompilationRoot:          f.CompilationRoot,
+		SourceDependencies:       f.SourceDependencies,
+		SourceExcluded:           f.SourceExcluded,
+		Reported:                 f.Reported,
+		Archive:                  f.Archive,
+		ModuleCallChain:          f.ModuleCallChain,
+		ModuleAttributions:       f.ModuleAttributions,
+		TerraformScope:           f.TerraformScope,
+		TerraformInstances:       f.TerraformInstances,
+		TerraformOverrides:       f.TerraformOverrides,
+		Platform:                 f.Platform,
 	}
 }
 
@@ -712,9 +728,8 @@ func (f *FileMetadata) LinesMatching(name string, pred func(line string) bool) (
 	return indexes
 }
 
-// ReleasePostEvalData drops OriginalData and LinesOriginalData after eval —
-// detectors have run and line-info documents are lazily reparsed — reclaiming
-// the raw input content before the report phase.
+// ReleasePostEvalData drops source-only state after finding decoding. Reports
+// must already own their required text; line-info export skips this release.
 func (f *FileMetadata) ReleasePostEvalData() {
 	f.OriginalData = ""
 	f.LinesOriginalData = nil
@@ -724,6 +739,13 @@ func (f *FileMetadata) ReleasePostEvalData() {
 		st.retention.forget(f)
 		f.dropRetainedLineInfo()
 	}
+	// Finding decoding is complete. Drop lazy loaders (which can capture root
+	// text) and compiled source graphs, without mutating shared snapshots that
+	// another compilation may still own.
+	f.lineInfo = nil
+	f.LineInfoDocument = nil
+	f.SourceFiles = nil
+	f.LineOverlay = nil
 }
 
 // LineInfoRetention is a scan's set of line-info trees kept loaded across
@@ -1007,11 +1029,12 @@ type QueryMetadata struct {
 // Vulnerability is a representation of a detected vulnerability in scanned files
 // after running a query
 type Vulnerability struct {
-	ID       int    `json:"id"`
-	ScanID   string `db:"scan_id" json:"-"`
-	FileID   string `db:"file_id" json:"-"`
-	FileName string `db:"file_name" json:"fileName"`
-	QueryID  string `db:"query_id" json:"queryID"`
+	FindingSource *FileMetadata `json:"-"`
+	ID            int           `json:"id"`
+	ScanID        string        `db:"scan_id" json:"-"`
+	FileID        string        `db:"file_id" json:"-"`
+	FileName      string        `db:"file_name" json:"fileName"`
+	QueryID       string        `db:"query_id" json:"queryID"`
 	// DefaultRuleID is the canonical CSPM concept; QueryID remains the IaC rule identity.
 	DefaultRuleID         string           `json:"defaultRuleId,omitempty"`
 	LegacyQueryID         string           `db:"legacy_query_id" json:"legacyQueryID"`
@@ -1377,7 +1400,7 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 	documents := Documents{Documents: make([]Document, 0, len(m))}
 	for _, f := range m {
 		_, ignore := f.Commands["ignore"]
-		if ignore {
+		if ignore && len(f.SourceFiles) == 0 {
 			contextLogger.Debug().Msgf("Ignoring file %s", f.FilePath)
 			continue
 		}
@@ -1387,27 +1410,37 @@ func (m FileMetadatas) Combine(ctx context.Context, lineInfo bool) Documents {
 				if len(f.Document) == 0 {
 					continue
 				}
-				f.Document["id"] = f.ID
-				f.Document["file"] = f.FilePath
-				documents.Documents = append(documents.Documents, f.Document)
+				documents.Documents = append(documents.Documents, f.RuleInputDocument(f.Document))
 				continue
 			}
 			if f.LineInfoDocument == nil {
 				continue
 			}
-			f.LineInfoDocument["id"] = f.ID
-			f.LineInfoDocument["file"] = f.FilePath
-			documents.Documents = append(documents.Documents, f.LineInfoDocument)
+			documents.Documents = append(documents.Documents, f.RuleInputDocument(Document(f.LineInfoDocument)))
 			continue
 		}
 		if len(f.Document) == 0 {
 			continue
 		}
-		f.Document["id"] = f.ID
-		f.Document["file"] = f.FilePath
-		documents.Documents = append(documents.Documents, f.Document)
+		documents.Documents = append(documents.Documents, f.RuleInputDocument(f.Document))
 	}
 	return documents
+}
+
+// RuleInputDocument adds scanner identity without overwriting GitLab job names.
+// The pipeline remains an unchanged nested document, including a job named
+// "gitlab" itself; only the newly constructed outer object holds metadata.
+func (f *FileMetadata) RuleInputDocument(document Document) Document {
+	if f.DocumentDialect == GitLabDialect {
+		input := Document{"id": f.ID, "file": f.FilePath, GitLabInputKey: document}
+		if len(f.GlobalScripts) > 0 {
+			input[GitLabScriptsKey] = f.GlobalScripts
+		}
+		return input
+	}
+	document["id"] = f.ID
+	document["file"] = f.FilePath
+	return document
 }
 
 // AnalyzedPaths is a slice of types and excluded files obtained from the Analyzer
@@ -1441,9 +1474,26 @@ type ResolvedFile struct {
 	LinesContent *[]string
 }
 
-// ParseOutput is what a parser returns for a file, as Parse does, plus whether
-// the file parsed as a Terraform plan.
+// ParsedSource identifies the source of one emitted document. It is supplied
+// by the parser, never decoded from source YAML or exposed as rule input.
+type ParsedSource struct {
+	// Incomplete preserves usable documents when conditional compilation cannot
+	// establish a complete pipeline from the supplied static context.
+	Incomplete    bool
+	Snapshot      *SourceSnapshot
+	Snapshots     []*SourceSnapshot
+	Dependencies  []string
+	Dialect       string
+	Path          string
+	Content       string
+	DocumentIndex int
+	LineOverlay   *LineOverlay
+	GlobalScripts map[string]interface{}
+}
+
+// ParseOutput carries parsed documents and optional semantic source adapters.
 type ParseOutput struct {
+	Sources       []ParsedSource
 	Resolved      []byte
 	Documents     []Document
 	IgnoreLines   []int

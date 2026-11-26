@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/internal/pathutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -173,7 +174,7 @@ func (m *MemorySourceProvider) RecordMissing(path string) {
 // on-disk presence.
 func memExtension(p string) string {
 	if ext := utils.ExtensionFromPath(p); ext != "" {
-		return ext
+		return gitlab.NormalizeExtension(p, ext)
 	}
 	return filepath.Base(p)
 }

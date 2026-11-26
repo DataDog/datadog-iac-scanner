@@ -15,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -58,10 +59,19 @@ type planParser interface {
 // directoryDependentParser is an optional parser capability declaring that the
 // parser's output can depend on files other than the one being parsed (e.g.
 // Docker Compose resolves .env, override and extends targets from the file's
-// directory). Parsers implementing it must not have their parses shared across
-// files with identical content in different directories.
+// directory, and CI/CD resolves GitLab local includes and dialect by path).
+// Parsers implementing it must not have their parses shared across files with
+// identical content in different directories.
 type directoryDependentParser interface {
 	DirectoryDependent() bool
+}
+
+// sharedNodesParser is an optional parser capability declaring that parsed
+// documents may share map or slice pointers across multiple parents (for
+// example, via model.Document.UnmarshalSharedYAML). The runner uses the
+// shared-node sanitizer on such documents so DAG subtrees are visited once.
+type sharedNodesParser interface {
+	SharedNodes() bool
 }
 
 type kindParser interface {
@@ -174,6 +184,7 @@ func (c *Parser) FS() vfs.FS {
 
 // ParsedDocument is a struct containing data retrieved from parsing
 type ParsedDocument struct {
+	Sources       []model.ParsedSource
 	Docs          []model.Document
 	Kind          model.FileKind
 	Content       string
@@ -189,6 +200,9 @@ type ParsedDocument struct {
 	// (see directoryDependentParser); the runner must not share them across
 	// files with identical content.
 	DirectoryDependent bool
+	// SharedNodes marks parses whose documents may share map or slice pointers
+	// across multiple parents (see sharedNodesParser).
+	SharedNodes bool
 }
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
@@ -310,9 +324,14 @@ func (c *Parser) parseContent(
 	if dd, ok := c.Parsers.(directoryDependentParser); ok && dd.DirectoryDependent() {
 		directoryDependent = true
 	}
+	sharedNodes := false
+	if sn, ok := c.Parsers.(sharedNodesParser); ok && sn.SharedNodes() {
+		sharedNodes = true
+	}
 
 	return ParsedDocument{
 		Docs:               out.Documents,
+		Sources:            out.Sources,
 		Kind:               kind,
 		Content:            cont,
 		IgnoreLines:        out.IgnoreLines,
@@ -321,6 +340,7 @@ func (c *Parser) parseContent(
 		IsMinified:         isMinified,
 		TerraformPlan:      out.TerraformPlan,
 		DirectoryDependent: directoryDependent,
+		SharedNodes:        sharedNodes,
 	}, nil
 }
 
@@ -343,6 +363,12 @@ func (c *Parser) parseDocuments(
 	openAPIResolveReferences bool,
 	maxResolverDepth int,
 ) (model.ParseOutput, error) {
+	if p, ok := c.Parsers.(interface {
+		ParseOutput(context.Context, []byte, string, bool, int) (model.ParseOutput, error)
+	}); ok {
+		return p.ParseOutput(ctx, fileContent, filePath, openAPIResolveReferences, maxResolverDepth)
+	}
+
 	if up, ok := c.Parsers.(unannotatedParser); ok && IsLazyLineInfo(ctx) {
 		if docs, ok := up.ParseUnannotated(fileContent, filePath); ok {
 			return model.ParseOutput{
@@ -402,6 +428,7 @@ func contains(types []string, supportedTypes map[string]bool) bool {
 
 func (c *Parser) isValidExtension(ctx context.Context, filePath string) bool {
 	if ext := utils.ExtensionFromPath(filePath); ext != "" {
+		ext = gitlab.NormalizeExtension(filePath, ext)
 		_, ok := c.extensions[ext]
 		return ok
 	}

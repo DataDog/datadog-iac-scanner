@@ -287,3 +287,26 @@ func TestGetCountTerraformResourcesMatchesRegexp(t *testing.T) {
 		require.Equal(t, len(oracle.FindAll([]byte(in), -1)), GetCountTerraformResources([]byte(in)), in)
 	}
 }
+
+// Selection depends on retained invocation dependencies, not on marks left by
+// discarded default-input compilations. Cycles choose a stable representative.
+func TestSelectCompilationsDependencyGraphs(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		graph map[string][]string
+		want  []string
+	}{
+		{"different invocation dependencies", map[string][]string{"a": {"b"}, "b": nil, "c": nil, "z": {"a", "c"}}, []string{"b", "z"}},
+		{"diamond", map[string][]string{"a": {"b", "c", "d"}, "b": {"d"}, "c": {"d"}, "d": nil}, []string{"a"}},
+		{"cycle", map[string][]string{"a": {"b"}, "b": {"a"}}, []string{"a"}},
+		{"independent roots", map[string][]string{"a": nil, "b": nil}, []string{"a", "b"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := selectCompilations(tc.graph)
+			require.Len(t, got, len(tc.want))
+			for _, root := range tc.want {
+				require.True(t, got[root], root)
+			}
+		})
+	}
+}

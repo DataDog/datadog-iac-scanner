@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
@@ -21,6 +22,9 @@ import (
 type Parser struct {
 	// FS supplies referenced files. Nil uses the real filesystem.
 	FS vfs.FS
+	// RepoRoot is the repository root used to resolve repository-relative
+	// references such as GitLab CI `include: local:` entries.
+	RepoRoot string
 }
 
 // ParsedCommand represents a parsed shell command
@@ -103,6 +107,10 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	if gitlab.ShouldParse(fileContent, filePath) {
+		return p.parseGitLabCI(ctx, fileContent, filePath)
+	}
+
 	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(
 		ctx, p.FS, fileContent, filePath, resolveReferences, maxResolverDepth)
 
@@ -125,6 +133,20 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 
 	// UnmarshalYAML already adds line tracking, so we can use documents directly
 	return resolved, documents, ignoreLines, resolvedFiles, nil
+}
+
+// DirectoryDependent reports that CI/CD parses can depend on the file path
+// (canonical filenames select the GitLab CI dialect) and on sibling or
+// repository-relative files (GitLab local includes and relative YAML
+// references), so parses must not be shared across files by content alone.
+func (p *Parser) DirectoryDependent() bool {
+	return true
+}
+
+// SharedNodes reports that parsed GitLab CI documents may share map and slice
+// pointers across parents via model.Document.UnmarshalSharedYAML.
+func (p *Parser) SharedNodes() bool {
+	return true
 }
 
 // SupportedExtensions returns extensions supported by this parser, which are yaml and yml extension

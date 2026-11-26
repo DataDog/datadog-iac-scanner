@@ -44,6 +44,27 @@ func TestInclude(t *testing.T) {
 	require.Equal(t, true, e.Include(".txt"))
 }
 
+func TestGitLabRuleInputPreservesConfiguration(t *testing.T) {
+	for _, lineInfo := range []bool{false, true} {
+		pipeline := Document{}
+		for _, name := range []string{"id", "file", GitLabInputKey, GitLabScriptsKey, "_dd_lines", "_parsed_before_script", "_parsed_after_script", "build"} {
+			pipeline[name] = map[string]interface{}{"script": []interface{}{"echo " + name}}
+		}
+		file := &FileMetadata{ID: "scanner-id", FilePath: ".gitlab-ci.yml", DocumentDialect: GitLabDialect,
+			Document: pipeline, LineInfoDocument: pipeline, GlobalScripts: map[string]interface{}{"before_script": "parsed analysis"}}
+		combined := (FileMetadatas{file}).Combine(t.Context(), lineInfo)
+		require.Len(t, combined.Documents, 1)
+		envelope := combined.Documents[0]
+		require.Equal(t, "scanner-id", envelope["id"])
+		require.Equal(t, file.FilePath, envelope["file"])
+		require.Equal(t, pipeline, envelope[GitLabInputKey])
+		require.Equal(t, file.GlobalScripts, envelope[GitLabScriptsKey])
+		for _, name := range []string{"id", "file", GitLabInputKey, GitLabScriptsKey, "_dd_lines", "_parsed_before_script", "_parsed_after_script", "build"} {
+			require.IsType(t, map[string]interface{}{}, pipeline[name], name)
+		}
+	}
+}
+
 // TestFileMetadatas tests the functions [Combine(),ToMap()] and all the methods called by them
 func TestFileMetadatas(t *testing.T) {
 	m := FileMetadatas{
@@ -202,7 +223,7 @@ func TestDetectionView_ReleaseSubstringIndex(t *testing.T) {
 		return result
 	})
 	for i := range substringIndexAfterScans {
-		_, ok := view.LinesContaining(string(rune('a' + i%26)) + string(rune('A'+i/26)))
+		_, ok := view.LinesContaining(string(rune('a'+i%26)) + string(rune('A'+i/26)))
 		require.True(t, ok)
 	}
 	require.NotNil(t, view.linesLazy.index)

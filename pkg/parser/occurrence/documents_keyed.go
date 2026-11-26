@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"gopkg.in/yaml.v3"
 )
@@ -255,6 +256,151 @@ func workflowJobOccurrence(key string, _ interface{}) (model.ResourceOccurrence,
 		ResourceType: "github_actions_job",
 		ResourceName: key,
 	}, true
+}
+
+// cicdOccurrences records jobs from GitHub Actions workflows (under "jobs")
+// and executable top-level jobs from GitLab CI pipelines.
+func (e *documentEnumerator) cicdOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
+	isGitLabPath := gitlab.IsConfigFileName(f.FilePath) || gitlab.IsCIDirPath(f.FilePath)
+	if _, hasJobs := f.Document["jobs"].(map[string]interface{}); hasJobs &&
+		(f.DocumentDialect != gitlab.Dialect && !gitlab.ShouldParse([]byte(f.OriginalData), f.FilePath)) {
+		return e.keyedOccurrences(f, index, "jobs", workflowParserKey, workflowJobOccurrence)
+	}
+	if gitlab.IsSpecHeaderDocument(f.Document) {
+		return nil
+	}
+	if !isGitLabPath && f.DocumentDialect != gitlab.Dialect && !gitlab.IsDocument(f.Document) {
+		return nil
+	}
+	return e.gitlabJobOccurrences(f, index)
+}
+
+func (e *documentEnumerator) gitlabJobOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
+	if f.SourceDocumentIndexKnown {
+		index = f.SourceDocumentIndex
+	}
+	keys := make([]string, 0, len(f.Document))
+	for key, val := range f.Document {
+		if gitlab.IsExecutableJob(key, val) {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	sort.Strings(keys)
+
+	var spans map[string]lineRange
+	if f.LineOverlay == nil {
+		if node, doc, found := e.documentNode(f, index); found {
+			spans = childSpans(node, doc.end, e.yamlFile(f).lines)
+		}
+	}
+	byStart := make(map[int]lineRange, len(spans))
+	for _, span := range spans {
+		byStart[span.start] = span
+	}
+
+	rows := make([]model.ResourceOccurrence, 0, len(keys))
+	var unmatched []int
+	for _, key := range keys {
+		row := model.ResourceOccurrence{
+			ResourcePath:   key,
+			Platform:       platforms.CICD,
+			ResourceType:   "gitlab_ci_job",
+			ResourceName:   key,
+			File:           f.FilePath,
+			StructuralPath: model.SourcePath{{Key: key}},
+		}
+		position := f.LineOverlay.LookupSource([]string{key})
+		if position.Snapshot != nil {
+			if source := f.SourceFiles[position.Snapshot]; source != nil && source.SourceExcluded {
+				continue
+			}
+			start, end := position.Snapshot.DeclarationSpan(position.DocumentIndex, position.Line)
+			row.File = position.Snapshot.Path
+			row.Source = lineSource(start, end)
+			row.LegacySource = row.Source
+		} else if span, ok := spans[key]; ok {
+			row.Source = lineSource(span.start, span.end)
+			row.LegacySource = row.Source
+		} else {
+			unmatched = append(unmatched, len(rows))
+		}
+		rows = append(rows, row)
+	}
+
+	if len(unmatched) > 0 {
+		e.fillGitLabInterpolatedSpans(f, rows, unmatched, byStart)
+	}
+	return rows
+}
+
+// fillGitLabInterpolatedSpans matches jobs whose YAML key was rewritten by
+// input interpolation back to their written source span via preserved
+// `_dd_lines` markers, falling back to firstKeyLine when unavailable.
+func (e *documentEnumerator) fillGitLabInterpolatedSpans(
+	f *model.FileMetadata,
+	rows []model.ResourceOccurrence,
+	unmatched []int,
+	byStart map[int]lineRange,
+) {
+	lineByKey := e.documentRootKeyLines(f)
+	for _, idx := range unmatched {
+		row := &rows[idx]
+		if start := lineByKey[row.ResourcePath]; start > 0 {
+			if span, ok := byStart[start]; ok {
+				row.Source = lineSource(span.start, span.end)
+				row.LegacySource = row.Source
+				continue
+			}
+			row.Source = lineSource(start, 0)
+			continue
+		}
+		row.Source = lineSource(e.firstKeyLine(f), 0)
+	}
+}
+
+func (e *documentEnumerator) documentRootKeyLines(f *model.FileMetadata) map[string]int {
+	if out := extractRootKeyLines(f.Document); len(out) > 0 {
+		return out
+	}
+	annotated := f.ShallowCopy()
+	defer annotated.DiscardLineInfoDocument()
+	var out map[string]int
+	_ = annotated.UseLineInfoDocument(e.ctx, func(doc map[string]interface{}) error {
+		out = extractRootKeyLines(doc)
+		return nil
+	})
+	return out
+}
+
+func extractRootKeyLines(doc map[string]interface{}) map[string]int {
+	if doc == nil {
+		return nil
+	}
+	raw, ok := doc["_dd_lines"]
+	if !ok {
+		return nil
+	}
+	out := make(map[string]int)
+	switch lines := raw.(type) {
+	case map[string]*model.LineObject:
+		for k, v := range lines {
+			if name, ok := strings.CutPrefix(k, "_dd_"); ok && v != nil && v.Line > 0 {
+				out[name] = v.Line
+			}
+		}
+	case map[string]interface{}:
+		for k, v := range lines {
+			if name, ok := strings.CutPrefix(k, "_dd_"); ok {
+				if line := lineObjectLine(v); line > 0 {
+					out[name] = line
+				}
+			}
+		}
+	}
+	return out
 }
 
 // Lists of tasks of an Ansible play, which also name the directories of a

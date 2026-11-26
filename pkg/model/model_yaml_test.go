@@ -1265,12 +1265,14 @@ services:
     ports:
       - "1111:1111"
 `
-	got := GetIgnoreLines(&FileMetadata{
-		FilePath:     "docker-compose.yaml",
-		OriginalData: original,
-		LinesIgnore:  []int{12, 13},
-	})
-	require.Equal(t, []int{6, 7}, got)
+	for _, path := range []string{"docker-compose.yaml", "included.YML", "included.YAML", "included.YaMl"} {
+		got := GetIgnoreLines(&FileMetadata{
+			FilePath:     path,
+			OriginalData: original,
+			LinesIgnore:  []int{12, 13},
+		})
+		require.Equal(t, []int{6, 7}, got)
+	}
 }
 
 func TestGetIgnoreLines_leavesNonYAMLUnchanged(t *testing.T) {
@@ -1283,6 +1285,19 @@ func TestGetIgnoreLines_leavesNonYAMLUnchanged(t *testing.T) {
 }
 
 func TestGetIgnoreLines_scalarReferenceWithIgnoreBlock(t *testing.T) {
+	for _, directive := range []string{"ignore-line", "ignore-block"} {
+		for _, leaf := range []string{"  value: *base", "  values:\n    - *base", "  <<: *base"} {
+			t.Run(directive+"/"+leaf, func(t *testing.T) {
+				lines := strings.Split(leaf, "\n")
+				last := lines[len(lines)-1]
+				lines = append(lines[:len(lines)-1], "  # dd-iac-scan "+directive, last)
+				original := "base: &base {key: value}\njob:\n" + strings.Join(lines, "\n") + "\n"
+				got := GetIgnoreLines(&FileMetadata{FilePath: "alias.yaml", OriginalData: original})
+				line := strings.Count(original, "\n")
+				require.ElementsMatch(t, []int{line - 1, line}, got)
+			})
+		}
+	}
 	original := `# dd-iac-scan ignore-block
 ./included.yaml
 `
@@ -1361,7 +1376,8 @@ func TestDocument_UnmarshalSharedYAML_SharesNodeReachedTwice(t *testing.T) {
 	scalar := func(v string, line int) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Value: v, Line: line} }
 	inner := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{scalar("image", 0), scalar("nginx", 0)}}
 	// Each reference gets its own copy of the referenced root, sharing its content.
-	shared := []*yaml.Node{scalar("container", 0), inner}
+	seq := &yaml.Node{Kind: yaml.SequenceNode, Content: []*yaml.Node{scalar("echo ok", 3)}}
+	shared := []*yaml.Node{scalar("container", 0), inner, scalar("commands", 3), seq}
 	root := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
 		scalar("a", 1), {Kind: yaml.MappingNode, Content: shared},
 		scalar("b", 2), {Kind: yaml.MappingNode, Content: shared},
@@ -1376,4 +1392,41 @@ func TestDocument_UnmarshalSharedYAML_SharesNodeReachedTwice(t *testing.T) {
 	require.Equal(t, 2, b["_dd_lines"].(map[string]*LineObject)["_dd__default"].Line)
 	require.Equal(t, "nginx", a["container"].(map[string]interface{})["image"])
 	require.Equal(t, reflect.ValueOf(a["container"]).Pointer(), reflect.ValueOf(b["container"]).Pointer())
+	require.Equal(t, []interface{}{"echo ok"}, a["commands"])
+	require.Equal(t, reflect.ValueOf(a["commands"]).Pointer(), reflect.ValueOf(b["commands"]).Pointer())
+}
+
+func TestGetIgnoreLines_SharedAliasGraphLinear(t *testing.T) {
+	// Stacked alias reuse (6 refs per level over 9 levels = 6^9 paths) must
+	// visit each YAML node once instead of walking every alias path.
+	var sb strings.Builder
+	sb.WriteString("a0: &a0 [\"x\", \"x\", \"x\", \"x\", \"x\", \"x\"]\n")
+	for l := 1; l <= 9; l++ {
+		fmt.Fprintf(&sb, "a%d: &a%d [*a%d, *a%d, *a%d, *a%d, *a%d, *a%d]\n", l, l, l-1, l-1, l-1, l-1, l-1, l-1)
+	}
+	sb.WriteString("# dd-iac-scan ignore-line\nignored: true\n")
+
+	lines := GetIgnoreLines(&FileMetadata{
+		FilePath:     "bomb.yml",
+		OriginalData: sb.String(),
+	})
+	require.Contains(t, lines, 12)
+}
+
+// Source spans stop before YAML stream markers, including marker comments.
+func TestSourceSnapshotDeclarationBoundaries(t *testing.T) {
+	block := &SourceSnapshot{Content: "job:\n  script: |\n    --- # literal command\n"}
+	block.RecordDeclarations(0, []int{1})
+	_, end := block.DeclarationSpan(0, 1)
+	require.Equal(t, 3, end, "indented marker-like command text belongs to the job")
+	for _, marker := range []string{"---", "--- # next", "...", "... # end"} {
+		t.Run(marker, func(t *testing.T) {
+			snapshot := &SourceSnapshot{Content: "job:\n  script: echo ok\n" + marker + "\nnext:\n  script: echo next\n"}
+			snapshot.RecordDeclarations(0, []int{1})
+			snapshot.RecordDeclarations(1, []int{4})
+			start, end := snapshot.DeclarationSpan(0, 2)
+			require.Equal(t, 1, start)
+			require.Equal(t, 2, end)
+		})
+	}
 }

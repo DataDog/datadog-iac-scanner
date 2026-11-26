@@ -180,3 +180,16 @@ func skipQuotedSearchKey(s string, open int) int {
 	}
 	return len(s)
 }
+
+// SourceSearchPath interprets the legacy path syntax for trusted source routing.
+// Wrapped literal names remain intact, including dots and equals signs.
+func SourceSearchPath(searchKey string) []string {
+	var path []string
+	for _, part := range sourceSelectors(searchKey) {
+		if part.value != nil {
+			return nil
+		}
+		path = append(path, part.key)
+	}
+	return path
+}

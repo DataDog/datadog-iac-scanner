@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/occurrence"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -120,7 +121,7 @@ func buildServices(
 		Add(&yamlParser.Parser{}).
 		Add(terraformParser.NewDefault()).
 		Add(&bicepParser.Parser{}).
-		Add(&cicdParser.Parser{}).
+		Add(&cicdParser.Parser{FS: fsys}).
 		Add(&dockerParser.Parser{}).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).
@@ -775,4 +776,78 @@ func TestWithoutExcludedFiles_PackagedDependencyArchivePath(t *testing.T) {
 	got = withoutExcludedFiles(context.Background(), excludesPath(archive), "app",
 		model.ResolvedFiles{File: []model.ResolvedHelm{withoutArchive}})
 	require.Len(t, got.File, 1, "a file without an archive is not dropped for the archive's path")
+}
+
+// Compiled includes obey the same path filters and registration rules through
+// the CLI and IDE preparation paths, including when only the include is scanned.
+func TestPrepareSources_GitLabIncludes(t *testing.T) {
+	for _, mode := range []string{"disk", "memory"} {
+		for _, shape := range []string{"direct", "nested"} {
+			for _, selection := range []string{"all", "ignore-include", "only-parent", "only-include"} {
+				t.Run(mode+"/"+shape+"/"+selection, func(t *testing.T) {
+					ctx := t.Context()
+					root := "."
+					if mode == "disk" {
+						root = t.TempDir()
+						require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0o750))
+					}
+					parent := filepath.Join(root, ".gitlab-ci.yml")
+					included := filepath.Join(root, ".gitlab", "ci", "jobs.yml")
+					inputs := map[string][]byte{
+						parent:   []byte("include: [.gitlab/ci/jobs.yml]\n"),
+						included: []byte("build: {script: [echo build]}\n"),
+					}
+					if shape == "nested" {
+						inputs[parent] = []byte("include: [.gitlab/ci/entry.yml]\n")
+						inputs[filepath.Join(root, ".gitlab", "ci", "entry.yml")] = []byte("include: [.gitlab/ci/jobs.yml]\n")
+					}
+					var ignore, only []string
+					switch selection {
+					case "ignore-include":
+						ignore = []string{included}
+					case "only-parent":
+						only = []string{parent}
+					case "only-include":
+						only = []string{included}
+					}
+					var services []*Service
+					var store *storage.MemoryStorage
+					if mode == "disk" {
+						for path, body := range inputs {
+							writeFile(t, path, string(body))
+						}
+						fsp, err := provider.NewFileSystemSourceProvider(ctx, []string{root}, ignore, only)
+						require.NoError(t, err)
+						services, store = buildServices(t, ctx, vfs.DiskFS{}, fsp)
+						services = servicesForPlatformAndParserKind(services, "cicd", model.KindYAML)
+						require.NoError(t, PrepareDiskSources(ctx, fsp, services, "includes", false, 15))
+					} else {
+						fsys := vfs.NewMemFS(inputs)
+						mp := provider.NewMemorySourceProvider(fsys, fsys.Paths(), ignore, only)
+						services, store = buildServices(t, ctx, fsys, mp)
+						services = servicesForPlatformAndParserKind(services, "cicd", model.KindYAML)
+						require.NoError(t, PrepareMemorySources(ctx, mp, services, "includes", false, 15))
+					}
+					files, err := store.GetFiles(ctx, "includes")
+					require.NoError(t, err)
+					require.Zero(t, store.DuplicateDocumentIDs())
+					wantDocuments, wantJobs := 1, 1
+					if selection == "ignore-include" || selection == "only-parent" {
+						wantJobs = 0
+					}
+					require.Len(t, files, wantDocuments)
+					var rows []model.ResourceOccurrence
+					occurrence.Documents(ctx, files, func(_ *model.FileMetadata, row *model.ResourceOccurrence) { rows = append(rows, *row) })
+					require.Len(t, rows, wantJobs)
+					for _, row := range rows {
+						require.Equal(t, filepath.ToSlash(included), filepath.ToSlash(row.File))
+						require.Equal(t, "build", row.ResourceName)
+					}
+					for _, service := range services {
+						require.Empty(t, service.pendingCompilations)
+					}
+				})
+			}
+		}
+	}
 }

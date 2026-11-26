@@ -86,7 +86,7 @@ func (e *documentEnumerator) documentOccurrences(f *model.FileMetadata, index in
 	case f.Platform == platforms.DockerCompose:
 		return e.keyedOccurrences(f, index, "services", lineInfoKey, composeServiceOccurrence)
 	case f.Platform == platforms.CICD:
-		return e.keyedOccurrences(f, index, "jobs", workflowParserKey, workflowJobOccurrence)
+		return e.cicdOccurrences(f, index)
 	case f.Platform == platforms.Ansible:
 		return e.ansibleOccurrences(f, index)
 	}

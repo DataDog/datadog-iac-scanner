@@ -1155,3 +1155,95 @@ func TestAnalyze_DockerfileVariants(t *testing.T) {
 	require.Equal(t, "", ClassifyFile(ctx, mem, "Dockerfile.txt", nil, platforms.Supported))
 	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "app.debian", nil, platforms.Supported))
 }
+
+func TestClassifyFile_GitLabCI(t *testing.T) {
+	ctx := context.Background()
+	repo := t.TempDir()
+	var upperPaths []string
+	for _, name := range []string{".gitlab-ci.YAML", ".gitlab/ci/jobs.YML", "pipelines/check.GitLab-CI.YmL"} {
+		path := filepath.Join(repo, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte("job: {script: echo ok}\n"), 0o600))
+		upperPaths = append(upperPaths, filepath.ToSlash(path))
+	}
+	upper, err := Analyze(ctx, &Analyzer{RepoPath: repo, Paths: []string{repo}, Types: []string{"cicd"}, GitIgnoreFileName: ".gitignore", MaxFileSize: -1})
+	require.NoError(t, err)
+	require.ElementsMatch(t, upperPaths, upper.Inventory)
+	for _, path := range upperPaths {
+		require.Equal(t, "cicd", upper.FilePlatform[path])
+	}
+	for _, tc := range []struct{ platform, fields string }{
+		{"dockercompose", "services: {web: {image: alpine}}"},
+		{"kubernetes", "apiVersion: v1, kind: ConfigMap"},
+		{"cloudformation", "Resources: {Bucket: {Type: 'AWS::S3::Bucket'}}"},
+	} {
+		for _, path := range []string{"other.yml", ".gitlab/ci/other.yml"} {
+			content := []byte("x-base: &base {" + tc.fields + "}\n<<: [*base]\nx-helper: {script: echo setup}\n")
+			require.Equal(t, tc.platform, ClassifyFile(ctx, vfs.NewMemFS(map[string][]byte{path: content}), path, content, platforms.Supported))
+		}
+	}
+	files := map[string][]byte{
+		".gitlab-ci.yml":                      []byte("stages:\n  - test\nunit:\n  stage: test\n  script:\n    - go test ./...\n"),
+		".gitlab-ci.yaml":                     []byte("include:\n  - local: .gitlab/ci/build.yml\n"),
+		"ci/deploy.gitlab-ci.yml":             []byte("deploy:\n  script:\n    - ./deploy.sh\n"),
+		"k8s-heredoc/.gitlab-ci.yml":          []byte("deploy:\n  script:\n    - |\n      cat <<EOF | kubectl apply -f -\n      apiVersion: v1\n      kind: ConfigMap\n      metadata:\n        name: demo\n      EOF\n"),
+		".gitlab/ci/build.yml":                []byte(".base:\n  image: alpine:3.19\nbuild:\n  extends: .base\n  script:\n    - make\n"),
+		".gitlab/ci/resources.yml":            []byte("Resources: {script: echo job}\n"),
+		".gitlab/ci/resources-cfn.yml":        []byte("Resources:\n  Shared: &resource {Type: 'AWS::S3::Bucket'}\n  script: {<<: *resource}\n"),
+		".gitlab/ci/other-platform-names.yml": []byte("on: {script: echo on}\njobs: {script: echo jobs}\napiVersion: {script: echo version}\nkind: {script: echo kind}\n"),
+		".gitlab/ci/alias-key.yml":            []byte("variables: {NAME: &name build}\n*name: {script: echo job}\n"),
+		".gitlab/ci/component.yml":            []byte("spec:\n  inputs:\n    stage:\n      default: test\n---\nlint:\n  stage: $[[ inputs.stage ]]\n  script:\n    - golangci-lint run\n"),
+		".gitlab/ci/not-ci.yml":               []byte("owners:\n  - team-a\n"),
+		".gitlab/ci/hidden-only.yml":          []byte(".base: {image: alpine:latest}\n"),
+		".gitlab/ci/globals-only.yml":         []byte("variables: {VALUE: raw}\n"),
+		".gitlab/ci/stages-only.yml":          []byte("stages: [test]\n"),
+		".gitlab/ci/compose.yml":              []byte("include: [shared.yml]\nservices: {web: {image: alpine:latest}}\n"),
+		".gitlab/route-map.yml":               []byte("- source: /foo\n  public: /bar\n"),
+		"empty/.gitlab-ci.yml":                []byte("# only a comment\n"),
+		"scalar/.gitlab-ci.yml":               []byte("just a string\n"),
+		"sequence/.gitlab-ci.yml":             []byte("- invalid\n"),
+		"null/.gitlab-ci.yml":                 []byte("null\n"),
+		"quoted-empty/.gitlab-ci.yml":         []byte("\"\"\n"),
+		"broken/.gitlab-ci.yml":               []byte("build:\n\tscript:\n\t  - echo hi\n"),
+		"templated/.gitlab-ci.yml":            []byte("{{ .Name }}:\n  script:\n    - echo hi\n"),
+	}
+	mem := vfs.NewMemFS(files)
+
+	for _, path := range []string{
+		".gitlab-ci.yml",
+		".gitlab-ci.yaml",
+		"ci/deploy.gitlab-ci.yml",
+		"k8s-heredoc/.gitlab-ci.yml",
+		".gitlab/ci/build.yml",
+		".gitlab/ci/resources.yml",
+		".gitlab/ci/other-platform-names.yml",
+		".gitlab/ci/alias-key.yml",
+		".gitlab/ci/component.yml",
+		".gitlab/ci/hidden-only.yml",
+		".gitlab/ci/globals-only.yml",
+		".gitlab/ci/stages-only.yml",
+		"broken/.gitlab-ci.yml",
+		"scalar/.gitlab-ci.yml",
+		"sequence/.gitlab-ci.yml",
+		"null/.gitlab-ci.yml",
+		"quoted-empty/.gitlab-ci.yml",
+	} {
+		require.Equal(t, cicd, ClassifyFile(ctx, mem, path, files[path], platforms.Supported), path)
+	}
+
+	// Non-CI files and implicit-empty/Go-templated GitLab files are skipped.
+	for _, path := range []string{
+		".gitlab/ci/not-ci.yml",
+		".gitlab/ci/compose.yml",
+		".gitlab/ci/resources-cfn.yml",
+		".gitlab/route-map.yml",
+		"empty/.gitlab-ci.yml",
+		"templated/.gitlab-ci.yml",
+	} {
+		require.NotEqual(t, cicd, ClassifyFile(ctx, mem, path, files[path], platforms.Supported), path)
+	}
+
+	// Respect typesFlag: excluding CICD must not let K8s regexes steal .gitlab-ci.yml.
+	require.Equal(t, "", ClassifyFile(ctx, mem, "k8s-heredoc/.gitlab-ci.yml", files["k8s-heredoc/.gitlab-ci.yml"], []string{"Kubernetes"}))
+	require.Equal(t, "", ClassifyFile(ctx, mem, ".gitlab/ci/build.yml", files[".gitlab/ci/build.yml"], []string{"Terraform"}))
+}

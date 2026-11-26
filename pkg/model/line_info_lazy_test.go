@@ -31,6 +31,31 @@ func TestFileMetadata_JSONMarshalSkipsLazyState(t *testing.T) {
 	require.NotContains(t, string(b), "ModuleAttributions")
 }
 
+func TestFileMetadata_ReleasePostEvalData(t *testing.T) {
+	snapshot := &SourceSnapshot{Path: "ci/jobs.yml", Content: strings.Repeat("job: value\n", 1000)}
+	source := &FileMetadata{OriginalData: snapshot.Content, LinesOriginalData: snapshot.Lines()}
+	overlay := &LineOverlay{Snapshot: snapshot}
+	retained := &FileMetadata{SourceFiles: map[*SourceSnapshot]*FileMetadata{snapshot: source}, LineOverlay: overlay}
+	file := &FileMetadata{OriginalData: snapshot.Content, LinesOriginalData: snapshot.Lines(),
+		SourceFiles: retained.SourceFiles, LineOverlay: overlay}
+	file.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		return Document{"text": snapshot.Content}, nil
+	})
+	require.NoError(t, file.EnsureLineInfoDocument(t.Context()))
+	for range 2 {
+		file.ReleasePostEvalData()
+		require.Empty(t, file.OriginalData)
+		require.Nil(t, file.LinesOriginalData)
+		require.Nil(t, file.LineInfoDocument)
+		require.Nil(t, file.lineInfo, "no lazy loader may retain the source text")
+		require.Nil(t, file.SourceFiles)
+		require.Nil(t, file.LineOverlay)
+	}
+	require.NotEmpty(t, snapshot.Content, "other compilations still own the immutable snapshot")
+	require.NotEmpty(t, retained.SourceFiles[snapshot].OriginalData)
+	require.NotNil(t, retained.LineOverlay)
+}
+
 func TestCombine_lineInfoFallbackOnEnsureFailure(t *testing.T) {
 	ctx := context.Background()
 	fm := &FileMetadata{

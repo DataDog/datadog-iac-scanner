@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose/names"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	yamlParser "gopkg.in/yaml.v3"
@@ -368,4 +370,53 @@ func ansibleFromYAMLNode(root *yamlParser.Node) bool {
 		}
 	}
 	return false
+}
+
+// classifyGitLabCI classifies canonical GitLab CI configuration files
+// (.gitlab-ci.yml, .gitlab-ci.yaml, *.gitlab-ci.yml, *.gitlab-ci.yaml) and
+// GitLab CI templates under .gitlab/ci/. handled is true when the file is
+// definitively claimed (returning cicd when enabled in typesFlag, or "" when
+// cicd is excluded so another platform's content regex cannot misclassify it).
+func classifyGitLabCI(ext, path string, content []byte, typesFlag []string) (platform string, handled bool) {
+	if ext != yaml && ext != yml {
+		return "", false
+	}
+	isCanonical := gitlab.IsConfigFileName(path)
+	if !isCanonical && !gitlab.IsCIDirPath(path) {
+		return "", false
+	}
+	if !hasYAMLContent(content) || yamlHasRootTemplateSyntax(content) {
+		return "", isCanonical
+	}
+
+	root, err := yamlDocumentRoot(content)
+	if err != nil {
+		if isCanonical {
+			return cicdIfEnabled(typesFlag), true
+		}
+		return "", false
+	}
+	if !yamlRootIsMapping(root) {
+		if isCanonical {
+			return cicdIfEnabled(typesFlag), true
+		}
+		return "", isCanonical
+	}
+	if isCanonical || gitlab.IsDocumentNode(root) || gitlab.IsTemplateFragmentNode(root) {
+		return cicdIfEnabled(typesFlag), true
+	}
+	return "", false
+}
+
+// GitLab path matching and local includes accept case-insensitive YAML suffixes.
+// Apply that same policy when discovering and classifying standalone CI files.
+func gitlabFileExtension(path, ext string) string {
+	return gitlab.NormalizeExtension(path, ext)
+}
+
+func cicdIfEnabled(typesFlag []string) string {
+	if len(typesFlag) == 0 || typesFlag[0] == "" || utils.Contains(cicd, typesFlag) {
+		return cicd
+	}
+	return ""
 }

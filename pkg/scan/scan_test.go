@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
+	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/rs/zerolog"
@@ -95,6 +97,145 @@ DatadogPolicy contains result if {
 	for i, result := range r.Results {
 		require.Equalf(t, model.Severity("HIGH"), model.Severity(result.Severity), "result[%d] severity", i)
 		require.Equalf(t, ruleID, result.QueryID, "result[%d] query id", i)
+	}
+	for _, limit := range []int{1, 2, -1} {
+		t.Run(fmt.Sprintf("GitLab/max-file-size=%d", limit), func(t *testing.T) {
+			root := writeRepo(t, map[string]string{
+				".gitlab-ci.yml":       "include: [.gitlab/ci/large.yml]\n",
+				".gitlab/ci/large.yml": "#" + strings.Repeat("x", 1<<20) + "\nincluded: {script: [echo included]}\n",
+			})
+			params := scanParams
+			params.Path, params.RepoPath = []string{root}, root
+			params.Platform, params.CloudProvider = []string{"CICD"}, []string{""}
+			params.MaxFileSizeFlag = limit
+			params.DisableSecrets = true
+			query := model.QueryMetadata{Query: "gitlab-size-policy", Platform: "cicd", InputData: "{}",
+				Content: `package datadog
+DatadogPolicy contains result if {
+ some doc in input.document
+ _ := doc.gitlab.included.script[0]
+ result := {"documentId": doc.id, "searchKey": "gitlab.included.script.0", "resourceType": "gitlab_ci_job", "resourceName": "included"}
+}`,
+				Metadata: map[string]interface{}{"id": "gitlab-size-policy", "platform": "CICD", "severity": "HIGH"}}
+			client, err := NewClient(ctx, &params, &consolePrinter.Printer{}, WithQuerySourceFactory(func(context.Context, []string) (source.QueriesSource, error) {
+				return &stubQuerySource{queries: []model.QueryMetadata{query}}, nil
+			}))
+			require.NoError(t, err)
+			results, err := client.executeScan(ctx)
+			require.NoError(t, err)
+			require.NotNil(t, results)
+			if limit == 1 {
+				require.True(t, results.Incomplete())
+				require.Empty(t, results.Results)
+			} else {
+				require.False(t, results.Incomplete())
+				require.Len(t, results.Results, 1)
+			}
+		})
+	}
+}
+
+func TestGitLabProviderRoutingAndConditionalIncludes(t *testing.T) {
+	for _, name := range []string{".gitlab-ci.YML", ".gitlab/ci/jobs.YAML", "pipelines/check.GitLab-CI.YmL"} {
+		for _, singleFile := range []bool{false, true} {
+			for _, conditional := range []string{"none", "exists", "unknown absent", "unknown override", "status mirror", "boolean", "invalid later document", "invalid root scalar", "invalid root sequence", "invalid root null", "invalid root quoted empty", "invalid later null", "invalid later tilde", "invalid later quoted empty"} {
+				if strings.HasPrefix(conditional, "invalid root") && strings.HasPrefix(name, ".gitlab/ci/") {
+					continue
+				}
+				t.Run(fmt.Sprintf("%s/file=%t/conditional=%s", name, singleFile, conditional), func(t *testing.T) {
+					body := "included: {script: [echo root]}\n"
+					if conditional == "exists" {
+						body = "include: [{local: optional.yml, rules: [{exists: [optional.yml]}]}]\n" + body
+					} else if strings.HasPrefix(conditional, "unknown") {
+						body = "include: [{local: optional.yml, rules: [{if: '$UNKNOWN'}]}]\n" + body
+					}
+					switch conditional {
+					case "status mirror":
+						body = "included: {needs: {pipeline: group/project}}\n"
+					case "boolean":
+						body = "included: {script: [echo root], allow_failure: yes}\n"
+					case "invalid later document":
+						body += "---\nincluded: [unterminated\n"
+					case "invalid root scalar":
+						body = "value\n"
+					case "invalid root sequence":
+						body = "- invalid\n"
+					case "invalid root null":
+						body = "null\n"
+					case "invalid root quoted empty":
+						body = "\"\"\n"
+					case "invalid later null":
+						body += "---\nnull\n"
+					case "invalid later tilde":
+						body += "---\n~\n"
+					case "invalid later quoted empty":
+						body += "---\n\"\"\n"
+					}
+					files := map[string]string{name: body}
+					if conditional == "unknown override" {
+						files["optional.yml"] = "included: {script: [echo conditional]}\n"
+					}
+					repo := writeRepo(t, files)
+					path := repo
+					if singleFile {
+						path = filepath.Join(repo, filepath.FromSlash(name))
+					}
+					params, ctx := GetDefaultParameters(t.Context(), repo)
+					require.NotNil(t, params)
+					params.Path, params.RepoPath = []string{path}, repo
+					params.Platform, params.ScanID = []string{"CICD"}, "gitlab-routing"
+					params.FlagEvaluator = featureflags.NewLocalEvaluator()
+					query := model.QueryMetadata{Query: "gitlab-routing", Platform: "cicd", InputData: "{}", Metadata: map[string]interface{}{"id": "gitlab-routing", "platform": "CICD", "severity": "HIGH"}, Content: `package datadog
+DatadogPolicy contains {"documentId":doc.id,"searchKey":"gitlab.included.script.0"} if {some doc in input.document;doc.gitlab.included.script[0] == "echo root"}`}
+					if conditional == "status mirror" {
+						query.Content = `package datadog
+DatadogPolicy contains {"documentId":doc.id,"searchKey":"gitlab.included.needs.pipeline"} if {some doc in input.document;doc.gitlab.included.needs.pipeline == "group/project"}`
+					} else if conditional == "boolean" {
+						query.Content = strings.Replace(query.Content, `doc.gitlab.included.script[0] == "echo root"`, `doc.gitlab.included.allow_failure == true`, 1)
+					}
+					client, err := NewClient(ctx, params, &consolePrinter.Printer{}, WithQuerySourceFactory(func(context.Context, []string) (source.QueriesSource, error) {
+						return &stubQuerySource{queries: []model.QueryMetadata{query}}, nil
+					}))
+					require.NoError(t, err)
+					run := &inventoryRun{collector: inventory.NewCollector(repo)}
+					client.inventory = run
+					result, err := client.executeScan(t.Context())
+					require.NoError(t, err)
+					invalid := strings.HasPrefix(conditional, "invalid")
+					require.Equal(t, strings.HasPrefix(conditional, "unknown") || invalid, result.Incomplete())
+					if invalid {
+						require.Empty(t, result.Results)
+					} else {
+						require.Len(t, result.Results, 1)
+					}
+					client.recordManifest(run, result.Files)
+					manifest := run.collector.Build(&inventory.Metadata{Incomplete: result.Incomplete()})
+					if conditional == "status mirror" {
+						require.Len(t, manifest.Resources, 1)
+						require.Equal(t, "gitlab_ci_job", manifest.Resources[0].ResourceType)
+					}
+					found := false
+					for _, file := range manifest.Files {
+						if file.Path != filepath.ToSlash(name) {
+							continue
+						}
+						found = true
+						if invalid {
+							require.Equal(t, inventory.FileFailed, file.Status)
+							require.Equal(t, model.ParseFailureInvalidPipeline, file.Reason)
+							require.Equal(t, inventory.StatusPartial, manifest.Status)
+						} else if strings.HasPrefix(conditional, "unknown") {
+							require.Equal(t, inventory.FileFailed, file.Status)
+							require.Equal(t, model.ParseFailureUnresolvedInclude, file.Reason)
+							require.Equal(t, inventory.StatusPartial, manifest.Status)
+						} else {
+							require.Equal(t, inventory.FileScanned, file.Status)
+						}
+					}
+					require.True(t, found)
+				})
+			}
+		}
 	}
 }
 

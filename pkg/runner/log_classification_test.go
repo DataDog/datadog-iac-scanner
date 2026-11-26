@@ -50,7 +50,7 @@ func TestLogParseFailure(t *testing.T) {
 			s := &Service{}
 			s.recordFailedHelmChart(chart)
 
-			reason := s.parseFailureReason(tt.file, []byte(tt.content))
+			reason := s.parseFailureReason(tt.file, []byte(tt.content), nil)
 			s.logParseFailure(ctx, tt.file, reason, errors.New("bad"))
 
 			require.Equal(t, tt.wantReason, reason)

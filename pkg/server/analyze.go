@@ -88,6 +88,29 @@ type analyzeRequest struct {
 	Libraries []datadog.Library `json:"libraries"`
 	Config    string            `json:"config,omitempty"`
 	Platform  []string          `json:"platform,omitempty"`
+	// RepoRoot is the repository boundary, using the same path convention as Files.
+	RepoRoot string `json:"repo_root,omitempty"`
+	// CompleteDirectories recursively identifies fully supplied directory snapshots.
+	CompleteDirectories []string `json:"complete_directories,omitempty"`
+}
+
+func (req *analyzeRequest) fileSystem(ctx context.Context) *vfs.MemFS {
+	contextLogger := logger.FromContext(ctx)
+	files := make(map[string][]byte, len(req.Files))
+	for i := range req.Files {
+		f := &req.Files[i]
+		content, err := f.bytes()
+		if err != nil {
+			contextLogger.Warn().Msgf("dropping undecodable file %s: %v", f.Path, err)
+			continue
+		}
+		files[f.Path] = content
+	}
+	memfs := vfs.NewMemFS(files)
+	for _, directory := range req.CompleteDirectories {
+		memfs.MarkDirectoryComplete(directory)
+	}
+	return memfs
 }
 
 // analyzeResponse is the body of a successful analyze. Findings are the engine's
@@ -325,17 +348,7 @@ func serverFlagEvaluator() featureflags.FlagEvaluator {
 // referenced but did not receive.
 func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResponse, error) {
 	contextLogger := logger.FromContext(ctx)
-	files := make(map[string][]byte, len(req.Files))
-	for i := range req.Files {
-		f := &req.Files[i]
-		content, err := f.bytes()
-		if err != nil {
-			contextLogger.Warn().Msgf("dropping undecodable file %s: %v", f.Path, err)
-			continue
-		}
-		files[f.Path] = content
-	}
-	memfs := vfs.NewMemFS(files)
+	memfs := req.fileSystem(ctx)
 
 	cfg := config.IacConfig{}
 	if strings.TrimSpace(req.Config) != "" {
@@ -375,6 +388,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 
 	client, err := scan.NewClient(ctx, params, &consolePrinter.Printer{},
 		scan.WithFS(memfs),
+		scan.WithRepositoryRoot(req.RepoRoot),
 		scan.WithInMemoryScan(memfs.Paths()),
 		scan.WithQuerySourceFactory(querySourceFactory(req.Ruleset.Rules, req.Libraries)),
 	)
@@ -395,7 +409,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		// No analyzable content for the requested platforms.
 		return resp, nil
 	}
-	resp.Incomplete = res.Incomplete()
+	resp.Incomplete = res.Incomplete() || len(resp.MissingFiles) > 0
 	if len(res.Results) > 0 {
 		resp.Findings = res.Results
 		resp.ArchiveFiles = archiveSources(ctx, res.Results, memfs)

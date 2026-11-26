@@ -158,6 +158,9 @@ func appendDocument(ctx context.Context, documents []model.Document, node *yaml.
 	if fn != nil {
 		fn(contentNode)
 	}
+	if ctx.Err() != nil {
+		return documents
+	}
 	doc := model.Document{}
 	var err error
 	if ignore == nil {

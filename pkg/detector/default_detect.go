@@ -18,6 +18,8 @@ import (
 const (
 	undetectedVulnerabilityLine = -1
 	lineInfoKey                 = "_dd_lines"
+	sourcePathKey               = "_path"
+	sourceDocumentIDKey         = "id"
 	// resource, type, and name; the resource block's own header line is now
 	// injected into the remapped plan document (see pkg/parser/json/tfplan.go),
 	// so a bare resource-level searchKey can resolve structurally too.
@@ -30,6 +32,9 @@ type defaultDetectLine struct {
 // DetectLine searches vulnerability line if kindDetectLine is not in detectors
 func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetadata, searchKey string,
 	outputLines int) model.VulnerabilityLines {
+	if result, ok := compiledLegacyLines(ctx, file, searchKey, outputLines); ok {
+		return result
+	}
 	contextLogger := logger.FromContext(ctx)
 	detector := &DefaultDetectLineResponse{
 		CurrentLine:     0,
@@ -338,4 +343,44 @@ func (d defaultDetectLine) prepareResolvedFiles(resFiles map[string]model.Resolv
 		}
 	}
 	return resolvedFiles
+}
+
+func nativeSourceDocument(file *model.FileMetadata) model.Document {
+	if file.Document != nil {
+		return file.Document
+	}
+	return file.LineInfoDocument
+}
+func compiledLegacyLines(
+	ctx context.Context, file *model.FileMetadata, searchKey string, outputLines int,
+) (model.VulnerabilityLines, bool) {
+	if file.LineOverlay != nil {
+		var path []string
+		document := nativeSourceDocument(file)
+		if document != nil {
+			var value SourceValue = NativeSourceValue{Value: document}
+			if file.DocumentDialect == model.GitLabDialect {
+				value = WrittenSourceValue(value)
+			}
+			if concrete, err := ResolveLegacySourcePath(ctx, value, searchKey); err == nil {
+				path = concrete.Components()
+			}
+		} else {
+			path = SourceSearchPath(searchKey)
+		}
+		if path != nil {
+			position := file.LineOverlay.LookupSource(path)
+			source := file
+			if snapshot := position.Snapshot; snapshot != nil {
+				source = &model.FileMetadata{Kind: file.Kind, FilePath: snapshot.Path,
+					OriginalData: snapshot.Content, LinesOriginalData: snapshot.Lines()}
+			}
+			if position.Line > 0 {
+				if result, err := sourceLines(source, position.Line, outputLines); err == nil {
+					return result, true
+				}
+			}
+		}
+	}
+	return model.VulnerabilityLines{}, false
 }

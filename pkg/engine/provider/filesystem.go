@@ -19,6 +19,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
@@ -305,7 +306,7 @@ func (s *FileSystemSourceProvider) buildInventoryFromPrebuilt(ctx context.Contex
 				continue
 			}
 		}
-		ext := utils.ExtensionFromPath(norm)
+		ext := gitlab.NormalizeExtension(norm, utils.ExtensionFromPath(norm))
 		if ext == "" {
 			if resolved, err := utils.GetExtension(ctx, norm); err == nil {
 				ext = resolved
@@ -618,6 +619,7 @@ func (s *FileSystemSourceProvider) WalkInventoryWithChartBatches(ctx context.Con
 				return nil, openFileErr
 			}
 			ext, _ := utils.GetExtension(ctx, scanPath)
+			ext = gitlab.NormalizeExtension(scanPath, ext)
 			files = append(files, InventoryFile{Path: toSlash(scanPath), Ext: ext})
 			continue
 		}
@@ -696,6 +698,7 @@ func (s *FileSystemSourceProvider) collectFiles(ctx context.Context, scanPath st
 
 func openScanFile(ctx context.Context, scanPath string, extensions model.Extensions) (*os.File, error) {
 	ext, _ := utils.GetExtension(ctx, scanPath)
+	ext = gitlab.NormalizeExtension(scanPath, ext)
 
 	if !extensions.Include(ext) {
 		return nil, ErrNotSupportedFile
@@ -769,6 +772,7 @@ func (s *FileSystemSourceProvider) checkConditions(ctx context.Context, info os.
 		}
 	}
 	ext, _ = utils.GetExtension(ctx, path)
+	ext = gitlab.NormalizeExtension(path, ext)
 	if !extensions.Include(ext) {
 		return true, "", nil
 	}

@@ -14,6 +14,22 @@ type gitIgnoreMatcher struct {
 	patterns []gitIgnorePattern
 }
 
+const parentDirectory = ".."
+
+// GitIgnored applies the same compiled rules as the walk to a contributing
+// source, including files outside the walk and beneath pruned directories.
+// Call after Analyze; the matcher is immutable during parsing.
+func (a *Analyzer) GitIgnored(path string) bool {
+	if a.gitIgnoreMatcher == nil {
+		return false
+	}
+	relative, err := filepath.Rel(a.RepoPath, path)
+	if err != nil || relative == parentDirectory || strings.HasPrefix(relative, parentDirectory+string(os.PathSeparator)) {
+		return false
+	}
+	return a.gitIgnoreMatcher.MatchesPath(relative) || a.gitIgnoreMatcher.MatchesParentDir(relative)
+}
+
 type gitIgnorePattern struct {
 	pattern       gitignore.Pattern
 	exactPath     bool

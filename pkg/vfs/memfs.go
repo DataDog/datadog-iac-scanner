@@ -8,10 +8,10 @@ package vfs
 
 import (
 	"io/fs"
+	"maps"
 	"path"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,9 +30,66 @@ const (
 // Concurrency: Terraform module enrichment runs reader goroutines, so all access
 // is guarded by a mutex.
 type MemFS struct {
-	mu      sync.Mutex
-	files   map[string][]byte
-	missing map[string]struct{}
+	mu                  sync.Mutex
+	files               map[string][]byte
+	directories         map[string][]fs.DirEntry
+	missing             map[string]struct{}
+	completeDirectories map[string]bool
+	completeShared      bool
+}
+
+// DirectorySnapshot identifies directory trees supplied in full by the caller.
+// Merely having some pushed descendants never establishes completeness.
+type DirectorySnapshot interface {
+	DirectoryComplete(name string) bool
+}
+
+// MarkDirectoryComplete declares that all files below name have been supplied.
+func (m *MemFS) MarkDirectoryComplete(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.completeDirectories[normalize(name)] {
+		return
+	}
+	if m.completeShared {
+		m.completeDirectories = maps.Clone(m.completeDirectories)
+		m.completeShared = false
+	}
+	if m.completeDirectories == nil {
+		m.completeDirectories = make(map[string]bool)
+	}
+	m.completeDirectories[normalize(name)] = true
+}
+
+func (m *MemFS) DirectoryComplete(name string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.directoryComplete(normalize(name))
+}
+
+func (m *MemFS) directoryComplete(name string) bool {
+	for {
+		if m.completeDirectories[name] {
+			return true
+		}
+		parent := normalize(filepath.Dir(name))
+		if parent == name {
+			return false
+		}
+		name = parent
+	}
+}
+
+// Fork shares immutable pushed files while collecting requests independently.
+// A compiler can publish its requests only after its invocation is retained.
+func (m *MemFS) Fork() *MemFS {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.completeShared = true
+	return &MemFS{
+		files: m.files, directories: m.directories, missing: make(map[string]struct{}),
+		completeDirectories: m.completeDirectories, completeShared: true,
+	}
 }
 
 // NewMemFS builds a MemFS from a path -> content map. Keys are normalized so
@@ -45,7 +102,41 @@ func NewMemFS(files map[string][]byte) *MemFS {
 	for p, c := range files {
 		m.files[normalize(p)] = c
 	}
+	m.directories = indexDirectories(m.files)
 	return m
+}
+
+// Build once per snapshot, in work proportional to path components. Forks
+// share this immutable index; wildcard walks visit only returned children.
+func indexDirectories(files map[string][]byte) map[string][]fs.DirEntry {
+	children := make(map[string]map[string]memDirEntry)
+	for name, content := range files {
+		entry := memDirEntry{name: filepath.Base(name), size: int64(len(content))}
+		for {
+			directory := normalize(filepath.Dir(name))
+			if directory == name {
+				break
+			}
+			if children[directory] == nil {
+				children[directory] = make(map[string]memDirEntry)
+			}
+			if previous, exists := children[directory][entry.name]; !exists || previous.dir {
+				children[directory][entry.name] = entry
+			}
+			name = directory
+			entry = memDirEntry{name: filepath.Base(name), dir: true}
+		}
+	}
+	index := make(map[string][]fs.DirEntry, len(children))
+	for directory, entries := range children {
+		listing := make([]fs.DirEntry, 0, len(entries))
+		for _, entry := range entries {
+			listing = append(listing, entry)
+		}
+		sort.Slice(listing, func(i, j int) bool { return listing[i].Name() < listing[j].Name() })
+		index[directory] = listing
+	}
+	return index
 }
 
 // normalize makes a path comparable: OS-cleaned then forward-slashed, mirroring
@@ -69,7 +160,9 @@ func (m *MemFS) ReadFile(name string) ([]byte, error) {
 		copy(out, content)
 		return out, nil
 	}
-	m.missing[key] = struct{}{}
+	if !m.directoryComplete(normalize(filepath.Dir(key))) {
+		m.missing[key] = struct{}{}
+	}
 	return nil, notExist("open", name)
 }
 
@@ -93,10 +186,8 @@ func (m *MemFS) DirInfo(name string) (fs.FileInfo, bool) {
 	dir := normalize(name)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for p := range m.files {
-		if _, ok := underDir(p, dir); ok || dir == "." {
-			return memFileInfo{name: path.Base(dir), dir: true}, true
-		}
+	if _, exists := m.directories[dir]; exists {
+		return memFileInfo{name: path.Base(dir), dir: true}, true
 	}
 	return nil, false
 }
@@ -110,54 +201,14 @@ func (m *MemFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	type childInfo struct {
-		isDir bool
-		size  int64
-	}
-	children := make(map[string]childInfo)
-	for p, content := range m.files {
-		var rel string
-		if dir == "." {
-			rel = p
-		} else if r, ok := underDir(p, dir); ok {
-			rel = r
-		} else {
-			continue
+	entries, exists := m.directories[dir]
+	if !exists {
+		if !m.directoryComplete(dir) {
+			m.missing[dir] = struct{}{}
 		}
-		if rel == "" {
-			continue
-		}
-		if seg, _, found := strings.Cut(rel, "/"); found {
-			// A descendant: its first path segment is an immediate subdirectory.
-			// An absolute key under dir "." has an empty first segment ("" for
-			// "/ws/main.tf"), which names no directory — skip it rather than
-			// synthesizing an entry called "".
-			if seg == "" {
-				continue
-			}
-			if _, ok := children[seg]; !ok {
-				children[seg] = childInfo{isDir: true}
-			}
-			continue
-		}
-		children[rel] = childInfo{size: int64(len(content))}
-	}
-
-	if len(children) == 0 {
-		m.missing[dir] = struct{}{}
 		return nil, notExist("readdir", name)
 	}
-	names := make([]string, 0, len(children))
-	for n := range children {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	entries := make([]fs.DirEntry, 0, len(names))
-	for _, n := range names {
-		ci := children[n]
-		entries = append(entries, memDirEntry{name: n, dir: ci.isDir, size: ci.size})
-	}
-	return entries, nil
+	return append([]fs.DirEntry(nil), entries...), nil
 }
 
 // Glob returns pushed paths matching pattern (filepath.Glob semantics over the
@@ -236,21 +287,6 @@ func (m *MemFS) MissingFiles() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// underDir returns the path of p relative to dir if p is a strict descendant of
-// dir (a non-empty remainder after the "dir/" prefix). dir may already end in
-// "/" (e.g. the root "/" or a Windows drive root "C:/"); avoid doubling the
-// separator in that case, since "dir/" + "/" matches no key.
-func underDir(p, dir string) (string, bool) {
-	prefix := dir + "/"
-	if strings.HasSuffix(dir, "/") {
-		prefix = dir
-	}
-	if after, ok := strings.CutPrefix(p, prefix); ok && after != "" {
-		return after, true
-	}
-	return "", false
 }
 
 // memFileInfo is a minimal fs.FileInfo for in-memory entries.

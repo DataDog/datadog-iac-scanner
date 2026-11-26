@@ -7,6 +7,7 @@ package detector
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/rs/zerolog"
@@ -95,4 +96,20 @@ func (d *DetectLine) ReleaseCaches() {
 // handlers before forking; a fork must not be copied by value.
 func (d *DetectLine) ForkSourceResolver() *DetectLine {
 	return &DetectLine{detectors: d.detectors, outputLines: d.outputLines, logWithFields: d.logWithFields, defaultDetector: d.defaultDetector}
+}
+
+// DetectCompiledSourceLine validates a typed location against compiled values
+// before rendering its trusted compiler coordinate in the contributing source.
+func (d *DetectLine) DetectCompiledSourceLine(
+	file *model.FileMetadata, document model.Document, path model.SourcePath, line int,
+) (model.VulnerabilityLines, error) {
+	if path != nil {
+		if document == nil {
+			return model.VulnerabilityLines{}, fmt.Errorf("compiled source document unavailable")
+		}
+		if err := validateCompiledLocation(document, path); err != nil {
+			return model.VulnerabilityLines{}, err
+		}
+	}
+	return sourceLines(file, line, d.outputLines)
 }

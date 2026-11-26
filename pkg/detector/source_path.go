@@ -49,6 +49,17 @@ func (d *DetectLine) DetectPath(ctx context.Context, file *model.FileMetadata, p
 	if err := ctx.Err(); err != nil {
 		return model.VulnerabilityLines{}, err
 	}
+	if file.LineOverlay != nil {
+		position := file.LineOverlay.LookupSource(path.Components())
+		if position.Line > 0 {
+			source := file
+			if snapshot := position.Snapshot; snapshot != nil {
+				source = &model.FileMetadata{Kind: file.Kind, FilePath: snapshot.Path,
+					OriginalData: snapshot.Content, LinesOriginalData: snapshot.Lines()}
+			}
+			return d.DetectCompiledSourceLine(source, nativeSourceDocument(file), path, position.Line)
+		}
+	}
 	if impl, ok := d.detectors[file.Kind].(pathDetector); ok {
 		return impl.DetectPath(ctx, file, path, d.outputLines)
 	}
@@ -77,6 +88,40 @@ func (d *DetectLine) DetectPath(ctx context.Context, file *model.FileMetadata, p
 		return model.VulnerabilityLines{}, err
 	}
 	return sourceLines(file, line, d.outputLines)
+}
+
+// A missing final object property locates its parent, like written-source
+// detection. Intermediate traversal and index/key types must remain valid even
+// when an alias or inheritance overlay maps an entire value to one use site.
+func validateCompiledLocation(document model.Document, path model.SourcePath) error {
+	var value interface{} = map[string]interface{}(document)
+	for index, segment := range path {
+		if doc, ok := value.(model.Document); ok {
+			value = map[string]interface{}(doc)
+		}
+		switch current := value.(type) {
+		case map[string]interface{}:
+			if segment.IsIndex {
+				return fmt.Errorf("array index applied to object")
+			}
+			next, found := current[segment.Key]
+			if !found && index == len(path)-1 {
+				return nil
+			}
+			value = next
+		case []interface{}:
+			if !segment.IsIndex {
+				return fmt.Errorf("object key applied to array")
+			}
+			if segment.Index < 0 || segment.Index >= len(current) {
+				return fmt.Errorf("array index out of bounds")
+			}
+			value = current[segment.Index]
+		default:
+			return fmt.Errorf("source traversal through scalar or missing structure unsupported")
+		}
+	}
+	return nil
 }
 
 func (cache *sourceDocumentCache) load(ctx context.Context, file *model.FileMetadata) ([]*yaml.Node, error) {

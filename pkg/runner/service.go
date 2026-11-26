@@ -7,12 +7,14 @@ package runner
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -89,12 +91,17 @@ type Service struct {
 	Tracker        Tracker
 	Resolver       *resolver.Resolver
 	// RenderedFileFilter applies the scan's path filters to rendered Helm
-	// files; nil keeps them all.
+	// files and compiled include views; nil keeps them all.
 	RenderedFileFilter provider.FileFilter
-	files              model.FileMetadatas
-	filesMu            sync.Mutex
-	ScanRoot           string
-	MaxFileSize        int
+	// SourceExcluded shares the analyzer's Git ignore predicate with compiled sources.
+	SourceExcluded             func(string) bool
+	files                      model.FileMetadatas
+	pendingCompilations        model.FileMetadatas
+	pendingCompilationFailures []compilationFailure
+	pendingCompilationRequests map[string][]func()
+	filesMu                    sync.Mutex
+	ScanRoot                   string
+	MaxFileSize                int
 	// Platforms is the scan's effective platform set, used to classify each
 	// parsed file's platform consistently with the analyzer so the engine can
 	// scope queries to their own platform's documents.
@@ -372,6 +379,7 @@ func (s *Service) StartScan(
 	contextLogger.Debug().Msg("service.StartScan()")
 	defer wg.Done()
 
+	s.finalizeCompilations(ctx)
 	s.files.SortByDocumentKey()
 	vulnerabilities, err := s.Inspector.Inspect(
 		ctx,
@@ -495,16 +503,210 @@ func (s *Service) GetVulnerabilities(ctx context.Context, scanID string) ([]mode
 func (s *Service) FileCount() int {
 	s.filesMu.Lock()
 	defer s.filesMu.Unlock()
-	return len(s.files)
+	return len(s.files) + len(s.pendingCompilations)
 }
 
 func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
-	err := s.Storage.SaveFile(ctx, file)
-	if err == nil {
+	if file.CompilationRoot != "" {
+		s.filesMu.Lock()
+		s.pendingCompilations = append(s.pendingCompilations, file)
+		s.filesMu.Unlock()
+		return
+	}
+	s.registerFile(ctx, file)
+}
+
+func (s *Service) registerFile(ctx context.Context, file *model.FileMetadata) {
+	if err := s.Storage.SaveFile(ctx, file); err == nil {
 		s.filesMu.Lock()
 		s.files = append(s.files, file)
 		s.filesMu.Unlock()
 	}
+}
+
+// finalizeCompilations registers compiled views after every input was parsed,
+// so parent/include selection is independent of parse scheduling and scan order.
+func (s *Service) finalizeCompilations(ctx context.Context) {
+	s.filesMu.Lock()
+	pending := s.pendingCompilations
+	s.pendingCompilations = nil
+	failures := s.pendingCompilationFailures
+	s.pendingCompilationFailures = nil
+	requests := s.pendingCompilationRequests
+	s.pendingCompilationRequests = nil
+	s.filesMu.Unlock()
+	compilations := make(map[string][]string)
+	originalPaths := make(map[string]string)
+	for root := range requests {
+		compilations[root] = nil
+	}
+	for _, failure := range failures {
+		compilations[filepath.Clean(filepath.FromSlash(failure.path))] = nil
+	}
+	for _, file := range pending {
+		root := filepath.Clean(filepath.FromSlash(file.CompilationRoot))
+		compilations[root] = file.SourceDependencies
+		originalPaths[root] = file.CompilationRoot
+	}
+	selected := selectCompilations(compilations)
+	for root, effects := range requests {
+		if selected[root] {
+			for _, publish := range effects {
+				publish()
+			}
+		}
+	}
+	for _, failure := range failures {
+		if selected[filepath.Clean(filepath.FromSlash(failure.path))] {
+			s.logParseFailure(ctx, failure.path, failure.reason, failure.err)
+			s.Tracker.TrackFileFailed(failure.path, failure.reason)
+		}
+	}
+	covered := make(map[string]bool)
+	for _, file := range pending {
+		root := filepath.Clean(filepath.FromSlash(file.CompilationRoot))
+		if selected[root] {
+			for _, source := range file.SourceFiles {
+				canonical := filepath.Clean(filepath.FromSlash(source.FilePath))
+				if canonical == root || source.SourceExcluded || covered[canonical] {
+					continue
+				}
+				covered[canonical] = true
+				path := cmp.Or(originalPaths[canonical], source.FilePath)
+				s.Tracker.TrackFileFound(path)
+				s.Tracker.TrackFileParse(path)
+			}
+			s.registerFile(ctx, file)
+		}
+	}
+}
+
+// Prefer roots with no remaining parent before consuming their dependencies.
+// Only retained invocations suppress standalone compilations: an invocation
+// removed by an input override must not leave stale consumption marks.
+// Components order cycles before their downstream files while retaining coverage.
+func selectCompilations(compilations map[string][]string) map[string]bool {
+	roots, edges := compilationGraph(compilations)
+	groups, membership := compilationComponents(roots, edges)
+	outgoing, incoming := componentEdges(groups, membership, edges)
+	var ready []int
+	for id, count := range incoming {
+		if count == 0 {
+			ready = append(ready, id)
+		}
+	}
+	consumed, selected := make(map[string]bool), make(map[string]bool)
+	for head := 0; head < len(ready); head++ {
+		id := ready[head]
+		for _, root := range groups[id] {
+			if consumed[root] {
+				continue
+			}
+			selected[root] = true
+			// Only a retained invocation can consume standalone coverage.
+			for _, source := range compilations[root] {
+				consumed[filepath.Clean(filepath.FromSlash(source))] = true
+			}
+		}
+		for _, child := range outgoing[id] {
+			incoming[child]--
+			if incoming[child] == 0 {
+				ready = append(ready, child)
+			}
+		}
+	}
+	return selected
+}
+
+func compilationGraph(compilations map[string][]string) (roots []string, edges map[string][]string) {
+	edges = make(map[string][]string, len(compilations))
+	for root := range compilations {
+		roots = append(roots, root)
+	}
+	sort.Strings(roots)
+	for _, root := range roots {
+		for _, source := range compilations[root] {
+			child := filepath.Clean(filepath.FromSlash(source))
+			if _, exists := compilations[child]; exists {
+				edges[root] = append(edges[root], child)
+			}
+		}
+		sort.Strings(edges[root])
+	}
+	return roots, edges
+}
+
+// Condense cycles before ordering invocations: a downstream file must never be
+// selected merely because its name sorts before a cycle that already includes it.
+func compilationComponents(roots []string, edges map[string][]string) (groups [][]string, membership map[string]int) {
+	index, low := make(map[string]int), make(map[string]int)
+	onStack := make(map[string]bool)
+	var stack []string
+	next := 0
+	var visit func(string)
+	visit = func(root string) {
+		next++
+		index[root] = next
+		low[root] = next
+		stack = append(stack, root)
+		onStack[root] = true
+		for _, child := range edges[root] {
+			if index[child] == 0 {
+				visit(child)
+				low[root] = min(low[root], low[child])
+			} else if onStack[child] {
+				low[root] = min(low[root], index[child])
+			}
+		}
+		if low[root] != index[root] {
+			return
+		}
+		var group []string
+		for {
+			child := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			onStack[child] = false
+			group = append(group, child)
+			if child == root {
+				break
+			}
+		}
+		sort.Strings(group)
+		groups = append(groups, group)
+	}
+	for _, root := range roots {
+		if index[root] == 0 {
+			visit(root)
+		}
+	}
+	sort.Slice(groups, func(i, j int) bool { return groups[i][0] < groups[j][0] })
+	membership = make(map[string]int, len(roots))
+	for id, group := range groups {
+		for _, root := range group {
+			membership[root] = id
+		}
+	}
+	return groups, membership
+}
+
+func componentEdges(groups [][]string, membership map[string]int, edges map[string][]string) (outgoing [][]int, incoming []int) {
+	outgoing, incoming = make([][]int, len(groups)), make([]int, len(groups))
+	for id, group := range groups {
+		seen := make(map[int]bool)
+		for _, root := range group {
+			for _, child := range edges[root] {
+				target := membership[child]
+				if target == id || seen[target] {
+					continue
+				}
+				seen[target] = true
+				outgoing[id] = append(outgoing[id], target)
+				incoming[target]++
+			}
+		}
+		sort.Ints(outgoing[id])
+	}
+	return outgoing, incoming
 }
 
 func (s *Service) documentPath(path string) model.DocumentSource {
@@ -591,17 +793,29 @@ var errCyclicDocument = errors.New("cyclic document tree")
 // heap/CPU cost) — the lazy line-info refactor leaves body exclusively owned.
 // Cycles are rejected with errCyclicDocument, as json.Marshal would.
 func sanitizeScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
-	return sanitizeScanDocumentWithMarks(body, kind, sanitizeMarks{state: make(map[uintptr]sanitizeMark)})
+	return sanitizeScanDocumentWithMarks(body, kind, sanitizeMarks{
+		state:  make(map[uintptr]sanitizeMark),
+		slices: make(map[sliceKey]sanitizeMark),
+	})
 }
 
-// sanitizeSharedScanDocumentInPlace is sanitizeScanDocumentInPlace for a
-// document whose maps can have several parents, as resolved file references
-// do (see file.Resolver.ResolveYAML): each map is sanitized once, where
-// visiting it on every path would take time exponential in the nesting depth
-// of the references. The filter flags only vary at the root of Terraform plan
-// documents, which share no map.
-func sanitizeSharedScanDocumentInPlace(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
-	return sanitizeScanDocumentWithMarks(body, kind, sanitizeMarks{state: make(map[uintptr]sanitizeMark), shared: true})
+// newSharedScanDocumentSanitizer visits each unique container once across all
+// views of a compiled document, and still rejects genuine cycles.
+func newSharedScanDocumentSanitizer() func(map[string]interface{}, model.FileKind) (map[string]interface{}, error) {
+	return newCompiledDocumentSanitizer(false)
+}
+
+// Native compiled configurations carry source positions externally. Their
+// fields, including ones named _dd_lines, are all configuration data.
+func newCompiledDocumentSanitizer(preserveSourceFields bool) func(map[string]interface{}, model.FileKind) (map[string]interface{}, error) {
+	marks := sanitizeMarks{
+		state: make(map[uintptr]sanitizeMark), slices: make(map[sliceKey]sanitizeMark),
+		shared: true, normalizedPointers: make(map[interface{}]interface{}),
+		preserveSourceFields: preserveSourceFields,
+	}
+	return func(body map[string]interface{}, kind model.FileKind) (map[string]interface{}, error) {
+		return sanitizeScanDocumentWithMarks(body, kind, marks)
+	}
 }
 
 func sanitizeScanDocumentWithMarks(body map[string]interface{}, kind model.FileKind,
@@ -612,12 +826,21 @@ func sanitizeScanDocumentWithMarks(body map[string]interface{}, kind model.FileK
 	return body, nil
 }
 
-// sanitizeMarks holds the maps being sanitized, to reject cycles, and those
-// already sanitized when the document shares maps. Other documents forget a
-// map once it is done, which keeps the marks as small as the nesting depth.
+type sliceKey struct {
+	ptr    uintptr
+	length int
+}
+
+// sanitizeMarks holds the maps and slices being sanitized, to reject cycles,
+// and those already sanitized when the document shares containers. Other
+// documents forget a container once it is done, which keeps the marks as small
+// as the nesting depth.
 type sanitizeMarks struct {
-	state  map[uintptr]sanitizeMark
-	shared bool
+	state                map[uintptr]sanitizeMark
+	slices               map[sliceKey]sanitizeMark
+	shared               bool
+	normalizedPointers   map[interface{}]interface{}
+	preserveSourceFields bool
 }
 
 type sanitizeMark uint8
@@ -648,6 +871,25 @@ func (m sanitizeMarks) leave(ptr uintptr) {
 	}
 }
 
+func (m sanitizeMarks) enterSlice(key sliceKey) (done bool, err error) {
+	switch m.slices[key] {
+	case sanitizing:
+		return true, errCyclicDocument
+	case sanitized:
+		return true, nil
+	}
+	m.slices[key] = sanitizing
+	return false, nil
+}
+
+func (m sanitizeMarks) leaveSlice(key sliceKey) {
+	if m.shared {
+		m.slices[key] = sanitized
+	} else {
+		delete(m.slices, key)
+	}
+}
+
 func sanitizeScanDocumentNodeInPlace(
 	body interface{},
 	kind model.FileKind,
@@ -658,17 +900,37 @@ func sanitizeScanDocumentNodeInPlace(
 	case map[string]interface{}:
 		return sanitizeScanDocumentValueInPlace(bodyType, kind, resolveFilters, atDocumentRoot, marks)
 	case []interface{}:
-		for i, indx := range bodyType {
-			if !isCanonicalDocumentValue(indx) {
-				if normalized, changed := normalizeDocumentValue(indx); changed {
-					bodyType[i] = normalized
-				}
-			}
-			if err := sanitizeScanDocumentNodeInPlace(bodyType[i], kind, resolveFilters, false, marks); err != nil {
-				return err
+		return sanitizeScanDocumentSliceInPlace(bodyType, kind, resolveFilters, marks, true)
+	}
+	return nil
+}
+
+func sanitizeScanDocumentSliceInPlace(
+	bodyType []interface{},
+	kind model.FileKind,
+	resolveFilters bool,
+	marks sanitizeMarks,
+	normalizeElements bool,
+) error {
+	if len(bodyType) == 0 {
+		return nil
+	}
+	key := sliceKey{ptr: reflect.ValueOf(bodyType).Pointer(), length: len(bodyType)}
+	if done, err := marks.enterSlice(key); done {
+		return err
+	}
+	for i, indx := range bodyType {
+		if normalizeElements && !isCanonicalDocumentValue(indx) {
+			if normalized, changed := marks.normalize(indx); changed {
+				bodyType[i] = normalized
 			}
 		}
+		if err := sanitizeScanDocumentNodeInPlace(bodyType[i], kind, resolveFilters, false, marks); err != nil {
+			marks.leaveSlice(key)
+			return err
+		}
 	}
+	marks.leaveSlice(key)
 	return nil
 }
 
@@ -683,7 +945,11 @@ func sanitizeScanDocumentValueInPlace(
 		return err
 	}
 
-	delete(bodyType, "_dd_lines")
+	if marks.preserveSourceFields {
+		resolveFilters = false
+	} else {
+		delete(bodyType, "_dd_lines")
+	}
 	var filterFields []string
 	if resolveFilters {
 		filterFields = lines[kind]
@@ -700,11 +966,9 @@ func sanitizeScanDocumentValueInPlace(
 				return err
 			}
 		case []interface{}:
-			for _, indx := range value {
-				if err := sanitizeScanDocumentNodeInPlace(indx, kind, childResolveFilters, false, marks); err != nil {
-					marks.leave(ptr)
-					return err
-				}
+			if err := sanitizeScanDocumentSliceInPlace(value, kind, childResolveFilters, marks, false); err != nil {
+				marks.leave(ptr)
+				return err
 			}
 		case string:
 			if len(filterFields) > 0 && utils.Contains(key, filterFields) {
@@ -732,20 +996,32 @@ func sanitizeNormalizedValueInPlace(
 	resolveFilters bool,
 	marks sanitizeMarks,
 ) error {
-	if normalized, changed := normalizeDocumentValue(bodyType[key]); changed {
+	if normalized, changed := marks.normalize(bodyType[key]); changed {
 		bodyType[key] = normalized
 	}
 	switch value := bodyType[key].(type) {
 	case map[string]interface{}:
 		return sanitizeScanDocumentNodeInPlace(value, kind, resolveFilters, false, marks)
 	case []interface{}:
-		for _, indx := range value {
-			if err := sanitizeScanDocumentNodeInPlace(indx, kind, resolveFilters, false, marks); err != nil {
-				return err
-			}
-		}
+		return sanitizeScanDocumentSliceInPlace(value, kind, resolveFilters, marks, false)
 	}
 	return nil
+}
+
+// normalize retains sharing for immutable parser-produced pointer values too.
+// Without this memo, each job serializes the same shell AST into a fresh tree.
+func (m sanitizeMarks) normalize(v interface{}) (interface{}, bool) {
+	if !m.shared || v == nil || reflect.ValueOf(v).Kind() != reflect.Pointer {
+		return normalizeDocumentValue(v)
+	}
+	if cached, ok := m.normalizedPointers[v]; ok {
+		return cached, true
+	}
+	normalized, changed := normalizeDocumentValue(v)
+	if changed {
+		m.normalizedPointers[v] = normalized
+	}
+	return normalized, changed
 }
 
 // isCanonicalDocumentValue reports whether v is one of the value types the

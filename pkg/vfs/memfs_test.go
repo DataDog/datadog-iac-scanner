@@ -8,6 +8,7 @@ package vfs
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -100,6 +101,16 @@ func TestMemFS_Glob(t *testing.T) {
 
 func TestMemFS_ReadDir(t *testing.T) {
 	m := newTestMemFS()
+	scoped := m.Fork()
+	m.MarkDirectoryComplete("parent-only")
+	scoped.MarkDirectoryComplete("child-only")
+	if scoped.DirectoryComplete("parent-only") || m.DirectoryComplete("child-only") {
+		t.Fatal("completeness markers must stay isolated after a snapshot is forked")
+	}
+	_, _ = scoped.ReadFile("only-scoped.yml")
+	if len(scoped.MissingFiles()) != 1 || len(m.MissingFiles()) != 0 {
+		t.Fatal("forked compilation requests must stay isolated")
+	}
 
 	entries, err := m.ReadDir("infra")
 	if err != nil {
@@ -113,6 +124,36 @@ func TestMemFS_ReadDir(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ReadDir infra = %v, want %v", got, want)
 	}
+	// A caller may reorder or replace its listing without mutating the shared
+	// snapshot. Forks reuse the index while keeping escalation state isolated.
+	entries[0] = nil
+	forkEntries, err := scoped.ReadDir("infra")
+	if err != nil || forkEntries[0] == nil {
+		t.Fatal("ReadDir must return an independent listing")
+	}
+	if reflect.ValueOf(m.directories).Pointer() != reflect.ValueOf(scoped.directories).Pointer() {
+		t.Fatal("forks must share the immutable directory index")
+	}
+	for _, count := range []int{100, 10000} {
+		files := make(map[string][]byte, count)
+		for i := range count {
+			files[fmt.Sprintf("ci/dir%d/job.yml", i)] = []byte("job: {script: echo ok}")
+		}
+		snapshot := NewMemFS(files)
+		if len(snapshot.directories["ci"]) != count {
+			t.Fatal("every directory must be retained")
+		}
+		for i := range count {
+			directory := fmt.Sprintf("ci/dir%d", i)
+			if _, exists := snapshot.DirInfo(directory); !exists {
+				t.Fatal("indexed directory is missing")
+			}
+			listing, err := snapshot.ReadDir(directory)
+			if err != nil || len(listing) != 1 || listing[0].Name() != "job.yml" {
+				t.Fatal("indexed traversal lost a file")
+			}
+		}
+	}
 
 	// An absent module directory is recorded (the escalation signal).
 	if _, err := m.ReadDir("infra/missingmod"); !errors.Is(err, fs.ErrNotExist) {
@@ -120,6 +161,30 @@ func TestMemFS_ReadDir(t *testing.T) {
 	}
 	if got := m.MissingFiles(); !reflect.DeepEqual(got, []string{"infra/missingmod"}) {
 		t.Errorf("MissingFiles after ReadDir miss = %v", got)
+	}
+	for _, root := range []string{"infra", "/workspace/infra", "."} {
+		t.Run("complete/"+root, func(t *testing.T) {
+			m := NewMemFS(nil)
+			m.MarkDirectoryComplete(root)
+			for _, path := range []string{root, filepath.Join(root, "nested"), filepath.Join(root, "nested", "deeper")} {
+				if !m.DirectoryComplete(path) {
+					t.Fatal("complete tree must include descendants")
+				}
+				_, _ = m.ReadDir(path)
+				_, _ = m.ReadFile(filepath.Join(path, "absent.yml"))
+			}
+			if len(m.MissingFiles()) != 0 {
+				t.Fatal("known absent entries must not request another upload")
+			}
+			outside := "/another-workspace"
+			if m.DirectoryComplete(outside) {
+				t.Fatal("completeness must not cross directory or path-root boundaries")
+			}
+			_, _ = m.ReadDir(outside)
+			if len(m.MissingFiles()) != 1 {
+				t.Fatal("unknown directories still require escalation")
+			}
+		})
 	}
 }
 
@@ -180,6 +245,31 @@ func TestMemFS_ReadDirAbsoluteKeys(t *testing.T) {
 	slashWant := map[string]bool{"tmp": true}
 	if !reflect.DeepEqual(slashGot, slashWant) {
 		t.Errorf("ReadDir \"/\" = %v, want %v", slashGot, slashWant)
+	}
+}
+
+func BenchmarkMemFSSnapshotTraversal(b *testing.B) {
+	for _, count := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			files := make(map[string][]byte, count)
+			directories := make([]string, count)
+			for index := range count {
+				directories[index] = fmt.Sprintf("ci/dir%d", index)
+				files[directories[index]+"/job.yml"] = []byte("job: {script: echo ok}")
+			}
+			b.ResetTimer()
+			for range b.N {
+				snapshot := NewMemFS(files).Fork()
+				for _, directory := range directories {
+					if _, ok := snapshot.DirInfo(directory); !ok {
+						b.Fatal("directory missing")
+					}
+					if entries, err := snapshot.ReadDir(directory); err != nil || len(entries) != 1 {
+						b.Fatal("file missing")
+					}
+				}
+			}
+		})
 	}
 }
 

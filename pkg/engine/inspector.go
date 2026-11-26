@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -382,7 +383,8 @@ func (c *Inspector) SetTerraformRootVars(vars map[string]cty.Value) {
 type QueryContext struct {
 	// sourceDetector belongs to this sequential decode context. It is created
 	// only for structured findings, sharing kind handlers but not source caches.
-	sourceDetector *detector.DetectLine
+	sourceDetector  *detector.DetectLine
+	compiledSources map[string]ast.Value
 
 	Ctx           context.Context
 	scanID        string
@@ -585,6 +587,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 		Files:                   filesMap,
 		Query:                   query,
 		payload:                 &payload,
+		compiledSources:         payloads.compiledSources,
 		FlagEvaluator:           c.flagEvaluator,
 		discardLineInfoAfterUse: c.discardLineInfoAfterUse,
 		findings:                newFindingSet(c.compactFindingsAtDecode, routing),
@@ -744,7 +747,7 @@ func (c *Inspector) Inspect(
 		return nil, err
 	}
 
-	c.releasePostEvalFileData(filesMap)
+	c.releasePostEvalFileData(filesMap, vulnerabilities)
 	return vulnerabilities, nil
 }
 
@@ -764,12 +767,25 @@ func suppressAtCallSite(v *model.Vulnerability, attr *model.ModuleAttribution, c
 // platform services (e.g. a handful of Dockerfiles on a multi-platform repo).
 const freeOSMemoryFileThreshold = 200
 
-// releasePostEvalFileData drops OriginalData and LinesOriginalData after eval
-// (detectors have run, line-info documents are lazily reparsed), reclaiming the
-// raw input content before the report phase.
-func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetadata) {
+// releasePostEvalFileData gives reports ownership of their text, then drops
+// source-only buffers, graphs and lazy loaders after evaluation and decoding.
+func (c *Inspector) releasePostEvalFileData(filesMap map[string]*model.FileMetadata, findings []model.Vulnerability) {
 	if !c.releasePostEvalData {
 		return
+	}
+	// Snippet lines are substrings of source buffers. Reports must own those
+	// few strings before releasing the otherwise much larger input files.
+	for i := range findings {
+		finding := &findings[i]
+		finding.LineWithVulnerability = strings.Clone(finding.LineWithVulnerability)
+		finding.DetectedLineWithVulnerability = strings.Clone(finding.DetectedLineWithVulnerability)
+		if finding.VulnLines != nil {
+			lines := slices.Clone(*finding.VulnLines)
+			for index := range lines {
+				lines[index].Line = strings.Clone(lines[index].Line)
+			}
+			finding.VulnLines = &lines
+		}
 	}
 	for _, f := range filesMap {
 		f.ReleasePostEvalData()
@@ -1215,6 +1231,8 @@ func (c *Inspector) interfaceToPayloadValue(
 	cons *payloadHashCons,
 ) (ast.Value, error) {
 	switch v := value.(type) {
+	case model.Document:
+		return c.mapToPayloadValue(ctx, map[string]interface{}(v), cons)
 	case map[string]interface{}:
 		return c.mapToPayloadValue(ctx, v, cons)
 	case []interface{}:
@@ -1475,6 +1493,8 @@ func (cons *payloadHashCons) pointerMemoMatches(memo pointerMemo, v interface{})
 // strings and children's identities; equal fingerprints mean content-equal.
 func nodeFingerprintOf(v interface{}) (hashConsKey, bool) {
 	switch t := v.(type) {
+	case model.Document:
+		return nodeFingerprintOf(map[string]interface{}(t))
 	case map[string]interface{}:
 		keys := make([]string, 0, len(t))
 		for key := range t {
@@ -1509,6 +1529,8 @@ func nodeFingerprintOf(v interface{}) (hashConsKey, bool) {
 // scalars; non-canonical types disable memoization for their parents.
 func childIdentity(v interface{}) (hashConsKey, bool) {
 	switch t := v.(type) {
+	case model.Document:
+		return childIdentity(map[string]interface{}(t))
 	case map[string]interface{}:
 		p := reflect.ValueOf(t).Pointer()
 		return hashConsKey{uint64(p), ^uint64(p)}, true
@@ -1766,7 +1788,12 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 	if !ok || file == nil {
 		return nil, false
 	}
-	file = qCtx.findingSourceFile(file, vulnerability.TerraformOverride)
+	if vulnerability.FindingSource != nil {
+		file = vulnerability.FindingSource
+		vulnerability.FindingSource = nil
+	} else {
+		file = qCtx.findingSourceFile(file, vulnerability.TerraformOverride)
+	}
 
 	if rc, found := lookupRuleConfig(c.ruleConfigs, vulnerability.QueryID, vulnerability.LegacyQueryID, vulnerability.LegacyQueryIDs); found {
 		if rc.Severity != nil {
@@ -1892,9 +1919,10 @@ const (
 // platformPayloads holds per-platform OPA input payloads built once per scan,
 // plus a per-platform document index for sound rule prefiltering and subsetting.
 type platformPayloads struct {
-	byPlatform map[string]ast.Value
-	full       ast.Value
-	index      *docIndex
+	compiledSources map[string]ast.Value
+	byPlatform      map[string]ast.Value
+	full            ast.Value
+	index           *docIndex
 }
 
 // partitionDocsByPlatform groups parsed documents by their file's platform
@@ -1961,6 +1989,7 @@ func (c *Inspector) buildPlatformPayloads(
 	}
 
 	terms := make([]*ast.Term, len(allDocs))
+	var compiledSources map[string]ast.Value
 	idxBuilder := newDocIndexBuilder(neededPlatforms)
 	cons := newPayloadHashCons()
 	for i, doc := range allDocs {
@@ -1970,6 +1999,16 @@ func (c *Inspector) buildPlatformPayloads(
 			return platformPayloads{}, err
 		}
 		terms[i] = ast.NewTerm(v)
+		if object, ok := doc.(map[string]interface{}); ok {
+			if id, ok := object["id"].(string); ok {
+				if file := filesMap[id]; file != nil && len(file.SourceFiles) > 0 {
+					if compiledSources == nil {
+						compiledSources = make(map[string]ast.Value)
+					}
+					compiledSources[id] = v
+				}
+			}
+		}
 		allDocs[i] = nil
 		if c.releaseDocumentsAfterPayload {
 			releaseDocumentTree(i, filesMap, combinedDocs, moduleDocs)
@@ -1978,6 +2017,7 @@ func (c *Inspector) buildPlatformPayloads(
 
 	payloads, platformTerms := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
 	payloads.index = idxBuilder.finish(platformTerms)
+	payloads.compiledSources = compiledSources
 	return payloads, nil
 }
 
@@ -2049,6 +2089,7 @@ func releaseDocumentTree(
 		if id, ok := combinedDocs[i]["id"].(string); ok {
 			if fm := filesMap[id]; fm != nil {
 				fm.Document = nil
+				fm.GlobalScripts = nil
 			}
 		}
 		combinedDocs[i] = nil

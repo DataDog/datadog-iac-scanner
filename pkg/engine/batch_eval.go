@@ -253,6 +253,7 @@ func (c *Inspector) evalQueryBatch(
 			Ctx:                     ctx,
 			scanID:                  scanID,
 			Files:                   filesMap,
+			compiledSources:         payloads.compiledSources,
 			Query:                   query,
 			FlagEvaluator:           c.flagEvaluator,
 			discardLineInfoAfterUse: c.discardLineInfoAfterUse,
