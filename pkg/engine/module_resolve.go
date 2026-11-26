@@ -280,7 +280,7 @@ func (c *Inspector) buildRemoteResolver() tfeval.RemoteResolver {
 	dirs := c.remoteModuleDirs
 	return func(source, version, callerFile, moduleName string) (string, string, bool) {
 		root := remoteModuleRoot(callerFile, c.repoPath)
-		resolved, ok := lookupRemoteDir(dirs, root, source, version, moduleName)
+		resolved, ok := LookupRemoteDir(dirs, root, source, version, moduleName)
 		return resolved.Path, resolved.PackageRoot, ok
 	}
 }
@@ -299,7 +299,7 @@ type moduleMetadataResolver struct {
 
 func (r moduleMetadataResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (string, error) {
 	root := remoteModuleRoot(mod.FileName, r.repoPath)
-	resolved, ok := lookupRemoteDir(r.dirs, root, mod.Source, mod.Version, mod.Name)
+	resolved, ok := LookupRemoteDir(r.dirs, root, mod.Source, mod.Version, mod.Name)
 	if !ok {
 		return "", &tfmodules.UnresolvedError{Reason: "module was not resolved during pre-scan"}
 	}
@@ -311,7 +311,8 @@ type RemoteModuleDirectory struct {
 	PackageRoot string
 }
 
-func lookupRemoteDir(
+// LookupRemoteDir finds the fetched directory of a module call in dirs.
+func LookupRemoteDir(
 	dirs map[string]RemoteModuleDirectory,
 	root, source, version, name string,
 ) (RemoteModuleDirectory, bool) {

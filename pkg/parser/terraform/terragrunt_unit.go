@@ -26,6 +26,12 @@ func (p *Parser) EnableTerragrunt() {
 	p.terragrunt = true
 }
 
+// SetFetchedModules gives the parser the directories the pre-scan fetched for
+// the remote modules of units.
+func (p *Parser) SetFetchedModules(dirs terragrunt.ModuleDirs) {
+	p.fetchedModules = dirs
+}
+
 func (p *Parser) isTerragruntUnit(path string) bool {
 	return p.terragrunt && tfpath.IsTerragruntUnit(path)
 }
@@ -46,7 +52,7 @@ func (p *Parser) ParseUnit(ctx context.Context, fileContent []byte, path string)
 		return model.ParseOutput{}, true, err
 	}
 
-	translation, err := terragrunt.Translate(ctx, p.fsys, p.sciInfo.RepositoryDir, path, resolved)
+	translation, err := terragrunt.Translate(ctx, p.fsys, p.sciInfo.RepositoryDir, path, resolved, p.fetchedModules)
 	if err != nil {
 		return model.ParseOutput{}, true, errors.Wrap(err, "failed terragrunt parse")
 	}

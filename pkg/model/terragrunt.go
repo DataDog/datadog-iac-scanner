@@ -76,6 +76,10 @@ type TerragruntTranslation struct {
 	// Included holds the suppression data of the files other than the unit
 	// that Lines points at, by the absolute path used in Lines.
 	Included map[string]IncludedFile
+	// Source and Version are the module block's source and version, as
+	// written in Text (Version is empty when the block has none).
+	Source  string
+	Version string
 }
 
 // IncludedFile is what a file read for a unit (such as an included root.hcl)

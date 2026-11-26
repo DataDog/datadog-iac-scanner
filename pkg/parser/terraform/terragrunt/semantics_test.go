@@ -290,7 +290,7 @@ inputs = { found = find_in_parent_folders("outside.hcl", "none") }`,
 	path := filepath.Join(root, "u", "terragrunt.hcl")
 	src, err := os.ReadFile(path)
 	require.NoError(t, err)
-	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, src)
+	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, src, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 	has(t, tr.Text, `found = "none"`)

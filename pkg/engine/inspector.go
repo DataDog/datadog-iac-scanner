@@ -299,7 +299,7 @@ func (c *Inspector) buildModuleProvenanceLookup() moduleProvenanceLookup {
 			}
 		}
 		if c.remoteModuleDirs != nil {
-			if directory, ok := lookupRemoteDir(c.remoteModuleDirs, callerRoot, source, version, moduleName); ok {
+			if directory, ok := LookupRemoteDir(c.remoteModuleDirs, callerRoot, source, version, moduleName); ok {
 				sourceType, _ := tfmodules.DetectModuleSourceType(source)
 				return RemoteModuleProvenance{
 					Source:      source,
