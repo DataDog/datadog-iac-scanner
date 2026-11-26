@@ -242,6 +242,7 @@ type Inspector struct {
 	repoPath             string
 	enableCoverageReport bool
 	coverageReport       cover.Report
+	coverageTracer       *cover.Cover
 	useOldSeverities     bool
 	numWorkers           int
 	flagEvaluator        featureflags.FlagEvaluator
@@ -612,6 +613,7 @@ func (c *Inspector) Inspect(
 	platforms []string) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
+	c.resetCoverageTracer()
 
 	queries := c.getQueriesByPlat(platforms)
 	occurrences := c.inventoryDocuments(ctx, files)
@@ -1032,11 +1034,28 @@ func (c *Inspector) getQueriesByPlat(platforms []string) []model.QueryMetadata {
 // EnableCoverageReport enables the flag to create a coverage report
 func (c *Inspector) EnableCoverageReport() {
 	c.enableCoverageReport = true
+	c.coverageTracer = cover.New()
+}
+
+func (c *Inspector) resetCoverageTracer() {
+	if c.enableCoverageReport {
+		c.coverageTracer = cover.New()
+	}
 }
 
 // GetCoverageReport returns the scan coverage report
 func (c *Inspector) GetCoverageReport() cover.Report {
-	return c.coverageReport
+	if c.coverageTracer == nil || c.QueryLoader == nil {
+		return c.coverageReport
+	}
+	modules := make(map[string]*ast.Module)
+	for _, query := range c.QueryLoader.QueriesMetadata {
+		module, err := ast.ParseModuleWithOpts(query.Query, query.Content, ast.ParserOptions{RegoVersion: ast.RegoV1})
+		if err == nil {
+			modules[query.Query] = module
+		}
+	}
+	return c.coverageTracer.Report(modules)
 }
 
 // GetFailedQueries returns a map of failed queries and the associated error.
@@ -1114,10 +1133,8 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 	}
 	options := []rego.EvalOption{rego.EvalParsedInput(payload), rego.EvalVirtualCache(newIdentityVirtualCache())}
 
-	var cov *cover.Cover
-	if c.enableCoverageReport {
-		cov = cover.New()
-		options = append(options, rego.EvalQueryTracer(cov))
+	if c.coverageTracer != nil {
+		options = append(options, rego.EvalQueryTracer(c.coverageTracer))
 	}
 
 	evalStart := time.Now()
@@ -1131,21 +1148,6 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 
 		return nil, 0, "", errors.Wrap(err, "failed to evaluate query")
 	}
-	if c.enableCoverageReport && cov != nil {
-		module, parseErr := ast.ParseModuleWithOpts(
-			qCtx.Query.Metadata.Query,
-			qCtx.Query.Metadata.Content,
-			ast.ParserOptions{RegoVersion: ast.RegoV1},
-		)
-		if parseErr != nil {
-			return nil, 0, "", errors.Wrap(parseErr, "failed to parse coverage module")
-		}
-
-		c.coverageReport = cov.Report(map[string]*ast.Module{
-			qCtx.Query.Metadata.Query: module,
-		})
-	}
-
 	decodeStart := time.Now()
 	vulns, moduleRaised, moduleSeverity, err = c.DecodeQueryResults(ctx, qCtx, qCtx.Ctx, results, evalDuration)
 	decodeDuration := time.Since(decodeStart)
