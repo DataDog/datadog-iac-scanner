@@ -1451,8 +1451,10 @@ func docAsMap(v interface{}) map[string]interface{} {
 
 // absPath returns a cleaned path. Relative paths are resolved against base
 // (typically the scan repo root), not the process working directory.
+// Leading '/' or '\\' is treated as rooted on all platforms so MemFS POSIX paths
+// (and Windows-cleaned '\\repo\\main.tf') are never doubled with base on Windows.
 func absPath(p, base string) string {
-	if filepath.IsAbs(p) {
+	if filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) {
 		return filepath.Clean(p)
 	}
 	return filepath.Clean(filepath.Join(base, p))

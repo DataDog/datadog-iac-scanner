@@ -58,6 +58,25 @@ func TestTerraformLegacyPath(t *testing.T) {
 	require.Equal(t, "data.local_file[{{example}}].filename", terraformLegacyPath(path))
 }
 
+func TestAbsPath(t *testing.T) {
+	base := filepath.Join("repo", "root")
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "slash-rooted", path: "/repo/main.tf", want: filepath.Clean("/repo/main.tf")},
+		{name: "backslash-rooted", path: `\repo\main.tf`, want: filepath.Clean(`\repo\main.tf`)},
+		{name: "relative", path: filepath.Join("modules", "main.tf"), want: filepath.Join(base, "modules", "main.tf")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, absPath(tt.path, base))
+		})
+	}
+}
+
 // writeFile creates dir/name with content and returns the absolute path.
 func writeFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
