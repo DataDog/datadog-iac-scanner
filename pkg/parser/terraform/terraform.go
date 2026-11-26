@@ -71,6 +71,8 @@ type Parser struct {
 	terragrunt bool
 	// fetchedModules finds the fetched copy of a unit's remote module.
 	fetchedModules terragrunt.ModuleDirs
+	// unitInputsCache memoizes the inputs of a directory's unit.
+	unitInputsCache sync.Map // directory -> converter.VariableMap
 }
 
 // SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
@@ -129,7 +131,8 @@ func (p *Parser) Resolve(ctx context.Context,
 // content.
 func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileContent []byte) converter.VariableMap {
 	if p.terraformVarsPath == "" && strings.Contains(string(fileContent), terraformVarsPathDirective) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
+		inputVars := getInputVariables(
+			ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename, p.unitInputs(ctx, dir))
 		return getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
 	}
 
@@ -141,7 +144,8 @@ func (p *Parser) resolveDirVars(ctx context.Context, dir, filename string, fileC
 		return cloneVariableMap(v.(converter.VariableMap))
 	}
 	v, _, _ := p.dirVarsSF.Do(cacheKey, func() (interface{}, error) {
-		inputVars := getInputVariables(ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename)
+		inputVars := getInputVariables(
+			ctx, p.fsys, dir, string(fileContent), p.terraformVarsPath, p.mergeAllow, filename, p.unitInputs(ctx, dir))
 		vars := getDataSourcePolicy(ctx, p.fsys, dir, inputVars, p.mergeAllow, filename)
 		p.dirVarsCache.Store(cacheKey, vars)
 		return vars, nil

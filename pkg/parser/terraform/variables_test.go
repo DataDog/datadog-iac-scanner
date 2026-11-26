@@ -241,7 +241,7 @@ func TestGetInputVariables(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fileContent, _ := os.ReadFile(tt.filename)
-			result := getInputVariables(ctx, vfs.DiskFS{}, tt.filename, string(fileContent), "../../../test/fixtures/test_terraform_variables/varsToUse/varsToUse.tf", nil, "")
+			result := getInputVariables(ctx, vfs.DiskFS{}, tt.filename, string(fileContent), "../../../test/fixtures/test_terraform_variables/varsToUse/varsToUse.tf", nil, "", nil)
 			require.Equal(t, tt.want, result)
 		})
 	}
@@ -259,7 +259,7 @@ variable "bucket" { default = "from-tofu" }
 variable "other" { default = "kept" }
 `), 0o600))
 
-	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", nil, "")
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "from-tofu", vars["bucket"].AsString())
 	require.Equal(t, "kept", vars["other"].AsString())
@@ -277,7 +277,7 @@ variable "bucket" { default = "from-tofu" }
 `), 0o600))
 
 	allow := map[string]struct{}{filepath.ToSlash(tf): {}}
-	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "")
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "", nil)
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "from-tf", vars["bucket"].AsString())
 }
@@ -297,9 +297,9 @@ variable "bucket" { default = "from-tofu" }
 		filepath.ToSlash(tf):   {},
 		filepath.ToSlash(tofu): {},
 	}
-	fromTF := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tf)
+	fromTF := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tf, nil)
 	require.Equal(t, "from-tf", fromTF["var"].AsValueMap()["bucket"].AsString())
-	fromTofu := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tofu)
+	fromTofu := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, tofu, nil)
 	require.Equal(t, "from-tofu", fromTofu["var"].AsValueMap()["bucket"].AsString())
 }
 
@@ -322,7 +322,7 @@ variable "orphan" { description = "no base" }
 locals { precedence = "override" }
 `),
 	}
-	got := getInputVariables(t.Context(), vfs.NewMemFS(files), dir, "", "", nil, "")
+	got := getInputVariables(t.Context(), vfs.NewMemFS(files), dir, "", "", nil, "", nil)
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "first", vars["chain"].AsString())
 	require.True(t, vars["unset"].IsNull())
@@ -341,7 +341,7 @@ variable "bucket" { default = "from-tofu" }
 `), 0o600))
 
 	allow := map[string]struct{}{filepath.ToSlash(filepath.Join(t.TempDir(), "other.tf")): {}}
-	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "")
+	got := getInputVariables(context.Background(), vfs.DiskFS{}, dir, "", "", allow, "", nil)
 	vars := got["var"].AsValueMap()
 	require.Equal(t, "from-tofu", vars["bucket"].AsString())
 }

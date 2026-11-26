@@ -65,19 +65,40 @@ type ModuleDirs func(callerRoot, source, version string) string
 func Translate(
 	ctx context.Context, fsys vfs.FS, repoRoot, path string, src []byte, fetched ModuleDirs,
 ) (*model.TerragruntTranslation, error) {
+	u, err := Evaluate(ctx, fsys, repoRoot, path, src, fetched)
+	return u.Translation, err
+}
+
+// Unit is the outcome of evaluating a unit: its translation when it has a
+// usable terraform.source, and the values of its inputs.
+type Unit struct {
+	Translation *model.TerragruntTranslation
+	// Inputs is set for a unit that is not skipped, whose inputs are known as a
+	// whole and non-empty: Terraform runs on the unit directory's .tf files
+	// too and takes them as TF_VAR_*. Unknown parts stay cty unknowns, and an
+	// unknown input is present, so a variable default does not apply.
+	Inputs map[string]cty.Value
+}
+
+// Evaluate is Translate that also returns the unit's inputs, and works for a
+// unit without terraform.source. Skipped units and syntax errors are
+// reported as in Translate.
+func Evaluate(
+	ctx context.Context, fsys vfs.FS, repoRoot, path string, src []byte, fetched ModuleDirs,
+) (Unit, error) {
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
 	body, diags := parseBody(ctx, src, path)
 	if diags.HasErrors() {
-		return nil, diags
+		return Unit{}, diags
 	}
 	if body == nil {
-		return nil, nil
+		return Unit{}, nil
 	}
 	t := newTranslator(ctx, fsys, repoRoot, path)
 	t.fetchedDirs = fetched
-	return t.translate(body)
+	return t.evaluate(body)
 }
 
 // parseBody parses src as native HCL; the body is nil when it is not one.
@@ -133,24 +154,31 @@ type argument struct {
 	real  model.SourceLocation
 }
 
-func (t *translator) translate(body *hclsyntax.Body) (*model.TerragruntTranslation, error) {
+func (t *translator) evaluate(body *hclsyntax.Body) (Unit, error) {
 	s := &scope{configPath: t.absUnit, originalPath: t.absUnit, reading: map[string]bool{t.absUnit: true}}
 	cfg, err := t.evalFile(t.path, body, s, true)
 	if err != nil {
 		t.skipping("%s: %v, unit skipped", t.path, err)
-		return nil, nil
+		return Unit{}, nil
 	}
 	if cfg.skipped() {
 		t.skipping("%s: skip or exclude covers plan and apply, unit skipped", t.path)
-		return nil, nil
+		return Unit{}, nil
+	}
+	var inputs map[string]cty.Value
+	if !cfg.inputsUnknown {
+		inputs = t.directInputs(cfg)
+	}
+	if cfg.source == nil && !cfg.inputsUnknown {
+		return Unit{Inputs: inputs}, nil
 	}
 	source, sourceRange, ok := t.source(cfg)
 	if !ok {
-		return nil, nil
+		return Unit{Inputs: inputs}, nil
 	}
 	if cfg.inputsUnknown {
 		t.skipping("%s: inputs is not known, unit skipped", t.path)
-		return nil, nil
+		return Unit{}, nil
 	}
 	args := make(map[string]argument, len(cfg.inputs))
 	for name, in := range cfg.inputs {
@@ -161,7 +189,21 @@ func (t *translator) translate(body *hclsyntax.Body) (*model.TerragruntTranslati
 	for name, a := range t.varFileValues(source, address, version, sourceRange) {
 		args[name] = a
 	}
-	return render(address, version, sourceRange, args), nil
+	return Unit{Translation: render(address, version, sourceRange, args), Inputs: inputs}, nil
+}
+
+// directInputs returns the unit's inputs as TF_VAR_* values. Values
+// stay cty values, unknown parts included: they are not written as text.
+func (t *translator) directInputs(cfg *config) map[string]cty.Value {
+	if len(cfg.inputs) == 0 {
+		return nil
+	}
+	out := make(map[string]cty.Value, len(cfg.inputs))
+	for name, in := range cfg.inputs {
+		v, _ := in.value.UnmarkDeep()
+		out[name] = v
+	}
+	return out
 }
 
 // source reads the evaluated terraform.source.

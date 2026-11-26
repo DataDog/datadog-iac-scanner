@@ -206,3 +206,24 @@ func TestLoadRootVarsIgnoresCaseMismatchedAutoTfvars(t *testing.T) {
 	require.True(t, vars["env"].RawEquals(cty.StringVal("base")), "case-mismatched auto.tfvars must not override terraform.tfvars")
 	require.True(t, vars["region"].RawEquals(cty.StringVal("eu-west-1")), "case-mismatched *.auto.tfvars.json must not override")
 }
+
+func TestLoadRootVarsExplicitBeatsUnitInputs(t *testing.T) {
+	root := t.TempDir()
+	unit := writeModule(t, root, "unit", map[string]string{"main.tf": `variable "acl" {}`})
+	plain := writeModule(t, root, "plain", map[string]string{"main.tf": `variable "acl" {}`})
+	public, private := cty.StringVal("public-read"), cty.StringVal("private")
+	inputs := map[string]map[string]cty.Value{unit: {"acl": public}, plain: {"acl": public}}
+
+	e := New()
+	e.SetUnitInputs(inputs)
+	require.True(t, e.LoadRootVars(unit)["acl"].RawEquals(public), "without explicit variables")
+
+	e = New()
+	e.SetUnitInputs(inputs)
+	e.SetExplicitRootVars(map[string]cty.Value{"acl": private})
+	require.True(t, e.LoadRootVars(unit)["acl"].RawEquals(private), "explicit variables win in a unit dir")
+
+	other := writeModule(t, root, "other", map[string]string{"main.tf": `variable "acl" {}`})
+	_, ok := e.LoadRootVars(other)["acl"]
+	require.False(t, ok, "a dir without unit inputs or overrides is unchanged")
+}

@@ -7,6 +7,7 @@ package terraform
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 const unitContent = `terraform {
@@ -188,4 +190,88 @@ func withoutLines(node interface{}) interface{} {
 		return out
 	}
 	return node
+}
+
+const unitBucketTF = `variable "acl" {
+  default = "%s"
+}
+
+resource "aws_s3_bucket" "this" {
+  acl = var.acl
+}
+`
+
+// renderACL parses a .tf file next to a unit and returns the acl it renders.
+func renderACL(t *testing.T, root, tf string, enabled bool) string {
+	t.Helper()
+	p := unitParser(root, enabled)
+	content, err := os.ReadFile(tf)
+	require.NoError(t, err)
+	_, docs, _, _, err := p.Parse(context.Background(), content, tf, true, 15)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	res := docs[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["this"].(model.Document)
+	if v, ok := res["acl"].(ctyjson.SimpleJSONValue); ok {
+		return v.AsString()
+	}
+	return fmt.Sprint(res["acl"])
+}
+
+func writeUnitDir(t *testing.T, unitSrc, defaultACL string, extra map[string]string) (root, tf string) {
+	t.Helper()
+	root, unit := writeUnit(t, unitSrc)
+	dir := filepath.Dir(unit)
+	tf = filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(tf, []byte(fmt.Sprintf(unitBucketTF, defaultACL)), 0o600))
+	for name, content := range extra {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
+	}
+	return root, tf
+}
+
+func TestUnitInputsFeedTerraformFiles(t *testing.T) {
+	root, tf := writeUnitDir(t, "inputs = {\n  acl = \"public-read\"\n}\n", "private", nil)
+	assert.Equal(t, "public-read", renderACL(t, root, tf, true))
+	assert.Equal(t, "private", renderACL(t, root, tf, false), "flag off: the default applies")
+}
+
+func TestUnitTfvarsOverrideInputs(t *testing.T) {
+	root, tf := writeUnitDir(t, "inputs = {\n  acl = \"public-read\"\n}\n", "private",
+		map[string]string{"terraform.tfvars": "acl = \"authenticated-read\"\n"})
+	assert.Equal(t, "authenticated-read", renderACL(t, root, tf, true))
+}
+
+func TestUnitUnknownInputDoesNotFallBackToDefault(t *testing.T) {
+	root, tf := writeUnitDir(t, "inputs = {\n  acl = get_env(\"DD_TEST_UNSET_ACL\")\n}\n", "public-read", nil)
+	got := renderACL(t, root, tf, true)
+	assert.NotEqual(t, "public-read", got)
+	assert.Contains(t, got, "var.acl", "the reference stays unresolved")
+}
+
+func TestUnitWithSourceFeedsTerraformFiles(t *testing.T) {
+	root, tf := writeUnitDir(t, "terraform {\n  source = \"../m\"\n}\ninputs = {\n  acl = \"public-read\"\n}\n", "private", nil)
+	assert.Equal(t, "public-read", renderACL(t, root, tf, true))
+}
+
+func TestParseUnitCarriesInputsWithoutSource(t *testing.T) {
+	root, unit := writeUnit(t, "inputs = {\n  acl = \"public-read\"\n}\n")
+	out, handled, err := unitParser(root, true).ParseUnit(context.Background(), []byte("inputs = {\n  acl = \"public-read\"\n}\n"), unit)
+	require.NoError(t, err)
+	require.True(t, handled)
+	assert.Nil(t, out.TerragruntTranslation)
+	assert.Equal(t, "public-read", out.TerragruntInputs["acl"].AsString())
+}
+
+func TestUnitExplicitVarsOverrideInputs(t *testing.T) {
+	root, tf := writeUnitDir(t, "inputs = {\n  acl = \"public-read\"\n}\n", "private", nil)
+	vars := filepath.Join(root, "explicit.tfvars")
+	require.NoError(t, os.WriteFile(vars, []byte("acl = \"authenticated-read\"\n"), 0o600))
+	p := NewDefaultWithParams(vfs.DiskFS{}, vars, model.SCIInfo{RepositoryDir: root})
+	p.EnableTerragrunt()
+	content, err := os.ReadFile(tf)
+	require.NoError(t, err)
+	_, docs, _, _, err := p.Parse(context.Background(), content, tf, true, 15)
+	require.NoError(t, err)
+	res := docs[0]["resource"].(model.Document)["aws_s3_bucket"].(model.Document)["this"].(model.Document)
+	assert.Equal(t, "authenticated-read", res["acl"].(ctyjson.SimpleJSONValue).AsString())
 }

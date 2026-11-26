@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const (
@@ -79,8 +81,158 @@ func (r *terragruntRepo) parseUnitWith(path string, fetched terragrunt.ModuleDir
 		LinesIgnore:           out.IgnoreLines,
 		LinesOriginalData:     scanUtils.SplitLines(string(content)),
 		TerragruntTranslation: out.TerragruntTranslation,
+		TerragruntInputs:      out.TerragruntInputs,
 	}
 }
+
+// parseTF parses a .tf file of a unit's directory, with Terragrunt enabled or not.
+func (r *terragruntRepo) parseTF(path string, terragrunt bool) model.FileMetadatas {
+	r.t.Helper()
+	content, err := os.ReadFile(filepath.Clean(path))
+	require.NoError(r.t, err)
+	p := terraformParser.NewDefaultWithParams(vfs.DiskFS{}, "", model.SCIInfo{RepositoryDir: r.root})
+	if terragrunt {
+		p.EnableTerragrunt()
+	}
+	_, docs, ignore, resolved, err := p.Parse(context.Background(), content, path, true, 15)
+	require.NoError(r.t, err)
+	var out model.FileMetadatas
+	for _, doc := range docs {
+		out = append(out, &model.FileMetadata{
+			ID: uuid.NewString(), ScanID: "test", Document: doc, LineInfoDocument: doc,
+			OriginalData: string(content), Kind: model.KindTerraform, FilePath: path,
+			LinesIgnore: ignore, ResolvedFiles: resolved, LinesOriginalData: scanUtils.SplitLines(string(content)),
+		})
+	}
+	return out
+}
+
+// unitFiles parses the unit and the .tf files of its directory.
+func (r *terragruntRepo) unitFiles(terragrunt bool, tfs ...string) model.FileMetadatas {
+	r.t.Helper()
+	var files model.FileMetadatas
+	for _, rel := range tfs {
+		files = append(files, r.parseTF(filepath.Join(r.root, filepath.FromSlash(rel)), terragrunt)...)
+	}
+	return files
+}
+
+const (
+	defaultACLTF  = "variable \"acl\" {\n  default = \"%s\"\n}\n\nresource \"aws_s3_bucket\" \"this\" {\n  acl = var.acl\n}\n"
+	noSourceUnit  = "inputs = {\n  acl = \"public-read\"\n}\n"
+	envInputUnit  = "inputs = {\n  acl = get_env(\"DD_TEST_UNSET_ACL\")\n}\n"
+	unitModuleTF  = "variable \"acl\" {\n  default = \"private\"\n}\n\nmodule \"bucket\" {\n  source = \"../../modules/bucket\"\n  acl    = var.acl\n}\n"
+	unitMainTFRel = "live/prod/main.tf"
+)
+
+func TestTerragruntUnitWithoutSourceFeedsItsTerraformFiles(t *testing.T) {
+	r := newTerragruntRepo(t, bucketModule2("private"))
+	main := r.write(unitMainTFRel, fmt.Sprintf(defaultACLTF, "private"))
+	unit := r.write("live/prod/terragrunt.hcl", noSourceUnit)
+
+	files := append(r.unitFiles(true, unitMainTFRel), r.parseUnit(unit))
+	vulns := r.inspect(files)
+	require.Len(t, vulns, 1)
+	require.Equal(t, main, vulns[0].FileName, "the finding is on the unit's own .tf file")
+}
+
+func TestTerragruntUnitWithoutSourceUnknownInputKeepsDefaultOut(t *testing.T) {
+	r := newTerragruntRepo(t, bucketModule2("private"))
+	r.write(unitMainTFRel, fmt.Sprintf(defaultACLTF, "public-read"))
+	unit := r.write("live/prod/terragrunt.hcl", envInputUnit)
+
+	files := append(r.unitFiles(true, unitMainTFRel), r.parseUnit(unit))
+	require.Empty(t, r.inspect(files), "an unknown input must not fall back to the insecure default")
+}
+
+func TestTerragruntUnitWithoutSourcePassesInputsToCalledModule(t *testing.T) {
+	r := newTerragruntRepo(t, publicModule)
+	r.write(unitMainTFRel, unitModuleTF)
+	unit := r.write("live/prod/terragrunt.hcl", noSourceUnit)
+
+	files := append(r.files(), r.unitFiles(true, unitMainTFRel)...)
+	files = append(files, r.parseUnit(unit))
+	vulns := r.inspect(files)
+	require.Len(t, vulns, 1)
+	require.Equal(t, filepath.Join(r.root, "modules", "bucket", "main.tf"), vulns[0].FileName)
+	require.Equal(t, "live/prod/main.tf", vulns[0].ModuleAttribution.CallSite.Filename)
+}
+
+func TestTerragruntUnitWithoutSourceTfvarsOverrideInputs(t *testing.T) {
+	r := newTerragruntRepo(t, bucketModule2("private"))
+	r.write(unitMainTFRel, fmt.Sprintf(defaultACLTF, "private"))
+	r.write("live/prod/terraform.tfvars", "acl = \"private\"\n")
+	unit := r.write("live/prod/terragrunt.hcl", noSourceUnit)
+
+	files := append(r.unitFiles(true, unitMainTFRel), r.parseUnit(unit))
+	require.Empty(t, r.inspect(files))
+}
+
+func TestTerragruntUnitWithoutSourceFlagOffUnchanged(t *testing.T) {
+	r := newTerragruntRepo(t, bucketModule2("private"))
+	r.write(unitMainTFRel, fmt.Sprintf(defaultACLTF, "private"))
+	r.write("live/prod/terragrunt.hcl", noSourceUnit)
+
+	require.Empty(t, r.inspect(r.unitFiles(false, unitMainTFRel)), "the default applies without the flag")
+}
+
+const (
+	// The module declares acl but its bucket does not use it.
+	fixedACLModule = "variable \"acl\" {\n  default = \"private\"\n}\n\nresource \"aws_s3_bucket\" \"this\" {\n  acl = \"private\"\n}\n"
+	extraTFRel     = "live/prod/extra.tf"
+	extraUsesVar   = "resource \"aws_s3_bucket\" \"extra\" {\n  acl = var.acl\n}\n"
+	extraDeclares  = "variable \"acl\" {\n  default = \"private\"\n}\n\n" + extraUsesVar
+)
+
+func TestTerragruntUnitWithSourceFeedsItsDirectoryTerraformFiles(t *testing.T) {
+	for name, extraTF := range map[string]string{"declared in the source module only": extraUsesVar, "declared in extra.tf": extraDeclares} {
+		t.Run(name, func(t *testing.T) {
+			r := newTerragruntRepo(t, fixedACLModule)
+			extra := r.write(extraTFRel, extraTF)
+			unit := r.write("live/prod/terragrunt.hcl", publicUnit)
+
+			files := append(r.files(), r.unitFiles(true, extraTFRel)...)
+			files = append(files, r.parseUnit(unit))
+			vulns := r.inspect(files)
+			require.Len(t, vulns, 1)
+			require.Equal(t, extra, vulns[0].FileName)
+		})
+	}
+}
+
+func TestTerragruntUnitWithSourceInputsStillReachModuleCall(t *testing.T) {
+	r := newTerragruntRepo(t, publicModule)
+	extra := r.write(extraTFRel, extraUsesVar)
+	unit := r.write("live/prod/terragrunt.hcl", publicUnit)
+
+	files := append(r.files(), r.unitFiles(true, extraTFRel)...)
+	files = append(files, r.parseUnit(unit))
+	var got []string
+	for _, v := range r.inspect(files) {
+		got = append(got, v.FileName)
+	}
+	require.ElementsMatch(t, []string{extra, filepath.Join(r.root, "modules", "bucket", "main.tf")}, got)
+}
+
+func TestTerragruntUnitWithSourceUnknownInputsFeedNothing(t *testing.T) {
+	r := newTerragruntRepo(t, fixedACLModule)
+	r.write(extraTFRel, extraDeclares)
+	unit := r.write("live/prod/terragrunt.hcl", "terraform {\n  source = \"../../modules/bucket\"\n}\ninputs = { (get_env(\"DD_TEST_UNSET_K\")) = 1 }\n")
+
+	files := append(r.files(), r.unitFiles(true, extraTFRel)...)
+	require.Empty(t, r.inspect(append(files, r.parseUnit(unit))))
+}
+
+func TestTerragruntSkippedUnitFeedsNothing(t *testing.T) {
+	r := newTerragruntRepo(t, fixedACLModule)
+	r.write(extraTFRel, extraDeclares)
+	unit := r.write("live/prod/terragrunt.hcl", "skip = true\n"+publicUnit)
+
+	files := append(r.files(), r.unitFiles(true, extraTFRel)...)
+	require.Empty(t, r.inspect(append(files, r.parseUnit(unit))))
+}
+
+func bucketModule2(acl string) string { return fmt.Sprintf(bucketModule, acl) }
 
 func (r *terragruntRepo) files(units ...string) model.FileMetadatas {
 	r.t.Helper()
@@ -93,6 +245,11 @@ func (r *terragruntRepo) files(units ...string) model.FileMetadatas {
 
 func (r *terragruntRepo) inspect(files model.FileMetadatas) []model.Vulnerability {
 	r.t.Helper()
+	return r.inspectWithVars(files, nil)
+}
+
+func (r *terragruntRepo) inspectWithVars(files model.FileMetadatas, vars map[string]cty.Value) []model.Vulnerability {
+	r.t.Helper()
 	ins := newTestInspector(r.t, inspectorOpts{
 		queries: []model.QueryMetadata{{
 			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
@@ -102,10 +259,27 @@ func (r *terragruntRepo) inspect(files model.FileMetadatas) []model.Vulnerabilit
 		vb:            DefaultVulnerabilityBuilder,
 		flagEvaluator: featureflags.NewLocalEvaluator(),
 	})
+	if vars != nil {
+		ins.SetTerraformRootVars(vars)
+	}
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(r.t, err)
 	require.Empty(r.t, ins.GetFailedQueries())
 	return vulns
+}
+
+func TestTerragruntExplicitVarsBeatUnitInputsForCalledModule(t *testing.T) {
+	r := newTerragruntRepo(t, publicModule)
+	r.write(unitMainTFRel, unitModuleTF)
+	unit := r.write("live/prod/terragrunt.hcl", noSourceUnit)
+	parse := func() model.FileMetadatas {
+		files := append(r.files(), r.unitFiles(true, unitMainTFRel)...)
+		return append(files, r.parseUnit(unit))
+	}
+
+	explicit := map[string]cty.Value{"acl": cty.StringVal("private")}
+	require.Empty(t, r.inspectWithVars(parse(), explicit), "explicit variables beat unit inputs")
+	require.Len(t, r.inspect(parse()), 1, "control: the unit input applies without explicit variables")
 }
 
 func TestTerragruntInputPointsAtInputsLine(t *testing.T) {
@@ -444,4 +618,14 @@ func TestTerragruntFetchedModuleTfvars(t *testing.T) {
 	require.NotNil(t, v.ModuleAttribution)
 	require.Equal(t, "terragrunt.hcl", v.ModuleAttribution.CallSite.Filename)
 	require.Equal(t, 2, v.ModuleAttribution.CallSite.LineStart, "the source attribute")
+}
+
+func TestTerragruntUnitWithoutSourceUnknownInputReachesCalledModule(t *testing.T) {
+	r := newTerragruntRepo(t, publicModule)
+	r.write(unitMainTFRel, strings.Replace(unitModuleTF, `default = "private"`, `default = "public-read"`, 1))
+	unit := r.write("live/prod/terragrunt.hcl", envInputUnit)
+
+	files := append(r.files(), r.unitFiles(true, unitMainTFRel)...)
+	files = append(files, r.parseUnit(unit))
+	require.Empty(t, r.inspect(files), "the unknown input must not let a default apply in the module")
 }

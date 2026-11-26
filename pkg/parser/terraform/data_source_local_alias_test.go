@@ -43,7 +43,7 @@ data "aws_iam_policy_document" "combined" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -86,7 +86,7 @@ data "aws_iam_policy_document" "combined" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -105,7 +105,7 @@ func scanDataSourceDir(t *testing.T, files map[string]string) (before, after map
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
 	}
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	before = inputVars["local"].AsValueMap()
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	return before, result["local"].AsValueMap()
@@ -332,7 +332,7 @@ data "aws_iam_policy_document" "plain" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -365,7 +365,7 @@ data "aws_iam_policy_document" "plain" {
 }
 `), 0o600))
 	ctx := context.Background()
-	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	require.Contains(t, vars["local"].AsValueMap(), "encoded")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	docs := result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap()
@@ -377,7 +377,7 @@ data "aws_iam_policy_document" "plain" {
 variable "env" { default = "prod" }
 locals { bucket = "logs-${var.env}" }
 `), 0o600))
-	vars = getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars = getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	result = getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	require.NotContains(t, result["local"].AsValueMap(), "bucket")
 	require.Contains(t, result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap(), "via")
@@ -401,7 +401,7 @@ func Test_getDataSourcePolicy_JSONLocalChainFeedsSource(t *testing.T) {
   }
 }`), 0o600))
 	ctx := context.Background()
-	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	require.Contains(t, vars["local"].AsValueMap(), "d")
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	docs := result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap()
@@ -425,7 +425,7 @@ data "aws_iam_policy_document" "p" {
 }
 `), 0o600))
 	ctx := context.Background()
-	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	vars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
 	docs := result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap()
 	require.Contains(t, docs["p"].AsValueMap()["json"].AsString(), `"s3:Right"`)
@@ -478,7 +478,7 @@ data "aws_iam_policy_document" "other" {
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(b.String()), 0o600))
 		ctx := context.Background()
-		inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+		inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 		result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 		var data map[string]map[string]map[string]string
 		require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -515,7 +515,7 @@ data "aws_iam_policy_document" "other" {
 			dir := t.TempDir()
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0o600))
 			ctx := context.Background()
-			inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+			inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 			result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 			var data map[string]map[string]map[string]string
 			require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -539,7 +539,7 @@ data "aws_iam_policy_document" "p" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))
@@ -564,7 +564,7 @@ data "aws_iam_policy_document" "p" {
 }
 `), 0o600))
 	ctx := context.Background()
-	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "", nil)
 	result := getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, inputVars, nil, "")
 	var data map[string]map[string]map[string]string
 	require.NoError(t, gocty.FromCtyValue(result["data"], &data))

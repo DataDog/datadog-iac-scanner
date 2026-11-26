@@ -157,6 +157,9 @@ type Evaluator struct {
 	fsys vfs.FS
 	// Root inputs from the scan's explicitly selected variable definitions file.
 	explicitRootVars map[string]cty.Value
+	// unitInputs holds, per root directory, the inputs of its Terragrunt
+	// unit. Read-only and shared by forks.
+	unitInputs map[string]map[string]cty.Value
 	// cache memoizes completed module evaluations keyed by (dir, packageRoot,
 	// input digest). A single Evaluator is used for an entire scan, so entries
 	// with the same key represent the same module reached with the same resolved
@@ -330,6 +333,7 @@ func (e *Evaluator) Fork() *Evaluator {
 		funcs:             e.funcs,
 		fsys:              e.fsys,
 		explicitRootVars:  e.explicitRootVars,
+		unitInputs:        e.unitInputs,
 		cache:             make(map[evalCacheKey]*evalCacheEntry),
 		remoteResolver:    e.remoteResolver,
 		notEvaluatedDirs:  make(map[string]bool),
@@ -353,6 +357,12 @@ func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
 		e.ReleaseEvalCache()
 	}
 	e.explicitRootVars = inputs
+}
+
+// SetUnitInputs supplies, per root directory, the inputs of its Terragrunt
+// unit. They are root inputs below the directory's variable definitions files. The map is read-only and shared by forks.
+func (e *Evaluator) SetUnitInputs(inputs map[string]map[string]cty.Value) {
+	e.unitInputs = inputs
 }
 
 // SetSkipRootResources skips evaluating root-level resources and outputs when

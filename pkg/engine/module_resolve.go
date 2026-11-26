@@ -711,7 +711,9 @@ func resolveModuleDocuments(
 	}
 	// Units are served as virtual files, so every read below goes through fsys.
 	fsys, sites := overlayTranslations(files, repoPath, fsys)
+	unitInputs := unitInputsByDir(files, repoPath)
 	if inv != nil {
+		inv.unitInputs = unitInputs
 		inv.files = byAbsPath
 		inv.sites = sites
 	}
@@ -732,6 +734,7 @@ func resolveModuleDocuments(
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetExplicitRootVars(rootVars)
+	evaluator.SetUnitInputs(unitInputs)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	evaluator.SetSkipRootResources(inv == nil)
 	if resolver != nil {

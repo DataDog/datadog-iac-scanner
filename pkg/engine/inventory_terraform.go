@@ -38,12 +38,14 @@ func (c *Inspector) SetInventory(sink InventorySink) {
 
 // terraformInventory turns evaluated Terraform resources into inventory rows.
 type terraformInventory struct {
-	sink      InventorySink
-	repoPath  string
-	lookup    moduleProvenanceLookup
-	rootVars  map[string]cty.Value
-	files     map[string]*model.FileMetadata
-	documents documentOccurrenceIndex
+	sink     InventorySink
+	repoPath string
+	lookup   moduleProvenanceLookup
+	rootVars map[string]cty.Value
+	// unitInputs are the inputs of Terragrunt units, by directory.
+	unitInputs map[string]map[string]cty.Value
+	files      map[string]*model.FileMetadata
+	documents  documentOccurrenceIndex
 	// external reports a fetched module, which is not a root of the
 	// repository even when nothing in the scan calls it.
 	external func(string) bool
@@ -120,6 +122,7 @@ func (inv *terraformInventory) withEvaluator(
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetExplicitRootVars(inv.rootVars)
+	evaluator.SetUnitInputs(inv.unitInputs)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
