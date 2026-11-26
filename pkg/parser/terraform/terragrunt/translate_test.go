@@ -344,3 +344,35 @@ func TestTranslateAbsoluteAndDotSources(t *testing.T) {
 	assert.Contains(t, tr.Text, "d = 1")
 	assert.Contains(t, tr.Text, "o = 1")
 }
+
+func TestTranslateRegistrySources(t *testing.T) {
+	cases := []struct {
+		name, source, wantSource, wantVersion string
+	}{
+		{"public", "tfr:///terraform-aws-modules/s3-bucket/aws?version=4.1.2", "terraform-aws-modules/s3-bucket/aws", "4.1.2"},
+		{"submodule", "tfr:///ns/name/aws//modules/sub?version=1.0.0", "ns/name/aws//modules/sub", "1.0.0"},
+		{"host", "tfr://registry.example.invalid/ns/name/aws//sub?version=2.0.0", "registry.example.invalid/ns/name/aws//sub", "2.0.0"},
+		{"no version", "tfr:///ns/name/aws", "ns/name/aws", ""},
+		{"git unchanged", "git::https://example.invalid/m.git?ref=v1", "git::https://example.invalid/m.git?ref=v1", ""},
+		{"https unchanged", "https://example.invalid/m.zip", "https://example.invalid/m.zip", ""},
+		{"registry address unchanged", "ns/name/aws", "ns/name/aws", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := repo(t, map[string]string{"u/terragrunt.hcl": "terraform {\n  source = \"" + tc.source + "\"\n}\ninputs = { a = 1 }\n"})
+			tr := translate(t, root, "u")
+			require.NotNil(t, tr)
+			assert.Contains(t, tr.Text, `source = "`+tc.wantSource+`"`)
+			if tc.wantVersion == "" {
+				assert.NotContains(t, tr.Text, "version")
+				return
+			}
+			assert.Contains(t, tr.Text, `version = "`+tc.wantVersion+`"`)
+			m, ok := tr.Lines.Argument("version")
+			require.True(t, ok)
+			src, _ := tr.Lines.Argument("source")
+			assert.Equal(t, src.Real, m.Real)
+			assert.Equal(t, 2, m.Real.LineStart)
+		})
+	}
+}

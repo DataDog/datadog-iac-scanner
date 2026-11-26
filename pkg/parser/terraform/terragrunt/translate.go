@@ -146,7 +146,8 @@ func (t *translator) translate(body *hclsyntax.Body) (*model.TerragruntTranslati
 	for name, a := range t.varFileValues(source) {
 		args[name] = a
 	}
-	return render(source, sourceRange, args), nil
+	address, version := registrySource(source)
+	return render(address, version, sourceRange, args), nil
 }
 
 // source reads the evaluated terraform.source.
@@ -333,7 +334,7 @@ func (t *translator) readVarFile(path string) map[string]argument {
 }
 
 // render writes the module block and its line table.
-func render(source string, sourceRange model.SourceLocation, args map[string]argument) *model.TerragruntTranslation {
+func render(source, version string, sourceRange model.SourceLocation, args map[string]argument) *model.TerragruntTranslation {
 	var b strings.Builder
 	var table model.LineTable
 	line := 1
@@ -346,6 +347,10 @@ func render(source string, sourceRange model.SourceLocation, args map[string]arg
 	}
 	add("", sourceRange, fmt.Sprintf("module %q {", ModuleName))
 	add("source", sourceRange, "  source = "+renderValue(cty.StringVal(source)))
+
+	if version != "" {
+		add("version", sourceRange, "  version = "+renderValue(cty.StringVal(version)))
+	}
 
 	names := make([]string, 0, len(args))
 	for name := range args {
@@ -361,7 +366,9 @@ func render(source string, sourceRange model.SourceLocation, args map[string]arg
 		add(name, a.real, "  "+name+" = "+strings.ReplaceAll(text, "\n", "\n  "))
 	}
 	add("", sourceRange, "}")
-	return &model.TerragruntTranslation{FileName: VirtualFileName, Text: b.String(), Lines: table}
+	return &model.TerragruntTranslation{
+		FileName: VirtualFileName, Text: b.String(), Lines: table, Source: source, Version: version,
+	}
 }
 
 // renderValue writes v as HCL. TokensForValue escapes the placeholder into a
