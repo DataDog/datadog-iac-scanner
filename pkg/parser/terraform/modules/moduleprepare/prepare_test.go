@@ -1,6 +1,7 @@
 package moduleprepare
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/modulegraph"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -261,6 +264,57 @@ module "vpc" {
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(resolution.PackageRoot, "modules", "vpc"), resolution.LocalPath)
 	require.FileExists(t, filepath.Join(resolution.PackageRoot, "modules", "shared", "variables.tf"))
+}
+
+func TestPrepareKeepsEquivalentRegistryAndGitDirectoriesQuiet(t *testing.T) {
+	const registrySource = "example/network/aws//modules/child"
+	const gitSource = "git::https://git.example/example/network.git//modules/child?ref=v1"
+	root := t.TempDir()
+	callerFile := filepath.Join(root, "main.tf")
+	writeFile(t, callerFile, `
+module "registry" { source = "`+registrySource+`" }
+module "git" { source = "`+gitSource+`" }
+`)
+	roots := make(map[string]string)
+	selected := make(map[string]string)
+	for _, source := range []string{registrySource, gitSource} {
+		roots[source] = t.TempDir()
+		selected[source] = filepath.Join(roots[source], "modules", "child")
+		writeFile(t, filepath.Join(selected[source], "main.tf"), `resource "aws_vpc" "example" {}`)
+	}
+	identity := resolver.RequestedModuleDirectory(
+		&tfmodules.ParsedModule{Source: gitSource}, &resolver.Resolution{ResolvedRef: "fixture-ref"},
+	)
+	prepared, err := Prepare(t.Context(), &Config{
+		RepositoryRoot: root,
+		ArtifactDir:    filepath.Join(t.TempDir(), "prepared"),
+		Resolver: &fixtureResolver{
+			packages:               roots,
+			selected:               selected,
+			registryGitDirectories: map[string]resolver.ModuleDirectoryIdentity{registrySource: identity},
+		},
+	})
+	require.NoError(t, err)
+	require.Empty(t, prepared.Failures)
+
+	manifest, err := resolver.LoadManifest(t.Context(), prepared.ManifestPath)
+	require.NoError(t, err)
+	var logs bytes.Buffer
+	ctx := zerolog.New(zerolog.SyncWriter(&logs)).Level(zerolog.WarnLevel).WithContext(t.Context())
+	result := modulegraph.Resolve(ctx, &modulegraph.Request{
+		RootPaths:      []string{root},
+		DiscoveryPaths: []string{callerFile},
+		Resolver:       resolver.NewPrefetchedResolver(manifest),
+		MaxDepth:       2,
+	})
+	t.Cleanup(result.Cleanup)
+
+	require.Empty(t, result.Failures)
+	require.Len(t, result.Modules, 2)
+	require.Equal(t, result.Modules[0].PackageRoot, result.Modules[1].PackageRoot)
+	require.Equal(t, result.Modules[0].LocalPath, result.Modules[1].LocalPath)
+	require.Len(t, result.ScanPaths, 1)
+	require.Empty(t, logs.String())
 }
 
 func TestPreparePreservesDistinctUnversionedRegistryCalls(t *testing.T) {
@@ -599,6 +653,8 @@ type fixtureResolver struct {
 	onResolve func()
 	mu        sync.Mutex
 	cleanups  int
+
+	registryGitDirectories map[string]resolver.ModuleDirectoryIdentity
 }
 
 func (r *fixtureResolver) Resolve(_ context.Context, module *tfmodules.ParsedModule) (resolver.Resolution, error) {
@@ -625,6 +681,8 @@ func (r *fixtureResolver) Resolve(_ context.Context, module *tfmodules.ParsedMod
 			r.cleanups++
 			r.mu.Unlock()
 		},
+
+		RegistryGitDirectory: r.registryGitDirectories[module.Source],
 	}, nil
 }
 

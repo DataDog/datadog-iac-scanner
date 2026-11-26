@@ -42,6 +42,8 @@ type ManifestEntry struct {
 	// offline scan reports the same code and detail. Older manifests omit them.
 	FailureCode   string `json:"failure_code,omitempty"`
 	FailureDetail string `json:"failure_detail,omitempty"`
+
+	RegistryGitDirectory ModuleDirectoryIdentity `json:"registry_git_directory,omitzero"`
 }
 
 type Manifest struct {
@@ -79,6 +81,8 @@ type ManifestModule struct {
 	FailureCode   string                `json:"failure_code,omitempty"`
 	FailureDetail string                `json:"failure_detail,omitempty"`
 	Declarations  []ManifestDeclaration `json:"declarations"`
+
+	RegistryGitDirectory ModuleDirectoryIdentity `json:"registry_git_directory,omitzero"`
 }
 
 type ManifestDeclaration struct {
@@ -270,6 +274,8 @@ func (m *Manifest) addV1Entry(ctx context.Context, module *ManifestModule) (stri
 		FailureCode:      module.FailureCode,
 		FailureDetail:    module.FailureDetail,
 		Origin:           module.SourceType,
+
+		RegistryGitDirectory: module.RegistryGitDirectory,
 	}
 	switch module.Status {
 	case ManifestStatusResolved:
@@ -607,6 +613,8 @@ func resolveManifestEntry(
 		ResolvedVersion: firstNonEmpty(entry.ResolvedVersion, entry.Version),
 		ResolvedRef:     entry.ResolvedRef,
 		Origin:          "prefetched",
+
+		RegistryGitDirectory: entry.RegistryGitDirectory,
 	})
 }
 

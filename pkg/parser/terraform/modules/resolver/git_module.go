@@ -15,53 +15,6 @@ import (
 
 const defaultGitRef = "HEAD"
 
-// ModuleDirectoryIdentity identifies a package version and the module selected within it.
-type ModuleDirectoryIdentity struct {
-	Package string
-	Subdir  string
-}
-
-// RequestedModuleDirectory identifies the module named by a call, independently
-// of the directory the resolver returned.
-func RequestedModuleDirectory(mod *tfmodules.ParsedModule, res *Resolution) ModuleDirectoryIdentity {
-	if res.RegistryGitDirectory.Package != "" {
-		return res.RegistryGitDirectory
-	}
-	source := strings.TrimSpace(mod.Source)
-	if identity, ok := gitModuleDirectory(source, res.ResolvedRef); ok {
-		return identity
-	}
-
-	_, subdir := splitGetterSubdir(source)
-	version := strings.TrimSpace(mod.Version)
-	if addr, err := tfmodules.ParseRegistryModuleSource(source); err == nil {
-		subdir = addr.Subdir
-		if res.ResolvedVersion != "" {
-			version = res.ResolvedVersion
-		}
-	}
-	return ModuleDirectoryIdentity{
-		Package: canonicalizeModuleCacheSource(source) + "\x00" + version,
-		Subdir:  filepath.ToSlash(filepath.Clean(subdir)),
-	}
-}
-
-func gitModuleDirectory(source, resolvedRef string) (ModuleDirectoryIdentity, bool) {
-	repo, subdir, ref, ok := parseGitGetterSource(source)
-	if !ok {
-		return ModuleDirectoryIdentity{}, false
-	}
-	if resolvedRef != "" {
-		ref = resolvedRef
-	} else if ref == "" {
-		ref = defaultGitRef
-	}
-	return ModuleDirectoryIdentity{
-		Package: normalizeGitRepoURL(repo) + "\x00" + ref,
-		Subdir:  filepath.ToSlash(filepath.Clean(subdir)),
-	}, true
-}
-
 // GitModuleResolveKey returns a canonical cache key for pinnable git module sources.
 // Transport scheme is part of the key so HTTPS and SSH spellings cannot coalesce.
 // A missing ref is treated as HEAD so default-branch sources still share an identity.

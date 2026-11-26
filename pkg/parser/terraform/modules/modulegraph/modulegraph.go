@@ -64,6 +64,8 @@ type ResolvedModule struct {
 	ParentPackageRoot string
 	Depth             int
 	CanonicalSource   string
+
+	RegistryGitDirectory resolver.ModuleDirectoryIdentity
 }
 
 type Result struct {
@@ -203,9 +205,11 @@ type visitedSet struct {
 }
 
 type moduleDirectoryOwner struct {
-	source   string
-	identity resolver.ModuleDirectoryIdentity
-	local    bool
+	source           string
+	requestedVersion string
+	resolvedVersion  string
+	identity         resolver.ModuleDirectoryIdentity
+	local            bool
 }
 
 type resolutionCache struct {
@@ -230,8 +234,10 @@ type moduleParseCache struct {
 }
 
 type traversalPackage struct {
-	root     string
-	identity string
+	root             string
+	identity         string
+	requestedVersion string
+	resolvedVersion  string
 }
 
 type pendingTraversal struct {
@@ -530,14 +536,14 @@ func visitKey(localPath, packageRoot string) string {
 	return filepath.Clean(localPath) + "\x00" + filepath.Clean(packageRoot)
 }
 
-func (s *visitedSet) tryAdd(localPath, packageRoot string, owner moduleDirectoryOwner) (moduleDirectoryOwner, bool) {
+func (s *visitedSet) tryAdd(localPath, packageRoot string, owner *moduleDirectoryOwner) (moduleDirectoryOwner, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := visitKey(localPath, packageRoot)
 	if previous, ok := s.paths[key]; ok {
 		return previous, false
 	}
-	s.paths[key] = owner
+	s.paths[key] = *owner
 	return moduleDirectoryOwner{}, true
 }
 
@@ -570,6 +576,8 @@ func (c *resultCollector) addResolvedModule(
 		ParentPackageRoot: parentPackageRoot,
 		Depth:             depth,
 		CanonicalSource:   canonicalModuleURL(mod.Source, resolution.ResolvedVersion),
+
+		RegistryGitDirectory: resolution.RegistryGitDirectory,
 	})
 }
 
@@ -691,10 +699,10 @@ func (c *moduleParseCache) set(key string, mods map[string]tfmodules.ParsedModul
 	c.entries[key] = mods
 }
 
-func (c *pendingTraversalCollector) add(traversal pendingTraversal) {
+func (c *pendingTraversalCollector) add(traversal *pendingTraversal) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[visitKey(traversal.seed, traversal.pkg.root)] = traversal
+	c.entries[visitKey(traversal.seed, traversal.pkg.root)] = *traversal
 }
 
 func (c *pendingTraversalCollector) drain() []pendingTraversal {
@@ -985,11 +993,13 @@ func (w *walker) collectLocalModules(
 			}
 		}
 		owner := moduleDirectoryOwner{
-			source:   mod.Source,
-			identity: resolver.ModuleDirectoryIdentity{Package: pkg.identity},
-			local:    true,
+			source:           mod.Source,
+			requestedVersion: pkg.requestedVersion,
+			resolvedVersion:  pkg.resolvedVersion,
+			identity:         resolver.ModuleDirectoryIdentity{Package: pkg.identity},
+			local:            true,
 		}
-		if _, added := w.visited.tryAdd(localDir, packageRoot, owner); !added {
+		if _, added := w.visited.tryAdd(localDir, packageRoot, &owner); !added {
 			continue
 		}
 		if packageRoot != "" {
@@ -1239,22 +1249,29 @@ func (w *walker) traverseRemoteModuleGroup(
 		w.results.addCleanup(resolution.Cleanup)
 	}
 	owner := moduleDirectoryOwner{
-		source:   representative.Source,
-		identity: resolver.RequestedModuleDirectory(representative, &resolution),
+		source:           representative.Source,
+		requestedVersion: representative.Version,
+		resolvedVersion:  resolution.ResolvedVersion,
+		identity:         resolver.RequestedModuleDirectory(representative, &resolution),
 	}
-	if !w.addResolvedModulePaths(ctx, owner, &resolution) {
+	if !w.addResolvedModulePaths(ctx, &owner, &resolution) {
 		return
 	}
 	w.results.addSourceMapping(
 		resolution.LocalPath,
 		canonicalModuleURL(representative.Source, resolution.ResolvedVersion),
 	)
-	pkg := traversalPackage{root: resolution.PackageRoot, identity: owner.identity.Package}
+	pkg := traversalPackage{
+		root:             resolution.PackageRoot,
+		identity:         owner.identity.Package,
+		requestedVersion: owner.requestedVersion,
+		resolvedVersion:  owner.resolvedVersion,
+	}
 	if !w.deferExpansion {
 		w.traverse(ctx, resolution.LocalPath, nil, repoAllowedDirs, depth+1, pkg)
 		return
 	}
-	w.pending.add(pendingTraversal{
+	w.pending.add(&pendingTraversal{
 		seed:            resolution.LocalPath,
 		repoAllowedDirs: repoAllowedDirs,
 		depth:           depth + 1,
@@ -1262,20 +1279,24 @@ func (w *walker) traverseRemoteModuleGroup(
 	})
 }
 
-func (w *walker) addResolvedModulePaths(ctx context.Context, owner moduleDirectoryOwner, res *resolver.Resolution) bool {
+func (w *walker) addResolvedModulePaths(ctx context.Context, owner *moduleDirectoryOwner, res *resolver.Resolution) bool {
 	contextLogger := logger.FromContext(ctx)
 	if previous, added := w.visited.tryAdd(res.LocalPath, res.PackageRoot, owner); !added {
-		if !sameModuleDirectory(ctx, previous, owner, res) {
+		if !sameModuleDirectory(ctx, &previous, owner, res) {
 			contextLogger.Warn().
 				Str("source", model.RedactURLCredentials(owner.source)).
+				Str("requested_version", owner.requestedVersion).
+				Str("resolved_version", owner.resolvedVersion).
 				Str("previous_source", model.RedactURLCredentials(previous.source)).
+				Str("previous_requested_version", previous.requestedVersion).
+				Str("previous_resolved_version", previous.resolvedVersion).
 				Str("path", res.LocalPath).
 				Msg("Skipping resolved Terraform module because another module already claimed its directory")
 		}
 		return false
 	}
 	files := flatTerraformFilePaths(ctx, res.LocalPath, res.PackageRoot)
-	if len(files) == 0 && ctx.Err() == nil {
+	if len(files) == 0 && ctx.Err() == nil && len(flatConfigFilePaths(ctx, res.LocalPath, res.PackageRoot, tfpath.IsJSONConfig)) == 0 {
 		contextLogger.Warn().
 			Str("source", model.RedactURLCredentials(owner.source)).
 			Str("path", res.LocalPath).
@@ -1285,7 +1306,7 @@ func (w *walker) addResolvedModulePaths(ctx context.Context, owner moduleDirecto
 	return true
 }
 
-func sameModuleDirectory(ctx context.Context, previous, current moduleDirectoryOwner, res *resolver.Resolution) bool {
+func sameModuleDirectory(ctx context.Context, previous, current *moduleDirectoryOwner, res *resolver.Resolution) bool {
 	if previous.identity.Package != current.identity.Package {
 		return false
 	}
@@ -1346,12 +1367,16 @@ func remoteResolveIdentity(mod *tfmodules.ParsedModule) string {
 }
 
 func flatTerraformFilePaths(ctx context.Context, dir, packageRoot string) []string {
+	return flatConfigFilePaths(ctx, dir, packageRoot, tfpath.IsHCLConfig)
+}
+
+func flatConfigFilePaths(ctx context.Context, dir, packageRoot string, match func(string) bool) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
 	var paths []string
-	for _, entry := range tfmodules.ConfigEntries(entries, tfpath.IsHCLConfig) {
+	for _, entry := range tfmodules.ConfigEntries(entries, match) {
 		if path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot); ok {
 			paths = append(paths, path)
 		}

@@ -204,6 +204,7 @@ func TestResolveWarnsWhenSkippingModuleDirectory(t *testing.T) {
 		sources      []string
 		directory    string
 		hasFiles     bool
+		jsonFile     string
 		emptyWarning bool
 		ownerWarning bool
 	}{
@@ -239,6 +240,14 @@ func TestResolveWarnsWhenSkippingModuleDirectory(t *testing.T) {
 			directory:    "modules/child",
 			emptyWarning: true,
 		},
+		{
+			name: "Terraform JSON only", sources: []string{registrySource},
+			directory: "modules/child", jsonFile: "main.tf.json",
+		},
+		{
+			name: "OpenTofu JSON only", sources: []string{registrySource},
+			directory: "modules/child", jsonFile: "main.tofu.json",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -248,6 +257,9 @@ func TestResolveWarnsWhenSkippingModuleDirectory(t *testing.T) {
 			moduleFile := filepath.Join(moduleDir, "main.tf")
 			if tc.hasFiles {
 				require.NoError(t, os.WriteFile(moduleFile, []byte(`resource "aws_s3_bucket" "this" {}`), 0o644))
+			}
+			if tc.jsonFile != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(moduleDir, tc.jsonFile), []byte(`{"resource":{"aws_s3_bucket":{"this":{}}}}`), 0o644))
 			}
 			var callers strings.Builder
 			bySource := make(map[string]resolver.Resolution)
@@ -319,7 +331,13 @@ func TestResolveRemoteModuleWhenLocalCallVisitedDirectory(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			rootFile := writeRegistryModuleCaller(t, t.TempDir(), "parent", packageSource)
+			rootFile := filepath.Join(t.TempDir(), "main.tf")
+			require.NoError(t, os.WriteFile(rootFile, fmt.Appendf(nil, `
+module "parent" {
+  source = %q
+  version = "~> 1.0"
+}
+`, packageSource), 0o644))
 			packageRoot := t.TempDir()
 			packageFile := filepath.Join(packageRoot, "main.tf")
 			childDir := filepath.Join(packageRoot, "modules", "child")
@@ -328,7 +346,10 @@ func TestResolveRemoteModuleWhenLocalCallVisitedDirectory(t *testing.T) {
 			require.NoError(t, os.MkdirAll(childDir, 0o755))
 			require.NoError(t, os.WriteFile(packageFile, fmt.Appendf(nil, `
 module "local_child" { source = "./modules/child" }
-module "remote_child" { source = %q }
+module "remote_child" {
+  source = %q
+  version = ">= 1.0.0"
+}
 `, tc.remoteSource), 0o644))
 			require.NoError(t, os.WriteFile(childFile, []byte(`resource "aws_s3_bucket" "this" {}`), 0o644))
 
@@ -358,6 +379,10 @@ module "remote_child" { source = %q }
 			require.Contains(t, logs.String(), "another module already claimed its directory")
 			require.Contains(t, logs.String(), fmt.Sprintf("\"source\":%q", tc.remoteSource))
 			require.Contains(t, logs.String(), `"previous_source":"./modules/child"`)
+			require.Contains(t, logs.String(), `"requested_version":">= 1.0.0"`)
+			require.Contains(t, logs.String(), fmt.Sprintf("\"resolved_version\":%q", tc.version))
+			require.Contains(t, logs.String(), `"previous_requested_version":"~> 1.0"`)
+			require.Contains(t, logs.String(), `"previous_resolved_version":"1.0.0"`)
 		})
 	}
 }
