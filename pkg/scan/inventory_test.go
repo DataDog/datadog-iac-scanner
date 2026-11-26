@@ -7,6 +7,7 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/inventory"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/xeipuuv/gojsonschema"
 )
@@ -119,6 +121,47 @@ func TestInventoryDoesNotChangeTheScan(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &inv))
 	require.Equal(t, []string{"terraform"}, inv.PlatformsScanned)
 	require.NotEmpty(t, inv.ScanID)
+}
+
+func TestScanMarksUnexpectedDocumentIDCollisionIncomplete(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"first/main.tf":  `resource "aws_s3_bucket" "first" {}`,
+		"second/main.tf": `resource "aws_s3_bucket" "second" {}`,
+	})
+	params := terraformParams(root)
+	params.Path = append(params.Path, filepath.Join(root, "second", "main.tf"))
+	params.InventoryPath = filepath.Join(t.TempDir(), "inventory.json")
+	var logs bytes.Buffer
+	log := zerolog.New(zerolog.SyncWriter(&logs)).Level(zerolog.WarnLevel)
+	ctx := log.WithContext(t.Context())
+
+	client, err := NewClient(ctx, params, &consolePrinter.Printer{})
+	require.NoError(t, err)
+	client.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
+		return &stubQuerySource{queries: []model.QueryMetadata{inventoryTestQuery}}, nil
+	}
+	key := model.DocumentKey{
+		Path: model.DocumentPath(filepath.Join(root, "first", "main.tf"), root, nil),
+		Kind: model.KindTerraform, Platform: "terraform",
+	}
+	require.NoError(t, client.Storage.SaveFile(ctx, &model.FileMetadata{
+		ID: key.ID(), FilePath: "other.tf",
+	}))
+
+	metadata, err := client.PerformScan(ctx)
+	require.NoError(t, err)
+	require.True(t, metadata.Incomplete)
+	require.Equal(t, 1, metadata.Stats.DuplicateDocumentIDs, "the overlapping path should be coalesced")
+	require.Equal(t, 1, metadata.Stats.Violations, "the unaffected document should still be evaluated")
+	raw, err := os.ReadFile(params.InventoryPath)
+	require.NoError(t, err)
+	var inv inventory.Inventory
+	require.NoError(t, json.Unmarshal(raw, &inv))
+	require.Equal(t, inventory.StatusPartial, inv.Status)
+	require.Contains(t, logLines(t, &logs), map[string]any{
+		"level": "warn", "duplicate_document_ids": float64(1),
+		"message": "Scan incomplete: rejected documents with duplicate IDs",
+	})
 }
 
 // writeRepo creates the files of a test repository.

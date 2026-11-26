@@ -164,6 +164,7 @@ func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.
 		DiffAware:      c.ScanParams.SCIInfo.DiffAware.Enabled,
 		Stats:          stats,
 		RuleStats:      ruleStats,
+		Incomplete:     scanResults.Incomplete(),
 	}
 
 	return metadata

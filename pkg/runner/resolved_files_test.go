@@ -738,10 +738,10 @@ data:
 	files.SortByDocumentKey()
 	for i, chart := range []string{"app", "web"} {
 		key := model.DocumentKey{
-			Path:          "lib/templates/cm.yaml",
+			Path:          model.DocumentPath("lib/templates/cm.yaml", "", nil),
 			Kind:          model.KindHELM,
 			Platform:      service.Parser.DocumentPlatform(),
-			ResolverRoot:  chart,
+			ResolverRoot:  model.DocumentPath(chart, "", nil),
 			RenderedPath:  chart + "/charts/lib/templates/cm.yaml",
 			SplitPosition: 1,
 		}

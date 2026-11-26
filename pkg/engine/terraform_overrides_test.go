@@ -46,7 +46,7 @@ resource "aws_s3_bucket" "example" {
 			f := parsed[0]
 			key := model.DocumentKey{Path: model.DocumentPath(path, root, nil), Kind: f.Kind, Platform: "terraform"}
 			f.DocumentKey, f.ID, f.Platform = key, key.ID(), "terraform"
-			byPath[key.Path] = f.ID
+			byPath[model.LexicalDocumentPath(path, root)] = f.ID
 			files = append(files, f)
 		}
 		files.SortByDocumentKey()

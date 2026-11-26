@@ -507,7 +507,7 @@ func (s *Service) saveToFile(ctx context.Context, file *model.FileMetadata) {
 	}
 }
 
-func (s *Service) documentPath(path string) string {
+func (s *Service) documentPath(path string) model.DocumentSource {
 	return model.DocumentPath(path, s.ScanRoot, s.PathExtractionMap)
 }
 

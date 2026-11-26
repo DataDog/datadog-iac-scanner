@@ -674,6 +674,62 @@ func TestWalkInventory_helmChartSkipsRawTemplates(t *testing.T) {
 	}
 }
 
+func TestWalkInventoryRendersOverlappingChartOnce(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	chart := filepath.Join(root, "chart")
+	require.NoError(t, os.MkdirAll(filepath.Join(chart, "templates"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(chart, "Chart.yaml"), []byte("name: chart\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(chart, "templates", "object.yaml"), nil, 0o600))
+	src, err := NewFileSystemSourceProvider(ctx, []string{root, chart}, nil, nil)
+	require.NoError(t, err)
+
+	var calls int
+	files, err := src.WalkInventory(ctx, model.Extensions{".yaml": {}}, utils.PoolOptions{},
+		func(_ context.Context, path string) bool {
+			if path != filepath.ToSlash(chart) {
+				return false
+			}
+			calls++
+			return true
+		})
+	require.NoError(t, err)
+	require.Equal(t, 1, calls)
+	require.Empty(t, files, "both walks should withhold raw templates from a rendered chart")
+
+	t.Run("unsuccessful render", func(t *testing.T) {
+		calls := 0
+		files, err := src.WalkInventoryWithChartBatches(t.Context(), model.Extensions{".yaml": {}},
+			func(_ context.Context, roots []string) ([]bool, error) {
+				require.Equal(t, []string{filepath.ToSlash(chart)}, roots)
+				calls++
+				return []bool{false}, nil
+			})
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+		var templates int
+		for _, file := range files {
+			if file.Path == toSlash(filepath.Join(chart, "templates", "object.yaml")) {
+				templates++
+			}
+		}
+		require.Equal(t, 2, templates, "both walks should list the failed chart's raw template")
+	})
+
+	t.Run("batch error", func(t *testing.T) {
+		calls := 0
+		files, err := src.WalkInventoryWithChartBatches(t.Context(), model.Extensions{".yaml": {}},
+			func(_ context.Context, roots []string) ([]bool, error) {
+				require.Equal(t, []string{filepath.ToSlash(chart)}, roots)
+				calls++
+				return nil, context.Canceled
+			})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, 1, calls)
+		require.Empty(t, files)
+	})
+}
+
 func TestIsHelmChartFile_normalizesSeparators(t *testing.T) {
 	root := `D:/charts/app`
 	require.True(t, IsHelmChartFile(`D:/charts/app/templates/svc.yaml`, []string{root}))

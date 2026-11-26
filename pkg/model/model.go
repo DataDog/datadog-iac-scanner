@@ -136,11 +136,11 @@ type ResourceLine struct {
 type ExtractedPathObject struct {
 	Path      string
 	LocalPath bool
-	// DocumentSource includes the selected ref or package location when
-	// the shorter reporting path can refer to more than one installation.
+	// DocumentSource is the canonical module address used for document IDs.
 	DocumentSource string
-	// DocumentPackageRoot extends that identity to sibling modules in the package.
+	// DocumentPackageRoot locates sibling files in the same package.
 	DocumentPackageRoot string
+	documentLocation    *moduleDocumentLocation
 }
 
 // CommentsCommands list of commands on a file that will be parsed
