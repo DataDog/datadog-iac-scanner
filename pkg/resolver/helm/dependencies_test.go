@@ -341,3 +341,11 @@ func dependencyTreeHeight(ch *chart.Chart, limit int) int {
 	}
 	return best + 1
 }
+
+func TestInMemorySeesThroughOverlay(t *testing.T) {
+	mem := vfs.NewMemFS(nil)
+	require.True(t, inMemory(mem))
+	require.True(t, inMemory(vfs.NewOverlay(mem, nil)))
+	require.False(t, inMemory(vfs.DiskFS{}))
+	require.False(t, inMemory(vfs.NewOverlay(vfs.DiskFS{}, nil)))
+}

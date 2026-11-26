@@ -278,3 +278,22 @@ func TestMemoizeDecodeSharesOneInFlightDecode(t *testing.T) {
 		t.Fatalf("memo holds %d results, want 1", n)
 	}
 }
+
+func TestIsMemFSSeesThroughOverlay(t *testing.T) {
+	mem := vfs.NewMemFS(nil)
+	disk := vfs.NewOverlay(vfs.DiskFS{}, nil)
+	for name, tc := range map[string]struct {
+		fsys vfs.FS
+		want bool
+	}{
+		"memfs":            {mem, true},
+		"overlay memfs":    {vfs.NewOverlay(mem, nil), true},
+		"scanfs overlay":   {NewScanFS(vfs.NewOverlay(mem, nil)), true},
+		"overlay disk":     {disk, false},
+		"scanfs over disk": {NewScanFS(disk), false},
+	} {
+		if got := isMemFS(tc.fsys); got != tc.want {
+			t.Errorf("%s: isMemFS = %v, want %v", name, got, tc.want)
+		}
+	}
+}

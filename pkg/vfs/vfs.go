@@ -60,9 +60,23 @@ func (DiskFS) Abs(name string) (string, error) { return filepath.Abs(name) }
 // Default returns the filesystem used when none is injected (the real disk).
 func Default() FS { return DiskFS{} }
 
-// IsDisk reports whether fsys is the real filesystem, by value or pointer.
+// Unwrap returns the innermost FS of a wrapper chain (such as an Overlay): each
+// wrapper exposes its base through an Unwrap() FS method. Type checks on an FS
+// should look at Unwrap(fsys), so a wrapper keeps the behavior of its base.
+func Unwrap(fsys FS) FS {
+	for {
+		w, ok := fsys.(interface{ Unwrap() FS })
+		if !ok {
+			return fsys
+		}
+		fsys = w.Unwrap()
+	}
+}
+
+// IsDisk reports whether fsys is the real filesystem, by value or pointer,
+// possibly behind wrappers such as an Overlay.
 func IsDisk(fsys FS) bool {
-	switch fsys.(type) {
+	switch Unwrap(fsys).(type) {
 	case DiskFS, *DiskFS:
 		return true
 	}

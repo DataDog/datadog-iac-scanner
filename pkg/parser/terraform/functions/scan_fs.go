@@ -59,6 +59,6 @@ func isMemFS(fsys vfs.FS) bool {
 	if s, ok := fsys.(*ScanFS); ok {
 		fsys = s.FS
 	}
-	_, ok := fsys.(*vfs.MemFS)
+	_, ok := vfs.Unwrap(fsys).(*vfs.MemFS)
 	return ok
 }
