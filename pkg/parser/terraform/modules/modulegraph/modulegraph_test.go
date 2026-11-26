@@ -1484,7 +1484,7 @@ func TestScheduleModuleGroupPreservesDeferredLeasePriority(t *testing.T) {
 			}
 			queue := moduleGroupQueue{
 				ordered:  []*remoteModuleGroup{fresh},
-				deferred: []deferredModuleGroup{{group: deferred, status: resolver.RetainedPackageStatus{Ready: ready}}},
+				deferred: []moduleSelection{{group: deferred, state: selectionWaitingForPackage, ready: ready}},
 			}
 			lookup := func(group *remoteModuleGroup) resolver.RetainedPackageStatus {
 				if group == fresh {
@@ -1583,6 +1583,132 @@ func TestScheduleModuleGroupPreservesPriorityDuringVersionLookup(t *testing.T) {
 	}
 }
 
+// Check both the ownership of every visible lease and the amount still
+// available from the budget. Worker leases have already left the queue.
+func requireAcquisitionCapacity(t *testing.T, w *walker, queue *moduleGroupQueue, workers ...*resolver.AcquisitionLease) {
+	t.Helper()
+	held := make(map[*resolver.AcquisitionLease]bool)
+	addOwner := func(lease *resolver.AcquisitionLease) {
+		t.Helper()
+		require.NotNil(t, lease)
+		require.NotContains(t, held, lease, "each reservation needs a single owner")
+		held[lease] = true
+	}
+	for _, selection := range queue.deferred {
+		require.Equal(t, selection.state.ownsReservation(), selection.reservation != nil)
+		if selection.reservation != nil {
+			addOwner(selection.reservation)
+		}
+	}
+	for _, lease := range workers {
+		addOwner(lease)
+	}
+
+	maximum := w.acquisitionBase + w.acquisitionBytes
+	remaining := maximum - w.budget.TotalUsage().Bytes
+	for lease := range held {
+		remaining -= lease.Bytes()
+	}
+	require.GreaterOrEqual(t, remaining, int64(0))
+	if remaining > 0 {
+		spare, ok := w.budget.TryAcquireAcquisition(maximum, remaining)
+		defer spare.Release()
+		require.True(t, ok, "the unowned capacity should be available")
+		require.Equal(t, remaining, spare.Bytes())
+	}
+	extra, ok := w.budget.TryAcquireAcquisition(maximum, 1)
+	defer extra.Release()
+	require.False(t, ok, "all capacity should be accounted for")
+}
+
+func TestScheduleModuleGroupConservesCapacityAcrossReadinessAndCancellation(t *testing.T) {
+	for _, outcome := range []string{"owned package", "retained outcome", "new package", "cancelled lookup"} {
+		t.Run(outcome, func(t *testing.T) {
+			versionReady, packageReady := make(chan struct{}), make(chan struct{})
+			group := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "selected"}}
+			queue := moduleGroupQueue{ordered: []*remoteModuleGroup{group}}
+			w := walker{
+				deferExpansion: true, acquisitionBytes: 128,
+				budget: resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 128}),
+			}
+			status := resolver.RetainedPackageStatus{Ready: versionReady, VersionPending: true}
+			lookup := func(*remoteModuleGroup) resolver.RetainedPackageStatus { return status }
+			var started bool
+			var worker *resolver.AcquisitionLease
+			start := func(g *remoteModuleGroup, lease *resolver.AcquisitionLease) {
+				require.Same(t, group, g)
+				started, worker = true, lease
+			}
+			requireAcquisitionCapacity(t, &w, &queue)
+			advanced, changed := w.scheduleModuleGroup(&queue, lookup, start)
+			require.True(t, advanced)
+			require.Nil(t, changed)
+			require.Equal(t, selectionVersionReserved, queue.deferred[0].state)
+			requireAcquisitionCapacity(t, &w, &queue)
+
+			if outcome == "cancelled lookup" {
+				queue.fail(&w, context.Canceled)
+				require.Empty(t, queue.deferred)
+				require.False(t, started)
+				requireAcquisitionCapacity(t, &w, &queue)
+				return
+			}
+
+			switch outcome {
+			case "owned package":
+				status = resolver.RetainedPackageStatus{Ready: packageReady}
+			case "retained outcome":
+				status = resolver.RetainedPackageStatus{Reuse: true}
+			default:
+				status = resolver.RetainedPackageStatus{}
+			}
+			close(versionReady)
+			queue.refreshReady(lookup)
+			requireAcquisitionCapacity(t, &w, &queue)
+			if outcome == "owned package" {
+				require.Equal(t, selectionWaitingForPackage, queue.deferred[0].state)
+				status = resolver.RetainedPackageStatus{Reuse: true}
+				close(packageReady)
+				queue.refreshReady(lookup)
+				requireAcquisitionCapacity(t, &w, &queue)
+			}
+
+			advanced, changed = w.scheduleModuleGroup(&queue, lookup, start)
+			require.True(t, advanced)
+			require.Nil(t, changed)
+			require.True(t, started)
+			require.Empty(t, queue.deferred)
+			if outcome == "new package" {
+				require.NotNil(t, worker)
+				requireAcquisitionCapacity(t, &w, &queue, worker)
+				worker.Release()
+			} else {
+				require.Nil(t, worker)
+			}
+			requireAcquisitionCapacity(t, &w, &queue)
+		})
+	}
+}
+
+func TestAcquireRemoteModuleGroupsReturnsCapacityOnFailure(t *testing.T) {
+	mod := &tfmodules.ParsedModule{Name: "failed", Source: "example.com/acme/a/aws"}
+	w := walker{
+		resolver:       errorResolver{err: &tfmodules.UnresolvedError{Reason: "package acquisition failed"}},
+		deferExpansion: true, acquisitionBytes: 128,
+		budget:      resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 128}),
+		resolutions: resolutionCache{entries: make(map[string]resolvedEntry)},
+	}
+	groups := map[string]*remoteModuleGroup{
+		"failed": {representative: mod, callers: []*tfmodules.ParsedModule{mod}},
+	}
+	var queue moduleGroupQueue
+	requireAcquisitionCapacity(t, &w, &queue)
+	w.acquireRemoteModuleGroups(t.Context(), groups, nil)
+	requireAcquisitionCapacity(t, &w, &queue)
+	require.Len(t, w.results.failures, 1)
+	require.Equal(t, "package acquisition failed", w.results.failures[0].Reason)
+}
+
 func TestScheduleModuleGroupTransfersLaterReservation(t *testing.T) {
 	earlier := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "earlier"}}
 	later := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "later"}}
@@ -1615,6 +1741,7 @@ func TestScheduleModuleGroupTransfersLaterReservation(t *testing.T) {
 		advanced, changed := w.scheduleModuleGroup(&queue, lookup, start)
 		require.True(t, advanced)
 		require.Nil(t, changed)
+		requireAcquisitionCapacity(t, &w, &queue)
 	}
 	require.Empty(t, started)
 	require.Len(t, queue.deferred, 2)
@@ -1628,17 +1755,23 @@ func TestScheduleModuleGroupTransfersLaterReservation(t *testing.T) {
 	require.Nil(t, changed)
 	require.Equal(t, []*remoteModuleGroup{earlier}, started)
 	require.Same(t, reservation, leases[0])
+	requireAcquisitionCapacity(t, &w, &queue, leases[0])
 
 	close(laterReady)
 	advanced, changed = w.scheduleModuleGroup(&queue, lookup, start)
 	require.False(t, advanced)
 	require.NotNil(t, changed)
+	requireAcquisitionCapacity(t, &w, &queue, leases[0])
 	leases[0].Release()
+	requireAcquisitionCapacity(t, &w, &queue)
 	advanced, changed = w.scheduleModuleGroup(&queue, lookup, start)
 	require.True(t, advanced)
 	require.Nil(t, changed)
 	require.Equal(t, []*remoteModuleGroup{earlier, later}, started)
 	require.Equal(t, int64(128), leases[1].Bytes())
+	requireAcquisitionCapacity(t, &w, &queue, leases[1])
+	leases[1].Release()
+	requireAcquisitionCapacity(t, &w, &queue)
 }
 
 type reservedSelectionResolver struct {

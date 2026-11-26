@@ -180,10 +180,10 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 		return stampRegistryVersion(&res, st, cacheVersion), nil
 	}
 
-	// Coalesce cacheable fetches; non-cacheable results carry per-call Cleanup.
-	// The cache key names the whole package, but a Resolution points at one
-	// subdirectory of it, so only calls selecting the same subdirectory may
-	// share a result.
+	// Outside scan package sharing, singleflight coalesces concurrent
+	// cacheable fetches for the same subdirectory because the result names a
+	// selected module. It retains neither successes nor errors after the
+	// in-flight call. Non-cacheable results here carry per-call cleanup.
 	if useCache {
 		key := moduleCacheKey(mod.Source, cacheVersion) + "\x00" + filepath.ToSlash(filepath.Clean(selectedSubdir))
 		v, sfErr, _ := r.cfg.resolveSF.Do(key, func() (interface{}, error) {
