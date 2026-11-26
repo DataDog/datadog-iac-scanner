@@ -126,73 +126,74 @@ func (c *Client) resolveTerraformModulesForScan(
 }
 
 func setModuleDocumentSources(paths map[string]model.ExtractedPathObject, modules []modulegraph.ResolvedModule, repoRoot string) {
+	type selectedModule struct {
+		pkg  model.ModuleDocumentPackage
+		root string
+	}
+	selected := make(map[string]selectedModule, len(modules))
 	for i := range modules {
-		setModuleDocumentSource(paths, &modules[i])
-	}
-	// One acquired directory can serve several callers. Count directories so
-	// a shared acquisition keeps its source key.
-	counts := make(map[string]int, len(modules))
-	hasCollision := false
-	for _, extracted := range paths {
-		if extracted.DocumentSource != "" {
-			counts[extracted.DocumentSource]++
-			hasCollision = hasCollision || counts[extracted.DocumentSource] > 1
-		}
-	}
-	if !hasCollision {
-		return
-	}
-
-	callPaths := modulePackageCallPaths(modules, repoRoot)
-	for dir, extracted := range paths {
-		if counts[extracted.DocumentSource] < 2 {
+		module := &modules[i]
+		if _, ok := paths[module.LocalPath]; !ok {
 			continue
 		}
-		if callPath, ok := callPaths[extracted.DocumentPackageRoot]; ok {
-			selectedPath := model.DocumentPath(dir, extracted.DocumentPackageRoot, nil)
-			extracted.DocumentSource += "\x00installation\x00" + callPath + "\x00" + selectedPath
-			paths[dir] = extracted
+		pkg := model.ModuleDocumentPackage{
+			Address: model.RedactURLCredentials(module.CanonicalSource), Version: module.Version,
+			Ref: module.ResolvedRef, ManifestPath: module.ManifestPath,
+		}
+		// Several callers can share one selected directory. For equal source
+		// coordinates, use the innermost package containing that directory.
+		current, ok := selected[module.LocalPath]
+		order := pkg.Compare(current.pkg)
+		if !ok || order < 0 || (order == 0 && len(module.PackageRoot) > len(current.root)) {
+			selected[module.LocalPath] = selectedModule{pkg: pkg, root: module.PackageRoot}
 		}
 	}
-}
 
-func setModuleDocumentSource(paths map[string]model.ExtractedPathObject, module *modulegraph.ResolvedModule) {
-	extracted, ok := paths[module.LocalPath]
-	if !ok {
-		return
+	// Separate installations of the same source need a logical call path.
+	counts := make(map[model.ModuleDocumentPackage]int, len(selected))
+	hasCollision := false
+	for _, module := range selected {
+		counts[module.pkg]++
+		hasCollision = hasCollision || counts[module.pkg] > 1
 	}
-	source := strings.Join([]string{
-		model.RedactURLCredentials(module.CanonicalSource), module.Version, module.ResolvedRef, module.ManifestPath,
-	}, "\x00")
-	// Several call sites can share one acquired directory.
-	if extracted.DocumentSource == "" || source < extracted.DocumentSource {
-		extracted.DocumentSource = source
-		extracted.DocumentPackageRoot = module.PackageRoot
-		paths[module.LocalPath] = extracted
+	var callPaths map[string]model.ModuleDocumentCallPath
+	if hasCollision {
+		callPaths = modulePackageCallPaths(modules, repoRoot)
+	}
+	for dir, module := range selected {
+		var installation model.ModuleDocumentCallPath
+		if counts[module.pkg] > 1 {
+			installation = callPaths[module.root]
+		}
+		var selectedDirectory string
+		if module.root != "" {
+			selectedDirectory = model.LexicalDocumentPath(dir, module.root)
+		}
+		paths[dir] = paths[dir].WithDocumentLocation(module.pkg, module.root, selectedDirectory, installation)
 	}
 }
 
 // modulePackageCallPaths names each acquisition by the first call chain in
 // lexical order among those with the fewest remote hops. Each call is relative
 // to the checkout or its declaring package.
-func modulePackageCallPaths(modules []modulegraph.ResolvedModule, repoRoot string) map[string]string {
+func modulePackageCallPaths(modules []modulegraph.ResolvedModule, repoRoot string) map[string]model.ModuleDocumentCallPath {
 	byParent := make(map[string][]*modulegraph.ResolvedModule)
 	for i := range modules {
 		module := &modules[i]
 		byParent[module.ParentPackageRoot] = append(byParent[module.ParentPackageRoot], module)
 	}
-	callPaths := map[string]string{"": ""}
-	frontier := map[string]string{"": ""}
+	callPaths := map[string]model.ModuleDocumentCallPath{"": {}}
+	frontier := map[string]model.ModuleDocumentCallPath{"": {}}
 	for len(frontier) > 0 {
-		next := make(map[string]string)
+		next := make(map[string]model.ModuleDocumentCallPath)
 		for parent, prefix := range frontier {
 			for _, module := range byParent[parent] {
 				if _, visited := callPaths[module.PackageRoot]; visited {
 					continue
 				}
-				file := model.DocumentPath(module.CallerFile, cmp.Or(parent, repoRoot), nil)
-				callPath := prefix + "\x00" + file + "\x00" + module.Name
-				if previous, ok := next[module.PackageRoot]; !ok || callPath < previous {
+				file := model.LexicalDocumentPath(module.CallerFile, cmp.Or(parent, repoRoot))
+				callPath := prefix.WithCall(file, module.Name)
+				if previous, ok := next[module.PackageRoot]; !ok || callPath.Compare(previous) < 0 {
 					next[module.PackageRoot] = callPath
 				}
 			}

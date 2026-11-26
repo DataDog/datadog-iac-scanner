@@ -11,7 +11,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/rs/zerolog/log"
 )
@@ -40,16 +39,13 @@ func (m *MemoryStorage) RecordDuplicates() {
 }
 
 // SaveFile adds a new file metadata to files collection
-func (m *MemoryStorage) SaveFile(ctx context.Context, metadata *model.FileMetadata) error {
+func (m *MemoryStorage) SaveFile(_ context.Context, metadata *model.FileMetadata) error {
 	memoryMu.Lock()
 	defer memoryMu.Unlock()
 	if metadata.ID != "" {
 		if _, exists := m.documentIDs[metadata.ID]; exists {
 			m.duplicateDocumentIDs++
-			err := fmt.Errorf("duplicate document ID %q for %q", metadata.ID, metadata.FilePath)
-			contextLogger := logger.FromContext(ctx)
-			contextLogger.Error().Err(err).Send()
-			return err
+			return fmt.Errorf("duplicate document ID %q for %q", metadata.ID, metadata.FilePath)
 		}
 		if m.documentIDs == nil {
 			m.documentIDs = make(map[string]struct{})

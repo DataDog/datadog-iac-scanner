@@ -49,6 +49,11 @@ type Results struct {
 	DuplicateDocumentIDs int
 }
 
+// Incomplete reports a loss of coverage from rejected document IDs.
+func (r *Results) Incomplete() bool {
+	return r.DuplicateDocumentIDs > 0
+}
+
 type executeScanParameters struct {
 	services           []*runner.Service
 	inspector          *engine.Inspector
@@ -292,13 +297,18 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 		return nil, err
 	}
 
-	return &Results{
+	scanResults := &Results{
 		Results:              results,
 		ExtractedPaths:       executeScanParameters.extractedPaths,
 		Files:                files,
 		FailedQueries:        failedQueries,
 		DuplicateDocumentIDs: c.Storage.DuplicateDocumentIDs(),
-	}, nil
+	}
+	if scanResults.Incomplete() {
+		contextLogger.Warn().Int("duplicate_document_ids", scanResults.DuplicateDocumentIDs).
+			Msg("Scan incomplete: rejected documents with duplicate IDs")
+	}
+	return scanResults, nil
 }
 
 func useDifferentPlatformQueries(platforms *[]string) {

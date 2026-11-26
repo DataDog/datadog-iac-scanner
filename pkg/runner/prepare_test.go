@@ -75,7 +75,7 @@ func TestPrepareDiskSourcesStableDocumentIDs(t *testing.T) {
 		wantPaths := []string{"a.yaml", "a.yaml", "b.yaml", "b.yaml"}
 		ids := make([]string, len(files))
 		for i, file := range files {
-			require.Equal(t, wantPaths[i], file.DocumentKey.Path)
+			require.Equal(t, model.DocumentPath(wantPaths[i], "", nil), file.DocumentKey.Path)
 			require.Equal(t, i%2, file.DocumentKey.DocumentIndex)
 			ids[i] = file.ID
 		}

@@ -29,8 +29,7 @@ const (
 	// present. It does not mean every declared resource has a row: some
 	// constructs are not enumerated (see the schema).
 	StatusComplete = "complete"
-	// StatusPartial means at least one file failed or one source could not be
-	// resolved, so some resources may be missing.
+	// StatusPartial means the scan lost coverage, so some resources may be missing.
 	StatusPartial = "partial"
 )
 

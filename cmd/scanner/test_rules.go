@@ -433,7 +433,7 @@ func parseFixtureFile(ctx context.Context, tmpRoot, filePath, platform string) (
 		linesOriginalData := scanUtils.SplitLines(docs.Content)
 		for i, doc := range docs.Docs {
 			key := model.DocumentKey{
-				Path:          filepath.ToSlash(rel),
+				Path:          model.DocumentPath(rel, "", nil),
 				Kind:          docs.Kind,
 				Platform:      p.DocumentPlatform(),
 				DocumentIndex: i,

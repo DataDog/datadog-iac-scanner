@@ -515,6 +515,25 @@ func TestModuleDocumentSourcesKeepUncachedCopiesDistinct(t *testing.T) {
 	require.Equal(t, documentIDs(t.TempDir()), documentIDs(t.TempDir()))
 }
 
+func TestModuleDocumentSourceSharedDirectoryUsesInnermostPackage(t *testing.T) {
+	root, outer := t.TempDir(), t.TempDir()
+	inner := filepath.Join(outer, "inner")
+	dir := filepath.Join(inner, "entry")
+	module := modulegraph.ResolvedModule{
+		LocalPath: dir, PackageRoot: inner, CanonicalSource: "example/network/aws@1.0.0",
+	}
+	other := module
+	other.PackageRoot = outer
+	key := func(modules ...modulegraph.ResolvedModule) string {
+		paths := map[string]model.ExtractedPathObject{dir: {Path: module.CanonicalSource}}
+		setModuleDocumentSources(paths, modules, root)
+		id := model.DocumentKey{Path: model.DocumentPath(filepath.Join(dir, "main.tf"), root, paths)}
+		return id.ID()
+	}
+	require.Equal(t, key(module), key(other, module))
+	require.Equal(t, key(module), key(module, other))
+}
+
 func TestRemoteModuleMaxDepthZeroDisablesTraversal(t *testing.T) {
 	root := t.TempDir()
 	_, manifestPath := writeRemoteModuleFixture(t, root)
