@@ -7,8 +7,6 @@
 package detector
 
 import (
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -157,37 +155,6 @@ func TestDetectAnchoredLine(t *testing.T) {
 	assert.Nil(t, detectAnchoredLine("name={{task-z}}.{{community.aws.ecs_ecr}}.policy.Statement[0].Principal", file, file.FilePath, 1, lines))
 }
 
-func TestSplitSearchKeySegmentsMatchesLegacySanitization(t *testing.T) {
-	// For keys without bracketed dot groups the helper must match the inline
-	// normalization DetectLine performs.
-	searchKey := "name={{task-a}}.{{community.aws.ecs_ecr}}.policy.Statement[0].Principal"
-
-	split, extracted := splitSearchKeySegments(searchKey)
-
-	var legacyExtracted [][]string
-	legacyExtracted = GetBracketValues(searchKey, legacyExtracted, "")
-	sanitized := searchKey
-	for idx, str := range legacyExtracted {
-		sanitized = strings.ReplaceAll(sanitized, str[0], `{{`+strconv.Itoa(idx)+`}}`)
-	}
-	legacySplit := strings.Split(sanitized, ".")
-
-	assert.Equal(t, legacySplit, split)
-	assert.Equal(t, legacyExtracted, extracted)
-}
-
-func TestSplitSearchKeySegmentsPreservesBracketedDots(t *testing.T) {
-	// Dots inside a bracket group must survive the split; expansion unquotes
-	// the key so it addresses the map key foo.bar (see TestExpandBracketSegmentUnquotesKeys).
-	split, _ := splitSearchKeySegments(`name={{task-a}}.{{community.aws.ecs_ecr}}.rules[0].labels["foo.bar"]`)
-	assert.Equal(t, []string{
-		"name={{0}}",
-		"{{1}}",
-		"rules[0]",
-		`labels["foo.bar"]`,
-	}, split)
-}
-
 func TestResolveAnchoredPathWithoutVariant(t *testing.T) {
 	// A key anchored on an element that holds the target attribute directly,
 	// with no {{variant}} segment in between.
@@ -215,9 +182,4 @@ func TestResolveAnchoredPathWithoutVariant(t *testing.T) {
 	comps, ok := resolveAnchoredPath(segments, extracted, doc)
 	require.True(t, ok)
 	assert.Equal(t, []string{"roles", "0", "policy", "Statement", "0", "Principal"}, comps)
-}
-
-func TestExpandBracketSegmentUnquotesKeys(t *testing.T) {
-	assert.Equal(t, []string{"labels", "foo.bar"}, expandBracketSegment(`labels["foo.bar"]`))
-	assert.Equal(t, []string{"Statement", "0"}, expandBracketSegment("Statement[0]"))
 }

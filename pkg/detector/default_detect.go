@@ -61,23 +61,7 @@ func (d defaultDetectLine) DetectLine(ctx context.Context, file *model.FileMetad
 		return *result
 	}
 
-	var extractedString [][]string
-	extractedString = GetBracketValues(searchKey, extractedString, "")
-	sanitizedSubstring := searchKey
-	for idx, str := range extractedString {
-		sanitizedSubstring = strings.ReplaceAll(sanitizedSubstring, str[0], `{{`+strconv.Itoa(idx)+`}}`)
-	}
-	splitSanitized := strings.Split(sanitizedSubstring, ".")
-
-	// Re-join $ref segments split by dot (e.g. "$ref=#/schemas/v1.0.Foo" → ["v1","0","Foo"])
-	// before the numeric-index check runs.
-	for index, split := range splitSanitized {
-		if strings.Contains(split, "$ref") {
-			splitSanitized[index] = strings.Join(splitSanitized[index:], ".")
-			splitSanitized = splitSanitized[:index+1]
-			break
-		}
-	}
+	splitSanitized, extractedString := splitLegacySearchKey(searchKey, splitLiteralDots)
 
 	// Numeric segments (e.g. "0" in "rules.0.apiGroups") have no literal text in the
 	// source file, so the text-matcher cannot advance through them. handleArrayIndex
@@ -264,55 +248,6 @@ func encodedAttributePath(path []string, doc map[string]interface{}) ([]string, 
 	return nil, false
 }
 
-// expandSearchKeyPath turns a search key into structural path components:
-// dropping any value anchor ("key=value"), splitting on top-level dots, and
-// expanding bracket groups ("group[name]" -> group, name), stripping the
-// "{{ }}" templating some Rego rules wrap the name in.
-//
-// Bracket contents can contain dots (module-prefixed keys, e.g.
-// "type[module.foo.name]") and/or a count/for_each suffix bracket (e.g.
-// "type[this[0]]"), so the top-level dot-split ignores dots inside an
-// unclosed "[...]" (see splitTopLevelDots), and a group's closing bracket is
-// found by findMatchingBracket, which is quote- and nesting-aware since a
-// for_each key can itself contain a literal "]" (e.g. module.secrets["prod]eu"]).
-func expandSearchKeyPath(searchKey string) []string {
-	// Drop the value anchor (key=value) up front; the value may contain dots.
-	if eq := strings.Index(searchKey, "="); eq >= 0 {
-		searchKey = searchKey[:eq]
-	}
-	var comps []string
-	for _, seg := range splitTopLevelDots(searchKey) {
-		seg = strings.TrimSpace(seg)
-		if seg == "" {
-			continue
-		}
-		for seg != "" {
-			open := strings.Index(seg, "[")
-			if open < 0 {
-				if seg != "" {
-					comps = append(comps, seg)
-				}
-				break
-			}
-			if head := seg[:open]; head != "" {
-				comps = append(comps, head)
-			}
-			closeIdx := findMatchingBracket(seg, open)
-			if closeIdx < 0 {
-				break
-			}
-			inner := seg[open+1 : closeIdx]
-			inner = strings.TrimPrefix(inner, "{{")
-			inner = strings.TrimSuffix(inner, "}}")
-			if inner != "" {
-				comps = append(comps, inner)
-			}
-			seg = seg[closeIdx+1:]
-		}
-	}
-	return comps
-}
-
 // terraformPlanPath turns a plan searchKey into structural path components for
 // GetLineBySearchLine, rooted at the plan's top-level "resource" key; see
 // expandSearchKeyPath for the expansion rules.
@@ -323,72 +258,6 @@ func terraformPlanPath(searchKey string) ([]string, bool) {
 		comps = comps[1:]
 	}
 	return append([]string{"resource"}, comps...), explicitResourcePath
-}
-
-// findMatchingBracket finds the "]" closing the "[" at open in s, tracking
-// nested brackets and quoting so a quoted for_each key's own "]" isn't mistaken
-// for the group's close.
-func findMatchingBracket(s string, open int) int {
-	inQuotes := false
-	depth := 0
-	for i := open + 1; i < len(s); i++ {
-		switch s[i] {
-		case '\\':
-			if inQuotes {
-				i++ // skip the escaped character
-			}
-		case '"':
-			inQuotes = !inQuotes
-		case '[':
-			if !inQuotes {
-				depth++
-			}
-		case ']':
-			if inQuotes {
-				continue
-			}
-			if depth == 0 {
-				return i
-			}
-			depth--
-		}
-	}
-	return -1
-}
-
-// splitTopLevelDots splits s on "." like strings.Split, except dots inside an
-// unclosed "[...]" group aren't treated as separators, e.g.
-// "type[module.foo.name].attr" splits into ["type[module.foo.name]", "attr"].
-// Quote-aware like findMatchingBracket.
-func splitTopLevelDots(s string) []string {
-	var segs []string
-	depth, start := 0, 0
-	inQuotes := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch c {
-		case '\\':
-			if inQuotes {
-				i++
-			}
-		case '"':
-			inQuotes = !inQuotes
-		case '[':
-			if !inQuotes {
-				depth++
-			}
-		case ']':
-			if !inQuotes && depth > 0 {
-				depth--
-			}
-		case '.':
-			if depth == 0 && !inQuotes {
-				segs = append(segs, s[start:i])
-				start = i + 1
-			}
-		}
-	}
-	return append(segs, s[start:])
 }
 
 // handleArrayIndex handles paths that contain numeric segments. It first attempts a
@@ -449,9 +318,7 @@ func handleArrayIndex(
 func extractStructuralPath(segments []string, extracted [][]string) []string {
 	result := make([]string, 0, len(segments))
 	for _, seg := range segments {
-		for i, ext := range extracted {
-			seg = strings.ReplaceAll(seg, `{{`+strconv.Itoa(i)+`}}`, ext[1])
-		}
+		seg = resolvePlaceholders(seg, extracted)
 		if idx := strings.Index(seg, "="); idx >= 0 {
 			seg = seg[:idx]
 		}

@@ -6,7 +6,6 @@
 package detector
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -49,13 +48,11 @@ func cloudFormationSearchPath(searchKey string) []string {
 		return expandSearchKeyPath(searchKey)
 	}
 	// Keep wrapped keys opaque while splitting on dots, brackets and anchors.
+	path, extracted := splitProtectedSearchKey(searchKey, opaqueSearchKeyPlaceholder, expandSearchKeyPath)
 	var substitutions []string
-	for i, wrapped := range GetBracketValues(searchKey, nil, "") {
-		placeholder := "\x00" + strconv.Itoa(i) + "\x00"
-		searchKey = strings.ReplaceAll(searchKey, wrapped[0], placeholder)
-		substitutions = append(substitutions, placeholder, wrapped[1])
+	for i, wrapped := range extracted {
+		substitutions = append(substitutions, opaqueSearchKeyPlaceholder(i), wrapped[1])
 	}
-	path := expandSearchKeyPath(searchKey)
 	unwrap := strings.NewReplacer(substitutions...)
 	for i, component := range path {
 		path[i] = unwrap.Replace(component)

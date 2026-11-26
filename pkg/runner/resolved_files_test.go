@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -20,8 +21,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
@@ -669,20 +672,107 @@ func TestWithoutExcludedFiles(t *testing.T) {
 	require.Equal(t, []model.ResolvedHelm{{FileName: "app/templates/cm.yaml"}}, got.File)
 }
 
-func TestFirstHelmRender(t *testing.T) {
-	s := &Service{}
-	render := func(source, body string) *model.ResolvedHelm {
-		return &model.ResolvedHelm{
-			FileName: "/repo/lib/templates/cm.yaml",
-			SplitID:  "# KICS_HELM_ID_0:",
-			Content:  []byte("\n# Source: " + source + "\n" + body),
+func TestPrepareChartBatchesOrdersSharedRenders(t *testing.T) {
+	root := t.TempDir()
+	app := filepath.Join(root, "app")
+	lib := filepath.Join(root, "lib")
+	web := filepath.Join(root, "web")
+	roots := []string{app, lib, web}
+	const dependency = "dependencies:\n- name: lib\n  version: 1.0.0\n  repository: file://../lib\n"
+	writeFile(t, filepath.Join(app, "Chart.yaml"), "apiVersion: v2\nname: app\nversion: 1.0.0\n"+dependency)
+	writeFile(t, filepath.Join(web, "Chart.yaml"), "apiVersion: v2\nname: web\nversion: 1.0.0\n"+dependency)
+	writeFile(t, filepath.Join(web, "values.yaml"), "lib:\n  message: overridden\n")
+	writeFile(t, filepath.Join(lib, "Chart.yaml"), "apiVersion: v2\nname: lib\nversion: 1.0.0\n")
+	writeFile(t, filepath.Join(lib, "templates", "cm.yaml"), `apiVersion: v1
+kind: ConfigMap
+metadata: {name: lib}
+data:
+  message: {{ .Values.message | default "original" | quote }}
+`)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	service, storage := newYAMLResolvedService(t, ctx)
+	service.ScanRoot = root
+	resolver := helm.NewResolver(nil).WithChartRoots(roots)
+	libRendered := make(chan struct{})
+	webStarted := make(chan struct{})
+	const scanID = "shared-helm-render"
+	render := prepareChartBatches(utils.PoolOptions{Workers: 2}, func(ctx context.Context, chartRoot string) (resolvedChart, bool) {
+		switch chartRoot {
+		case app:
+			select {
+			case <-libRendered:
+			case <-ctx.Done():
+				return resolvedChart{}, false
+			}
+		case lib:
+			defer close(libRendered)
+		case web:
+			close(webStarted)
 		}
+		files, err := resolver.Resolve(ctx, chartRoot)
+		if !assert.NoError(t, err) || !assert.Len(t, files.File, 1) {
+			return resolvedChart{}, false
+		}
+		return resolvedChart{path: chartRoot, kind: model.KindHELM, files: files}, true
+	}, func(ctx context.Context, chart *resolvedChart) {
+		if chart.path == app {
+			// Completing the other worker's store lets Web start while
+			// App is still storing its render.
+			select {
+			case <-webStarted:
+			case <-ctx.Done():
+				assert.NoError(t, ctx.Err(), "a completed worker must let the next render start")
+			}
+		}
+		service.storeResolvedFiles(ctx, chart.files, chart.kind, scanID, false, 15)
+	})
+	rendered, err := render(ctx, roots)
+	require.NoError(t, err)
+	require.Equal(t, []bool{true, true, true}, rendered)
+
+	files, err := storage.GetFiles(ctx, scanID)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	files.SortByDocumentKey()
+	for i, chart := range []string{"app", "web"} {
+		key := model.DocumentKey{
+			Path:          model.DocumentPath("lib/templates/cm.yaml", "", nil),
+			Kind:          model.KindHELM,
+			Platform:      service.Parser.DocumentPlatform(),
+			ResolverRoot:  model.DocumentPath(chart, "", nil),
+			RenderedPath:  chart + "/charts/lib/templates/cm.yaml",
+			SplitPosition: 1,
+		}
+		require.Equal(t, key, files[i].DocumentKey)
+		require.Equal(t, key.ID(), files[i].ID)
 	}
-	require.True(t, s.firstHelmRender(render("lib/templates/cm.yaml", "name: lib\n")))
-	require.False(t, s.firstHelmRender(render("app/charts/lib/templates/cm.yaml", "name: lib\n")),
-		"the same document attached through a parent is already stored")
-	require.True(t, s.firstHelmRender(render("web/charts/lib/templates/cm.yaml", "name: overridden\n")),
-		"a parent overriding the dependency's values renders a different document")
+	require.Equal(t, map[string]any{"message": "original"}, files[0].Document["data"])
+	require.Equal(t, map[string]any{"message": "overridden"}, files[1].Document["data"])
+}
+
+func TestPrepareChartBatchesReturnsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	started := make(chan struct{})
+	go func() {
+		select {
+		case <-started:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	render := prepareChartBatches(utils.PoolOptions{Workers: 2, CPUBound: true},
+		func(workerCtx context.Context, root string) (resolvedChart, bool) {
+			if root == "first" {
+				close(started)
+				<-workerCtx.Done()
+			}
+			return resolvedChart{}, false
+		}, func(context.Context, *resolvedChart) {})
+	_, err := render(ctx, []string{"first", "second"})
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestBlankPlainComments(t *testing.T) {

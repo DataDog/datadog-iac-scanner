@@ -481,6 +481,65 @@ func TestSplitManifestYAML_emptyCRDDocumentDoesNotShiftSourceIndex(t *testing.T)
 	require.Zero(t, resourceSplit.sourceDocumentIndex)
 }
 
+func TestHelmDocumentOrderPreservesSourceAttribution(t *testing.T) {
+	const template = `apiVersion: v1
+kind: ConfigMap
+metadata: {name: zeta}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {generateName: first-}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: alpha}
+data: {value: second}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: alpha}
+data: {value: first}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {generateName: second-}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: beta}
+`
+	files := renderChart(t, map[string]string{"templates/configmaps.yaml": template})
+	want := []struct {
+		content     string
+		sourceIndex int
+		sourceLine  int
+	}{
+		{"data: {value: first}", 3, 13},
+		{"data: {value: second}", 2, 8},
+		{"name: beta", 5, 22},
+		{"name: zeta", 0, 0},
+		{"generateName: first-", 1, 4},
+		{"generateName: second-", 4, 18},
+	}
+	require.Len(t, files, len(want))
+	for i, file := range files {
+		require.Contains(t, string(file.Content), want[i].content)
+		require.Equal(t, want[i].sourceIndex, file.SourceDocumentIndex)
+		require.Equal(t, i+1, file.SplitPosition)
+		require.Equal(t, template, string(helmmarker.RemoveIDLines(file.OriginalData)))
+		require.Equal(t, "app/templates/configmaps.yaml", file.RenderedPath)
+		stamp, ok := helmmarker.ParseIDLine(file.SplitID)
+		require.True(t, ok)
+		require.Equal(t, want[i].sourceLine, stamp.Line)
+	}
+}
+
+func TestCanonicalManifestContentIgnoresMarkersAndMappingOrder(t *testing.T) {
+	first := []byte("# KICS_HELM_ID_0_8:\ndata: {b: two, a: one}\nmetadata: {generateName: shared-}\n")
+	second := []byte("# KICS_HELM_ID_0_13:\nmetadata: {generateName: shared-}\ndata: {a: one, b: two}\n")
+	require.Equal(t, canonicalManifestContent(first), canonicalManifestContent(second))
+}
+
 func TestLocalCRDFiles_fromLoadedFixture(t *testing.T) {
 	ch, err := loader.Load(helmFixturePath(t, "test_helm_with_crds"))
 	require.NoError(t, err)
