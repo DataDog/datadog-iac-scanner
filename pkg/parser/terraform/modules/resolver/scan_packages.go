@@ -21,6 +21,10 @@ type scanPackageSourceKey struct {
 	source   string
 }
 
+// scanPackage owns one acquisition outcome per resolver, source and concrete
+// version. Closing ready publishes the package or its terminal error.
+// Successful entries hold a disk-cache pin or temporary extraction and charge
+// the graph budget once, before any caller selects a module subdirectory.
 type scanPackage struct {
 	ready chan struct{}
 	res   Resolution
@@ -55,7 +59,8 @@ type scanVersionLookups struct {
 }
 
 // WithScanPackages shares versioned HTTP acquisitions for one module graph.
-// Call cleanup after its readers have finished, even if resolution failed.
+// Cleanup releases cache pins and removes temporary extractions after readers
+// finish. A package remains charged until then even if every selection fails.
 func WithScanPackages(ctx context.Context) (scanCtx context.Context, cleanup func()) {
 	versionCtx, cancel := context.WithCancel(ctx)
 	packages := &scanPackages{
@@ -191,12 +196,15 @@ func (r *GoGetterResolver) resolveScanPackage(
 		entry.res, entry.err = res, err
 		close(entry.ready)
 	}
+	return entry.selectModule(ctx, sourceType, version, subdir)
+}
+
+// selectModule returns the caller's view of the acquired package. Selection
+// errors are specific to that caller and the returned view owns no cleanup.
+func (entry *scanPackage) selectModule(ctx context.Context, sourceType, version, subdir string) (Resolution, error) {
 	if entry.err != nil {
 		return Resolution{}, entry.err
 	}
-
-	// The acquisition includes the whole package. Each caller selects its
-	// subdirectory, and the scan owns the only lease or temporary directory.
 	res, err := resolutionForPackage(ctx, entry.res.PackageRoot, subdir)
 	if err != nil {
 		return Resolution{}, &tfmodules.UnresolvedError{Reason: "invalid acquired module package: " + err.Error()}

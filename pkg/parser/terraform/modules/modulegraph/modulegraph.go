@@ -208,6 +208,11 @@ type moduleCallSite struct {
 	line                    int
 }
 
+// resolutionCache memoises each graph resolution identity across frontiers,
+// including selection failures, so repeated calls reuse the selected module
+// and its accounting. The resolver's scan package table owns versioned HTTP
+// acquisitions. The graph accounts for other packages and collects cleanup
+// callbacks when those resolvers return them.
 type resolutionCache struct {
 	mu      sync.RWMutex
 	entries map[string]resolvedEntry

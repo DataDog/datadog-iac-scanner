@@ -28,6 +28,9 @@ type cachedFailure struct {
 	permanent bool
 }
 
+// registryCache coalesces and caches discovery, version and download URL
+// lookups. It retains metadata failures according to their retry policy.
+// The scan package table owns archive acquisition and its terminal outcome.
 type registryCache struct {
 	client *http.Client
 

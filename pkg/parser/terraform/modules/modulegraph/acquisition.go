@@ -14,31 +14,99 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 )
 
-type deferredModuleGroup struct {
-	group         *remoteModuleGroup
-	status        resolver.RetainedPackageStatus
-	reservation   *resolver.AcquisitionLease
-	needsPriority bool
+type moduleSelectionState uint8
+
+const (
+	selectionNeedsAcquisition moduleSelectionState = iota
+	selectionVersionNeedsReservation
+	selectionVersionReserved
+	// The allowance is exhausted. The lookup can still lead to reuse.
+	selectionVersionUnreserved
+	selectionWaitingForPackage
+	selectionReusable
+	selectionAcquisitionReserved
+	selectionDone
+)
+
+func (s moduleSelectionState) ownsReservation() bool {
+	return s == selectionVersionReserved || s == selectionAcquisitionReserved
 }
 
-func (item *deferredModuleGroup) update(status resolver.RetainedPackageStatus) {
-	item.status = status
-	if status.Reuse || status.Ready != nil && !status.VersionPending {
-		// A reusable result or a package with an existing owner needs no
-		// claim on acquisition capacity while the selection waits.
-		item.reservation.Release()
-		item.reservation = nil
+// moduleSelection belongs to the frontier until dispatch or cancellation.
+// Only the reserved states own capacity. Dispatch transfers it to the worker.
+type moduleSelection struct {
+	group       *remoteModuleGroup
+	state       moduleSelectionState
+	ready       <-chan struct{}
+	reservation *resolver.AcquisitionLease
+}
+
+func (s *moduleSelection) observe(status resolver.RetainedPackageStatus) {
+	var next moduleSelectionState
+	switch {
+	case status.Reuse:
+		next = selectionReusable
+	case status.Ready == nil:
+		next = selectionNeedsAcquisition
+		if s.state.ownsReservation() {
+			next = selectionAcquisitionReserved
+		}
+	case !status.VersionPending:
+		next = selectionWaitingForPackage
+	case s.state.ownsReservation():
+		next = selectionVersionReserved
+	case s.state == selectionVersionUnreserved || s.state == selectionWaitingForPackage:
+		next = selectionVersionUnreserved
+	default:
+		next = selectionVersionNeedsReservation
 	}
-	item.needsPriority = item.needsPriority && status.VersionPending
+	s.transition(next, status.Ready)
 }
 
-func (item *deferredModuleGroup) needsLease() bool {
-	return item.reservation == nil && !item.status.Reuse && (item.status.Ready == nil || item.status.VersionPending)
+func (s *moduleSelection) transition(next moduleSelectionState, ready <-chan struct{}) {
+	if !next.ownsReservation() {
+		s.reservation.Release()
+		s.reservation = nil
+	}
+	s.state, s.ready = next, ready
+}
+
+// reserve assigns the result of polling or borrowing capacity. An exhausted
+// allowance leaves a pending version lookup eligible for eventual reuse.
+func (s *moduleSelection) reserve(lease *resolver.AcquisitionLease) {
+	switch {
+	case s.state == selectionVersionNeedsReservation && lease != nil:
+		s.reservation = lease
+		s.transition(selectionVersionReserved, s.ready)
+	case s.state == selectionVersionNeedsReservation:
+		s.transition(selectionVersionUnreserved, s.ready)
+	case lease != nil:
+		s.reservation = lease
+		s.transition(selectionAcquisitionReserved, nil)
+	}
+}
+
+func (s *moduleSelection) transfer(next moduleSelectionState, ready <-chan struct{}) *resolver.AcquisitionLease {
+	lease := s.reservation
+	s.reservation = nil
+	s.transition(next, ready)
+	return lease
+}
+
+func (s *moduleSelection) lendReservation() *resolver.AcquisitionLease {
+	switch s.state {
+	case selectionVersionReserved:
+		return s.transfer(selectionVersionNeedsReservation, s.ready)
+	case selectionAcquisitionReserved:
+		return s.transfer(selectionNeedsAcquisition, nil)
+	default:
+		return nil
+	}
 }
 
 type moduleGroupQueue struct {
 	ordered  []*remoteModuleGroup
-	deferred []deferredModuleGroup
+	deferred []moduleSelection
 }
 
 type retainedPackageLookup func(*remoteModuleGroup) resolver.RetainedPackageStatus
@@ -104,46 +172,48 @@ func (w *walker) scheduleModuleGroup(
 	queue *moduleGroupQueue, lookup retainedPackageLookup, start func(*remoteModuleGroup, *resolver.AcquisitionLease),
 ) (advanced bool, budgetChanged <-chan struct{}) {
 	queue.refreshReady(lookup)
-	if group := queue.takeReusable(); group != nil {
-		start(group, nil)
+	if item := queue.takeReusable(); item != nil {
+		start(item, nil)
 		return true, nil
 	}
 	item, index := queue.next()
-	if item.group == nil {
+	if item == nil {
 		return false, nil
 	}
-	item.update(lookup(item.group))
-	if w.deferExpansion && item.needsLease() {
+	item.observe(lookup(item.group))
+	if w.deferExpansion && (item.state == selectionNeedsAcquisition || item.state == selectionVersionNeedsReservation) {
 		lease, changed := w.pollAcquisition()
 		switch {
 		case queue.earlierSelectionReady(index):
-			// A worker changing the budget can also make an earlier
-			// selection eligible. Reconsider it before using capacity.
+			// Reconsider the earlier selection before assigning capacity.
 			lease.Release()
 			return true, nil
 		case changed != nil:
 			lease = queue.takeLaterReservation(index)
 			if lease == nil {
-				queue.waitForAcquisition(index, &item)
+				if index < 0 && item.state == selectionVersionNeedsReservation {
+					queue.advance(index, item)
+				}
 				return false, changed
 			}
 		case lease == nil:
-			// Accounting may have finished concurrently with the budget check.
-			item.update(lookup(item.group))
+			// The package may have settled concurrently with the budget check.
+			item.observe(lookup(item.group))
 		}
-		// Later acquisitions may use spare capacity. If the pending version
-		// needs a new package, it uses this reservation in its original turn.
-		item.reservation = lease
-		item.needsPriority = false
+		item.reserve(lease)
 	}
-	queue.advance(index, &item)
-	switch {
-	case item.status.Ready != nil:
-	case item.status.Reuse || item.reservation != nil || !w.deferExpansion:
-		start(item.group, item.reservation)
-	default:
-		w.recordUnacquiredGroup(item.group)
+	switch item.state {
+	case selectionReusable, selectionAcquisitionReserved:
+		start(item.group, item.transfer(selectionDone, nil))
+	case selectionNeedsAcquisition:
+		if w.deferExpansion {
+			w.recordUnacquiredGroup(item.group)
+		} else {
+			start(item.group, nil)
+		}
+		item.transition(selectionDone, nil)
 	}
+	queue.advance(index, item)
 	return true, nil
 }
 
@@ -159,69 +229,61 @@ func (q *moduleGroupQueue) refreshReady(lookup retainedPackageLookup) {
 	for i := range q.deferred {
 		item := &q.deferred[i]
 		select {
-		case <-item.status.Ready:
-			item.update(lookup(item.group))
+		case <-item.ready:
+			item.observe(lookup(item.group))
 		default:
 		}
 	}
 }
 
 func (q *moduleGroupQueue) takeReusable() *remoteModuleGroup {
-	for i, item := range q.deferred {
-		if item.status.Reuse {
-			q.deferred = slices.Delete(q.deferred, i, i+1)
-			return item.group
+	for i := range q.deferred {
+		item := &q.deferred[i]
+		if item.state == selectionReusable {
+			item.transition(selectionDone, nil)
+			group := item.group
+			q.advance(i, item)
+			return group
 		}
 	}
 	return nil
-}
-
-func (q *moduleGroupQueue) waitForAcquisition(index int, item *deferredModuleGroup) {
-	// Keep the lookup running and preserve its place while it waits for capacity.
-	item.needsPriority = item.status.VersionPending
-	if index >= 0 {
-		q.deferred[index] = *item
-	} else if item.needsPriority {
-		q.advance(index, item)
-	}
 }
 
 func (q *moduleGroupQueue) takeLaterReservation(index int) *resolver.AcquisitionLease {
 	if index < 0 {
 		return nil
 	}
-	// Hand off the latest idle reservation without exposing its capacity
-	// to another frontier. The donor keeps its place when it needs a lease.
+	// Lend the latest idle reservation without exposing capacity to another
+	// frontier. The donor keeps its place when it needs a lease.
 	for i := len(q.deferred) - 1; i > index; i-- {
-		item := &q.deferred[i]
-		if lease := item.reservation; lease != nil {
-			item.reservation = nil
-			item.needsPriority = item.status.VersionPending
+		if lease := q.deferred[i].lendReservation(); lease != nil {
 			return lease
 		}
 	}
 	return nil
 }
 
-func (q *moduleGroupQueue) next() (item deferredModuleGroup, index int) {
-	for i, item := range q.deferred {
-		if item.status.Ready == nil || item.needsPriority {
+func (q *moduleGroupQueue) next() (selection *moduleSelection, index int) {
+	for i := range q.deferred {
+		item := &q.deferred[i]
+		switch item.state {
+		case selectionNeedsAcquisition, selectionVersionNeedsReservation, selectionAcquisitionReserved:
 			return item, i
 		}
 	}
 	if len(q.ordered) > 0 {
-		return deferredModuleGroup{group: q.ordered[0]}, -1
+		return &moduleSelection{group: q.ordered[0]}, -1
 	}
-	return deferredModuleGroup{}, -1
+	return nil, -1
 }
 
 func (q *moduleGroupQueue) earlierSelectionReady(index int) bool {
-	for i, item := range q.deferred {
+	for i := range q.deferred {
 		if i == index {
 			break
 		}
 		select {
-		case <-item.status.Ready:
+		case <-q.deferred[i].ready:
 			return true
 		default:
 		}
@@ -229,16 +291,14 @@ func (q *moduleGroupQueue) earlierSelectionReady(index int) bool {
 	return false
 }
 
-func (q *moduleGroupQueue) advance(index int, item *deferredModuleGroup) {
+func (q *moduleGroupQueue) advance(index int, item *moduleSelection) {
 	if index >= 0 {
-		if item.status.Ready == nil {
+		if item.state == selectionDone {
 			q.deferred = slices.Delete(q.deferred, index, index+1)
-		} else {
-			q.deferred[index] = *item
 		}
 		return
 	}
-	if item.status.Ready != nil {
+	if item.state != selectionDone {
 		q.deferred = append(q.deferred, *item)
 	}
 	q.ordered = q.ordered[1:]
@@ -248,16 +308,18 @@ func (q *moduleGroupQueue) fail(w *walker, err error) {
 	for _, group := range q.ordered {
 		w.recordFailedGroup(group, err)
 	}
-	for _, item := range q.deferred {
-		item.reservation.Release()
+	for i := range q.deferred {
+		item := &q.deferred[i]
+		item.transition(selectionDone, nil)
 		w.recordFailedGroup(item.group, err)
 	}
+	q.ordered, q.deferred = nil, nil
 }
 
 // waitForModuleProgress returns true when a worker released its slot. Include
 // shared-package signals because their owning workers may be in other frontiers.
 func waitForModuleProgress(
-	ctx context.Context, completed, budgetChanged <-chan struct{}, waiting []deferredModuleGroup,
+	ctx context.Context, completed, budgetChanged <-chan struct{}, waiting []moduleSelection,
 ) bool {
 	if len(waiting) == 0 {
 		select {
@@ -275,7 +337,7 @@ func waitForModuleProgress(
 	}
 	seen := make(map[<-chan struct{}]bool)
 	for _, item := range waiting {
-		if ready := item.status.Ready; ready != nil && !seen[ready] {
+		if ready := item.ready; ready != nil && !seen[ready] {
 			seen[ready] = true
 			cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ready)})
 		}
