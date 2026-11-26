@@ -105,10 +105,10 @@ var sarifTests = []sarifTest{
 				},
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.tf",
-						Line:           1,
-						ResourceType:   "aws_ami_launch_permission",
-						ResourceName:   "test_resource",
+						FileName:     "test.tf",
+						Line:         1,
+						ResourceType: "aws_ami_launch_permission",
+						ResourceName: "test_resource",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 10},
@@ -208,10 +208,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.json",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "test.json",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 2},
@@ -341,10 +341,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 2},
@@ -363,10 +363,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityInfo,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "",
-						Line:           1,
-						ResourceType:   "test_resource_type_2",
-						ResourceName:   "test_resource_name_2",
+						FileName:     "",
+						Line:         1,
+						ResourceType: "test_resource_type_2",
+						ResourceName: "test_resource_name_2",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 1, Col: 2},
@@ -577,10 +577,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.json",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "test.json",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 5, Col: 2},
@@ -713,10 +713,10 @@ var sarifTests = []sarifTest{
 				Severity:      model.SeverityHigh,
 				Files: []model.VulnerableFile{
 					{
-						FileName:       "test.json",
-						Line:           1,
-						ResourceType:   "test_resource_type",
-						ResourceName:   "test_resource_name",
+						FileName:     "test.json",
+						Line:         1,
+						ResourceType: "test_resource_type",
+						ResourceName: "test_resource_name",
 						ResourceLocation: model.ResourceLocation{
 							Start: model.ResourceLine{Line: 1, Col: 1},
 							End:   model.ResourceLine{Line: 5, Col: 2},
@@ -1099,6 +1099,7 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 	queryResult := model.QueryResult{
 		QueryName:     "AMI shared with multiple accounts",
 		QueryID:       "ba4e0031-3e9d-4d7d-b0d6-bd8f003f8698",
+		DefaultRuleID: "cspm-default-rule-id",
 		Description:   "This check ensures that AMIs are not granted launch permissions to multiple accounts",
 		QueryURI:      "https://docs.datadoghq.com/security/code_security/iac_security/iac_rules/terraform/aws/ami_shared_with_multiple_accounts",
 		Severity:      model.SeverityMedium,
@@ -1121,10 +1122,10 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 		},
 		Files: []model.VulnerableFile{
 			{
-				FileName:       "main.tf",
-				Line:           5,
-				ResourceType:   "aws_ami_launch_permission",
-				ResourceName:   "test_permission",
+				FileName:     "main.tf",
+				Line:         5,
+				ResourceType: "aws_ami_launch_permission",
+				ResourceName: "test_permission",
 				ResourceLocation: model.ResourceLocation{
 					Start: model.ResourceLine{Line: 5, Col: 1},
 					End:   model.ResourceLine{Line: 8, Col: 2},
@@ -1147,6 +1148,8 @@ func TestBuildSarifIssueWithFrameworks(t *testing.T) {
 
 	// Verify iac-frameworks are in rule properties
 	require.Contains(t, rule.RuleProperties, "iac-frameworks")
+	require.Equal(t, "cspm-default-rule-id", rule.RuleProperties["defaultRuleId"])
+	require.Equal(t, queryResult.QueryName, rule.RuleName)
 	frameworks, ok := rule.RuleProperties["iac-frameworks"].([]model.Framework)
 	require.True(t, ok)
 	require.Len(t, frameworks, 2)

@@ -306,7 +306,10 @@ type Ruleset struct {
 
 // Rule defines the structure of a rule that's stored in Datadog.
 type Rule struct {
-	ID                string         `jsonapi:"primary,iac_rule" json:"id"`
+	ID string `jsonapi:"primary,iac_rule" json:"id"`
+	// DefaultRuleID identifies the canonical CSPM concept implemented by this
+	// IaC rule. It is separate from ID, which remains the scanner rule identity.
+	DefaultRuleID     string         `jsonapi:"attribute" json:"default_rule_id,omitempty"`
 	Name              string         `jsonapi:"attribute" json:"name"`
 	LegacyId          *string        `jsonapi:"attribute" json:"legacy_id,omitempty"`
 	LegacyIds         []string       `jsonapi:"attribute" json:"legacy_ids,omitempty"`
@@ -327,9 +330,13 @@ type Rule struct {
 	Overrides         []RuleOverride `jsonapi:"attribute" json:"overrides,omitempty"`
 	DefaultFrameworks []Framework    `jsonapi:"attribute" json:"default_frameworks,omitempty"`
 	CustomFrameworks  []Framework    `jsonapi:"attribute" json:"custom_frameworks,omitempty"`
-	Tests             *RuleTests     `jsonapi:"attribute" json:"tests,omitempty"`
-	IsTesting         bool           `jsonapi:"attribute" json:"is_testing"`
-	IsPublished       bool           `jsonapi:"attribute" json:"is_published"`
+
+	// ComplianceFrameworks contains the origin-tagged framework tuples returned by the unified API field.
+	ComplianceFrameworks []ComplianceFramework `jsonapi:"attribute" json:"compliance_frameworks,omitempty"`
+
+	Tests       *RuleTests `jsonapi:"attribute" json:"tests,omitempty"`
+	IsTesting   bool       `jsonapi:"attribute" json:"is_testing"`
+	IsPublished bool       `jsonapi:"attribute" json:"is_published"`
 }
 
 // RuleArgument describes one configurable argument exposed by a rule.
@@ -383,6 +390,15 @@ type Framework struct {
 	Version     string `jsonapi:"attribute" json:"version"`
 	Requirement string `jsonapi:"attribute" json:"requirement"`
 	Control     string `jsonapi:"attribute" json:"control"`
+}
+
+// ComplianceFramework is a framework tuple with its default or custom origin.
+type ComplianceFramework struct {
+	Framework   string `jsonapi:"attribute" json:"framework"`
+	Version     string `jsonapi:"attribute" json:"version"`
+	Requirement string `jsonapi:"attribute" json:"requirement"`
+	Control     string `jsonapi:"attribute" json:"control"`
+	IsDefault   bool   `jsonapi:"attribute" json:"is_default"`
 }
 
 type remoteConfigRequest struct {

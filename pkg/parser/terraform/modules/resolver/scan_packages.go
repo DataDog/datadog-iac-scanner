@@ -167,7 +167,7 @@ func (entry *scanPackage) reuseStatus(budget *ResourceBudget) RetainedPackageSta
 
 func (r *GoGetterResolver) resolveScanPackage(
 	ctx context.Context, packages *scanPackages, mod *tfmodules.ParsedModule,
-	packageSource, sourceType, version, subdir string, useCache bool,
+	getterSource, sourceType, version, subdir string, useCache bool,
 ) (Resolution, error) {
 	key := scanPackageSourceKey{resolver: r, source: canonicalizeModuleCacheSource(mod.Source)}
 	versions, _ := packages.sources.LoadOrStore(key, &sync.Map{})
@@ -183,6 +183,7 @@ func (r *GoGetterResolver) resolveScanPackage(
 		res, hit, err := r.lookupCache(ctx, mod, version, "", useCache)
 		state := CacheStateHit
 		if err == nil && !hit {
+			packageSource, _ := splitGetterSubdir(getterSource)
 			res, err = r.fetchPackage(ctx, mod, packageSource, version, subdir, "", useCache)
 			state = ""
 			if useCache {
@@ -196,12 +197,16 @@ func (r *GoGetterResolver) resolveScanPackage(
 		entry.res, entry.err = res, err
 		close(entry.ready)
 	}
-	return entry.selectModule(ctx, sourceType, version, subdir)
+	res, err := entry.selectModule(ctx, subdir)
+	if err != nil {
+		return Resolution{}, err
+	}
+	return stampRegistryResolution(&res, sourceType, version, getterSource), nil
 }
 
 // selectModule returns the caller's view of the acquired package. Selection
 // errors are specific to that caller and the returned view owns no cleanup.
-func (entry *scanPackage) selectModule(ctx context.Context, sourceType, version, subdir string) (Resolution, error) {
+func (entry *scanPackage) selectModule(ctx context.Context, subdir string) (Resolution, error) {
 	if entry.err != nil {
 		return Resolution{}, entry.err
 	}
@@ -212,7 +217,7 @@ func (entry *scanPackage) selectModule(ctx context.Context, sourceType, version,
 	res.Origin, res.Cache = entry.res.Origin, entry.res.Cache
 	res.Usage = entry.res.Usage
 	res.chargedBudget = entry.res.chargedBudget
-	return stampRegistryVersion(&res, sourceType, version), nil
+	return res, nil
 }
 
 func (p *scanPackages) accountPackage(ctx context.Context, res *Resolution) (Resolution, error) {
