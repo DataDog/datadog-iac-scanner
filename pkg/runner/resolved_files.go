@@ -58,7 +58,7 @@ func (s *Service) storeResolvedFiles(
 	var storedPaths []string
 	for i := range resFiles.File {
 		rfile := &resFiles.File[i]
-		if s.skipResolvedFile(kind, rfile) {
+		if !s.supportsResolvedFile(kind, rfile.FileName) {
 			continue
 		}
 		s.Tracker.TrackFileFound(rfile.FileName)
@@ -484,22 +484,18 @@ func filterHelmGeneratedLines(content []byte, ignoreLines []int) []int {
 	return out
 }
 
-// skipResolvedFile reports a rendered file this service does not store: Helm
-// JSON outside the YAML parser, or a document another chart already stored.
-func (s *Service) skipResolvedFile(kind model.FileKind, rfile *model.ResolvedHelm) bool {
-	if isHelmJSONFile(kind, rfile.FileName) && s.Parser.Parsers.GetKind() != model.KindYAML {
-		return true
-	}
-	return kind == model.KindHELM && !s.firstHelmRender(rfile)
+func (s *Service) supportsResolvedFile(kind model.FileKind, path string) bool {
+	return !isHelmJSONFile(kind, path) || s.Parser.Parsers.GetKind() == model.KindYAML
 }
 
-// firstHelmRender reports whether rfile is the first store of its rendered
-// document. A dependency rendered on its own and through the chart attaching it
-// renders the same document twice; only Helm's "# Source:" header, naming where
-// it attached, and the stamps numbering its templates differ. The key covers everything else stored, so which render
-// stores first never changes the result, and a parent overriding the
-// dependency's values renders a different document, which is kept.
-func (s *Service) firstHelmRender(rfile *model.ResolvedHelm) bool {
+type helmRenderSet map[string]struct{}
+
+// add reports whether rfile is the first occurrence of its rendered document.
+// Rendering a dependency on its own and through another chart can produce the
+// same document with different source headers and template stamps. Deduplication
+// ignores those differences. A parent that renders different content by
+// overriding the dependency's values produces a separate document.
+func (s helmRenderSet) add(rfile *model.ResolvedHelm) bool {
 	sum := sha256.Sum256(helmmarker.RemoveIDLines(withoutHelmSourceHeader(rfile.Content)))
 	// A stamp's template number depends on the chart that rendered it, its line
 	// does not.
@@ -509,15 +505,10 @@ func (s *Service) firstHelmRender(rfile *model.ResolvedHelm) bool {
 	}
 	key := fmt.Sprintf("%s\x00%s\x00%s\x00%d:%d\x00%x", rfile.Reported.PathOr(rfile.FileName), rfile.FileName,
 		position, rfile.HelmInvocations.First().Line, rfile.HelmInvocations.First().Col, sum)
-	s.storedHelmMu.Lock()
-	defer s.storedHelmMu.Unlock()
-	if _, seen := s.storedHelm[key]; seen {
+	if _, seen := s[key]; seen {
 		return false
 	}
-	if s.storedHelm == nil {
-		s.storedHelm = make(map[string]struct{})
-	}
-	s.storedHelm[key] = struct{}{}
+	s[key] = struct{}{}
 	return true
 }
 

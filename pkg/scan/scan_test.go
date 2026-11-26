@@ -3,8 +3,10 @@ package scan
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
@@ -47,6 +49,7 @@ DatadogPolicy contains result if {
 		"searchKey": sprintf("aws_s3_bucket[%s]", [name]),
 	}
 }
+
 `
 	query := model.QueryMetadata{
 		Query:     ruleID,
@@ -93,6 +96,77 @@ DatadogPolicy contains result if {
 		require.Equalf(t, model.Severity("HIGH"), model.Severity(result.Severity), "result[%d] severity", i)
 		require.Equalf(t, ruleID, result.QueryID, "result[%d] query id", i)
 	}
+}
+
+func TestHelmSprigKeysProduceStableDocumentIDsAndPayload(t *testing.T) {
+	for field, orderingField := range map[string]string{
+		"name":               "name: {{ $name }}",
+		"generateName":       "generateName: {{ $name }}-",
+		"sharedGenerateName": "generateName: shared-",
+		"unnamed":            "namespace: default",
+	} {
+		t.Run(field, func(t *testing.T) {
+			testHelmSprigDocumentOrder(t, orderingField)
+		})
+	}
+}
+
+func testHelmSprigDocumentOrder(t *testing.T, orderingField string) {
+	t.Helper()
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "templates"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "Chart.yaml"), []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"), 0o644))
+	const template = `{{- $configmaps := dict "gamma" "4" "alpha" "1" "beta" "2" "delta" "3" }}
+{{- range $name := keys $configmaps }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  ORDERING_FIELD
+data:
+  value: {{ index $configmaps $name | quote }}
+{{- end }}
+`
+	manifest := strings.Replace(template, "ORDERING_FIELD", orderingField, 1)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "templates", "configmaps.yaml"), []byte(manifest), 0o644))
+	payloadPath := filepath.Join(t.TempDir(), "payload.json")
+	var baseline []byte
+	for i := range 8 {
+		ctx := t.Context()
+		params := &Parameters{
+			Path: []string{root}, Platform: []string{"Kubernetes"}, QueriesPath: []string{"."}, LibrariesPath: "assets/libraries",
+			ScanID: "stable-helm-documents", PayloadPath: payloadPath, MaxFileSizeFlag: 5, MaxResolverDepth: 15,
+			PreviewLines: 3, FlagEvaluator: featureflags.NewLocalEvaluator(),
+		}
+		client, err := NewClient(ctx, params, &consolePrinter.Printer{})
+		require.NoError(t, err)
+		client.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
+			return &stubQuerySource{}, nil
+		}
+		_, err = client.PerformScan(ctx)
+		require.NoError(t, err)
+		payload, err := os.ReadFile(payloadPath)
+		require.NoError(t, err)
+		if i == 0 {
+			baseline = payload
+		}
+		require.Equal(t, baseline, payload, "render %d changed the payload or document IDs", i)
+	}
+	var payload struct {
+		Document []struct {
+			ID   string
+			Data struct{ Value string }
+		}
+	}
+	require.NoError(t, json.Unmarshal(baseline, &payload))
+	var values, ids []string
+	for _, document := range payload.Document {
+		values = append(values, document.Data.Value)
+		require.NotEmpty(t, document.ID)
+		require.NotContains(t, ids, document.ID)
+		ids = append(ids, document.ID)
+	}
+	require.Equal(t, []string{"1", "2", "3", "4"}, values)
 }
 
 func TestScanSymlinkPlaceholdersWithoutGitMetadata(t *testing.T) {

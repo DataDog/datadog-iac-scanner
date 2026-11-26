@@ -696,6 +696,38 @@ func TestWalkInventoryRendersOverlappingChartOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
 	require.Empty(t, files, "both walks should withhold raw templates from a rendered chart")
+
+	t.Run("unsuccessful render", func(t *testing.T) {
+		calls := 0
+		files, err := src.WalkInventoryWithChartBatches(t.Context(), model.Extensions{".yaml": {}},
+			func(_ context.Context, roots []string) ([]bool, error) {
+				require.Equal(t, []string{filepath.ToSlash(chart)}, roots)
+				calls++
+				return []bool{false}, nil
+			})
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+		var templates int
+		for _, file := range files {
+			if file.Path == toSlash(filepath.Join(chart, "templates", "object.yaml")) {
+				templates++
+			}
+		}
+		require.Equal(t, 2, templates, "both walks should list the failed chart's raw template")
+	})
+
+	t.Run("batch error", func(t *testing.T) {
+		calls := 0
+		files, err := src.WalkInventoryWithChartBatches(t.Context(), model.Extensions{".yaml": {}},
+			func(_ context.Context, roots []string) ([]bool, error) {
+				require.Equal(t, []string{filepath.ToSlash(chart)}, roots)
+				calls++
+				return nil, context.Canceled
+			})
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, 1, calls)
+		require.Empty(t, files)
+	})
 }
 
 func TestIsHelmChartFile_normalizesSeparators(t *testing.T) {
@@ -1031,9 +1063,9 @@ func TestChartRootWaves(t *testing.T) {
 // enclosing chart rendered it, and a failed parent leaves it to render alone.
 func TestRenderChartsShallowFirst(t *testing.T) {
 	failing := map[string]bool{"b": true}
-	rendered := renderChartsShallowFirst(context.Background(),
-		[]string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"}, utils.PoolOptions{CPUBound: true},
-		func(_ context.Context, root string) bool { return !failing[root] })
+	rendered, err := renderChartWaves(context.Background(), []string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"},
+		parallelChartRenderer(utils.PoolOptions{CPUBound: true}, func(_ context.Context, root string) bool { return !failing[root] }))
+	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"a", "c", "d/nested", "b/charts/sub"}, rendered)
 }
 
@@ -1041,20 +1073,21 @@ func TestRenderChartsShallowFirst(t *testing.T) {
 // parallel-parsing flag off asks for.
 func TestRenderChartsShallowFirstSequentialPool(t *testing.T) {
 	var running, peak atomic.Int32
-	rendered := renderChartsShallowFirst(context.Background(),
-		[]string{"a", "b", "c", "d"}, utils.PoolOptions{Workers: 1},
-		func(context.Context, string) bool {
-			n := running.Add(1)
-			for {
-				p := peak.Load()
-				if n <= p || peak.CompareAndSwap(p, n) {
-					break
+	rendered, err := renderChartWaves(context.Background(), []string{"a", "b", "c", "d"},
+		parallelChartRenderer(utils.PoolOptions{Workers: 1},
+			func(context.Context, string) bool {
+				n := running.Add(1)
+				for {
+					p := peak.Load()
+					if n <= p || peak.CompareAndSwap(p, n) {
+						break
+					}
 				}
-			}
-			time.Sleep(time.Millisecond)
-			running.Add(-1)
-			return true
-		})
+				time.Sleep(time.Millisecond)
+				running.Add(-1)
+				return true
+			}))
+	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"a", "b", "c", "d"}, rendered)
 	require.Equal(t, int32(1), peak.Load())
 }
@@ -1093,15 +1126,27 @@ func TestWalkInventoryRecoversChartPanic(t *testing.T) {
 // A chart whose render panics is left unrendered without taking down the
 // others: renders run on pool goroutines, out of reach of the caller's recover.
 func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {
-	rendered := renderChartsShallowFirst(context.Background(),
-		[]string{"a", "b", "c"}, utils.PoolOptions{CPUBound: true},
-		func(_ context.Context, root string) bool {
-			if root == "b" {
-				panic("boom")
-			}
-			return true
-		})
+	rendered, err := renderChartWaves(context.Background(), []string{"a", "b", "c"},
+		parallelChartRenderer(utils.PoolOptions{CPUBound: true},
+			func(_ context.Context, root string) bool {
+				if root == "b" {
+					panic("boom")
+				}
+				return true
+			}))
+	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"a", "c"}, rendered)
+}
+
+func TestRenderChartWavesStopsOnBatchError(t *testing.T) {
+	waveCalls := 0
+	_, err := renderChartWaves(t.Context(), []string{"a", "a/charts/sub"},
+		func(context.Context, []string) ([]bool, error) {
+			waveCalls++
+			return nil, context.Canceled
+		})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, waveCalls)
 }
 
 // A chart whose Chart.yaml is ignored is out of scope, so its templates are not

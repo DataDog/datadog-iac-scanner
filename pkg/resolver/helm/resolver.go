@@ -332,6 +332,7 @@ func splitManifestYAML(
 			archive:             located[sourceKey].archive,
 		})
 	}
+	orderTemplateDocuments(splitedManifest)
 	return &splitedManifest, loaded
 }
 
