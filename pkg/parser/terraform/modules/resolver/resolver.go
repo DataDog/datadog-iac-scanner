@@ -20,6 +20,9 @@ type Resolution struct {
 	PackageRoot     string
 	ResolvedVersion string
 	ResolvedRef     string
+	// RegistryGitDirectory identifies the Git module behind a registry download.
+	// It comes from the selected download URL, independently of LocalPath.
+	RegistryGitDirectory ModuleDirectoryIdentity
 	// ManifestPath is the selected module's path relative to the root of a
 	// prefetch manifest, whose declarations may select different packages for
 	// the same source and version.
