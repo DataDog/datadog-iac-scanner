@@ -136,6 +136,11 @@ type ResourceLine struct {
 type ExtractedPathObject struct {
 	Path      string
 	LocalPath bool
+	// DocumentSource is the canonical module address used for document IDs.
+	DocumentSource string
+	// DocumentPackageRoot locates sibling files in the same package.
+	DocumentPackageRoot string
+	documentLocation    *moduleDocumentLocation
 }
 
 // CommentsCommands list of commands on a file that will be parsed
@@ -308,6 +313,8 @@ func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
 
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
+	DocumentKey DocumentKey `json:"-"`
+
 	// SourceDocumentIndex selects the written document within a source snapshot.
 	// It is location metadata only and never participates in finding identity.
 	SourceDocumentIndex int `json:"-"`
@@ -351,9 +358,9 @@ type FileMetadata struct {
 	Archive string
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
-	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
-	// document groups multiple module resources from the same file.
-	ModuleAttributions map[string]*ModuleAttribution
+	// ModuleAttributions indexes the declaration identities in a synthetic document.
+	// Positions cannot identify JSON blocks: several share the resource key range.
+	ModuleAttributions map[TerraformBlock]*ModuleAttribution `json:"-"`
 	// TerraformScope identifies the address context for a Terraform file or
 	// synthetic resource instance document.
 	TerraformScope *TerraformScope `json:"-"`
@@ -447,6 +454,7 @@ func (f *FileMetadata) WithoutLineInfoView() *FileMetadata {
 		linesOrig = f.LinesOriginalData
 	}
 	return &FileMetadata{
+		DocumentKey:         f.DocumentKey,
 		ID:                  f.ID,
 		ScanID:              f.ScanID,
 		Document:            f.Document,
@@ -1045,6 +1053,10 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// ReportLocation is assigned by finding routing after module caller expansion.
+	// Module findings always report here; FileName and the original ranges keep
+	// describing the detected module code for identity, provenance and fixes.
+	ReportLocation *SourceLocation `json:"reportLocation,omitempty"`
 	// ResourceID is the Terraform address of the affected block instance.
 	ResourceID string `json:"resourceId,omitempty"`
 	// RootModule is the repository-relative root module that evaluated this
@@ -1065,8 +1077,11 @@ type Vulnerability struct {
 	OrderPath string `json:"-"`
 	// ResourceOccurrences records every declaration instance this finding
 	// represents when inventory is enabled.
-	ResourceOccurrences []*ResourceOccurrence     `json:"-"`
-	TerraformOverride   *TerraformOverrideFinding `json:"-"`
+	ResourceOccurrences []*ResourceOccurrence `json:"-"`
+	// TerraformBlock identifies the written declaration independently of the
+	// displayed resource name and the attribute highlighted by line detection.
+	TerraformBlock    TerraformBlock            `json:"-"`
+	TerraformOverride *TerraformOverrideFinding `json:"-"`
 }
 
 // Identity returns the file and line text that tell v apart from other
@@ -1105,6 +1120,12 @@ type ResolvedFiles struct {
 // ResolvedHelm keeps the information of a file/template resolved
 type ResolvedHelm struct {
 	FileName string
+	// ResolverRoot is the location of the chart that produced this split.
+	ResolverRoot string
+	// RenderedPath is Helm's source path within the render, including aliases.
+	RenderedPath string
+	// SplitPosition is the one-based position in the ordered manifest.
+	SplitPosition int
 	// Reported is where findings are reported when FileName is not a place in
 	// the repository: a dependency packaged as an archive renders from unpacked
 	// file names that exist only inside the archive.

@@ -448,6 +448,14 @@ func NewInspector(
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.NewInspector()")
 
+	if repoPath != "" {
+		absolute, err := filepath.Abs(repoPath)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to resolve repository root")
+		}
+		repoPath = absolute
+	}
+
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
@@ -740,40 +748,6 @@ func (c *Inspector) Inspect(
 	return vulnerabilities, nil
 }
 
-// filterAtCallSites applies the root caller file's rule path filters and
-// ignore comments to module findings, which are reported at the call site.
-// The module file's own filters and comments were applied when the finding
-// was built; this runs after caller expansion so each caller is judged on its
-// own file. External module callers keep the same rule-path bypass as the
-// file-side check, so findings called from a scanned remote module are not
-// dropped by repo-only path filters.
-func (c *Inspector) filterAtCallSites(
-	ctx context.Context, vulns []model.Vulnerability, callers map[string]*model.FileMetadata,
-) []model.Vulnerability {
-	if len(callers) == 0 {
-		return vulns
-	}
-	contextLogger := logger.FromContext(ctx)
-	kept := vulns[:0]
-	for i := range vulns {
-		v := &vulns[i]
-		if attr := v.ModuleAttribution; attr != nil {
-			if caller, ok := callers[attr.CallSite.Filename]; ok {
-				if rc, found := lookupRuleConfig(c.ruleConfigs, v.QueryID, v.LegacyQueryID, v.LegacyQueryIDs); found &&
-					!c.isExternalModulePath(caller.FilePath) &&
-					rulePathExcluded(caller.FilePath, rc.IgnorePaths, rc.OnlyPaths) {
-					contextLogger.Debug().Msgf("Dropping module finding called from %s for rule %s (rule path filter)",
-						caller.FilePath, v.QueryID)
-					continue
-				}
-				suppressAtCallSite(v, attr, caller)
-			}
-		}
-		kept = append(kept, *v)
-	}
-	return kept
-}
-
 // suppressAtCallSite honors the caller file's disable command and ignore
 // comments on the reported line or on the module block's first line.
 func suppressAtCallSite(v *model.Vulnerability, attr *model.ModuleAttribution, caller *model.FileMetadata) {
@@ -980,31 +954,6 @@ func shouldInstantiateLocalModules(platforms []string, files model.FileMetadatas
 		}
 	}
 	return false
-}
-
-// expandModuleFindings clones findings from deduplicated OPA docs back to each
-// extra caller, so every call-site gets its own fingerprint/file attribution.
-func expandModuleFindings(
-	vulns []model.Vulnerability, extras map[string][]extraCallerInfo, occurrences documentOccurrenceIndex,
-) []model.Vulnerability {
-	if len(extras) == 0 {
-		return vulns
-	}
-	expanded := make([]model.Vulnerability, 0, len(vulns))
-	for i := range vulns {
-		expanded = append(expanded, vulns[i])
-		for _, ex := range extras[vulns[i].FileID] {
-			vCopy := vulns[i]
-			vCopy.ModuleCallChain = ex.callChain
-			vCopy.FileID = ex.docID
-			vCopy.ModuleAttribution = moduleAttributionForResource(ex.attributions, &vCopy)
-			if occurrences != nil {
-				vCopy.ResourceOccurrences = callerOccurrences(vulns[i].ResourceOccurrences, occurrences[ex.docID])
-			}
-			expanded = append(expanded, vCopy)
-		}
-	}
-	return expanded
 }
 
 // nolint:gocritic

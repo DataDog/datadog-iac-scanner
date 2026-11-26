@@ -185,6 +185,12 @@ func TestShellParser_parseRunBlock_InvalidScript(t *testing.T) {
 	assert.Len(t, result.Commands, 0)
 }
 
+func TestShellParser_parseRunBlock_EmptyShell(t *testing.T) {
+	result := parseRunBlock("echo hello", "")
+	require.False(t, result.ParseOK)
+	require.Error(t, result.Error)
+}
+
 func TestNormalizeShell(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -192,11 +198,14 @@ func TestNormalizeShell(t *testing.T) {
 	}{
 		{"/bin/bash", "bash"},
 		{"/usr/bin/bash", "bash"},
+		{"/usr/local/bin/bash", "bash"},
 		{"bash", "bash"},
 		{"bash -e", "bash"},
 		{"/bin/sh -x", "sh"},
 		{"zsh", "zsh"},
 		{"pwsh", "pwsh"},
+		{"", ""},
+		{"   ", ""},
 	}
 
 	for _, tt := range tests {

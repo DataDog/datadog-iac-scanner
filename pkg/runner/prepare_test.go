@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -46,6 +47,64 @@ func buildDiskServices(t *testing.T, ctx context.Context, paths []string) ([]*Se
 	fsp, err := provider.NewFileSystemSourceProvider(ctx, paths, nil, nil)
 	require.NoError(t, err)
 	return buildServices(t, ctx, vfs.DiskFS{}, fsp)
+}
+
+func TestPrepareDiskSourcesStableDocumentIDs(t *testing.T) {
+	ctx := t.Context()
+	const multi = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: first\n" +
+		"---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: second\n"
+	writeFiles := func(root string) {
+		for _, path := range []string{"b.yaml", "a.yaml"} {
+			require.NoError(t, os.WriteFile(filepath.Join(root, path), []byte(multi), 0600))
+		}
+	}
+	scan := func(root string) []string {
+		services, store := buildDiskServices(t, ctx, []string{root})
+		services = servicesForPlatformAndParserKind(services, "kubernetes", model.KindYAML)
+		for _, service := range services {
+			service.ScanRoot = root
+			service.Platforms = []string{"kubernetes"}
+		}
+		fsp, ok := DiskSourceProvider(services)
+		require.True(t, ok)
+		require.NoError(t, PrepareDiskSources(ctx, fsp, services, "test", false, 15))
+		files, err := store.GetFiles(ctx, "test")
+		require.NoError(t, err)
+		require.Len(t, files, 4)
+		require.Zero(t, store.DuplicateDocumentIDs())
+		wantPaths := []string{"a.yaml", "a.yaml", "b.yaml", "b.yaml"}
+		ids := make([]string, len(files))
+		for i, file := range files {
+			require.Equal(t, model.DocumentPath(wantPaths[i], "", nil), file.DocumentKey.Path)
+			require.Equal(t, i%2, file.DocumentKey.DocumentIndex)
+			ids[i] = file.ID
+		}
+		require.Len(t, slices.Compact(slices.Sorted(slices.Values(ids))), len(ids))
+		return ids
+	}
+	first, second := t.TempDir(), t.TempDir()
+	writeFiles(first)
+	writeFiles(second)
+	want := scan(first)
+	require.Equal(t, want, scan(first))
+	require.Equal(t, want, scan(second))
+}
+
+func TestPrepareOverlappingPathsParsesFileOnce(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	filename := filepath.Join(root, "object.yaml")
+	require.NoError(t, os.WriteFile(filename, []byte("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: sample\n"), 0600))
+	services, store := buildDiskServices(t, ctx, []string{root, filename})
+	services = servicesForPlatformAndParserKind(services, "kubernetes", model.KindYAML)
+	services[0].ScanRoot = root
+	fsp, ok := DiskSourceProvider(services)
+	require.True(t, ok)
+	require.NoError(t, PrepareDiskSources(ctx, fsp, services, "overlap", false, 15))
+	files, err := store.GetFiles(ctx, "overlap")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Zero(t, store.DuplicateDocumentIDs())
 }
 
 func buildServices(

@@ -55,6 +55,15 @@ func RunCustomRegoQuery(
 	regoContent string,
 	fileContent []byte,
 ) ([]model.Vulnerability, map[string]error, error) {
+	libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating library source: %w", err)
+	}
+	return runCustomRegoQuery(ctx, platform, regoContent, fileContent, libSource)
+}
+
+func runCustomRegoQuery(ctx context.Context, platform, regoContent string, fileContent []byte,
+	libSource source.QueriesSource) ([]model.Vulnerability, map[string]error, error) {
 	tmpDir, err := os.MkdirTemp("", "iac-custom-scan-*")
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating temp dir: %w", err)
@@ -96,13 +105,10 @@ func RunCustomRegoQuery(
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating scan client: %w", err)
 	}
+	c.documentRoot = tmpDir
 
 	c.analyzerOverride = func(_ context.Context) (model.AnalyzedPaths, error) {
 		return model.AnalyzedPaths{Types: []string{platform}}, nil
-	}
-	libSource, err := source.NewDatadogSource(datadog.NewDatadogClient())
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating library source: %w", err)
 	}
 	c.querySourceFactory = func(_ context.Context, _ []string) (source.QueriesSource, error) {
 		return &customRegoSource{platform: platform, regoContent: regoContent, libSource: libSource}, nil

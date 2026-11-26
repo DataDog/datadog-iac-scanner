@@ -600,9 +600,12 @@ func TestHelm_Resolve(t *testing.T) { //nolint
 			want: model.ResolvedFiles{
 				File: []model.ResolvedHelm{
 					{
-						SplitID:  "# KICS_HELM_ID_2_0:",
-						FileName: filepath.FromSlash("../../../test/fixtures/test_helm/templates/service.yaml"),
-						IDInfo:   map[int]interface{}{0: model.HelmIDLineRange{Start: 0, End: 16}},
+						SplitID:       "# KICS_HELM_ID_2_0:",
+						FileName:      filepath.FromSlash("../../../test/fixtures/test_helm/templates/service.yaml"),
+						ResolverRoot:  filepath.FromSlash("../../../test/fixtures/test_helm"),
+						RenderedPath:  "test_helm/templates/service.yaml",
+						SplitPosition: 1,
+						IDInfo:        map[int]interface{}{0: model.HelmIDLineRange{Start: 0, End: 16}},
 						HelmInvocations: model.HelmInvocations{
 							{RenderedLine: 9, RenderedEnd: 14, Position: model.ResourceLine{Col: 4, Line: 6}},
 							{RenderedLine: 22, RenderedEnd: 24, Position: model.ResourceLine{Col: 4, Line: 15}},

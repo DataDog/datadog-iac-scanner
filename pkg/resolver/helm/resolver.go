@@ -45,6 +45,7 @@ func (r *Resolver) WithChartRoots(roots []string) *Resolver {
 // splitManifest keeps the information of the manifest splitted by source
 type splitManifest struct {
 	path                string
+	position            int
 	content             []byte
 	original            []byte
 	splitID             string
@@ -117,6 +118,9 @@ func (r *Resolver) Resolve(ctx context.Context, filePath string) (resolved model
 		}
 		rfiles.File = append(rfiles.File, model.ResolvedHelm{
 			FileName:            origpath,
+			ResolverRoot:        filePath,
+			RenderedPath:        sourceKey,
+			SplitPosition:       split.position,
 			Reported:            source.reported,
 			Archive:             source.archive,
 			Content:             split.content,
@@ -274,7 +278,7 @@ func splitManifestYAML(
 	sourceData := indexSources(sources, stamped)
 	sourceDocumentIndices := make(map[string]int)
 	var lastSource string
-	for _, splited := range splitedSource {
+	for i, splited := range splitedSource {
 		splited = strings.ReplaceAll(splited, "\r", "")
 		sourcePath, hasSource := parseManifestSource(splited)
 		if hasSource {
@@ -316,6 +320,7 @@ func splitManifestYAML(
 		}
 		splitedManifest = append(splitedManifest, splitManifest{
 			path:                sourcePath,
+			position:            i + 1,
 			content:             []byte(splited),
 			original:            source.original,
 			splitID:             splitID,

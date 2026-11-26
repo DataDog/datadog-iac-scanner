@@ -370,7 +370,7 @@ module "remote_child" {
 			require.Len(t, result.Modules, 2)
 			require.Empty(t, result.Failures)
 			require.ElementsMatch(t, []string{packageFile, childFile}, result.ScanPaths)
-			require.NotContains(t, result.SourceMappings, childDir, "the local call should own the child directory")
+			require.Equal(t, canonicalModuleURL(tc.remoteSource, tc.version), result.SourceMappings[childDir])
 			if !tc.wantWarning {
 				require.Empty(t, logs.String())
 				return

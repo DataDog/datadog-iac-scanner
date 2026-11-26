@@ -83,7 +83,7 @@ func (inv *terraformInventory) evaluateAllRoots(
 	}
 	inv.withEvaluator(ctx, fsys, mergeAllow, resolver, func(evaluator *tfeval.Evaluator) {
 		called, _ := discoverStaticCalls(ctx, evaluator, filesByDir, dirsWithTf, inv.repoPath, resolver, false)
-		inv.evaluate(ctx, evaluator, terraformRootDirs(dirsWithTf, called))
+		inv.evaluate(ctx, evaluator, terraformRootDirs(dirsWithTf, called, inv.external))
 	})
 }
 

@@ -54,6 +54,29 @@ DatadogPolicy contains result if {
 	}
 }
 
+// syntheticConfigMapEchoRule exposes the reference value in the finding.
+func syntheticConfigMapEchoRule() datadog.Rule {
+	rule := syntheticK8sRule()
+	rule.ID = "test-k8s-configmap-reference-echo"
+	rule.Name = rule.ID
+	rule.ShortDescription = "Synthetic ConfigMap reference echo"
+	rule.RegoQuery = []byte(`package datadog
+
+import rego.v1
+
+DatadogPolicy contains result if {
+	doc := input.document[i]
+	doc.kind == "ConfigMap"
+	result := {
+		"documentId": doc.id,
+		"resourceType": "ConfigMap",
+		"resourceName": sprintf("%v", [doc.data.x]),
+		"searchKey": "data.x",
+	}
+}`)
+	return rule
+}
+
 func k8sTestLibraries() []datadog.Library {
 	return []datadog.Library{
 		testLibraries(true)[0],

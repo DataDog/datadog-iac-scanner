@@ -58,6 +58,7 @@ type ResolvedModule struct {
 	Version           string
 	ResolvedVersion   string
 	ResolvedRef       string
+	ManifestPath      string
 	Name              string
 	LocalPath         string
 	PackageRoot       string
@@ -570,6 +571,7 @@ func (c *resultCollector) addResolvedModule(
 		Version:           mod.Version,
 		ResolvedVersion:   resolution.ResolvedVersion,
 		ResolvedRef:       resolution.ResolvedRef,
+		ManifestPath:      resolution.ManifestPath,
 		Name:              mod.Name,
 		LocalPath:         resolution.LocalPath,
 		PackageRoot:       resolution.PackageRoot,
@@ -584,7 +586,9 @@ func (c *resultCollector) addResolvedModule(
 func (c *resultCollector) addSourceMapping(localPath, source string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.sourceMappings[localPath] = source
+	if previous, ok := c.sourceMappings[localPath]; !ok || source < previous {
+		c.sourceMappings[localPath] = source
+	}
 }
 
 func (c *resultCollector) addCleanup(cleanup func()) {
@@ -1248,6 +1252,8 @@ func (w *walker) traverseRemoteModuleGroup(
 	if resolution.Cleanup != nil {
 		w.results.addCleanup(resolution.Cleanup)
 	}
+	// A local call may already have collected these files without a source.
+	w.results.addSourceMapping(resolution.LocalPath, canonicalModuleURL(representative.Source, resolution.ResolvedVersion))
 	owner := moduleDirectoryOwner{
 		source:           representative.Source,
 		requestedVersion: representative.Version,
@@ -1257,10 +1263,6 @@ func (w *walker) traverseRemoteModuleGroup(
 	if !w.addResolvedModulePaths(ctx, &owner, &resolution) {
 		return
 	}
-	w.results.addSourceMapping(
-		resolution.LocalPath,
-		canonicalModuleURL(representative.Source, resolution.ResolvedVersion),
-	)
 	pkg := traversalPackage{
 		root:             resolution.PackageRoot,
 		identity:         owner.identity.Package,

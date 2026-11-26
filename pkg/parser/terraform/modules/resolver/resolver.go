@@ -23,6 +23,10 @@ type Resolution struct {
 	// RegistryGitDirectory identifies the Git module behind a registry download.
 	// It comes from the selected download URL, independently of LocalPath.
 	RegistryGitDirectory ModuleDirectoryIdentity
+	// ManifestPath is the selected module's path relative to the root of a
+	// prefetch manifest, whose declarations may select different packages for
+	// the same source and version.
+	ManifestPath string
 	// Origin identifies which resolver produced this resolution (e.g. "local",
 	// "dot_terraform", "prefetched", "git", "registry"). It is telemetry-only:
 	// resolution behavior must never depend on it.
