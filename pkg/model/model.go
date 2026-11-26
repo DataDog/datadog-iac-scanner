@@ -358,9 +358,9 @@ type FileMetadata struct {
 	Archive string
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
-	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
-	// document groups multiple module resources from the same file.
-	ModuleAttributions map[string]*ModuleAttribution
+	// ModuleAttributions indexes the declaration identities in a synthetic document.
+	// Positions cannot identify JSON blocks: several share the resource key range.
+	ModuleAttributions map[TerraformBlock]*ModuleAttribution `json:"-"`
 	// TerraformScope identifies the address context for a Terraform file or
 	// synthetic resource instance document.
 	TerraformScope *TerraformScope `json:"-"`
@@ -1053,6 +1053,10 @@ type Vulnerability struct {
 	// ModuleAttribution: provenance for instantiated module findings, serialized
 	// so content-push consumers can anchor them on the call site like SARIF does.
 	ModuleAttribution *ModuleAttribution `json:"moduleAttribution,omitempty"`
+	// ReportLocation is assigned by finding routing after module caller expansion.
+	// Module findings always report here; FileName and the original ranges keep
+	// describing the detected module code for identity, provenance and fixes.
+	ReportLocation *SourceLocation `json:"reportLocation,omitempty"`
 	// ResourceID is the Terraform address of the affected block instance.
 	ResourceID string `json:"resourceId,omitempty"`
 	// RootModule is the repository-relative root module that evaluated this
@@ -1073,8 +1077,11 @@ type Vulnerability struct {
 	OrderPath string `json:"-"`
 	// ResourceOccurrences records every declaration instance this finding
 	// represents when inventory is enabled.
-	ResourceOccurrences []*ResourceOccurrence     `json:"-"`
-	TerraformOverride   *TerraformOverrideFinding `json:"-"`
+	ResourceOccurrences []*ResourceOccurrence `json:"-"`
+	// TerraformBlock identifies the written declaration independently of the
+	// displayed resource name and the attribute highlighted by line detection.
+	TerraformBlock    TerraformBlock            `json:"-"`
+	TerraformOverride *TerraformOverrideFinding `json:"-"`
 }
 
 // Identity returns the file and line text that tell v apart from other

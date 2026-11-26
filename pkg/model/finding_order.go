@@ -97,6 +97,7 @@ func compareReported(a, b *Vulnerability) int {
 		cmp.Compare(a.SuppressionKind, b.SuppressionKind),
 		cmp.Compare(a.SuppressionJustification, b.SuppressionJustification),
 		compareAttribution(a.ModuleAttribution, b.ModuleAttribution),
+		compareReportLocation(a.ReportLocation, b.ReportLocation),
 	)
 }
 
@@ -169,6 +170,13 @@ func compareSourceLocation(a, b SourceLocation) int {
 		cmp.Compare(a.ColumnStart, b.ColumnStart),
 		cmp.Compare(a.ColumnEnd, b.ColumnEnd),
 	)
+}
+
+func compareReportLocation(a, b *SourceLocation) int {
+	if a == nil || b == nil {
+		return compareBool(a != nil, b != nil)
+	}
+	return compareSourceLocation(*a, *b)
 }
 
 func compareAttribution(a, b *ModuleAttribution) int {

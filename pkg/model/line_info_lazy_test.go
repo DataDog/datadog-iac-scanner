@@ -15,7 +15,11 @@ import (
 )
 
 func TestFileMetadata_JSONMarshalSkipsLazyState(t *testing.T) {
-	fm := &FileMetadata{ID: "id", Document: Document{"k": "v"}}
+	fm := &FileMetadata{ID: "id", Document: Document{"k": "v"},
+		ModuleAttributions: map[TerraformBlock]*ModuleAttribution{
+			{Kind: "resource", Type: "aws_s3_bucket", Name: "this"}: {},
+		},
+	}
 	fm.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
 		return nil, nil
 	})
@@ -24,6 +28,7 @@ func TestFileMetadata_JSONMarshalSkipsLazyState(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(b), `"ID":"id"`)
 	require.NotContains(t, string(b), "LineInfoLoader")
+	require.NotContains(t, string(b), "ModuleAttributions")
 }
 
 func TestCombine_lineInfoFallbackOnEnsureFailure(t *testing.T) {

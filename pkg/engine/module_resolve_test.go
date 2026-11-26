@@ -601,7 +601,7 @@ resource "aws_sqs_queue_policy" "this" {
 
 	require.True(t, res.suppressed["mod-id"]["data.aws_ami"]["ubuntu"])
 	require.True(t, res.suppressed["mod-id"]["data.aws_iam_policy_document"]["p"])
-	require.Contains(t, res.syntheticFiles[0].ModuleAttributions, moduleAttributionKey("data.aws_ami", 4, 1))
+	require.Contains(t, res.syntheticFiles[0].ModuleAttributions, moduleAttributionKey("data.aws_ami", "ubuntu"))
 }
 
 // Only the blocks that came back instantiated may be dropped from the file they
@@ -1519,4 +1519,57 @@ resource "aws_s3_bucket" "this" {
 	if len(res.suppressed["mod-id"]) == 0 {
 		t.Fatal("the called module must not also be scanned as a root")
 	}
+}
+
+func TestTerraformRootDirs_RepositoryEntryPointsOnly(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	root := filepath.Join(repo, "stack")
+	local := filepath.Join(repo, "local")
+	uncalledLocal := filepath.Join(repo, "uncalled")
+	cache := filepath.Join(repo, ".cache", "modules")
+	dirs := map[string]bool{repo: true, root: true, local: true, uncalledLocal: true, cache: true, outside: true}
+	called := map[string]bool{local: true}
+	got := terraformRootDirs(dirs, called, externalModuleFiles(repo, func(path string) bool { return pathWithinRoot(path, cache) }))
+	require.ElementsMatch(t, []string{repo, root, uncalledLocal}, got)
+	require.IsIncreasing(t, got)
+}
+
+func TestTerraformFindingPathNormalizesLegacyLabels(t *testing.T) {
+	for _, prefix := range []string{"", "resource.", "data."} {
+		for _, format := range []string{
+			"aws_s3_bucket[%s]", "aws_s3_bucket.%s", "aws_s3_bucket[{{%s}}]", "aws_s3_bucket.{{%s}}",
+			`aws_s3_bucket["%s"]`, "aws_s3_bucket['%s']",
+		} {
+			for _, property := range []string{"acl", "tags[0].name", "lifecycle.ignore_changes[0]"} {
+				key := prefix + fmt.Sprintf(format, "this") + "." + property
+				t.Run(key, func(t *testing.T) {
+					block, field := overrideFindingPath(nil, key)
+					require.Equal(t, model.TerraformBlock{
+						Kind: strings.TrimSuffix(prefix, "."), Type: "aws_s3_bucket", Name: "this",
+					}, block)
+					expected := strings.Split(property, "[")[0]
+					require.Equal(t, expected, field)
+					canonical := block
+					if canonical.Kind == "" {
+						canonical.Kind = "resource"
+					}
+					occurrence := &model.ResourceOccurrence{StructuralPath: model.SourcePath{
+						{Key: canonical.Kind}, {Key: canonical.Type}, {Key: canonical.Name},
+					}}
+					require.Equal(t, []*model.ResourceOccurrence{occurrence}, terraformOccurrences([]*model.ResourceOccurrence{occurrence}, nil, key))
+					file := &model.FileMetadata{TerraformOverrides: map[model.TerraformBlock]*model.TerraformOverrideSource{
+						canonical: {Fields: map[string]string{field: "override"}},
+					}}
+					finding, declaration := terraformFindingSource(file, nil, key)
+					require.NotNil(t, finding)
+					require.Equal(t, "override", finding.SourceFileID)
+					require.Equal(t, canonical, declaration)
+				})
+			}
+		}
+	}
+	path := model.SourcePath{{Key: "resource"}, {Key: "aws_s3_bucket"}, {Key: "{{literal}}"}, {Key: "acl"}}
+	block, field := overrideFindingPath(path, "")
+	require.Equal(t, "{{literal}}", block.Name, "structured source keys are literal and never use legacy wrapping")
+	require.Equal(t, "acl", field)
 }
