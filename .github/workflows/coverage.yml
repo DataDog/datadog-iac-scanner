@@ -19,9 +19,9 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Run Tests
+        shell: bash
         run: |
-          go mod vendor
-          go test -tags dev -mod=vendor -v -timeout 2100s $(go list -tags dev ./... | grep -v e2e) -count=1 -covermode=atomic -coverprofile=cover.out | tee unit-test.log
+          go test -tags dev -v -timeout 2100s $(go list -tags dev ./... | grep -v e2e) -count=1 -covermode=atomic -coverprofile=cover.out | tee unit-test.log
       - name: Upload coverage to Datadog
         run: |
           curl -L --fail "https://github.com/DataDog/datadog-ci/releases/latest/download/datadog-ci_linux-x64" --output "/usr/local/bin/datadog-ci" && chmod +x /usr/local/bin/datadog-ci
