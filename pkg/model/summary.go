@@ -222,12 +222,7 @@ func getRelativePath(basePath, filePath string) string {
 // names it whatever order the map yields. It reports false for a file outside
 // every directory the map knows.
 func canonicalExtractedName(filePath string, pathExtractionMap map[string]ExtractedPathObject) (string, bool) {
-	var dir string
-	for candidate := range pathExtractionMap {
-		if len(candidate) > len(dir) && pathWithinDir(filePath, candidate) {
-			dir = candidate
-		}
-	}
+	dir := extractedSourceDir(filePath, pathExtractionMap)
 	if dir == "" {
 		return "", false
 	}
@@ -240,6 +235,16 @@ func canonicalExtractedName(filePath string, pathExtractionMap map[string]Extrac
 	// Query parameters such as ?ref=v1.2.3 are not part of the file's location.
 	source, _, _ = strings.Cut(source, "?")
 	return filepath.FromSlash(source + rest), true
+}
+
+func extractedSourceDir(filePath string, pathExtractionMap map[string]ExtractedPathObject) string {
+	var dir string
+	for candidate := range pathExtractionMap {
+		if len(candidate) > len(dir) && pathWithinDir(filePath, candidate) {
+			dir = candidate
+		}
+	}
+	return dir
 }
 
 func pathWithinDir(path, dir string) bool {

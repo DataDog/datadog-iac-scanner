@@ -6,12 +6,14 @@
 package model
 
 import (
+	"cmp"
 	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
@@ -202,6 +204,7 @@ type SarifReport interface {
 	RebuildTaxonomies(cwes []string, guids map[string]string)
 	GetGUIDFromRelationships(idx int, cweID string) string
 	AddTags(ctx context.Context, summary *model.Summary, diffAware *model.DiffAware) error
+	SortResults()
 }
 
 type sarifReport struct {
@@ -302,6 +305,22 @@ func NewSarifReport() SarifReport {
 		Schema:       "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
 		SarifVersion: "2.1.0",
 		Runs:         initSarifRun(),
+	}
+}
+
+// SortResults orders results by the primary location written to the report.
+func (sr *sarifReport) SortResults() {
+	for i := range sr.Runs {
+		results := sr.Runs[i].Results
+		slices.SortStableFunc(results, func(a, b sarifResult) int {
+			al, bl := a.ResultLocations[0].PhysicalLocation, b.ResultLocations[0].PhysicalLocation
+			return cmp.Or(
+				cmp.Compare(al.ArtifactLocation.ArtifactURI, bl.ArtifactLocation.ArtifactURI),
+				cmp.Compare(al.Region.StartLine, bl.Region.StartLine),
+				cmp.Compare(a.ResultRuleID, b.ResultRuleID),
+				cmp.Compare(a.PartialFingerprints.DatadogFingerprint, b.PartialFingerprints.DatadogFingerprint),
+			)
+		})
 	}
 }
 

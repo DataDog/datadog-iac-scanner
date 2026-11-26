@@ -37,6 +37,7 @@ func PrintSarifReport(ctx context.Context, path, filename string, body interface
 		if err := sarifReport.AddTags(ctx, &summary, &sciInfo.DiffAware); err != nil {
 			return err
 		}
+		sarifReport.SortResults()
 
 		body = sarifReport
 	}

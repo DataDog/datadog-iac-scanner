@@ -64,7 +64,20 @@ func TestMemoryStorage_SaveFile(t *testing.T) {
 	}
 }
 
-// TestMemoryStorage_SaveFile tests the functions [GetFiles(), GetVulnerabilities()]
+func TestMemoryStorageRejectsDuplicateDocumentID(t *testing.T) {
+	ctx := t.Context()
+	store := NewMemoryStorage()
+	first := &model.FileMetadata{ID: "reused", FilePath: "a.yaml"}
+	second := &model.FileMetadata{ID: "reused", FilePath: "b.yaml"}
+	require.NoError(t, store.SaveFile(ctx, first))
+	require.ErrorContains(t, store.SaveFile(ctx, second), "duplicate document ID")
+	require.Equal(t, 1, store.DuplicateDocumentIDs())
+	files, err := store.GetFiles(ctx, "")
+	require.NoError(t, err)
+	require.Equal(t, model.FileMetadatas{first}, files)
+}
+
+// TestMemoryStorage tests the functions GetFiles and GetVulnerabilities.
 func TestMemoryStorage(t *testing.T) { //nolint
 	type fields struct {
 		vulnerabilities []model.Vulnerability

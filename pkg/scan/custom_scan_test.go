@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -54,6 +55,42 @@ is_privileged(container) := container.securityContext.privileged
 }
 
 func testLibSource() source.QueriesSource { return &stubLibSource{} }
+
+func TestCustomTerraformModuleFindingKeepsSourceLocation(t *testing.T) {
+	const sample = `module "example" {
+  source = "./missing"
+  acl = "public-read"
+}`
+	const rule = `package datadog
+DatadogPolicy contains result if {
+  some doc in input.document
+  doc.module.example.acl == "public-read"
+  result := {
+    "documentId": doc.id,
+    "resourceType": "module",
+    "resourceName": "example",
+    "searchKey": "module[example].acl",
+  }
+}`
+	run := func() model.Vulnerability {
+		t.Helper()
+		findings, failures, err := runCustomRegoQuery(t.Context(), "Terraform", rule, []byte(sample), testLibSource())
+		require.NoError(t, err)
+		require.Empty(t, failures)
+		require.Len(t, findings, 1)
+		finding := findings[0]
+		require.True(t, filepath.IsAbs(finding.FileName))
+		require.Equal(t, "scan-target.tf", filepath.Base(finding.FileName))
+		require.Equal(t, "module[example].acl", finding.SearchKey)
+		require.Equal(t, 3, finding.Line)
+		require.Nil(t, finding.ModuleAttribution)
+		return finding
+	}
+	first, second := run(), run()
+	require.NotEqual(t, first.FileName, second.FileName)
+	require.NotEmpty(t, first.FileID)
+	require.Equal(t, first.FileID, second.FileID)
+}
 
 // validTerraformRego is a minimal DatadogPolicy rule that passes every phase.
 const validTerraformRego = `package datadog

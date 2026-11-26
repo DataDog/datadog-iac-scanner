@@ -164,18 +164,21 @@ func (s *renderCoverage) add(paths []string) {
 	}
 }
 
-// withoutRaw drops the listed files whose path a render covered.
+// withoutRaw drops files covered by a render, and repeated paths from
+// overlapping scan inputs.
 func (s *renderCoverage) withoutRaw(files []provider.InventoryFile) []provider.InventoryFile {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if len(s.paths) == 0 {
-		return files
-	}
+	seen := make(map[string]struct{}, len(files))
 	kept := files[:0]
 	for _, f := range files {
-		if _, ok := s.paths[filepath.Clean(filepath.FromSlash(f.Path))]; !ok {
-			kept = append(kept, f)
+		path := filepath.Clean(filepath.FromSlash(f.Path))
+		if _, covered := s.paths[path]; covered {
+			continue
 		}
+		if _, duplicate := seen[path]; duplicate {
+			continue
+		}
+		seen[path] = struct{}{}
+		kept = append(kept, f)
 	}
 	return kept
 }
