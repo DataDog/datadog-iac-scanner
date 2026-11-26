@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/terragrunt"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	scanUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -52,11 +53,17 @@ func (r *terragruntRepo) write(rel, content string) string {
 
 // parseUnit parses a terragrunt.hcl with Terragrunt enabled.
 func (r *terragruntRepo) parseUnit(path string) *model.FileMetadata {
+	return r.parseUnitWith(path, nil)
+}
+
+// parseUnitWith also gives the parser the fetched module directories.
+func (r *terragruntRepo) parseUnitWith(path string, fetched terragrunt.ModuleDirs) *model.FileMetadata {
 	r.t.Helper()
 	content, err := os.ReadFile(filepath.Clean(path))
 	require.NoError(r.t, err)
 	p := terraformParser.NewDefaultWithParams(vfs.DiskFS{}, "", model.SCIInfo{RepositoryDir: r.root})
 	p.EnableTerragrunt()
+	p.SetFetchedModules(fetched)
 	out, handled, err := p.ParseUnit(context.Background(), content, path)
 	require.NoError(r.t, err)
 	require.True(r.t, handled)
@@ -349,4 +356,92 @@ func TestTerragruntDisableCommandInIncludedFileSuppresses(t *testing.T) {
 	require.Len(t, vulns, 1)
 	require.True(t, vulns[0].IsSuppressed)
 	require.Equal(t, model.SuppressionJustificationDisableInFile, vulns[0].SuppressionJustification)
+}
+
+// A unit's tfr:// source is translated to a registry address and version, so
+// the module the pre-scan fetched for the unit's directory is found and
+// instantiated with the unit's inputs.
+func TestTerragruntRemoteRegistrySource(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	r := &terragruntRepo{root: fx.root, t: t}
+	unit := r.write("stack/terragrunt.hcl", "terraform {\n  source = \"tfr://"+remoteBucketSource+"?version="+remoteBucketVersion+
+		"\"\n}\n\ninputs = {\n  acl = \"public-read\"\n}\n")
+	files := append(parseTerraform(t, fx.modPath), r.parseUnit(unit))
+
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		}},
+		repoPath: fx.root, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	registerTerragruntRemote(ins, fx)
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1)
+	v := vulns[0]
+	require.Equal(t, fx.modPath, v.FileName)
+	require.NotNil(t, v.ModuleAttribution)
+	require.Equal(t, "stack/terragrunt.hcl", v.ModuleAttribution.CallSite.Filename)
+	require.Equal(t, 6, v.ModuleAttribution.CallSite.LineStart, "the input that sets the value")
+	require.Equal(t, remoteBucketSource, v.ModuleAttribution.Source)
+	require.Equal(t, remoteBucketVersion, v.ModuleAttribution.Version)
+}
+
+// registerTerragruntRemote registers the module the pre-scan fetched for the
+// unit in fx.callerRoot, keyed on the unit directory and the name "terragrunt".
+func registerTerragruntRemote(ins *Inspector, fx remoteBucketFixture) map[string]RemoteModuleDirectory {
+	directory := RemoteModuleDirectory{Path: fx.cacheDir, PackageRoot: fx.cacheDir}
+	provenance := RemoteModuleProvenance{
+		Source: remoteBucketSource, ResolvedVersion: remoteBucketVersion, CanonicalSource: remoteBucketSource,
+		SourceType: "registry", ModuleRoot: fx.cacheDir,
+	}
+	dirs := map[string]RemoteModuleDirectory{}
+	provs := map[string]RemoteModuleProvenance{}
+	for _, key := range []string{
+		RemoteModuleKey(fx.callerRoot, remoteBucketSource, remoteBucketVersion),
+		RemoteModuleCallKey(fx.callerRoot, remoteBucketSource, remoteBucketVersion, "terragrunt"),
+		RemoteModuleCallKey(fx.callerRoot, remoteBucketSource, "", "terragrunt"),
+	} {
+		dirs[key], provs[key] = directory, provenance
+	}
+	ins.SetRemoteModuleDirectories(dirs)
+	ins.SetRemoteModuleProvenance(provs)
+	return dirs
+}
+
+// The fetched module's own terraform.tfvars apply like a local module's, and
+// the finding is reported at the unit, since the file is outside the repository.
+func TestTerragruntFetchedModuleTfvars(t *testing.T) {
+	fx := newRemoteBucketFixture(t)
+	require.NoError(t, os.WriteFile(filepath.Join(fx.cacheDir, "terraform.tfvars"), []byte(`acl = "public-read"`), 0o600))
+	r := &terragruntRepo{root: fx.callerRoot, t: t}
+	unit := r.write("terragrunt.hcl", "terraform {\n  source = \"tfr://"+remoteBucketSource+"?version="+remoteBucketVersion+
+		"\"\n}\n\ninputs = {\n  acl = \"private\"\n}\n")
+	ins := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{{
+			Query: "acl_rule", Content: aclRule, InputData: "{}", Platform: "terraform",
+			Metadata: map[string]interface{}{"id": "acl-rule"}, Aggregation: 1,
+		}},
+		repoPath: fx.callerRoot, vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	dirs := registerTerragruntRemote(ins, fx)
+	// Wired like scan: the parser finds the unit's fetched module in the pre-scan's directories.
+	fetched := func(callerRoot, source, version string) string {
+		d, _ := LookupRemoteDir(dirs, callerRoot, source, version, terragrunt.ModuleName)
+		return d.Path
+	}
+	files := append(parseTerraform(t, fx.modPath), r.parseUnitWith(unit, fetched))
+
+	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1)
+	v := vulns[0]
+	require.Equal(t, fx.modPath, v.FileName)
+	require.NotNil(t, v.ModuleAttribution)
+	require.Equal(t, "terragrunt.hcl", v.ModuleAttribution.CallSite.Filename)
+	require.Equal(t, 2, v.ModuleAttribution.CallSite.LineStart, "the source attribute")
 }

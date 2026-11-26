@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -124,6 +125,8 @@ type Client struct {
 	Storage       *storage.MemoryStorage
 	Printer       *consolePrinter.Printer
 	FlagEvaluator featureflags.FlagEvaluator
+	// terragruntModuleDirs are the directories the pre-scan fetched.
+	terragruntModuleDirs map[string]engine.RemoteModuleDirectory
 	// querySourceFactory overrides createQuerySource; set in tests and custom scans.
 	querySourceFactory func(ctx context.Context, platforms []string) (source.QueriesSource, error)
 	// analyzerOverride skips the file-extension analyzer and returns a pre-known platform list.

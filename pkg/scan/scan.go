@@ -105,6 +105,7 @@ func (c *Client) initScan(ctx context.Context) (*executeScanParameters, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.terragruntModuleDirs = remoteSourceDirs
 	initSucceeded := false
 	defer func() {
 		if initSucceeded {
@@ -380,6 +381,7 @@ func (c *Client) createService(
 	tfParser := terraformParser.NewDefaultWithParams(c.fsys, c.ScanParams.TerraformVarsPath, c.ScanParams.SCIInfo)
 	if c.ScanParams.ShouldScanTerragrunt {
 		tfParser.EnableTerragrunt()
+		tfParser.SetFetchedModules(c.fetchedTerragruntModules)
 	}
 	if c.inMemory {
 		tfParser.SetMergeAllow(append(append([]string{}, paths...), remoteModulePaths...))

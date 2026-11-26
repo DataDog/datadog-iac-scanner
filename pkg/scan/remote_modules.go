@@ -57,6 +57,15 @@ func (c *Client) resolveTerraformModulesForScan(
 	resolveCtx, cancel := c.moduleResolutionContext(ctx)
 	defer cancel()
 
+	var unitCalls []tfmodules.ParsedModule
+	if c.ScanParams.ShouldScanTerragrunt {
+		unitPaths, unitErr := filteredFilesSource.TerragruntFiles(ctx)
+		if unitErr != nil {
+			return nil, nil, nil, nil, unitErr
+		}
+		unitCalls = terragruntModuleCalls(resolveCtx, c.fsys, c.terragruntRepoRoot(), unitPaths)
+	}
+
 	chain, err := c.buildModuleResolverChain(resolveCtx, moduleDiscoveryPaths)
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -66,7 +75,8 @@ func (c *Client) resolveTerraformModulesForScan(
 		contextLogger.Info().Msg("Resolving remote Terraform modules...")
 	}
 
-	result := c.resolveTerraformModuleGraph(resolveCtx, extractedPaths.Path, moduleDiscoveryPaths, baselinePaths, chain)
+	result := c.resolveTerraformModuleGraph(
+		resolveCtx, extractedPaths.Path, moduleDiscoveryPaths, baselinePaths, chain, unitCalls)
 	if result.TimedOut {
 		contextLogger.Warn().Dur("timeout", c.ScanParams.ModuleResolutionTimeout).
 			Msg("Terraform module resolution timed out; scanning modules resolved before the deadline")
@@ -209,6 +219,7 @@ func (c *Client) resolveTerraformModuleGraph(
 	ctx context.Context,
 	rootPaths, discoveryPaths, baselinePaths []string,
 	moduleResolver tfresolver.Resolver,
+	extraCalls []tfmodules.ParsedModule,
 ) modulegraph.Result {
 	packageBytes := c.ScanParams.MaxModulePackageBytes
 	if packageBytes == 0 {
@@ -237,6 +248,7 @@ func (c *Client) resolveTerraformModuleGraph(
 		TotalParseBytes:    c.ScanParams.MaxModuleParseBytes,
 		MaxConfigFileBytes: tfmodules.MaxConfigFileBytesForScan(c.ScanParams.MaxFileSizeFlag),
 		FS:                 c.fsys,
+		ExtraCalls:         extraCalls,
 	})
 }
 

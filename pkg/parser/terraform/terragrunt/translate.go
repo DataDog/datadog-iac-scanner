@@ -47,6 +47,10 @@ var reservedArguments = map[string]bool{
 	"providers": true, "depends_on": true, "lifecycle": true, "locals": true,
 }
 
+// ModuleDirs returns the directory the pre-scan fetched for a remote module
+// call of the unit in callerRoot, or "" when there is none.
+type ModuleDirs func(callerRoot, source, version string) string
+
 // Translate translates the unit file at path, whose content is src. fsys and
 // repoRoot are used to read what the unit's directory and its local module
 // provide (tfvars files); nothing outside repoRoot is read. An empty repoRoot
@@ -55,7 +59,12 @@ var reservedArguments = map[string]bool{
 // It returns a nil translation, without error, for a unit that cannot be
 // translated: no terraform.source, an unknown source, or unknown inputs as a
 // whole. A syntax error in src is returned as an error.
-func Translate(ctx context.Context, fsys vfs.FS, repoRoot, path string, src []byte) (*model.TerragruntTranslation, error) {
+//
+// fetched is optional: it finds the fetched copy of a remote module, whose
+// tfvars files then apply like those of a local module.
+func Translate(
+	ctx context.Context, fsys vfs.FS, repoRoot, path string, src []byte, fetched ModuleDirs,
+) (*model.TerragruntTranslation, error) {
 	if fsys == nil {
 		fsys = vfs.DiskFS{}
 	}
@@ -67,6 +76,7 @@ func Translate(ctx context.Context, fsys vfs.FS, repoRoot, path string, src []by
 		return nil, nil
 	}
 	t := newTranslator(ctx, fsys, repoRoot, path)
+	t.fetchedDirs = fetched
 	return t.translate(body)
 }
 
@@ -81,14 +91,18 @@ func parseBody(ctx context.Context, src []byte, path string) (*hclsyntax.Body, h
 }
 
 type translator struct {
-	ctx      context.Context
-	fsys     vfs.FS
-	path     string
-	unitDir  string
-	absUnit  string
-	root     string
-	reads    map[string]cty.Value
-	skipping func(format string, args ...any)
+	ctx     context.Context
+	fsys    vfs.FS
+	path    string
+	unitDir string
+	absUnit string
+	root    string
+	// fetchedDirs finds a remote module's fetched copy; fetched is its
+	// directory for this unit, readable although outside the repository.
+	fetchedDirs ModuleDirs
+	fetched     string
+	reads       map[string]cty.Value
+	skipping    func(format string, args ...any)
 }
 
 func newTranslator(ctx context.Context, fsys vfs.FS, repoRoot, path string) *translator {
@@ -143,10 +157,10 @@ func (t *translator) translate(body *hclsyntax.Body) (*model.TerragruntTranslati
 		args[name] = argument{value: neutralize(in.value), real: in.rng}
 	}
 	source = t.normalizeSource(source)
-	for name, a := range t.varFileValues(source) {
+	address, version := registrySource(source)
+	for name, a := range t.varFileValues(source, address, version, sourceRange) {
 		args[name] = a
 	}
-	address, version := registrySource(source)
 	return render(address, version, sourceRange, args), nil
 }
 
@@ -233,9 +247,14 @@ func neutralize(val cty.Value) cty.Value {
 // varFileValues returns the values of the tfvars files Terraform would load in
 // the working copy Terragrunt builds: the local module's files overlaid by the
 // unit directory's, a file of the unit replacing the module's of the same name.
-func (t *translator) varFileValues(source string) map[string]argument {
+// The files of a fetched module are reported at the unit's source attribute.
+func (t *translator) varFileValues(source, address, version string, sourceRange model.SourceLocation) map[string]argument {
 	unitNames := t.fileNames(t.unitDir)
 	moduleDir := t.localModuleDir(source)
+	if !isLocalSource(source) && t.fetchedDirs != nil {
+		t.fetched = t.fetchedDirs(filepath.Dir(t.absUnit), address, version)
+		moduleDir = t.fetched
+	}
 	var moduleNames []string
 	if moduleDir != "" {
 		moduleNames = t.fileNames(moduleDir)
@@ -257,6 +276,9 @@ func (t *translator) varFileValues(source string) map[string]argument {
 			dir = t.unitDir
 		}
 		for k, v := range t.readVarFile(filepath.Join(dir, name)) {
+			if t.fetched != "" && dir == t.fetched {
+				v.real = sourceRange
+			}
 			values[k] = v
 		}
 	}
@@ -288,8 +310,16 @@ func isLocalSource(source string) bool {
 	return tfmodules.LooksLikeLocalModuleSource(source) || source == "." || source == ".."
 }
 
+// confined tells whether p is inside the repository or the fetched module.
 func (t *translator) confined(p string) bool {
-	_, err := functions.ConfinePath(t.root, t.fsys, vfs.AbsOrClean(t.fsys, p))
+	abs := vfs.AbsOrClean(t.fsys, p)
+	if _, err := functions.ConfinePath(t.root, t.fsys, abs); err == nil {
+		return true
+	}
+	if t.fetched == "" {
+		return false
+	}
+	_, err := functions.ConfinePath(vfs.AbsOrClean(t.fsys, t.fetched), t.fsys, abs)
 	return err == nil
 }
 

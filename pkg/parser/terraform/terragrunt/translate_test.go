@@ -61,7 +61,7 @@ func translate(t *testing.T, root, unit string) *model.TerragruntTranslation {
 	path := filepath.Join(root, filepath.FromSlash(unit), "terragrunt.hcl")
 	src, err := os.ReadFile(path)
 	require.NoError(t, err)
-	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, src)
+	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, src, nil)
 	require.NoError(t, err)
 	return tr
 }
@@ -145,7 +145,7 @@ func TestTranslateSkipCases(t *testing.T) {
 func TestTranslateSyntaxError(t *testing.T) {
 	root := repo(t, nil)
 	path := filepath.Join(root, "terragrunt.hcl")
-	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, []byte("terraform {"))
+	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, []byte("terraform {"), nil)
 	assert.Nil(t, tr)
 	assert.Error(t, err)
 }
@@ -307,7 +307,7 @@ func TestTranslateMemFS(t *testing.T) {
 terraform { source = "../m" }
 inputs = { acl = "public-read" }
 `)
-	tr, err := Translate(context.Background(), fsys, "/repo", "/repo/live/terragrunt.hcl", src)
+	tr, err := Translate(context.Background(), fsys, "/repo", "/repo/live/terragrunt.hcl", src, nil)
 	require.NoError(t, err)
 	require.NotNil(t, tr)
 	assert.Contains(t, tr.Text, `acl = "private"`)
@@ -373,6 +373,65 @@ func TestTranslateRegistrySources(t *testing.T) {
 			src, _ := tr.Lines.Argument("source")
 			assert.Equal(t, src.Real, m.Real)
 			assert.Equal(t, 2, m.Real.LineStart)
+		})
+	}
+}
+
+const remoteUnit = "terraform {\n  source = \"git::https://example.invalid/m.git\"\n}\ninputs = {\n  acl = \"private\"\n  own = \"input\"\n}\n"
+
+func translateWithFetched(t *testing.T, root string, dirs ModuleDirs) *model.TerragruntTranslation {
+	t.Helper()
+	path := filepath.Join(root, "live", "terragrunt.hcl")
+	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, []byte(remoteUnit), dirs)
+	require.NoError(t, err)
+	require.NotNil(t, tr)
+	return tr
+}
+
+func TestTranslateFetchedModuleTfvars(t *testing.T) {
+	root := repo(t, map[string]string{"live/terragrunt.hcl": remoteUnit})
+	fetched, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(fetched, "terraform.tfvars"), []byte(`acl = "public-read"`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(fetched, "b.auto.tfvars"), []byte(`extra = "from module"`), 0o600))
+	// A symlink leaving the fetched module is not followed.
+	secret := filepath.Join(t.TempDir(), "secret.tfvars")
+	require.NoError(t, os.WriteFile(secret, []byte(`leak = "x"`), 0o600))
+	require.NoError(t, os.Symlink(secret, filepath.Join(fetched, "c.auto.tfvars")))
+
+	var got [3]string
+	tr := translateWithFetched(t, root, func(callerRoot, source, version string) string {
+		got = [3]string{callerRoot, source, version}
+		return fetched
+	})
+	assert.Equal(t, [3]string{filepath.Join(root, "live"), "git::https://example.invalid/m.git", ""}, got)
+	assert.Contains(t, tr.Text, `acl = "public-read"`, "the fetched tfvars override the input")
+	assert.Contains(t, tr.Text, `extra = "from module"`)
+	assert.Contains(t, tr.Text, `own = "input"`)
+	assert.NotContains(t, tr.Text, "leak")
+
+	unit := filepath.Join(root, "live", "terragrunt.hcl")
+	source, ok := tr.Lines.Argument("source")
+	require.True(t, ok)
+	for _, name := range []string{"acl", "extra"} {
+		m, ok := tr.Lines.Argument(name)
+		require.True(t, ok)
+		assert.Equal(t, unit, m.Real.Filename, "mapped into the repository")
+		assert.Equal(t, source.Real, m.Real, "at the source attribute")
+	}
+}
+
+func TestTranslateRemoteWithoutFetchedModuleIsUnchanged(t *testing.T) {
+	root := repo(t, map[string]string{"live/terragrunt.hcl": remoteUnit})
+	for name, dirs := range map[string]ModuleDirs{
+		"nil lookup":   nil,
+		"not fetched":  func(string, string, string) string { return "" },
+		"empty module": func(string, string, string) string { return t.TempDir() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			tr := translateWithFetched(t, root, dirs)
+			assert.Contains(t, tr.Text, `acl = "private"`)
+			assert.NotContains(t, tr.Text, "extra")
 		})
 	}
 }

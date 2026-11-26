@@ -479,6 +479,12 @@ func remoteModuleScanParams(root string) *Parameters {
 
 func executeRemoteModuleScan(t *testing.T, params *Parameters) *Results {
 	t.Helper()
+	results, _ := executeRemoteModuleScanClient(t, params)
+	return results
+}
+
+func executeRemoteModuleScanClient(t *testing.T, params *Parameters) (*Results, *Client) {
+	t.Helper()
 	ctx := context.Background()
 	client, err := NewClient(ctx, params, &consolePrinter.Printer{})
 	require.NoError(t, err)
@@ -512,7 +518,7 @@ DatadogPolicy contains result if {
 	results, err := client.executeScan(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, results)
-	return results
+	return results, client
 }
 
 // The CycloneDX report hashes each reported file from disk. Findings from a

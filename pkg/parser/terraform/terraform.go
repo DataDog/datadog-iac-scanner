@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/terragrunt"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	masterUtils "github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -68,6 +69,8 @@ type Parser struct {
 
 	// terragrunt makes the parser accept terragrunt.hcl units.
 	terragrunt bool
+	// fetchedModules finds the fetched copy of a unit's remote module.
+	fetchedModules terragrunt.ModuleDirs
 }
 
 // SetMergeAllow restricts OpenTofu twin-shadowing to inventory paths.
