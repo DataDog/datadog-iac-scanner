@@ -9,9 +9,7 @@ package vfs
 import (
 	"io/fs"
 	"path"
-	"path/filepath"
 	"sort"
-	"strings"
 )
 
 // Overlay serves in-memory files on top of a base FS. Overlay files are regular
@@ -41,7 +39,7 @@ func NewOverlay(base FS, files map[string][]byte) *Overlay {
 	o := &Overlay{base: base, files: make(map[string]overlayFile, len(files))}
 	for p, c := range files {
 		display := o.abs(p)
-		o.files[slashKey(display)] = overlayFile{display: display, content: append([]byte(nil), c...)}
+		o.files[normalize(display)] = overlayFile{display: display, content: append([]byte(nil), c...)}
 	}
 	return o
 }
@@ -50,17 +48,9 @@ func NewOverlay(base FS, files map[string][]byte) *Overlay {
 func (o *Overlay) Unwrap() FS { return o.base }
 
 // abs returns name as the base resolves it (MemFS keeps forward slashes).
-func (o *Overlay) abs(name string) string {
-	if abs, err := o.base.Abs(name); err == nil {
-		return abs
-	}
-	return filepath.Clean(name)
-}
+func (o *Overlay) abs(name string) string { return AbsOrClean(o.base, name) }
 
-// slashKey is the separator-independent form paths are compared in.
-func slashKey(p string) string { return filepath.ToSlash(filepath.Clean(p)) }
-
-func (o *Overlay) key(name string) string { return slashKey(o.abs(name)) }
+func (o *Overlay) key(name string) string { return normalize(o.abs(name)) }
 
 // ReadFile reads an overlay file, else the base file.
 func (o *Overlay) ReadFile(name string) ([]byte, error) {
@@ -118,7 +108,7 @@ func (o *Overlay) Glob(pattern string) ([]string, error) {
 	pat := o.key(pattern)
 	seen := make(map[string]struct{}, len(out))
 	for _, p := range out {
-		seen[slashKey(p)] = struct{}{}
+		seen[normalize(p)] = struct{}{}
 	}
 	for key, f := range o.files {
 		ok, err := path.Match(pat, key)
@@ -140,17 +130,15 @@ func (o *Overlay) Abs(name string) (string, error) { return o.base.Abs(name) }
 // children returns the overlay entries directly under dir (a slash key), by name.
 func (o *Overlay) children(dir string) map[string]fs.DirEntry {
 	out := make(map[string]fs.DirEntry)
-	prefix := strings.TrimSuffix(dir, "/") + "/"
 	for key, f := range o.files {
-		rel, ok := strings.CutPrefix(key, prefix)
-		if !ok || rel == "" {
+		name, isDir, ok := childOf(key, dir)
+		if !ok {
 			continue
 		}
-		seg, _, nested := strings.Cut(rel, "/")
-		if !nested {
-			out[rel] = memDirEntry{name: rel, size: int64(len(f.content))}
-		} else if _, ok := out[seg]; !ok {
-			out[seg] = memDirEntry{name: seg, dir: true}
+		if !isDir {
+			out[name] = memDirEntry{name: name, size: int64(len(f.content))}
+		} else if _, seen := out[name]; !seen {
+			out[name] = memDirEntry{name: name, dir: true}
 		}
 	}
 	return out
