@@ -5,9 +5,10 @@
  */
 
 // Package terragrunt translates a Terragrunt unit (terragrunt.hcl) into the
-// Terraform it means: a module call with the unit's source and values. Nothing
-// is executed and no environment is read: values are evaluated statically and
-// whatever cannot be known becomes partial.UnknownPlaceholder.
+// Terraform it means: a module call with the unit's source and values. The
+// unit is evaluated like Terragrunt does (includes, locals, functions), but
+// statically: nothing is executed and no environment is read, and whatever
+// cannot be known becomes partial.UnknownPlaceholder.
 package terragrunt
 
 import (
@@ -17,7 +18,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
@@ -43,7 +43,7 @@ const (
 
 // reservedArguments cannot be input names: Terraform uses them as meta-arguments.
 var reservedArguments = map[string]bool{
-	"source": true, "version": true, "count": true, "for_each": true,
+	keySource: true, "version": true, "count": true, "for_each": true,
 	"providers": true, "depends_on": true, "lifecycle": true, "locals": true,
 }
 
@@ -85,15 +85,16 @@ type translator struct {
 	fsys     vfs.FS
 	path     string
 	unitDir  string
+	absUnit  string
 	root     string
-	evalCtx  *hcl.EvalContext
+	reads    map[string]cty.Value
 	skipping func(format string, args ...any)
 }
 
 func newTranslator(ctx context.Context, fsys vfs.FS, repoRoot, path string) *translator {
 	unitDir := filepath.Dir(path)
-	absUnit := vfs.AbsOrClean(fsys, unitDir)
-	root := absUnit
+	absUnit := vfs.AbsOrClean(fsys, path)
+	root := filepath.Dir(absUnit)
 	if repoRoot != "" {
 		root = vfs.AbsOrClean(fsys, repoRoot)
 	}
@@ -103,8 +104,9 @@ func newTranslator(ctx context.Context, fsys vfs.FS, repoRoot, path string) *tra
 		fsys:    fsys,
 		path:    path,
 		unitDir: unitDir,
+		absUnit: absUnit,
 		root:    root,
-		evalCtx: &hcl.EvalContext{Functions: functions.EvalFuncsWithRoot(absUnit, root, fsys)},
+		reads:   map[string]cty.Value{},
 		skipping: func(format string, args ...any) {
 			log.Info().Msgf("terragrunt: "+format, args...)
 		},
@@ -118,79 +120,74 @@ type argument struct {
 }
 
 func (t *translator) translate(body *hclsyntax.Body) (*model.TerragruntTranslation, error) {
-	source, sourceRange, ok := t.source(body)
+	s := &scope{configPath: t.absUnit, originalPath: t.absUnit, reading: map[string]bool{t.absUnit: true}}
+	cfg, err := t.evalFile(t.path, body, s, true)
+	if err != nil {
+		t.skipping("%s: %v, unit skipped", t.path, err)
+		return nil, nil
+	}
+	if cfg.skipped() {
+		t.skipping("%s: skip or exclude covers plan and apply, unit skipped", t.path)
+		return nil, nil
+	}
+	source, sourceRange, ok := t.source(cfg)
 	if !ok {
 		return nil, nil
 	}
-	args, ok := t.inputs(body)
-	if !ok {
+	if cfg.inputsUnknown {
+		t.skipping("%s: inputs is not known, unit skipped", t.path)
 		return nil, nil
 	}
+	args := make(map[string]argument, len(cfg.inputs))
+	for name, in := range cfg.inputs {
+		args[name] = argument{value: neutralize(in.value), real: in.rng}
+	}
+	source = t.normalizeSource(source)
 	for name, a := range t.varFileValues(source) {
 		args[name] = a
 	}
 	return render(source, sourceRange, args), nil
 }
 
-// source evaluates terraform.source.
-func (t *translator) source(body *hclsyntax.Body) (string, model.SourceLocation, bool) {
-	for _, block := range body.Blocks {
-		if block.Type != "terraform" {
-			continue
-		}
-		attr, has := block.Body.Attributes["source"]
-		if !has {
-			continue
-		}
-		val, diags := attr.Expr.Value(t.evalCtx)
-		val, _ = val.UnmarkDeep()
-		if diags.HasErrors() || !val.IsWhollyKnown() || val.IsNull() || val.Type() != cty.String || val.AsString() == "" {
-			t.skipping("%s: terraform.source is not known, unit skipped", t.path)
-			return "", model.SourceLocation{}, false
-		}
-		return val.AsString(), toRange(attr.SrcRange), true
+// source reads the evaluated terraform.source.
+func (t *translator) source(cfg *config) (string, model.SourceLocation, bool) {
+	if cfg.source == nil {
+		t.skipping("%s: no terraform.source, unit skipped", t.path)
+		return "", model.SourceLocation{}, false
 	}
-	t.skipping("%s: no terraform.source, unit skipped", t.path)
-	return "", model.SourceLocation{}, false
+	source, ok := knownString(cfg.source.value)
+	if !ok || source == "" {
+		t.skipping("%s: terraform.source is not known, unit skipped", t.path)
+		return "", model.SourceLocation{}, false
+	}
+	return source, cfg.source.rng, true
 }
 
-// inputs evaluates the inputs attribute into per-name arguments.
-func (t *translator) inputs(body *hclsyntax.Body) (map[string]argument, bool) {
-	args := map[string]argument{}
-	attr, has := body.Attributes["inputs"]
-	if !has {
-		return args, true
+// normalizeSource rewrites a local source (relative or absolute, with or
+// without Terragrunt's "//" subdirectory marker) as a path relative to the
+// unit's directory, which is what a Terraform module call accepts. Anything
+// else, or a path leaving the repository, is returned as written.
+func (t *translator) normalizeSource(source string) string {
+	if !isLocalSource(source) || strings.Contains(source, "://") || strings.Contains(source, "::") {
+		return source
 	}
-	if obj, isObj := hclexpr.Unwrap(attr.Expr).(*hclsyntax.ObjectConsExpr); isObj {
-		for _, item := range obj.Items {
-			name, ok := t.keyName(item.KeyExpr)
-			if !ok {
-				t.skipping("%s: an input name is not known, input dropped", t.path)
-				continue
-			}
-			args[name] = argument{
-				value: evalPartial(item.ValueExpr, t.evalCtx),
-				real:  toRange(hcl.RangeBetween(item.KeyExpr.Range(), item.ValueExpr.Range())),
-			}
-		}
-		return args, true
+	p := filepath.FromSlash(source)
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(t.absUnit, "..", p)
 	}
-	val, diags := attr.Expr.Value(t.evalCtx)
-	val, _ = val.UnmarkDeep()
-	isMap := val.Type().IsObjectType() || val.Type().IsMapType()
-	if diags.HasErrors() || !val.IsWhollyKnown() || val.IsNull() || !isMap {
-		t.skipping("%s: inputs is not known, unit skipped", t.path)
-		return nil, false
+	p = filepath.Clean(p)
+	if !t.confined(p) {
+		return source
 	}
-	for name, v := range val.AsValueMap() {
-		args[name] = argument{value: neutralize(v), real: toRange(attr.SrcRange)}
+	rel, err := filepath.Rel(filepath.Dir(t.absUnit), p)
+	if err != nil {
+		return source
 	}
-	return args, true
-}
-
-func (t *translator) keyName(expr hclsyntax.Expression) (string, bool) {
-	k, diags := expr.Value(t.evalCtx)
-	return stringKey(k, diags)
+	rel = filepath.ToSlash(rel)
+	if rel != "." && rel != parentDir && !strings.HasPrefix(rel, parentDir+"/") {
+		rel = "./" + rel
+	}
+	return rel
 }
 
 func stringKey(k cty.Value, diags hcl.Diagnostics) (string, bool) {
@@ -213,37 +210,6 @@ func toRange(r hcl.Range) model.SourceLocation {
 		LineEnd:     r.End.Line,
 		ColumnEnd:   r.End.Column,
 	}
-}
-
-// evalPartial evaluates expr. What cannot be evaluated becomes the
-// placeholder, down to the item of an object or tuple constructor.
-func evalPartial(expr hcl.Expression, ctx *hcl.EvalContext) cty.Value {
-	val, diags := expr.Value(ctx)
-	if !diags.HasErrors() {
-		return neutralize(val)
-	}
-	switch e := expr.(type) {
-	case *hclsyntax.ParenthesesExpr:
-		return evalPartial(e.Expression, ctx)
-	case *hclsyntax.ObjectConsExpr:
-		attrs := make(map[string]cty.Value, len(e.Items))
-		for _, item := range e.Items {
-			k, kd := item.KeyExpr.Value(ctx)
-			name, ok := stringKey(k, kd)
-			if !ok {
-				continue
-			}
-			attrs[name] = evalPartial(item.ValueExpr, ctx)
-		}
-		return cty.ObjectVal(attrs)
-	case *hclsyntax.TupleConsExpr:
-		elems := make([]cty.Value, 0, len(e.Exprs))
-		for _, sub := range e.Exprs {
-			elems = append(elems, evalPartial(sub, ctx))
-		}
-		return cty.TupleVal(elems)
-	}
-	return unknownValue()
 }
 
 func unknownValue() cty.Value { return cty.StringVal(partial.UnknownPlaceholder) }
@@ -355,9 +321,13 @@ func (t *translator) readVarFile(path string) map[string]argument {
 		return nil
 	}
 	attrs := tfmodules.ParseVarsFile(src, path)
+	if attrs == nil && len(src) > 0 {
+		t.skipping("%s: %s is not valid, ignored", t.path, path)
+		return nil
+	}
 	values := make(map[string]argument, len(attrs))
 	for name, attr := range attrs {
-		values[name] = argument{value: evalPartial(attr.Expr, &hcl.EvalContext{}), real: toRange(attr.Range)}
+		values[name] = argument{value: t.evalExpr(attr.Expr, &hcl.EvalContext{}), real: toRange(attr.Range)}
 	}
 	return values
 }

@@ -57,7 +57,8 @@ func (p *Parser) ParseUnit(ctx context.Context, fileContent []byte, path string)
 		TerragruntTranslation: translation,
 	}
 	if !model.IsLineInfoOnly(ctx) {
-		out.IgnoreLines = p.unitIgnoreLines(ctx, resolved, path)
+		out.IgnoreLines = fileIgnoreLines(ctx, resolved, path)
+		p.readIncluded(ctx, translation, path)
 	}
 	if translation == nil {
 		return out, true, nil
@@ -76,13 +77,38 @@ func (p *Parser) ParseUnit(ctx context.Context, fileContent []byte, path string)
 	if err != nil {
 		return model.ParseOutput{}, true, errors.Wrap(err, "failed terragrunt parse")
 	}
-	terragrunt.RemapLines(doc, translation.Lines)
+	terragrunt.RemapLines(doc, translation.Lines, path)
 	out.Documents = []model.Document{doc}
 	return out, true, nil
 }
 
-// unitIgnoreLines reads the ignore comments of the unit file itself.
-func (p *Parser) unitIgnoreLines(ctx context.Context, content []byte, path string) []int {
+// readIncluded records the ignore lines and commands of each file other than
+// the unit that the line table points at.
+func (p *Parser) readIncluded(ctx context.Context, t *model.TerragruntTranslation, unit string) {
+	if t == nil {
+		return
+	}
+	for _, m := range t.Lines {
+		name := m.Real.Filename
+		if _, done := t.Included[name]; done || name == "" || name == unit {
+			continue
+		}
+		content, err := p.fsys.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		if t.Included == nil {
+			t.Included = make(map[string]model.IncludedFile)
+		}
+		t.Included[name] = model.IncludedFile{
+			LinesIgnore: fileIgnoreLines(ctx, content, name),
+			Commands:    comment.FileCommands("#", name, string(content)),
+		}
+	}
+}
+
+// fileIgnoreLines reads the ignore comments of an HCL file.
+func fileIgnoreLines(ctx context.Context, content []byte, path string) []int {
 	file, diags := hclcache.ParseConfig(ctx, content, path)
 	if diags.HasErrors() {
 		return nil

@@ -37,7 +37,7 @@ func TestRemapLines(t *testing.T) {
 		"_dd_lines": map[string]model.LineObject{"_dd_module": {Line: 1}},
 	}
 
-	RemapLines(doc, table)
+	RemapLines(doc, table, "")
 
 	lines := block["_dd_lines"].(map[string]model.LineObject)
 	assert.Equal(t, 10, lines["_dd__default"].Line)
@@ -49,4 +49,22 @@ func TestRemapLines(t *testing.T) {
 	assert.Equal(t, 0, arr[1]["_dd__default"].Line)
 	assert.Equal(t, 20, arr[1]["_dd__default"].Arr[0]["_dd__default"].Line)
 	assert.Equal(t, 10, doc["_dd_lines"].(map[string]model.LineObject)["_dd_module"].Line)
+}
+
+func TestRemapLinesValueFromAnotherFile(t *testing.T) {
+	table := model.LineTable{
+		{FromLine: 1, ToLine: 1, Argument: "", Real: model.SourceLocation{Filename: "/r/root.hcl", LineStart: 5}},
+		{FromLine: 2, ToLine: 2, Argument: "source", Real: model.SourceLocation{Filename: "/r/root.hcl", LineStart: 5}},
+		{FromLine: 3, ToLine: 3, Argument: "own", Real: model.SourceLocation{Filename: "/r/u/terragrunt.hcl", LineStart: 7}},
+		{FromLine: 4, ToLine: 4, Argument: "shared", Real: model.SourceLocation{Filename: "/r/root.hcl", LineStart: 9}},
+		{FromLine: 5, ToLine: 5, Argument: "", Real: model.SourceLocation{Filename: "/r/root.hcl", LineStart: 5}},
+	}
+	block := model.Document{"_dd_lines": map[string]model.LineObject{
+		"_dd_own": {Line: 3}, "_dd_shared": {Line: 4}, "_dd__default": {Line: 1},
+	}}
+	RemapLines(model.Document{"module": block}, table, "/r/u/terragrunt.hcl")
+	lines := block["_dd_lines"].(map[string]model.LineObject)
+	assert.Equal(t, 7, lines["_dd_own"].Line)
+	assert.Equal(t, 7, lines["_dd_shared"].Line, "a value of another file maps into the unit file")
+	assert.Equal(t, 7, lines["_dd__default"].Line)
 }

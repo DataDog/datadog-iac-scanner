@@ -14,65 +14,88 @@ import (
 const linesKey = "_dd_lines"
 
 // RemapLines rewrites in place the virtual lines of the line information of
-// doc (the parse of a translation) into lines of the file that sets each
-// value. A line the table does not hold maps to the module block's anchor.
-func RemapLines(doc model.Document, table model.LineTable) {
+// doc (the parse of a translation) into lines of the unit file. A line the
+// table does not hold maps to the module block's anchor; a value set by
+// another file (an include, a tfvars file) maps to the first line of the unit
+// file the table points at, or line 1.
+func RemapLines(doc model.Document, table model.LineTable, unitFile string) {
 	if len(table) == 0 {
 		return
 	}
-	remapNode(map[string]interface{}(doc), table)
+	r := remapper{table: table, unit: unitFile}
+	for _, m := range table {
+		if r.inUnit(&m) {
+			r.fallback = m.Real.LineStart
+			break
+		}
+	}
+	if r.fallback == 0 {
+		r.fallback = 1
+	}
+	r.node(map[string]interface{}(doc))
 }
 
-func remapNode(node interface{}, table model.LineTable) {
+type remapper struct {
+	table    model.LineTable
+	unit     string
+	fallback int
+}
+
+func (r remapper) inUnit(m *model.LineMapping) bool {
+	return m.Real.Filename == "" || m.Real.Filename == r.unit
+}
+
+func (r remapper) node(node interface{}) {
 	switch n := node.(type) {
 	case model.Document:
-		remapNode(map[string]interface{}(n), table)
+		r.node(map[string]interface{}(n))
 	case map[string]interface{}:
 		for k, v := range n {
 			if k == linesKey {
-				remapLines(v, table)
+				r.lines(v)
 				continue
 			}
-			remapNode(v, table)
+			r.node(v)
 		}
 	case []interface{}:
 		for _, v := range n {
-			remapNode(v, table)
+			r.node(v)
 		}
 	}
 }
 
-func remapLines(lines interface{}, table model.LineTable) {
+func (r remapper) lines(lines interface{}) {
 	switch l := lines.(type) {
 	case map[string]model.LineObject:
 		for k, obj := range l {
-			obj.Line = realLine(obj.Line, table)
-			remapArr(obj.Arr, table)
+			obj.Line = r.line(obj.Line)
+			r.arr(obj.Arr)
 			l[k] = obj
 		}
 	case map[string]*model.LineObject:
 		for _, obj := range l {
 			if obj != nil {
-				obj.Line = realLine(obj.Line, table)
-				remapArr(obj.Arr, table)
+				obj.Line = r.line(obj.Line)
+				r.arr(obj.Arr)
 			}
 		}
 	}
 }
 
-func remapArr(arr []map[string]*model.LineObject, table model.LineTable) {
+func (r remapper) arr(arr []map[string]*model.LineObject) {
 	for _, elem := range arr {
-		remapLines(elem, table)
+		r.lines(elem)
 	}
 }
 
-// realLine maps a virtual line; 0 (no line) stays 0.
-func realLine(line int, table model.LineTable) int {
+// line maps a virtual line; 0 (no line) stays 0.
+func (r remapper) line(line int) int {
 	if line == 0 {
 		return 0
 	}
-	if m, ok := table.LookupOrAnchor(line); ok {
-		return m.Real.LineStart
+	m, ok := r.table.LookupOrAnchor(line)
+	if !ok || !r.inUnit(&m) {
+		return r.fallback
 	}
-	return 0
+	return m.Real.LineStart
 }

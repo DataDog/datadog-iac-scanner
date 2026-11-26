@@ -153,7 +153,24 @@ func newFindingRouting(
 			callers[key] = f
 		}
 	}
+	addIncludedCallers(callers, files, repoPath)
 	return &findingRouting{extras: extras, moduleFiles: moduleFiles, callers: callers, external: external}
+}
+
+// addIncludedCallers makes the files a Terragrunt unit reads (such as an
+// included root.hcl) callers too, so their comments and commands apply.
+func addIncludedCallers(callers map[string]*model.FileMetadata, files model.FileMetadatas, repoPath string) {
+	for _, f := range files {
+		if f == nil || f.TerragruntTranslation == nil {
+			continue
+		}
+		for name, inc := range f.TerragruntTranslation.Included {
+			key := repoRelativeFile(name, repoPath)
+			if _, ok := callers[key]; !ok {
+				callers[key] = &model.FileMetadata{FilePath: name, LinesIgnore: inc.LinesIgnore, Commands: inc.Commands}
+			}
+		}
+	}
 }
 
 // route turns one rule's decoded findings into the findings the scan reports

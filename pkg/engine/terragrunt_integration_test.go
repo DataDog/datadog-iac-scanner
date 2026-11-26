@@ -9,6 +9,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
@@ -260,4 +261,92 @@ func TestTerragruntThroughSymlinkedCheckout(t *testing.T) {
 	require.Len(t, vulns, 1, "virtual files never reach a symlink-resolving OS call")
 	require.Equal(t, "live/prod/terragrunt.hcl", vulns[0].ModuleAttribution.CallSite.Filename)
 	require.Equal(t, 6, vulns[0].ModuleAttribution.CallSite.LineStart)
+}
+
+const (
+	twoBucketModule = "variable \"acl\" {\n  default = \"private\"\n}\n\nvariable \"log_acl\" {\n  default = \"private\"\n}\n\n" +
+		"variable \"unit\" {\n  default = \"\"\n}\n\n" +
+		"resource \"aws_s3_bucket\" \"shared\" {\n  acl = var.acl\n}\n\nresource \"aws_s3_bucket\" \"logs\" {\n  acl = var.log_acl\n}\n"
+	// The shared acl input is on line 11, terraform.source on line 6.
+	rootHCL = "locals {\n  module_dir = \"${get_parent_terragrunt_dir()}/modules\"\n}\n\nterraform {\n" +
+		"  source = \"${local.module_dir}//bucket\"\n}\n\ninputs = {\n  unit = path_relative_to_include()\n  acl  = \"public-read\"\n}\n"
+	includeRoot = "include \"root\" {\n  path = find_in_parent_folders(\"root.hcl\")\n}\n"
+)
+
+func TestTerragruntIncludedRootProvidesSourceAndSharedInputs(t *testing.T) {
+	r := newTerragruntRepo(t, twoBucketModule)
+	r.write("root.hcl", rootHCL)
+	r.write("live/a/terragrunt.hcl", includeRoot+"\ninputs = {\n  log_acl = \"public-read\"\n}\n")
+	r.write("live/b/terragrunt.hcl", includeRoot)
+
+	vulns := r.inspect(r.files("live/a/terragrunt.hcl", "live/b/terragrunt.hcl"))
+	require.Len(t, vulns, 3, "unit a: shared and logs; unit b: shared")
+
+	chains := map[string]bool{}
+	for _, v := range vulns {
+		require.Equal(t, filepath.Join(r.root, "modules", "bucket", "main.tf"), v.FileName)
+		attr := v.ModuleAttribution
+		require.NotNil(t, attr)
+		require.Len(t, attr.ModulePath, 1)
+		require.Equal(t, "root.hcl", attr.ModulePath[0].CodeLocation.Filename, "terraform.source comes from root.hcl")
+		require.Equal(t, 6, attr.ModulePath[0].CodeLocation.LineStart)
+		chains[v.ModuleCallChain] = true
+	}
+	require.Len(t, chains, 2, "each unit has its own call chain")
+
+	shared, own := 0, 0
+	for _, v := range vulns {
+		cs := v.ModuleAttribution.CallSite
+		switch cs.Filename {
+		case "root.hcl":
+			shared++
+			require.Equal(t, 11, cs.LineStart, "the shared input of root.hcl")
+		case "live/a/terragrunt.hcl":
+			own++
+			require.Equal(t, 6, cs.LineStart, "the input of the unit")
+		default:
+			t.Fatalf("unexpected call site %s", cs.Filename)
+		}
+	}
+	require.Equal(t, 2, shared)
+	require.Equal(t, 1, own)
+}
+
+const sharedRootInputs = "inputs = {\n%s  acl = \"public-read\"\n}\n"
+
+func includedRootRepo(t *testing.T, header, comment string) *terragruntRepo {
+	r := newTerragruntRepo(t, publicModule)
+	r.write("root.hcl", header+"terraform {\n  source = \"${get_parent_terragrunt_dir()}/modules/bucket\"\n}\n\n"+
+		strings.Replace(sharedRootInputs, "%s", comment, 1))
+	r.write("live/a/terragrunt.hcl", includeRoot)
+	r.write("live/b/terragrunt.hcl", includeRoot)
+	return r
+}
+
+func TestTerragruntIgnoreCommentInIncludedFileSuppresses(t *testing.T) {
+	r := includedRootRepo(t, "", "  # dd-iac-scan ignore-line\n")
+	vulns := r.inspect(r.files("live/a/terragrunt.hcl", "live/b/terragrunt.hcl"))
+	require.Len(t, vulns, 2)
+	for _, v := range vulns {
+		require.Equal(t, "root.hcl", v.ModuleAttribution.CallSite.Filename)
+		require.True(t, v.IsSuppressed, "the comment of root.hcl applies to every unit including it")
+		require.Equal(t, model.SuppressionJustificationIgnoreComment, v.SuppressionJustification)
+	}
+}
+
+func TestTerragruntIncludedFileWithoutCommentIsNotSuppressed(t *testing.T) {
+	r := includedRootRepo(t, "", "")
+	vulns := r.inspect(r.files("live/a/terragrunt.hcl", "live/b/terragrunt.hcl"))
+	require.Len(t, vulns, 2)
+	for _, v := range vulns {
+		require.False(t, v.IsSuppressed)
+	}
+}
+
+func TestTerragruntDisableCommandInIncludedFileSuppresses(t *testing.T) {
+	r := includedRootRepo(t, "# dd-iac-scan disable=acl-rule\n", "")
+	vulns := r.inspect(r.files("live/a/terragrunt.hcl"))
+	require.Len(t, vulns, 1)
+	require.True(t, vulns[0].IsSuppressed)
+	require.Equal(t, model.SuppressionJustificationDisableInFile, vulns[0].SuppressionJustification)
 }
