@@ -173,24 +173,11 @@ func (b *ResourceBudget) TryAcquireAcquisition(maximum, requested int64) (*Acqui
 func (b *ResourceBudget) AcquireAcquisition(
 	ctx context.Context, maximum, requested int64,
 ) (*AcquisitionLease, bool) {
-	if b == nil || maximum <= 0 {
-		return nil, false
-	}
 	for {
-		b.mu.Lock()
-		if lease, ok := b.tryAcquireAcquisitionLocked(maximum, requested); ok {
-			b.mu.Unlock()
-			return lease, true
+		lease, changed := b.PollAcquisition(maximum, requested)
+		if changed == nil {
+			return lease, lease != nil
 		}
-		if b.total.Bytes >= maximum {
-			b.mu.Unlock()
-			return nil, false
-		}
-		if b.acquisitionChanged == nil {
-			b.acquisitionChanged = make(chan struct{})
-		}
-		changed := b.acquisitionChanged
-		b.mu.Unlock()
 
 		select {
 		case <-ctx.Done():
@@ -198,6 +185,26 @@ func (b *ResourceBudget) AcquireAcquisition(
 		case <-changed:
 		}
 	}
+}
+
+// PollAcquisition returns a lease, or a signal to retry when reservations or
+// usage change. Both values are nil when the allowance is exhausted.
+func (b *ResourceBudget) PollAcquisition(maximum, requested int64) (lease *AcquisitionLease, changed <-chan struct{}) {
+	if b == nil || maximum <= 0 {
+		return nil, nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if lease, ok := b.tryAcquireAcquisitionLocked(maximum, requested); ok {
+		return lease, nil
+	}
+	if b.total.Bytes >= maximum {
+		return nil, nil
+	}
+	if b.acquisitionChanged == nil {
+		b.acquisitionChanged = make(chan struct{})
+	}
+	return nil, b.acquisitionChanged
 }
 
 func (b *ResourceBudget) tryAcquireAcquisitionLocked(

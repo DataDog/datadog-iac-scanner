@@ -158,14 +158,20 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 		return Resolution{}, err
 	}
 
-	useCache := r.cfg.Cache != nil && cacheableModule(mod.Source, cacheVersion)
+	cacheable := cacheableModule(mod.Source, cacheVersion)
+	useCache := r.cfg.Cache != nil && cacheable
 	getterSrc, err := r.getterSourceFor(ctx, st, mod, cacheVersion)
 	if err != nil {
 		return Resolution{}, err
 	}
-	_, selectedSubdir := splitGetterSubdir(getterSrc)
+	packageSource, selectedSubdir := splitGetterSubdir(getterSrc)
 	if selectedSubdir == "" && st == sourceTypeRegistry {
 		selectedSubdir = registrySubdir(mod.Source)
+	}
+	if packages, ok := ctx.Value(scanPackagesKey{}).(*scanPackages); ok && cacheable && isHTTPGetterSource(packageSource) {
+		if _, git := pinnableGitModuleFromGetterSource(packageSource, selectedSubdir); !git {
+			return r.resolveScanPackage(ctx, packages, mod, packageSource, st, cacheVersion, selectedSubdir, useCache)
+		}
 	}
 	if res, ok, cacheErr := r.lookupCache(ctx, mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
 		return Resolution{}, cacheErr
@@ -264,6 +270,12 @@ func (r *GoGetterResolver) fetchAndCommit(
 		}
 		return r.cfg.Git.Resolve(ctx, gitMod)
 	}
+	return r.fetchPackage(ctx, mod, packageSource, cacheVersion, selectedSubdir, selectedSubdir, useCache)
+}
+
+func (r *GoGetterResolver) fetchPackage(
+	ctx context.Context, mod *tfmodules.ParsedModule, packageSource, cacheVersion, cacheSubdir, selectedSubdir string, useCache bool,
+) (Resolution, error) {
 	if err := validateGetterSourceTransport(packageSource); err != nil {
 		return Resolution{}, err
 	}
@@ -291,7 +303,7 @@ func (r *GoGetterResolver) fetchAndCommit(
 	if err != nil {
 		return Resolution{}, err
 	}
-	return r.commitFetchedDir(ctx, mod.Source, cacheVersion, tmpDir, selectedSubdir, useCache)
+	return r.commitFetchedDir(ctx, mod.Source, cacheVersion, tmpDir, cacheSubdir, selectedSubdir, useCache)
 }
 
 func (r *GoGetterResolver) resolveCacheVersion(
@@ -412,7 +424,7 @@ func (r *GoGetterResolver) acquireHostSlot(ctx context.Context, host string) (fu
 
 // commitFetchedDir caches the fetched package and returns its selected module.
 func (r *GoGetterResolver) commitFetchedDir(
-	ctx context.Context, source, version, tmpDir, selectedSubdir string, useCache bool,
+	ctx context.Context, source, version, tmpDir, cacheSubdir, selectedSubdir string, useCache bool,
 ) (Resolution, error) {
 	if ResourceBudgetFromContext(ctx) == nil {
 		usage, err := MeasurePackage(ctx, tmpDir, ResourceLimits{})
@@ -426,7 +438,7 @@ func (r *GoGetterResolver) commitFetchedDir(
 		}
 	}
 	if useCache {
-		if cached, release, storeErr := r.cfg.Cache.store(source, version, tmpDir, selectedSubdir); storeErr == nil {
+		if cached, release, storeErr := r.cfg.Cache.store(source, version, tmpDir, cacheSubdir); storeErr == nil {
 			_ = os.RemoveAll(tmpDir)
 			if ResourceBudgetFromContext(ctx) == nil {
 				r.cfg.accountedDirs.Store(filepath.Clean(cached), struct{}{})

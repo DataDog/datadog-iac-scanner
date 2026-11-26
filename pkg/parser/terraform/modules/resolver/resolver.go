@@ -33,8 +33,14 @@ type Resolution struct {
 	Cache string
 	// Usage is PackageRoot's exact on-disk usage when the resolver already knows
 	// it; nil means callers must measure PackageRoot themselves.
-	Usage   *PackageUsage
-	Cleanup func() // optional post-scan cleanup
+	Usage         *PackageUsage
+	Cleanup       func() // optional post-scan cleanup
+	chargedBudget *ResourceBudget
+}
+
+// ChargedTo reports whether the scan already accounted for this extraction.
+func (r *Resolution) ChargedTo(budget *ResourceBudget) bool {
+	return budget != nil && r.chargedBudget == budget
 }
 
 // Cache-state labels recorded on Resolution.Cache for telemetry.
@@ -74,4 +80,19 @@ type Resolver interface {
 // would return for mod, or nil when the resolver might resolve it.
 type Screener interface {
 	Screen(ctx context.Context, mod *tfmodules.ParsedModule) error
+}
+
+// RetainedPackageStatus describes whether a call can reuse a charged package
+// or a recorded acquisition error. Ready signals when to check again.
+// VersionPending distinguishes a version lookup that may need a new
+// acquisition from one that already has a worker and a lease.
+type RetainedPackageStatus struct {
+	Reuse          bool
+	Ready          <-chan struct{}
+	VersionPending bool
+}
+
+// RetainedPackageLookup checks for scan-scoped reuse without waiting for I/O.
+type RetainedPackageLookup interface {
+	LookupRetainedPackage(ctx context.Context, mod *tfmodules.ParsedModule) RetainedPackageStatus
 }
