@@ -1231,7 +1231,7 @@ func moduleCallChainKey(chain []tfeval.CallSite, moduleAddress, repoPath string,
 	if len(chain) == 0 {
 		return moduleAddress
 	}
-	root := absPath(sites.callRange(&chain[0]).Filename, repoPath)
+	root := absPath(sites.callFile(&chain[0]), repoPath)
 	rel := root
 	if rp, err := filepath.Rel(repoPath, root); err == nil {
 		rel = rp

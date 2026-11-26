@@ -117,6 +117,15 @@ func (s *unitSites) callRange(site *tfeval.CallSite) model.SourceLocation {
 	return rng
 }
 
+// callFile is the file that holds a module call: the unit file when the call
+// is a translation, else the file the call is written in.
+func (s *unitSites) callFile(site *tfeval.CallSite) string {
+	if u := s.lookup(site.CalledFrom); u != nil {
+		return u.unit
+	}
+	return site.CalledFrom
+}
+
 // attributeLocation is the location of a module call argument, in the file
 // that sets it when the call is a translation.
 func (s *unitSites) attributeLocation(attr *hclsyntax.Attribute, filename string) model.SourceLocation {

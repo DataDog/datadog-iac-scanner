@@ -186,3 +186,34 @@ func processComment(comment *comment, tokenToIgnore *comment,
 
 	return
 }
+
+// FileCommands reads the dd-iac-scan commands in the comments that open a
+// file, before the code starts.
+func FileCommands(commentToken, filePath, fileContent string) model.CommentsCommands {
+	commentsCommands := make(model.CommentsCommands)
+	if commentToken == "" {
+		return commentsCommands
+	}
+	for _, line := range strings.Split(fileContent, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasSuffix(filePath, ".yaml") && strings.HasPrefix(line, "---") {
+			continue
+		}
+		if !strings.HasPrefix(line, commentToken) {
+			break
+		}
+		fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, commentToken)))
+		if len(fields) > 1 && fields[0] == "dd-iac-scan" && fields[1] != "" {
+			commandParameters := strings.SplitN(fields[1], "=", 2)
+			if len(commandParameters) > 1 {
+				commentsCommands[commandParameters[0]] = commandParameters[1]
+			} else {
+				commentsCommands[commandParameters[0]] = ""
+			}
+		}
+	}
+	return commentsCommands
+}

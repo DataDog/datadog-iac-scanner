@@ -13,6 +13,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -209,35 +210,7 @@ func (c *Parser) CommentsCommandsFromString(ctx context.Context, filePath, fileC
 }
 
 func (c *Parser) commentsCommands(filePath, fileContent string) model.CommentsCommands {
-	commentsCommands := make(model.CommentsCommands)
-	commentToken := c.Parsers.GetCommentToken()
-	if commentToken != "" {
-		lines := strings.Split(fileContent, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if strings.HasSuffix(filePath, ".yaml") && strings.HasPrefix(line, "---") {
-				continue
-			}
-
-			if !strings.HasPrefix(line, commentToken) {
-				break
-			}
-
-			fields := strings.Fields(strings.TrimSpace(strings.TrimPrefix(line, commentToken)))
-			if len(fields) > 1 && fields[0] == "dd-iac-scan" && fields[1] != "" {
-				commandParameters := strings.SplitN(fields[1], "=", 2)
-				if len(commandParameters) > 1 {
-					commentsCommands[commandParameters[0]] = commandParameters[1]
-				} else {
-					commentsCommands[commandParameters[0]] = ""
-				}
-			}
-		}
-	}
-	return commentsCommands
+	return comment.FileCommands(c.Parsers.GetCommentToken(), filePath, fileContent)
 }
 
 // Parse executes a parser on the fileContent and returns the file content as a Document, the file kind and

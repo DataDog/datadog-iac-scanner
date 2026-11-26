@@ -73,4 +73,14 @@ type TerragruntTranslation struct {
 	Text string
 	// Lines maps each virtual line of Text to its real position.
 	Lines LineTable
+	// Included holds the suppression data of the files other than the unit
+	// that Lines points at, by the absolute path used in Lines.
+	Included map[string]IncludedFile
+}
+
+// IncludedFile is what a file read for a unit (such as an included root.hcl)
+// contributes to suppression, like a caller file does.
+type IncludedFile struct {
+	LinesIgnore []int
+	Commands    CommentsCommands
 }
