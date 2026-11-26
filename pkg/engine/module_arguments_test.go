@@ -690,8 +690,8 @@ func TestValueAnalyzerReadsMatchVariables(t *testing.T) {
 func TestModuleAttributionForResourceNarrowsCallSite(t *testing.T) {
 	whole := model.SourceLocation{Filename: "stack/main.tf", LineStart: 1, LineEnd: 35}
 	argument := model.SourceLocation{Filename: "stack/main.tf", LineStart: 27, LineEnd: 27}
-	attrs := map[string]*model.ModuleAttribution{
-		moduleAttributionKey("aws_s3_bucket_policy", 10, 1): {
+	attrs := map[model.TerraformBlock]*model.ModuleAttribution{
+		moduleAttributionKey("aws_s3_bucket_policy", "this"): {
 			CallSite:        whole,
 			ArgumentControl: model.ArgumentControlModule,
 			Arguments: []model.ModuleArgument{
@@ -703,9 +703,10 @@ func TestModuleAttributionForResourceNarrowsCallSite(t *testing.T) {
 
 	policy := func(line int) *model.Vulnerability {
 		return &model.Vulnerability{
-			ResourceType:  "aws_s3_bucket_policy",
-			BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 10, Col: 1}},
-			Line:          line,
+			ResourceType:   "aws_s3_bucket_policy",
+			TerraformBlock: moduleAttributionKey("aws_s3_bucket_policy", "this"),
+			BlockLocation:  model.ResourceLocation{Start: model.ResourceLine{Line: 10, Col: 1}},
+			Line:           line,
 		}
 	}
 	got := moduleAttributionForResource(attrs, policy(12))
@@ -720,14 +721,15 @@ func TestModuleAttributionForResourceNarrowsCallSite(t *testing.T) {
 	got = moduleAttributionForResource(attrs, policy(10))
 	require.Equal(t, whole, got.CallSite)
 	require.Equal(t, model.ArgumentControlModule, got.ArgumentControl)
-	require.Equal(t, model.ArgumentControlModule, attrs[moduleAttributionKey("aws_s3_bucket_policy", 10, 1)].ArgumentControl,
+	require.Equal(t, model.ArgumentControlModule, attrs[moduleAttributionKey("aws_s3_bucket_policy", "this")].ArgumentControl,
 		"narrowing works on a clone")
 
-	attrs[moduleAttributionKey("aws_s3_bucket", 1, 1)] = nil
+	attrs[moduleAttributionKey("aws_s3_bucket", "this")] = nil
 	require.Nil(t, moduleAttributionForResource(attrs, &model.Vulnerability{
-		ResourceType:  "aws_s3_bucket",
-		BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 1, Col: 1}},
-		Line:          1,
+		ResourceType:   "aws_s3_bucket",
+		TerraformBlock: moduleAttributionKey("aws_s3_bucket", "this"),
+		BlockLocation:  model.ResourceLocation{Start: model.ResourceLine{Line: 1, Col: 1}},
+		Line:           1,
 	}))
 }
 
@@ -761,22 +763,24 @@ func TestBuildModuleAttributionAnchorsOnSourceArgument(t *testing.T) {
 	require.Equal(t, 1, attr.ModulePath[0].CodeLocation.LineStart)
 
 	narrowed := moduleAttributionForResource(
-		map[string]*model.ModuleAttribution{moduleAttributionKey("aws_s3_bucket", 1, 0): attr},
+		map[model.TerraformBlock]*model.ModuleAttribution{moduleAttributionKey("aws_s3_bucket", "this"): attr},
 		&model.Vulnerability{
-			ResourceType:  "aws_s3_bucket",
-			BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 1}},
-			Line:          2,
+			ResourceType:   "aws_s3_bucket",
+			TerraformBlock: moduleAttributionKey("aws_s3_bucket", "this"),
+			BlockLocation:  model.ResourceLocation{Start: model.ResourceLine{Line: 1}},
+			Line:           2,
 		},
 	)
 	require.Equal(t, 3, narrowed.CallSite.LineStart, "a finding set by an argument points at it")
 	require.Equal(t, model.ArgumentControlCaller, narrowed.ArgumentControl)
 
 	missing := moduleAttributionForResource(
-		map[string]*model.ModuleAttribution{moduleAttributionKey("aws_s3_bucket", 1, 0): attr},
+		map[model.TerraformBlock]*model.ModuleAttribution{moduleAttributionKey("aws_s3_bucket", "this"): attr},
 		&model.Vulnerability{
-			ResourceType:  "aws_s3_bucket",
-			BlockLocation: model.ResourceLocation{Start: model.ResourceLine{Line: 1}},
-			Line:          1,
+			ResourceType:   "aws_s3_bucket",
+			TerraformBlock: moduleAttributionKey("aws_s3_bucket", "this"),
+			BlockLocation:  model.ResourceLocation{Start: model.ResourceLine{Line: 1}},
+			Line:           1,
 		},
 	)
 	require.Equal(t, 2, missing.CallSite.LineStart)
