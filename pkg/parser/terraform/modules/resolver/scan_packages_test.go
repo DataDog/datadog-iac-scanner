@@ -197,8 +197,8 @@ func TestScanRegistryArchiveRetryAfter(t *testing.T) {
 		recovery     time.Duration
 		wantMin      time.Duration
 		wantMax      time.Duration
-		cancelWait   bool
 		fetchTimeout time.Duration
+		wantErr      error
 	}{
 		{name: "delta seconds", status: http.StatusTooManyRequests, header: "2", recovery: 2 * time.Second, wantMin: 2 * time.Second, wantMax: 2 * time.Second},
 		{name: "HTTP date", status: http.StatusServiceUnavailable, date: true, recovery: 2 * time.Second, wantMin: 2 * time.Second, wantMax: 2 * time.Second},
@@ -210,8 +210,9 @@ func TestScanRegistryArchiveRetryAfter(t *testing.T) {
 		{name: "no header", status: http.StatusTooManyRequests, wantMin: 250 * time.Millisecond, wantMax: 500 * time.Millisecond},
 		{name: "local backoff is the minimum", status: http.StatusTooManyRequests, header: "0", wantMin: 250 * time.Millisecond, wantMax: 500 * time.Millisecond},
 		{name: "unrelated status", status: http.StatusBadGateway, header: "60", wantMin: 250 * time.Millisecond, wantMax: 500 * time.Millisecond},
-		{name: "context ends the wait", status: http.StatusTooManyRequests, header: "60", cancelWait: true},
-		{name: "fetch timeout ends the wait", status: http.StatusTooManyRequests, header: "5", fetchTimeout: time.Second},
+		{name: "parent deadline ends the wait", status: http.StatusTooManyRequests, header: "60", wantErr: context.DeadlineExceeded},
+		{name: "fetch timeout ends the wait", status: http.StatusTooManyRequests, header: "5", fetchTimeout: time.Second, wantErr: context.DeadlineExceeded},
+		{name: "parent cancellation ends the wait", status: http.StatusTooManyRequests, header: "60", wantErr: context.Canceled},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -221,7 +222,13 @@ func TestScanRegistryArchiveRetryAfter(t *testing.T) {
 					r.cfg.FetchTimeout = tc.fetchTimeout
 				}
 				ctx := t.Context()
-				if tc.cancelWait {
+				if tc.wantErr == context.Canceled {
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithCancel(ctx)
+					defer cancel()
+					timer := time.AfterFunc(time.Second, cancel)
+					defer timer.Stop()
+				} else if tc.wantErr != nil && tc.fetchTimeout == 0 {
 					var cancel context.CancelFunc
 					ctx, cancel = context.WithTimeout(ctx, time.Second)
 					defer cancel()
@@ -251,10 +258,11 @@ func TestScanRegistryArchiveRetryAfter(t *testing.T) {
 				})
 				module := &tfmodules.ParsedModule{Source: scanPackageSource + "//entry", Version: "1.0.0"}
 				resolved, err := r.Resolve(ctx, module)
-				if tc.cancelWait || tc.fetchTimeout > 0 {
+				if tc.wantErr != nil {
 					require.Equal(t, time.Second, time.Since(start))
 					require.Len(t, arrivals, 1)
-					require.Error(t, err)
+					require.ErrorIs(t, err, tc.wantErr)
+					require.ErrorContains(t, err, "bad response code: 429")
 					return
 				}
 				require.NoError(t, err)

@@ -517,10 +517,9 @@ func (r *GoGetterResolver) fetch(ctx context.Context, getterSrc string) (string,
 			select {
 			case <-time.After(delay):
 			case <-ctx.Done():
-				return "", lastErr
 			}
-			if ctx.Err() != nil {
-				return "", lastErr
+			if err := ctx.Err(); err != nil {
+				return "", fmt.Errorf("module fetch retry interrupted: %w (previous attempt: %v)", err, lastErr)
 			}
 			// Download URLs and errors can contain signed query parameters.
 			source, _, _ := strings.Cut(getterSrc, "?")
