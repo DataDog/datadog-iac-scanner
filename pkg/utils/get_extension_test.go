@@ -26,6 +26,10 @@ func TestExtensionFromPath(t *testing.T) {
 		{path: "/repo/main.tofu.json", want: ".tofu.json"},
 		{path: "/repo/MAIN.TF.JSON", want: ".tf.json"},
 		{path: "/repo/data.json", want: ".json"},
+		{path: "/repo/live/terragrunt.hcl", want: "terragrunt.hcl"},
+		{path: "terragrunt.hcl", want: "terragrunt.hcl"},
+		{path: "/repo/Terragrunt.hcl", want: ".hcl"},
+		{path: "/repo/root.hcl", want: ".hcl"},
 		{path: "/repo/Dockerfile", want: "Dockerfile"},
 		{path: "/repo/dockerfile", want: "Dockerfile"},
 		{path: "/repo/DOCKERFILE", want: "Dockerfile"},
@@ -200,5 +204,16 @@ func TestGetExtension(t *testing.T) {
 				os.RemoveAll(test.filePath)
 			}
 		})
+	}
+}
+
+func TestTerragruntUnitIsNotARegisteredFileType(t *testing.T) {
+	if IsSupportedFileType("terragrunt.hcl") || IsSupportedFileType(".hcl") {
+		t.Error("terragrunt.hcl must not be routed without the Terragrunt flag")
+	}
+	for _, token := range SupportedFileTypes() {
+		if token == "terragrunt.hcl" || token == ".hcl" {
+			t.Errorf("%q is listed as a supported file type", token)
+		}
 	}
 }

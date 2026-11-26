@@ -20,10 +20,20 @@ const (
 	ExtTofuJSON = ".tofu.json"
 	ExtTFVars   = ".tfvars"
 
+	// TerragruntUnit is the exact base name of a Terragrunt unit file. It is
+	// also the routing token of such a file, which has no registered extension.
+	TerragruntUnit = "terragrunt.hcl"
+
 	ExtTFVarsJSON = ".tfvars.json"
 	defaultVars   = "terraform.tfvars"
 	autoVars      = ".auto.tfvars"
 )
+
+// IsTerragruntUnit reports whether path names a Terragrunt unit file (exact,
+// case-sensitive base name).
+func IsTerragruntUnit(path string) bool {
+	return filepath.Base(path) == TerragruntUnit
+}
 
 // IsTFVarsJSON reports whether path is a variable definitions file in JSON syntax.
 func IsTFVarsJSON(path string) bool {

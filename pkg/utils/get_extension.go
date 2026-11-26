@@ -41,6 +41,9 @@ func dockerfileExtension(path, ext string) (string, bool) {
 
 // ExtensionFromPath returns the extension from path alone (no stat/read).
 func ExtensionFromPath(path string) string {
+	if tfpath.IsTerragruntUnit(path) {
+		return tfpath.TerragruntUnit
+	}
 	ext := tfpath.Extension(path)
 	if dockerExt, ok := dockerfileExtension(path, ext); ok {
 		return dockerExt

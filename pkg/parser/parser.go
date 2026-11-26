@@ -62,6 +62,13 @@ type directoryDependentParser interface {
 	DirectoryDependent() bool
 }
 
+// unitParser is an optional parser capability to parse files that carry more
+// than documents (a Terragrunt unit and its translation). handled is false
+// when the file is not one of these, and the regular Parse applies.
+type unitParser interface {
+	ParseUnit(ctx context.Context, fileContent []byte, filename string) (out model.ParseOutput, handled bool, err error)
+}
+
 type kindParser interface {
 	GetKind() model.FileKind
 	GetCommentToken() string
@@ -179,6 +186,9 @@ type ParsedDocument struct {
 	// (see directoryDependentParser); the runner must not share them across
 	// files with identical content.
 	DirectoryDependent bool
+	// TerragruntTranslation is the Terraform a Terragrunt unit means; nil for
+	// other files.
+	TerragruntTranslation *model.TerragruntTranslation
 }
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
@@ -311,6 +321,8 @@ func (c *Parser) parseContent(
 		IsMinified:         isMinified,
 		TerraformPlan:      out.TerraformPlan,
 		DirectoryDependent: directoryDependent,
+
+		TerragruntTranslation: out.TerragruntTranslation,
 	}, nil
 }
 
@@ -338,6 +350,11 @@ func (c *Parser) parseDocuments(
 			return model.ParseOutput{
 				Resolved: fileContent, Documents: docs, ResolvedFiles: map[string]model.ResolvedFile{}, TerraformPlan: true,
 			}, nil
+		}
+	}
+	if up, ok := c.Parsers.(unitParser); ok {
+		if out, handled, err := up.ParseUnit(ctx, fileContent, filePath); handled {
+			return out, err
 		}
 	}
 	if pp, ok := c.Parsers.(planParser); ok {
