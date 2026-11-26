@@ -33,7 +33,7 @@ func TestGoGetterHTTPRejectsPrivateDestinationWithoutAllowlist(t *testing.T) {
 	cfg.TmpDir = t.TempDir()
 	r := NewGoGetterResolver(cfg)
 
-	_, err := r.fetchOnce(t.Context(), "http://169.254.169.254/module.zip")
+	_, _, err := r.fetchOnce(t.Context(), "http://169.254.169.254/module.zip")
 
 	if err == nil || !strings.Contains(err.Error(), "not a public unicast destination") {
 		t.Fatalf("expected metadata destination to be rejected, got %v", err)
@@ -107,7 +107,7 @@ func TestGoGetterHTTPValidatesXTerraformGetDestination(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			target = test.source
-			_, fetchErr := r.fetchOnce(t.Context(), "http://source.example:"+port+"/module")
+			_, _, fetchErr := r.fetchOnce(t.Context(), "http://source.example:"+port+"/module")
 			if fetchErr == nil || !strings.Contains(fetchErr.Error(), test.want) {
 				t.Fatalf("expected X-Terraform-Get source to be rejected with %q, got %v", test.want, fetchErr)
 			}
@@ -142,7 +142,7 @@ func TestGoGetterUsesGraphResourceLimits(t *testing.T) {
 		MaxPackageFiles: 7,
 	}))
 
-	httpGetter, ok := resolver.getters(ctx, "https://example.com/module.zip")["https"].(*getter.HttpGetter)
+	httpGetter, ok := resolver.getters(ctx, "https://example.com/module.zip", resolver.cfg.httpClient)["https"].(*getter.HttpGetter)
 	require.True(t, ok)
 	require.Equal(t, int64(1234), httpGetter.MaxBytes)
 	require.Equal(t, int64(1234), resolver.maxPackageBytes(ctx))
@@ -159,7 +159,7 @@ func TestGoGetterUsesGraphResourceLimits(t *testing.T) {
 func TestGoGetterDisablesUnpinnedNetworkTransports(t *testing.T) {
 	r := NewGoGetterResolver(NewGoGetterConfig())
 	for _, scheme := range []string{"s3", "gcs", "hg"} {
-		if _, ok := r.getters(t.Context(), scheme+"::https://modules.example/package")[scheme]; ok {
+		if _, ok := r.getters(t.Context(), scheme+"::https://modules.example/package", r.cfg.httpClient)[scheme]; ok {
 			t.Fatalf("getter %q must be disabled", scheme)
 		}
 	}
@@ -196,6 +196,10 @@ func TestCacheableModuleRegistrySubdir(t *testing.T) {
 
 func TestIsTransientFetchError(t *testing.T) {
 	transient := []string{
+		"fetch failed: error downloading 'https://example.com/module.zip': bad response code: 503",
+		"fetch failed: bad response code: 429",
+		"download endpoint returned HTTP 500",
+		"download endpoint returned HTTP 599",
 		"fetch failed: error downloading 'ssh://git@github.com/x?ref=v1': git exited with -1: ...fatal: early EOF",
 		"git exited with -1: ...Session open refused by peer",
 		"kex_exchange_identification: Connection closed by remote host",
@@ -205,6 +209,9 @@ func TestIsTransientFetchError(t *testing.T) {
 		"dial tcp: i/o timeout",
 	}
 	deterministic := []string{
+		"fetch failed: error downloading 'https://example.com/timeout.zip': bad response code: 404",
+		"fetch failed: bad response code: 408",
+		"download endpoint returned HTTP 403",
 		"registry discovery for r.example.com: Get \"https://...\": dial tcp: lookup r.example.com: no such host",
 		"download endpoint returned HTTP 404",
 		"module exceeds per-module limit of 10 MiB",
@@ -554,8 +561,8 @@ func TestFetchAndCommitDelegatesPinnableGit(t *testing.T) {
 
 func TestGoGetterUsesIsolatedGetterInstances(t *testing.T) {
 	r := NewGoGetterResolver(NewGoGetterConfig())
-	first := r.getters(t.Context(), "file:///tmp/module-a")
-	second := r.getters(t.Context(), "file:///tmp/module-b")
+	first := r.getters(t.Context(), "file:///tmp/module-a", r.cfg.httpClient)
+	second := r.getters(t.Context(), "file:///tmp/module-b", r.cfg.httpClient)
 	if first["file"] == getter.Getters["file"] || second["file"] == getter.Getters["file"] {
 		t.Fatal("file getter must not reuse go-getter package globals")
 	}

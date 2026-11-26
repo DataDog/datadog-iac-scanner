@@ -17,7 +17,9 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
+	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -89,6 +91,179 @@ func TestScanSharesRegistryFallbackFailure(t *testing.T) {
 			files, err := os.ReadDir(r.cfg.TmpDir)
 			require.NoError(t, err)
 			require.Empty(t, files)
+		})
+	}
+}
+
+func TestScanSharesRegistryArchiveHTTPOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		status       int
+		failures     int
+		wantAttempts int64
+		wantErr      bool
+	}{
+		{name: "recovers after 503", status: http.StatusServiceUnavailable, failures: 1, wantAttempts: 2},
+		{name: "recovers after 429", status: http.StatusTooManyRequests, failures: 1, wantAttempts: 2},
+		{name: "exhausts retries after 503", status: http.StatusServiceUnavailable, failures: fetchMaxAttempts, wantAttempts: fetchMaxAttempts, wantErr: true},
+		{name: "stops after 404", status: http.StatusNotFound, failures: 1, wantAttempts: 1, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				r, _, release := scanPackageFixture(t, registryPackageArchive(t), false)
+				close(release)
+				archiveTransport := r.cfg.httpClient.Transport
+				failures := tc.failures
+				r.cfg.httpClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					if req.Method == http.MethodGet && failures > 0 {
+						failures--
+						return &http.Response{StatusCode: tc.status, Header: make(http.Header), Body: http.NoBody}, nil
+					}
+					return archiveTransport.RoundTrip(req)
+				})
+				budget := NewResourceBudget(ResourceLimits{MaxPackageBytes: 4096, MaxTotalBytes: 96})
+				ctx, cleanup := WithScanPackages(WithResourceBudget(t.Context(), budget))
+				defer cleanup()
+
+				first := &tfmodules.ParsedModule{Source: scanPackageSource + "//entry", Version: "1.0.0"}
+				sibling := &tfmodules.ParsedModule{Source: scanPackageSource + "//sibling", Version: first.Version}
+				res, err := r.Resolve(ctx, first)
+				require.Equal(t, tc.wantAttempts, r.cfg.fetchCount.Load())
+				other, siblingErr := r.Resolve(ctx, sibling)
+				require.Equal(t, tc.wantAttempts, r.cfg.fetchCount.Load())
+				if tc.wantErr {
+					require.ErrorContains(t, err, strconv.Itoa(tc.status))
+					require.Same(t, err, siblingErr)
+					require.Zero(t, budget.TotalUsage().Bytes)
+					entries, readErr := os.ReadDir(r.cfg.TmpDir)
+					require.NoError(t, readErr)
+					require.Empty(t, entries)
+					return
+				}
+				require.NoError(t, err)
+				require.NoError(t, siblingErr)
+				require.Equal(t, res.PackageRoot, other.PackageRoot)
+				require.FileExists(t, filepath.Join(res.LocalPath, "main.tf"))
+				require.FileExists(t, filepath.Join(other.LocalPath, "main.tf"))
+				require.Equal(t, PackageUsage{Files: 4, Bytes: 64}, budget.TotalUsage())
+			})
+		})
+	}
+}
+
+func TestArchiveRetryWarningRedactsURL(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, _, release := scanPackageFixture(t, registryPackageArchive(t), false)
+		close(release)
+		archiveTransport := r.cfg.httpClient.Transport
+		fail := true
+		r.cfg.httpClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Method == http.MethodGet && fail {
+				fail = false
+				return &http.Response{StatusCode: http.StatusServiceUnavailable, Header: make(http.Header), Body: http.NoBody}, nil
+			}
+			return archiveTransport.RoundTrip(req)
+		})
+
+		var logs bytes.Buffer
+		ctx := zerolog.New(&logs).WithContext(t.Context())
+		source := "https://user:fixture-password@archive.example/module.zip" +
+			"?X-Amz-Signature=fixture-signature&credential=fixture-credential#fixture-fragment"
+		_, err := r.fetch(ctx, source)
+		require.NoError(t, err)
+		require.EqualValues(t, 2, r.cfg.fetchCount.Load())
+
+		warning := logs.String()
+		require.Contains(t, warning, "retrying transient module fetch")
+		require.NotContains(t, warning, "fixture-signature")
+		require.NotContains(t, warning, "fixture-credential")
+		require.NotContains(t, warning, "fixture-password")
+		require.NotContains(t, warning, "fixture-fragment")
+		require.NotContains(t, warning, "X-Amz-Signature")
+		require.NotContains(t, warning, `"error":`)
+		require.Contains(t, warning, `"source":"https://archive.example/module.zip"`)
+		require.Contains(t, warning, `"http_status":503`)
+		require.Contains(t, warning, `"attempt":2`)
+		require.Contains(t, warning, `"max_attempts":3`)
+	})
+}
+
+func TestScanRegistryArchiveRetryAfter(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		status       int
+		header       string
+		date         bool
+		recovery     time.Duration
+		wantMin      time.Duration
+		wantMax      time.Duration
+		cancelWait   bool
+		fetchTimeout time.Duration
+	}{
+		{name: "delta seconds", status: http.StatusTooManyRequests, header: "2", recovery: 2 * time.Second, wantMin: 2 * time.Second, wantMax: 2 * time.Second},
+		{name: "HTTP date", status: http.StatusServiceUnavailable, date: true, recovery: 2 * time.Second, wantMin: 2 * time.Second, wantMax: 2 * time.Second},
+		{name: "capped", status: http.StatusServiceUnavailable, header: "60", wantMin: 5 * time.Second, wantMax: 5 * time.Second},
+		{
+			name: "capped when delta overflows", status: http.StatusServiceUnavailable, header: "18446744073709551616",
+			wantMin: 5 * time.Second, wantMax: 5 * time.Second,
+		},
+		{name: "no header", status: http.StatusTooManyRequests, wantMin: 250 * time.Millisecond, wantMax: 500 * time.Millisecond},
+		{name: "local backoff is the minimum", status: http.StatusTooManyRequests, header: "0", wantMin: 250 * time.Millisecond, wantMax: 500 * time.Millisecond},
+		{name: "unrelated status", status: http.StatusBadGateway, header: "60", wantMin: 250 * time.Millisecond, wantMax: 500 * time.Millisecond},
+		{name: "context ends the wait", status: http.StatusTooManyRequests, header: "60", cancelWait: true},
+		{name: "fetch timeout ends the wait", status: http.StatusTooManyRequests, header: "5", fetchTimeout: time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				r, _, release := scanPackageFixture(t, registryPackageArchive(t), false)
+				close(release)
+				if tc.fetchTimeout > 0 {
+					r.cfg.FetchTimeout = tc.fetchTimeout
+				}
+				ctx := t.Context()
+				if tc.cancelWait {
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithTimeout(ctx, time.Second)
+					defer cancel()
+				}
+				ctx, cleanup := WithScanPackages(ctx)
+				defer cleanup()
+				start := time.Now()
+				header := tc.header
+				if tc.date {
+					header = start.Add(tc.recovery).UTC().Format(http.TimeFormat)
+				}
+				var arrivals []time.Duration
+				archiveTransport := r.cfg.httpClient.Transport
+				r.cfg.httpClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					if req.Method == http.MethodGet {
+						elapsed := time.Since(start)
+						arrivals = append(arrivals, elapsed)
+						if len(arrivals) == 1 || elapsed < tc.recovery {
+							headers := make(http.Header)
+							if header != "" {
+								headers.Set("Retry-After", header)
+							}
+							return &http.Response{StatusCode: tc.status, Header: headers, Body: http.NoBody}, nil
+						}
+					}
+					return archiveTransport.RoundTrip(req)
+				})
+				module := &tfmodules.ParsedModule{Source: scanPackageSource + "//entry", Version: "1.0.0"}
+				resolved, err := r.Resolve(ctx, module)
+				if tc.cancelWait || tc.fetchTimeout > 0 {
+					require.Equal(t, time.Second, time.Since(start))
+					require.Len(t, arrivals, 1)
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+				require.FileExists(t, filepath.Join(resolved.LocalPath, "main.tf"))
+				require.Len(t, arrivals, 2)
+				delay := arrivals[1] - arrivals[0]
+				require.GreaterOrEqual(t, delay, tc.wantMin)
+				require.LessOrEqual(t, delay, tc.wantMax)
+			})
 		})
 	}
 }

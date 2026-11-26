@@ -25,6 +25,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 )
 
@@ -491,30 +492,54 @@ func cacheableModule(source, version string) bool {
 const (
 	fetchMaxAttempts    = 3
 	fetchRetryBaseDelay = 250 * time.Millisecond
+	fetchRetryMaxDelay  = 5 * time.Second
 )
 
-// fetch retries transient git/SSH failures so cold scans stay deterministic.
+// fetch retries transient connection and HTTP failures within one acquisition.
 func (r *GoGetterResolver) fetch(ctx context.Context, getterSrc string) (string, error) {
+	timeout := r.cfg.FetchTimeout
+	if timeout <= 0 {
+		timeout = DefaultFetchTimeout
+	}
+	// All download attempts and backoff share the per-module deadline.
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	contextLogger := logger.FromContext(ctx)
 	var lastErr error
+	var retryAfter time.Duration
 	for attempt := 0; attempt < fetchMaxAttempts; attempt++ {
 		if attempt > 0 {
 			delay := fetchRetryBaseDelay*time.Duration(1<<(attempt-1)) +
 				time.Duration(rand.Int63n(int64(fetchRetryBaseDelay))) //nolint:gosec
+			delay = min(max(delay, retryAfter), fetchRetryMaxDelay)
 
 			select {
 			case <-time.After(delay):
 			case <-ctx.Done():
 				return "", lastErr
 			}
-			contextLogger.Warn().Err(lastErr).
-				Msgf("retrying transient module fetch (attempt %d/%d): %s", attempt+1, fetchMaxAttempts, getterSrc)
+			if ctx.Err() != nil {
+				return "", lastErr
+			}
+			// Download URLs and errors can contain signed query parameters.
+			source, _, _ := strings.Cut(getterSrc, "?")
+			source, _, _ = strings.Cut(source, "#")
+			warning := contextLogger.Warn().
+				Str("source", model.RedactURLCredentials(source)).
+				Int("attempt", attempt+1).
+				Int("max_attempts", fetchMaxAttempts)
+			if status, ok := fetchHTTPStatus(strings.ToLower(lastErr.Error())); ok {
+				warning.Int("http_status", status)
+			}
+			warning.Msg("retrying transient module fetch")
 		}
-		tmpDir, err := r.fetchWithShallowFallback(ctx, getterSrc)
+		tmpDir, retryDelay, err := r.fetchWithShallowFallback(ctx, getterSrc)
 		if err == nil {
 			return tmpDir, nil
 		}
 		lastErr = err
+		retryAfter = retryDelay
 		if !isTransientFetchError(err) {
 			return "", err
 		}
@@ -523,17 +548,17 @@ func (r *GoGetterResolver) fetch(ctx context.Context, getterSrc string) (string,
 }
 
 // fetchWithShallowFallback retries without depth only when the git server rejects shallow fetches.
-func (r *GoGetterResolver) fetchWithShallowFallback(ctx context.Context, getterSrc string) (string, error) {
-	tmpDir, err := r.fetchOnce(ctx, getterSrc)
+func (r *GoGetterResolver) fetchWithShallowFallback(ctx context.Context, getterSrc string) (string, time.Duration, error) {
+	tmpDir, retryAfter, err := r.fetchOnce(ctx, getterSrc)
 	if err == nil {
-		return tmpDir, nil
+		return tmpDir, 0, nil
 	}
 	fallback := withoutDepth(getterSrc)
 	if fallback == getterSrc {
-		return "", err
+		return "", retryAfter, err
 	}
 	if !isShallowUnsupportedError(err) {
-		return "", err
+		return "", retryAfter, err
 	}
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Warn().
@@ -542,13 +567,29 @@ func (r *GoGetterResolver) fetchWithShallowFallback(ctx context.Context, getterS
 	return r.fetchOnce(ctx, fallback)
 }
 
-// isTransientFetchError reports connection-level fetch failures worth retrying.
+func fetchHTTPStatus(msg string) (int, bool) {
+	// Go-getter and the registry report HTTP status codes as error text.
+	for _, prefix := range [...]string{"bad response code: ", "returned http "} {
+		if index := strings.LastIndex(msg, prefix); index >= 0 {
+			status, parseErr := strconv.Atoi(msg[index+len(prefix):])
+			if parseErr == nil {
+				return status, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// isTransientFetchError reports fetch failures worth retrying.
 func isTransientFetchError(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	// Checked first: git follows a refused login or a missing repository with
+	if status, ok := fetchHTTPStatus(msg); ok {
+		return status == http.StatusTooManyRequests || (status >= http.StatusInternalServerError && status < 600)
+	}
+	// Check permanent errors before connection errors. Git follows a refused login or missing repository with
 	// "could not read from remote repository", which also ends a dropped
 	// connection.
 	nonRetryable := []string{
@@ -605,7 +646,7 @@ func isShallowUnsupportedMessage(msg string) bool {
 		strings.Contains(msg, "upload-pack: not our ref")
 }
 
-func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (string, error) {
+func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (string, time.Duration, error) {
 	r.cfg.fetchCount.Add(1)
 	base := r.cfg.TmpDir
 	if base == "" {
@@ -613,47 +654,43 @@ func (r *GoGetterResolver) fetchOnce(ctx context.Context, getterSrc string) (str
 	}
 	tmpDir, err := os.MkdirTemp(base, "iac-module-*")
 	if err != nil {
-		return "", &tfmodules.UnresolvedError{Reason: "creating temp dir: " + err.Error()}
+		return "", 0, &tfmodules.UnresolvedError{Reason: "creating temp dir: " + err.Error()}
 	}
 
-	timeout := r.cfg.FetchTimeout
-	if timeout <= 0 {
-		timeout = DefaultFetchTimeout
-	}
-	fetchCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
+	httpClient := *r.cfg.httpClient
+	retryAfter := &archiveRetryAfterTransport{base: httpClient.Transport}
+	httpClient.Transport = retryAfter
 	client := &getter.Client{
-		Ctx:             fetchCtx,
+		Ctx:             ctx,
 		Src:             getterSrc,
 		Dst:             tmpDir,
 		Pwd:             tmpDir,
 		Mode:            getter.ClientModeDir,
 		DisableSymlinks: true,
-		Decompressors:   r.decompressors(fetchCtx),
+		Decompressors:   r.decompressors(ctx),
 		Options: []getter.ClientOption{
-			getter.WithGetters(r.getters(fetchCtx, getterSrc)),
+			getter.WithGetters(r.getters(ctx, getterSrc, &httpClient)),
 		},
 	}
 	if err := client.Get(); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		var budgetErr *BudgetExceededError
 		if errors.As(err, &budgetErr) {
-			return "", budgetErr
+			return "", 0, budgetErr
 		}
-		return "", &tfmodules.UnresolvedError{Reason: "fetch failed: " + err.Error()}
+		return "", retryAfter.delay, &tfmodules.UnresolvedError{Reason: "fetch failed: " + err.Error()}
 	}
-	return tmpDir, nil
+	return tmpDir, 0, nil
 }
 
-func (r *GoGetterResolver) getters(ctx context.Context, source string) map[string]getter.Getter {
+func (r *GoGetterResolver) getters(ctx context.Context, source string, httpClient *http.Client) map[string]getter.Getter {
 	getters := make(map[string]getter.Getter)
 	if !isHTTPGetterSource(source) {
 		getters["file"] = &getter.FileGetter{}
 	}
 	httpGetter := &getter.HttpGetter{
 		Netrc:              true,
-		Client:             r.cfg.httpClient,
+		Client:             httpClient,
 		XTerraformGetLimit: maxHTTPRedirects,
 		MaxBytes:           r.maxPackageBytes(ctx),
 	}
