@@ -87,7 +87,7 @@ func (idx *moduleCallIndex) record(
 			continue
 		}
 		idx.calls[dir] = append(idx.calls[dir], moduleCall{
-			callChain:   moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath),
+			callChain:   moduleCallChainKey(instance.CallChain, instance.ModuleAddress, repoPath, cache.unitSites()),
 			attribution: attr,
 		})
 	}

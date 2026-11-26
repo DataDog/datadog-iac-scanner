@@ -326,7 +326,7 @@ func (t *moduleAttributionCache) traceCallArgument(
 			return model.SourceLocation{}, false
 		}
 		if level == 0 {
-			return attributeLocation(arg, rootCallFile), true
+			return t.sites.attributeLocation(arg, rootCallFile), true
 		}
 		reads = t.argumentReads(site, arg)
 	}
@@ -415,16 +415,6 @@ func (t *moduleAttributionCache) argumentReads(site *tfeval.CallSite, arg *hclsy
 	}
 	t.arguments[key] = reads
 	return reads
-}
-
-func attributeLocation(attr *hclsyntax.Attribute, filename string) model.SourceLocation {
-	return model.SourceLocation{
-		Filename:    filename,
-		LineStart:   attr.SrcRange.Start.Line,
-		LineEnd:     attr.SrcRange.End.Line,
-		ColumnStart: attr.SrcRange.Start.Column,
-		ColumnEnd:   attr.SrcRange.End.Column,
-	}
 }
 
 // iteratorReads binds an iterator in scope (each, or a dynamic block's

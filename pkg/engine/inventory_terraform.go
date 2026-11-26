@@ -50,6 +50,8 @@ type terraformInventory struct {
 	// modulePaths keeps one copy of each module path: every instance of a
 	// module, in every root that calls it, has the same.
 	modulePaths map[string]string
+	// sites maps Terragrunt translations to their units. May be nil.
+	sites *unitSites
 }
 
 // newTerraformInventory returns nil when the scan has no inventory.
@@ -154,7 +156,7 @@ func (inv *terraformInventory) addRoot(
 			inv.fail(inventory.FailureTerraformPanic)
 		}
 	}()
-	attributions := newModuleAttributionCache()
+	attributions := newModuleAttributionCache().withSites(inv.sites)
 	seen := make(map[string]bool, len(resources))
 	var instances map[*tfeval.ResolvedResource]*model.ResourceOccurrence
 	for i := range resources {
@@ -201,7 +203,7 @@ func (inv *terraformInventory) associateWrittenOccurrence(r *tfeval.ResolvedReso
 		if inv.external == nil || !inv.external(occurrence.File) {
 			return
 		}
-		occurrence.Terraform.CallChainKey = callChainKey(r, inv.repoPath)
+		occurrence.Terraform.CallChainKey = callChainKey(r, inv.repoPath, inv.sites)
 	}
 	inv.documents[id] = append(inv.documents[id], occurrence)
 }
@@ -227,7 +229,7 @@ func (inv *terraformInventory) occurrence(
 			Address:     address,
 			ModuleCall:  moduleCall,
 			Complete:    complete,
-			CallChain:   occurrenceCallChain(r.CallChain),
+			CallChain:   occurrenceCallChain(r.CallChain, inv.sites),
 			Attribution: callAttribution(r.CallChain, file, inv.repoPath, inv.lookup, attributions),
 		},
 	}
@@ -244,19 +246,20 @@ func (inv *terraformInventory) occurrence(
 	return o
 }
 
-func occurrenceCallChain(chain []tfeval.CallSite) []model.TerraformCallSite {
+func occurrenceCallChain(chain []tfeval.CallSite, sites *unitSites) []model.TerraformCallSite {
 	if len(chain) == 0 {
 		return nil
 	}
 	hops := make([]model.TerraformCallSite, len(chain))
 	for i := range chain {
 		call := &chain[i]
+		at := sites.callRange(call)
 		hops[i] = model.TerraformCallSite{
 			Name: call.ModuleName, Source: call.Source, Version: call.Version,
-			InstanceKey: call.InstanceKey, File: call.CalledFrom,
+			InstanceKey: call.InstanceKey, File: at.Filename,
 			Range: model.ResourceLocation{
-				Start: model.ResourceLine{Line: call.CalledLine, Col: call.CalledColumn},
-				End:   model.ResourceLine{Line: call.CalledEndLine, Col: call.CalledEndColumn},
+				Start: model.ResourceLine{Line: at.LineStart, Col: at.ColumnStart},
+				End:   model.ResourceLine{Line: at.LineEnd, Col: at.ColumnEnd},
 			},
 		}
 	}

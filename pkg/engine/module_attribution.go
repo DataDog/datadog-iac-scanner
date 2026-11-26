@@ -48,10 +48,12 @@ type moduleProvenanceLookup func(callerRoot, source, version, moduleName string)
 // resolving a value read the instance's own iteration. Keys are HCL nodes, so
 // a cache must not outlive the root whose parse it holds.
 type moduleAttributionCache struct {
-	resources      map[resourceCacheKey]*model.ModuleAttribution
-	chains         map[*chainNode]modulePathEntry
-	attributes     map[bodyCacheKey]bodyReads
-	arguments      map[argumentCacheKey]inputReads
+	resources  map[resourceCacheKey]*model.ModuleAttribution
+	chains     map[*chainNode]modulePathEntry
+	attributes map[bodyCacheKey]bodyReads
+	arguments  map[argumentCacheKey]inputReads
+	// sites maps the call sites of Terragrunt translations to real files. May be nil.
+	sites          *unitSites
 	locals         map[localCacheKey]inputReads
 	eachIndexes    map[localCacheKey]eachIndex
 	entryParts     map[localCacheKey]eachIndex
@@ -102,6 +104,21 @@ type modulePackage struct {
 	declared   string
 	sourceType string
 	version    string
+}
+
+// withSites makes the cache report the call sites of translations where they
+// are written.
+func (c *moduleAttributionCache) withSites(sites *unitSites) *moduleAttributionCache {
+	c.sites = sites
+	return c
+}
+
+// unitSites returns the cache's sites; nil-safe.
+func (c *moduleAttributionCache) unitSites() *unitSites {
+	if c == nil {
+		return nil
+	}
+	return c.sites
 }
 
 func newModuleAttributionCache() *moduleAttributionCache {
@@ -177,16 +194,16 @@ func (c *moduleAttributionCache) modulePath(
 	chain []tfeval.CallSite, repoPath string, lookup moduleProvenanceLookup,
 ) modulePathEntry {
 	if c == nil {
-		return buildModulePath(chain, repoPath, lookup)
+		return buildModulePath(chain, repoPath, lookup, nil)
 	}
 	key, ok := c.chain(chain, false)
 	if !ok {
-		return buildModulePath(chain, repoPath, lookup)
+		return buildModulePath(chain, repoPath, lookup, c.sites)
 	}
 	if entry, ok := c.chains[key]; ok {
 		return entry
 	}
-	entry := buildModulePath(chain, repoPath, lookup)
+	entry := buildModulePath(chain, repoPath, lookup, c.sites)
 	c.chains[key] = entry
 	return entry
 }
@@ -244,7 +261,7 @@ func callAttribution(
 	attr := &model.ModuleAttribution{
 		SourceType:         moduleSourceTypeLocal,
 		DependencyType:     dependencyType,
-		CallSite:           rootCallAnchor(&chain[0], entry.path[0].CodeLocation),
+		CallSite:           rootCallAnchor(&chain[0], entry.path[0].CodeLocation, cache.unitSites()),
 		ModuleCodeLocation: model.SourceLocation{Filename: name},
 		ModulePath:         entry.path,
 	}
@@ -256,7 +273,7 @@ func callAttribution(
 
 // rootCallAnchor is where a finding not set by a call argument points: the
 // root call's source argument, which names the module to change or upgrade.
-func rootCallAnchor(site *tfeval.CallSite, block model.SourceLocation) model.SourceLocation {
+func rootCallAnchor(site *tfeval.CallSite, block model.SourceLocation, sites *unitSites) model.SourceLocation {
 	if site.Body == nil {
 		return block
 	}
@@ -264,7 +281,7 @@ func rootCallAnchor(site *tfeval.CallSite, block model.SourceLocation) model.Sou
 	if !ok {
 		return block
 	}
-	return attributeLocation(source, block.Filename)
+	return sites.attributeLocation(source, block.Filename)
 }
 
 // buildModulePath returns one hop per call in chain, along with the package
@@ -274,6 +291,7 @@ func buildModulePath(
 	chain []tfeval.CallSite,
 	repoPath string,
 	lookup moduleProvenanceLookup,
+	sites *unitSites,
 ) modulePathEntry {
 	entry := modulePathEntry{
 		path:     make([]model.ModulePathHop, 0, len(chain)),
@@ -282,16 +300,10 @@ func buildModulePath(
 	var pkg modulePackage
 	for i := range chain {
 		site := &chain[i]
-		location := declarationLocation(
-			site.CalledFrom,
-			site.CalledLine,
-			site.CalledEndLine,
-			site.CalledColumn,
-			site.CalledEndColumn,
-			repoPath,
-		)
+		at := sites.callRange(site)
+		location := declarationLocation(at.Filename, at.LineStart, at.LineEnd, at.ColumnStart, at.ColumnEnd, repoPath)
 		if i > 0 {
-			location.Filename, _ = moduleFileName(site.CalledFrom, repoPath, entry.packages)
+			location.Filename, _ = moduleFileName(at.Filename, repoPath, entry.packages)
 		}
 		hop := model.ModulePathHop{
 			Name:         site.ModuleName,

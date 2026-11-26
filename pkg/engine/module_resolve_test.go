@@ -308,7 +308,7 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 	var resourceCount int
 	var rootEvalOK bool
 	evaluateRootModules(
-		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
+		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated,
 		map[string]bool{}, map[string]bool{}, map[string]bool{},
 		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil, nil,
