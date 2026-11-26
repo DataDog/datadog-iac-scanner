@@ -373,6 +373,38 @@ func TestConvertRuleIncludesArgumentsInMetadata(t *testing.T) {
 	}, query.Metadata["arguments"])
 }
 
+func TestConvertRuleCarriesCanonicalDefaultRuleIDSeparately(t *testing.T) {
+	rule := &datadog.Rule{
+		ID:            "terraform-rule-id",
+		DefaultRuleID: "cspm-default-rule-id",
+	}
+
+	query := ConvertRule(rule)
+	require.Equal(t, "terraform-rule-id", query.Metadata["id"])
+	require.Equal(t, "cspm-default-rule-id", query.Metadata["defaultRuleId"])
+}
+
+func TestConvertRuleMergesOriginTaggedComplianceFrameworks(t *testing.T) {
+	rule := &datadog.Rule{
+		DefaultFrameworks: []datadog.Framework{{Framework: "CIS", Version: "1", Requirement: "1", Control: "1.1"}},
+		CustomFrameworks:  []datadog.Framework{{Framework: "Custom", Version: "2", Requirement: "A", Control: "A.1"}},
+		ComplianceFrameworks: []datadog.ComplianceFramework{
+			{Framework: "NIST", Version: "3", Requirement: "AC", Control: "AC-1", IsDefault: true},
+			{Framework: "Org Policy", Version: "1", Requirement: "B", Control: "B.1", IsDefault: false},
+		},
+	}
+
+	query := ConvertRule(rule)
+	assert.Equal(t, []any{
+		map[string]any{"framework": "CIS", "framework_version": "1", "requirement": "1", "control": "1.1"},
+		map[string]any{"framework": "NIST", "framework_version": "3", "requirement": "AC", "control": "AC-1"},
+	}, query.Metadata["defaultFrameworks"])
+	assert.Equal(t, []any{
+		map[string]any{"framework": "Custom", "framework_version": "2", "requirement": "A", "control": "A.1"},
+		map[string]any{"framework": "Org Policy", "framework_version": "1", "requirement": "B", "control": "B.1"},
+	}, query.Metadata["customFrameworks"])
+}
+
 // TestConvertRuleCarriesLegacyIdsInMetadata checks that the legacy_ids
 // entries of an API rule reach the query metadata next to legacyId.
 func TestConvertRuleCarriesLegacyIdsInMetadata(t *testing.T) {

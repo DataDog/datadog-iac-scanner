@@ -265,6 +265,7 @@ func (m *materializer) buildEntry(group *manifestGroup) (resolver.ManifestModule
 	entry.CanonicalSource = model.RedactURLCredentials(first.CanonicalSource)
 	entry.ResolvedVersion = first.ResolvedVersion
 	entry.ResolvedRef = first.ResolvedRef
+	entry.RegistryGitDirectory = first.RegistryGitDirectory
 	entry.ContentDigest = packageInfo.digest
 	entry.PackageRoot = packageInfo.relativeRoot
 	entry.LocalPath = filepath.ToSlash(filepath.Join(packageInfo.relativeRoot, selectedPath))

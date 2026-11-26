@@ -171,14 +171,14 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 	}
 	if packages, ok := ctx.Value(scanPackagesKey{}).(*scanPackages); ok && cacheable && isHTTPGetterSource(packageSource) {
 		if _, git := pinnableGitModuleFromGetterSource(packageSource, selectedSubdir); !git {
-			return r.resolveScanPackage(ctx, packages, mod, packageSource, st, cacheVersion, selectedSubdir, useCache)
+			return r.resolveScanPackage(ctx, packages, mod, getterSrc, st, cacheVersion, selectedSubdir, useCache)
 		}
 	}
 	if res, ok, cacheErr := r.lookupCache(ctx, mod, cacheVersion, selectedSubdir, useCache); cacheErr != nil {
 		return Resolution{}, cacheErr
 	} else if ok {
 		labelResolution(&res, st, CacheStateHit)
-		return stampRegistryVersion(&res, st, cacheVersion), nil
+		return stampRegistryResolution(&res, st, cacheVersion, getterSrc), nil
 	}
 
 	// Outside scan package sharing, singleflight coalesces concurrent
@@ -195,9 +195,9 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 		}
 		fetched := v.(Resolution)
 		labelResolution(&fetched, st, CacheStateMiss)
-		return stampRegistryVersion(&fetched, st, cacheVersion), nil
+		return stampRegistryResolution(&fetched, st, cacheVersion, getterSrc), nil
 	}
-	return r.resolveUncached(ctx, st, mod, cacheVersion, selectedSubdir)
+	return r.resolveUncached(ctx, st, mod, cacheVersion, selectedSubdir, getterSrc)
 }
 
 // resolveUncached fetches without the on-disk module cache. The cache state
@@ -205,14 +205,14 @@ func (r *GoGetterResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedMod
 // configurations where the module cache failed to initialize, where no cache
 // lookup was attempted — those scans must not appear as cache misses.
 func (r *GoGetterResolver) resolveUncached(
-	ctx context.Context, sourceType string, mod *tfmodules.ParsedModule, cacheVersion, selectedSubdir string,
+	ctx context.Context, sourceType string, mod *tfmodules.ParsedModule, cacheVersion, selectedSubdir, getterSource string,
 ) (Resolution, error) {
 	res, err := r.fetchAndCommit(ctx, sourceType, mod, cacheVersion, selectedSubdir, false)
 	if err != nil {
 		return Resolution{}, err
 	}
 	labelResolution(&res, sourceType, "")
-	return stampRegistryVersion(&res, sourceType, cacheVersion), nil
+	return stampRegistryResolution(&res, sourceType, cacheVersion, getterSource), nil
 }
 
 // labelResolution stamps the telemetry origin and cache state on a resolution
@@ -237,6 +237,13 @@ func originForSourceType(st string) string {
 	default:
 		return st
 	}
+}
+
+func stampRegistryResolution(res *Resolution, sourceType, version, getterSource string) Resolution {
+	if sourceType == sourceTypeRegistry && version != "" {
+		res.RegistryGitDirectory, _ = gitModuleDirectory(getterSource, res.ResolvedRef)
+	}
+	return stampRegistryVersion(res, sourceType, version)
 }
 
 func stampRegistryVersion(res *Resolution, sourceType, version string) Resolution {

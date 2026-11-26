@@ -254,6 +254,9 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 		Aggregation:  1,
 		Experimental: rule.IsTesting,
 	}
+	if rule.DefaultRuleID != "" {
+		out.Metadata["defaultRuleId"] = rule.DefaultRuleID
+	}
 	setStringPtr(out.Metadata, "legacyId", rule.LegacyId)
 	if len(rule.LegacyIds) > 0 {
 		out.Metadata["legacyIds"] = rule.LegacyIds
@@ -314,6 +317,19 @@ func ConvertRule(rule *datadog.Rule) model.QueryMetadata {
 	}
 	if len(rule.CustomFrameworks) > 0 {
 		out.Metadata["customFrameworks"] = frameworksToMeta(rule.CustomFrameworks)
+	}
+	for _, framework := range rule.ComplianceFrameworks {
+		key := "customFrameworks"
+		if framework.IsDefault {
+			key = "defaultFrameworks"
+		}
+		legacy, _ := out.Metadata[key].([]any)
+		out.Metadata[key] = append(legacy, map[string]any{
+			"framework":         framework.Framework,
+			"framework_version": framework.Version,
+			"requirement":       framework.Requirement,
+			"control":           framework.Control,
+		})
 	}
 	return out
 }

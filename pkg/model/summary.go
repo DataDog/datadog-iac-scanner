@@ -64,6 +64,7 @@ type VulnerableFile struct {
 type QueryResult struct {
 	QueryName                   string           `json:"query_name"`
 	QueryID                     string           `json:"query_id"`
+	DefaultRuleID               string           `json:"default_rule_id,omitempty"`
 	LegacyQueryID               string           `json:"legacy_query_id"`
 	QueryURI                    string           `json:"query_url"`
 	Severity                    Severity         `json:"severity"`
@@ -360,6 +361,7 @@ func CreateSummary(ctx context.Context, counters Counters, vulnerabilities []Vul
 			q[item.QueryID] = QueryResult{
 				QueryName:     item.QueryName,
 				QueryID:       item.QueryID,
+				DefaultRuleID: item.DefaultRuleID,
 				LegacyQueryID: item.LegacyQueryID,
 				Severity:      item.Severity,
 				QueryURI:      item.QueryURI,
