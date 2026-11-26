@@ -6,6 +6,7 @@
 package resolver
 
 import (
+	"cmp"
 	"path/filepath"
 	"strings"
 
@@ -32,7 +33,7 @@ func RequestedModuleDirectory(mod *tfmodules.ParsedModule, res *Resolution) Modu
 	_, subdir := splitGetterSubdir(source)
 	version := strings.TrimSpace(mod.Version)
 	if addr, err := tfmodules.ParseRegistryModuleSource(source); err == nil {
-		subdir = addr.Subdir
+		subdir = cmp.Or(res.registryArchiveSubdir, addr.Subdir)
 		if res.ResolvedVersion != "" {
 			version = res.ResolvedVersion
 		}

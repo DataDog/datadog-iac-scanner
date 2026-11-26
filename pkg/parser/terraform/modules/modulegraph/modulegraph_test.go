@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
@@ -1482,6 +1483,555 @@ func TestResolveStopsAcquiringFrontierPastAllowance(t *testing.T) {
 	}
 }
 
+type retainedTrackingResolver struct {
+	*trackingResolver
+	acquired, retained string
+}
+
+func (r retainedTrackingResolver) LookupRetainedPackage(_ context.Context, mod *tfmodules.ParsedModule) resolver.RetainedPackageStatus {
+	return resolver.RetainedPackageStatus{Reuse: mod.Source == r.retained && r.callCount(r.acquired) == 1}
+}
+
+func TestResolveSelectsRetainedModuleAtAcquisitionLimit(t *testing.T) {
+	const first = "example.com/acme/a/aws"
+	const acquired = "example.com/acme/b/aws//a"
+	const skipped = "example.com/acme/b/aws//middle"
+	const retained = "example.com/acme/b/aws//z"
+	const last = "example.com/acme/c/aws"
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	require.NoError(t, os.Mkdir(root, 0o700))
+	file := filepath.Join(root, "main.tf")
+	var calls strings.Builder
+	for i, source := range []string{first, acquired, skipped, retained, last} {
+		fmt.Fprintf(&calls, "module \"m%d\" { source = %q }\n", i, source)
+	}
+	require.NoError(t, os.WriteFile(file, []byte(calls.String()), 0o600))
+	firstDir := filepath.Join(base, "first")
+	sharedDir := filepath.Join(base, "shared")
+	for _, dir := range []string{firstDir, sharedDir} {
+		require.NoError(t, os.Mkdir(dir, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), make([]byte, 100), 0o600))
+	}
+	tracker := &trackingResolver{
+		bySource: map[string]resolver.Resolution{
+			first: {LocalPath: firstDir}, acquired: {LocalPath: sharedDir}, retained: {LocalPath: sharedDir},
+		},
+		calls: make(map[string]int),
+	}
+	result := Resolve(t.Context(), &Request{
+		RootPaths: []string{root}, DiscoveryPaths: []string{file}, MaxDepth: 1,
+		Resolver:       retainedTrackingResolver{trackingResolver: tracker, acquired: acquired, retained: retained},
+		ResourceLimits: resolver.ResourceLimits{MaxTotalBytes: 100, MaxPackageBytes: 100},
+	})
+	defer result.Cleanup()
+	require.Equal(t, 1, tracker.callCount(retained))
+	require.Zero(t, tracker.callCount(skipped))
+	require.Zero(t, tracker.callCount(last))
+	require.Len(t, result.Modules, 2)
+	require.ElementsMatch(t, []string{"m1", "m3"}, []string{result.Modules[0].Name, result.Modules[1].Name})
+	var unacquired []string
+	for _, event := range result.BudgetEvents {
+		if event.Gate == "acquisition" {
+			unacquired = append(unacquired, event.Source)
+		}
+	}
+	require.Equal(t, []string{skipped, last}, unacquired)
+}
+
+type waitingRetainedResolver struct {
+	started, release, unrelated chan struct{}
+	dependent, releaseUnrelated chan struct{}
+	sharedDir, unrelatedDir     string
+}
+
+func (r waitingRetainedResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	switch mod.Name {
+	case "slow":
+		close(r.started)
+		<-r.release
+	case "dependent":
+		<-r.release
+		if r.dependent != nil {
+			close(r.dependent)
+		}
+	case "unrelated":
+		close(r.unrelated)
+		if r.releaseUnrelated != nil {
+			<-r.releaseUnrelated
+		}
+		return resolver.Resolution{LocalPath: r.unrelatedDir}, nil
+	case "later", "last":
+		<-r.releaseUnrelated
+		return resolver.Resolution{LocalPath: r.unrelatedDir}, nil
+	}
+	return resolver.Resolution{LocalPath: r.sharedDir}, nil
+}
+
+func (r waitingRetainedResolver) LookupRetainedPackage(_ context.Context, mod *tfmodules.ParsedModule) resolver.RetainedPackageStatus {
+	if mod.Name != "dependent" {
+		return resolver.RetainedPackageStatus{}
+	}
+	<-r.started
+	select {
+	case <-r.release:
+		return resolver.RetainedPackageStatus{Reuse: true}
+	default:
+		return resolver.RetainedPackageStatus{Ready: r.release}
+	}
+}
+
+func TestResolveSchedulesUnrelatedModuleDuringSharedFetch(t *testing.T) {
+	previous := resolver.FetchConcurrency
+	resolver.FetchConcurrency = 2
+	t.Cleanup(func() { resolver.FetchConcurrency = previous })
+	synctest.Test(t, func(t *testing.T) {
+		root := t.TempDir()
+		file := filepath.Join(root, "main.tf")
+		require.NoError(t, os.WriteFile(file, []byte(`
+module "slow" { source = "example.com/acme/a/aws" }
+module "dependent" { source = "example.com/acme/a/aws//entry" }
+module "unrelated" { source = "example.com/acme/z/aws" }
+`), 0o600))
+		r := waitingRetainedResolver{
+			started: make(chan struct{}), release: make(chan struct{}), unrelated: make(chan struct{}),
+			sharedDir: t.TempDir(), unrelatedDir: t.TempDir(),
+		}
+		var result Result
+		go func() {
+			result = Resolve(t.Context(), &Request{
+				RootPaths: []string{root}, DiscoveryPaths: []string{file}, Resolver: r, MaxDepth: 1,
+				ResourceLimits: resolver.ResourceLimits{MaxPackageBytes: 128, MaxTotalBytes: 256},
+			})
+		}()
+		<-r.started
+		synctest.Wait()
+		unrelatedStarted := false
+		select {
+		case <-r.unrelated:
+			unrelatedStarted = true
+		default:
+		}
+		close(r.release)
+		synctest.Wait()
+		defer result.Cleanup()
+		require.True(t, unrelatedStarted, "the unrelated module should start before the shared fetch finishes")
+		require.Empty(t, result.Failures)
+		require.Len(t, result.Modules, 3)
+	})
+}
+
+func TestResolveSchedulesReadySelectionBeforeFrontierDrains(t *testing.T) {
+	previous := resolver.FetchConcurrency
+	resolver.FetchConcurrency = 2
+	t.Cleanup(func() { resolver.FetchConcurrency = previous })
+	synctest.Test(t, func(t *testing.T) {
+		root := t.TempDir()
+		file := filepath.Join(root, "main.tf")
+		require.NoError(t, os.WriteFile(file, []byte(`
+module "slow" { source = "example.com/acme/a/aws" }
+module "dependent" { source = "example.com/acme/a/aws//entry" }
+module "unrelated" { source = "example.com/acme/b/aws" }
+module "later" { source = "example.com/acme/c/aws" }
+module "last" { source = "example.com/acme/d/aws" }
+`), 0o600))
+		r := waitingRetainedResolver{
+			started: make(chan struct{}), release: make(chan struct{}), unrelated: make(chan struct{}),
+			dependent: make(chan struct{}), releaseUnrelated: make(chan struct{}),
+			sharedDir: t.TempDir(), unrelatedDir: t.TempDir(),
+		}
+		var result Result
+		go func() {
+			result = Resolve(t.Context(), &Request{
+				RootPaths: []string{root}, DiscoveryPaths: []string{file}, Resolver: r, MaxDepth: 1,
+				ResourceLimits: resolver.ResourceLimits{MaxPackageBytes: 128, MaxTotalBytes: 256},
+			})
+		}()
+		<-r.started
+		<-r.unrelated
+		close(r.release)
+		synctest.Wait()
+		dependentStarted := false
+		select {
+		case <-r.dependent:
+			dependentStarted = true
+		default:
+		}
+		close(r.releaseUnrelated)
+		synctest.Wait()
+		defer result.Cleanup()
+		require.True(t, dependentStarted, "the ready selection should take the free worker slot")
+		require.Empty(t, result.Failures)
+		require.Len(t, result.Modules, 5)
+	})
+}
+
+func TestScheduleModuleGroupPreservesDeferredLeasePriority(t *testing.T) {
+	for _, duringLookup := range []bool{false, true} {
+		t.Run(fmt.Sprintf("ready-during-lookup-%t", duringLookup), func(t *testing.T) {
+			deferred := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "cached"}}
+			fresh := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "fresh"}}
+			ready := make(chan struct{})
+			var signalReady sync.Once
+			markReady := func() { signalReady.Do(func() { close(ready) }) }
+			if !duringLookup {
+				markReady()
+			}
+			queue := moduleGroupQueue{
+				ordered:  []*remoteModuleGroup{fresh},
+				deferred: []moduleSelection{{group: deferred, state: selectionWaitingForPackage, ready: ready}},
+			}
+			lookup := func(group *remoteModuleGroup) resolver.RetainedPackageStatus {
+				if group == fresh {
+					markReady()
+				}
+				return resolver.RetainedPackageStatus{}
+			}
+			w := walker{
+				deferExpansion: true, acquisitionBytes: 1024,
+				budget: resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 1024}),
+			}
+			var started []string
+			start := func(group *remoteModuleGroup, lease *resolver.AcquisitionLease) {
+				require.NotNil(t, lease)
+				started = append(started, group.representative.Name)
+				lease.Release()
+			}
+			for i := 0; i < 3 && len(started) < 2; i++ {
+				advanced, changed := w.scheduleModuleGroup(&queue, lookup, start)
+				require.True(t, advanced)
+				require.Nil(t, changed)
+			}
+			require.Equal(t, []string{"cached", "fresh"}, started)
+		})
+	}
+}
+
+func TestScheduleModuleGroupPreservesPriorityDuringVersionLookup(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		used     int64
+		reusable bool
+		inFlight bool
+	}{
+		{name: "new package"},
+		{name: "shared package", reusable: true},
+		{name: "shared package at limit", used: 200, reusable: true},
+		{name: "shared package while capacity is reserved", reusable: true, inFlight: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			earlier := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "earlier"}}
+			later := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "later"}}
+			ready := make(chan struct{})
+			queue := moduleGroupQueue{ordered: []*remoteModuleGroup{earlier, later}}
+			lookup := func(group *remoteModuleGroup) resolver.RetainedPackageStatus {
+				if group != earlier {
+					return resolver.RetainedPackageStatus{}
+				}
+				select {
+				case <-ready:
+					return resolver.RetainedPackageStatus{Reuse: tc.reusable}
+				default:
+					return resolver.RetainedPackageStatus{Ready: ready, VersionPending: true}
+				}
+			}
+			w := walker{
+				deferExpansion: true, acquisitionBytes: 200,
+				budget: resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 128}),
+			}
+			require.NoError(t, w.budget.AdmitPackage("retained", resolver.PackageUsage{Bytes: tc.used}))
+			if tc.inFlight {
+				existingLease, ok := w.budget.TryAcquireAcquisition(200, 200)
+				require.True(t, ok)
+				defer existingLease.Release()
+			}
+			var started []*remoteModuleGroup
+			var reserved []int64
+			start := func(group *remoteModuleGroup, lease *resolver.AcquisitionLease) {
+				started = append(started, group)
+				reserved = append(reserved, lease.Bytes())
+				lease.Release()
+			}
+			advanced, changed := w.scheduleModuleGroup(&queue, lookup, start)
+			require.Equal(t, !tc.inFlight, advanced)
+			if tc.inFlight {
+				require.NotNil(t, changed)
+			} else {
+				advanced, changed = w.scheduleModuleGroup(&queue, lookup, start)
+				if tc.used == 0 {
+					require.False(t, advanced, "later must wait for the earlier reservation")
+					require.NotNil(t, changed)
+				}
+			}
+			require.Empty(t, started)
+			close(ready)
+			advanced, _ = w.scheduleModuleGroup(&queue, lookup, start)
+			require.True(t, advanced)
+			require.Equal(t, []*remoteModuleGroup{earlier}, started)
+			if tc.reusable {
+				require.Equal(t, []int64{0}, reserved)
+			} else {
+				require.Equal(t, []int64{128}, reserved)
+			}
+			require.Equal(t, tc.used, w.budget.TotalUsage().Bytes)
+		})
+	}
+}
+
+// Check both the ownership of every visible lease and the amount still
+// available from the budget. Worker leases have already left the queue.
+func requireAcquisitionCapacity(t *testing.T, w *walker, queue *moduleGroupQueue, workers ...*resolver.AcquisitionLease) {
+	t.Helper()
+	held := make(map[*resolver.AcquisitionLease]bool)
+	addOwner := func(lease *resolver.AcquisitionLease) {
+		t.Helper()
+		require.NotNil(t, lease)
+		require.NotContains(t, held, lease, "each reservation needs a single owner")
+		held[lease] = true
+	}
+	for _, selection := range queue.deferred {
+		require.Equal(t, selection.state.ownsReservation(), selection.reservation != nil)
+		if selection.reservation != nil {
+			addOwner(selection.reservation)
+		}
+	}
+	for _, lease := range workers {
+		addOwner(lease)
+	}
+
+	maximum := w.acquisitionBase + w.acquisitionBytes
+	remaining := maximum - w.budget.TotalUsage().Bytes
+	for lease := range held {
+		remaining -= lease.Bytes()
+	}
+	require.GreaterOrEqual(t, remaining, int64(0))
+	if remaining > 0 {
+		spare, ok := w.budget.TryAcquireAcquisition(maximum, remaining)
+		defer spare.Release()
+		require.True(t, ok, "the unowned capacity should be available")
+		require.Equal(t, remaining, spare.Bytes())
+	}
+	extra, ok := w.budget.TryAcquireAcquisition(maximum, 1)
+	defer extra.Release()
+	require.False(t, ok, "all capacity should be accounted for")
+}
+
+func TestScheduleModuleGroupConservesCapacityAcrossReadinessAndCancellation(t *testing.T) {
+	for _, outcome := range []string{"owned package", "retained outcome", "new package", "cancelled lookup"} {
+		t.Run(outcome, func(t *testing.T) {
+			versionReady, packageReady := make(chan struct{}), make(chan struct{})
+			group := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "selected"}}
+			queue := moduleGroupQueue{ordered: []*remoteModuleGroup{group}}
+			w := walker{
+				deferExpansion: true, acquisitionBytes: 128,
+				budget: resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 128}),
+			}
+			status := resolver.RetainedPackageStatus{Ready: versionReady, VersionPending: true}
+			lookup := func(*remoteModuleGroup) resolver.RetainedPackageStatus { return status }
+			var started bool
+			var worker *resolver.AcquisitionLease
+			start := func(g *remoteModuleGroup, lease *resolver.AcquisitionLease) {
+				require.Same(t, group, g)
+				started, worker = true, lease
+			}
+			requireAcquisitionCapacity(t, &w, &queue)
+			advanced, changed := w.scheduleModuleGroup(&queue, lookup, start)
+			require.True(t, advanced)
+			require.Nil(t, changed)
+			require.Equal(t, selectionVersionReserved, queue.deferred[0].state)
+			requireAcquisitionCapacity(t, &w, &queue)
+
+			if outcome == "cancelled lookup" {
+				queue.fail(&w, context.Canceled)
+				require.Empty(t, queue.deferred)
+				require.False(t, started)
+				requireAcquisitionCapacity(t, &w, &queue)
+				return
+			}
+
+			switch outcome {
+			case "owned package":
+				status = resolver.RetainedPackageStatus{Ready: packageReady}
+			case "retained outcome":
+				status = resolver.RetainedPackageStatus{Reuse: true}
+			default:
+				status = resolver.RetainedPackageStatus{}
+			}
+			close(versionReady)
+			queue.refreshReady(lookup)
+			requireAcquisitionCapacity(t, &w, &queue)
+			if outcome == "owned package" {
+				require.Equal(t, selectionWaitingForPackage, queue.deferred[0].state)
+				status = resolver.RetainedPackageStatus{Reuse: true}
+				close(packageReady)
+				queue.refreshReady(lookup)
+				requireAcquisitionCapacity(t, &w, &queue)
+			}
+
+			advanced, changed = w.scheduleModuleGroup(&queue, lookup, start)
+			require.True(t, advanced)
+			require.Nil(t, changed)
+			require.True(t, started)
+			require.Empty(t, queue.deferred)
+			if outcome == "new package" {
+				require.NotNil(t, worker)
+				requireAcquisitionCapacity(t, &w, &queue, worker)
+				worker.Release()
+			} else {
+				require.Nil(t, worker)
+			}
+			requireAcquisitionCapacity(t, &w, &queue)
+		})
+	}
+}
+
+func TestAcquireRemoteModuleGroupsReturnsCapacityOnFailure(t *testing.T) {
+	mod := &tfmodules.ParsedModule{Name: "failed", Source: "example.com/acme/a/aws"}
+	w := walker{
+		resolver:       errorResolver{err: &tfmodules.UnresolvedError{Reason: "package acquisition failed"}},
+		deferExpansion: true, acquisitionBytes: 128,
+		budget:      resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 128}),
+		resolutions: resolutionCache{entries: make(map[string]resolvedEntry)},
+	}
+	groups := map[string]*remoteModuleGroup{
+		"failed": {representative: mod, callers: []*tfmodules.ParsedModule{mod}},
+	}
+	var queue moduleGroupQueue
+	requireAcquisitionCapacity(t, &w, &queue)
+	w.acquireRemoteModuleGroups(t.Context(), groups, nil)
+	requireAcquisitionCapacity(t, &w, &queue)
+	require.Len(t, w.results.failures, 1)
+	require.Equal(t, "package acquisition failed", w.results.failures[0].Reason)
+}
+
+func TestScheduleModuleGroupTransfersLaterReservation(t *testing.T) {
+	earlier := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "earlier"}}
+	later := &remoteModuleGroup{representative: &tfmodules.ParsedModule{Name: "later"}}
+	earlierReady, laterReady := make(chan struct{}), make(chan struct{})
+	queue := moduleGroupQueue{ordered: []*remoteModuleGroup{earlier, later}}
+	lookup := func(group *remoteModuleGroup) resolver.RetainedPackageStatus {
+		ready := earlierReady
+		if group == later {
+			ready = laterReady
+		}
+		select {
+		case <-ready:
+			return resolver.RetainedPackageStatus{}
+		default:
+			return resolver.RetainedPackageStatus{Ready: ready, VersionPending: group == later}
+		}
+	}
+	w := walker{
+		deferExpansion: true, acquisitionBytes: 128,
+		budget: resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 128}),
+	}
+	var started []*remoteModuleGroup
+	var leases []*resolver.AcquisitionLease
+	start := func(group *remoteModuleGroup, lease *resolver.AcquisitionLease) {
+		started = append(started, group)
+		leases = append(leases, lease)
+		t.Cleanup(lease.Release)
+	}
+	for range 2 {
+		advanced, changed := w.scheduleModuleGroup(&queue, lookup, start)
+		require.True(t, advanced)
+		require.Nil(t, changed)
+		requireAcquisitionCapacity(t, &w, &queue)
+	}
+	require.Empty(t, started)
+	require.Len(t, queue.deferred, 2)
+	reservation := queue.deferred[1].reservation
+	require.NotNil(t, reservation)
+	t.Cleanup(reservation.Release)
+
+	close(earlierReady)
+	advanced, changed := w.scheduleModuleGroup(&queue, lookup, start)
+	require.True(t, advanced, "the earlier group should progress while the later lookup is still pending")
+	require.Nil(t, changed)
+	require.Equal(t, []*remoteModuleGroup{earlier}, started)
+	require.Same(t, reservation, leases[0])
+	requireAcquisitionCapacity(t, &w, &queue, leases[0])
+
+	close(laterReady)
+	advanced, changed = w.scheduleModuleGroup(&queue, lookup, start)
+	require.False(t, advanced)
+	require.NotNil(t, changed)
+	requireAcquisitionCapacity(t, &w, &queue, leases[0])
+	leases[0].Release()
+	requireAcquisitionCapacity(t, &w, &queue)
+	advanced, changed = w.scheduleModuleGroup(&queue, lookup, start)
+	require.True(t, advanced)
+	require.Nil(t, changed)
+	require.Equal(t, []*remoteModuleGroup{earlier, later}, started)
+	require.Equal(t, int64(128), leases[1].Bytes())
+	requireAcquisitionCapacity(t, &w, &queue, leases[1])
+	leases[1].Release()
+	requireAcquisitionCapacity(t, &w, &queue)
+}
+
+type reservedSelectionResolver struct {
+	versionReady, workerStarted, workerDone chan struct{}
+}
+
+func (r reservedSelectionResolver) Resolve(_ context.Context, mod *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	if mod.Name == "unrelated" {
+		close(r.workerStarted)
+		<-r.workerDone
+	}
+	return resolver.Resolution{}, nil
+}
+
+func (r reservedSelectionResolver) LookupRetainedPackage(_ context.Context, mod *tfmodules.ParsedModule) resolver.RetainedPackageStatus {
+	if mod.Name != "dependent" {
+		return resolver.RetainedPackageStatus{}
+	}
+	select {
+	case <-r.versionReady:
+		return resolver.RetainedPackageStatus{Reuse: true}
+	default:
+		return resolver.RetainedPackageStatus{Ready: r.versionReady, VersionPending: true}
+	}
+}
+
+func TestAcquireRemoteModuleGroupsReleasesReuseReservationWithAllWorkersBusy(t *testing.T) {
+	previous := resolver.FetchConcurrency
+	resolver.FetchConcurrency = 1
+	t.Cleanup(func() { resolver.FetchConcurrency = previous })
+	synctest.Test(t, func(t *testing.T) {
+		r := reservedSelectionResolver{
+			versionReady: make(chan struct{}), workerStarted: make(chan struct{}), workerDone: make(chan struct{}),
+		}
+		w := walker{
+			resolver: r, deferExpansion: true, acquisitionBytes: 256,
+			budget:      resolver.NewResourceBudget(resolver.ResourceLimits{MaxPackageBytes: 128}),
+			resolutions: resolutionCache{entries: make(map[string]resolvedEntry)},
+		}
+		groups := map[string]*remoteModuleGroup{
+			"dependent": {representative: &tfmodules.ParsedModule{Source: "example.com/acme/a/aws", Name: "dependent"}},
+			"unrelated": {representative: &tfmodules.ParsedModule{Source: "example.com/acme/b/aws", Name: "unrelated"}},
+		}
+		go w.acquireRemoteModuleGroups(t.Context(), groups, nil)
+		defer func() {
+			close(r.workerDone)
+			synctest.Wait()
+		}()
+		<-r.workerStarted
+		synctest.Wait()
+		lease, changed := w.pollAcquisition()
+		defer lease.Release()
+		require.Nil(t, lease)
+		require.NotNil(t, changed)
+
+		close(r.versionReady)
+		synctest.Wait()
+		lease, changed = w.pollAcquisition()
+		defer lease.Release()
+		require.NotNil(t, lease, "another frontier should be able to reserve the freed capacity")
+		require.Nil(t, changed)
+		require.Equal(t, int64(128), lease.Bytes())
+	})
+}
+
 // limitRecordingResolver records the package limit each Resolve call runs under.
 type limitRecordingResolver struct {
 	mu       sync.Mutex
@@ -1702,6 +2252,135 @@ func (r *headOfLineResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedM
 		}
 	}
 	return r.bySource[mod.Source], nil
+}
+
+type delayedModuleResolver struct {
+	mapResolver
+	file    string
+	release <-chan struct{}
+}
+
+func (r delayedModuleResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule) (resolver.Resolution, error) {
+	if mod.FileName == r.file {
+		<-r.release
+	}
+	return r.mapResolver.Resolve(ctx, mod)
+}
+
+func TestVisitRemoteModuleMapsDirectoryReachedByLocalCall(t *testing.T) {
+	for _, localFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("local-first-%t", localFirst), func(t *testing.T) {
+			root := t.TempDir()
+			nested := filepath.Join(root, "nested")
+			require.NoError(t, os.Mkdir(nested, 0o700))
+			rootFile := filepath.Join(root, "main.tf")
+			nestedFile := filepath.Join(nested, "main.tf")
+			require.NoError(t, os.WriteFile(rootFile, []byte(`module "child" { source = "./nested" }`), 0o600))
+			require.NoError(t, os.WriteFile(nestedFile, []byte(`resource "example" "fixture" {}`), 0o600))
+			w := walker{
+				visited:    visitedSet{paths: make(map[string]moduleDirectoryOwner)},
+				results:    resultCollector{sourceMappings: make(map[string]string)},
+				parseCache: moduleParseCache{entries: make(map[string]map[string]tfmodules.ParsedModule)},
+				parseSem:   make(chan struct{}, 1),
+				fsys:       vfs.DiskFS{},
+				maxDepth:   3,
+			}
+			parent := &resolver.Resolution{LocalPath: root, PackageRoot: root, ResolvedVersion: "1.0.0"}
+			child := &resolver.Resolution{LocalPath: nested, PackageRoot: root, ResolvedVersion: "1.0.0"}
+			parentSource := "example.com/acme/parent/aws"
+			first, second := "example.com/acme/z/aws//nested", "example.com/acme/a/aws//nested"
+			if localFirst {
+				w.visitRemoteModule(t.Context(), parent, &tfmodules.ParsedModule{Source: parentSource}, 1, nil)
+			} else {
+				first, second = second, first
+			}
+			w.visitRemoteModule(t.Context(), child, &tfmodules.ParsedModule{Source: first}, 2, nil)
+			w.visitRemoteModule(t.Context(), child, &tfmodules.ParsedModule{Source: second}, 2, nil)
+			if !localFirst {
+				w.visitRemoteModule(t.Context(), parent, &tfmodules.ParsedModule{Source: parentSource}, 1, nil)
+			}
+			snapshot := w.results.snapshot()
+			require.ElementsMatch(t, []string{rootFile, nestedFile}, snapshot.paths)
+			require.Equal(t, "example.com/acme/a/aws//nested@1.0.0", snapshot.sourceMappings[nested])
+		})
+	}
+}
+
+func TestResolveRevisitsOnlyTheClaimedModuleAtShallowerDepth(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(file, []byte("resource \"aws_vpc\" \"fixture\" {}"), 0o600))
+	res := resolver.Resolution{LocalPath: dir, PackageRoot: dir}
+	w := walker{visited: visitedSet{paths: make(map[string]moduleDirectoryOwner)}}
+	claimed := moduleDirectoryOwner{identity: resolver.ModuleDirectoryIdentity{Package: "claimed", Subdir: "."}}
+	other := moduleDirectoryOwner{identity: resolver.ModuleDirectoryIdentity{Package: "other", Subdir: "."}}
+
+	require.True(t, w.addResolvedModulePaths(t.Context(), &claimed, &res, 3))
+	require.False(t, w.addResolvedModulePaths(t.Context(), &other, &res, 1))
+	require.True(t, w.addResolvedModulePaths(t.Context(), &claimed, &res, 2))
+	require.False(t, w.addResolvedModulePaths(t.Context(), &claimed, &res, 2))
+	require.Equal(t, []string{file}, w.results.snapshot().paths)
+}
+
+func TestResolveRevisitsSharedModuleAtShallowerDepth(t *testing.T) {
+	for _, tc := range []struct {
+		maximum  int64
+		maxDepth int
+	}{{0, 2}, {0, 3}, {4096, 2}, {4096, 3}} {
+		t.Run(fmt.Sprintf("budget-%d/depth-%d", tc.maximum, tc.maxDepth), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				const shared = "example.com/acme/shared/aws"
+				const child = "example.com/acme/child/aws"
+				const leaf = "example.com/acme/leaf/aws"
+				base := t.TempDir()
+				repo := filepath.Join(base, "repo")
+				write := func(dir, content string) string {
+					t.Helper()
+					require.NoError(t, os.MkdirAll(dir, 0o755))
+					path := filepath.Join(dir, "main.tf")
+					require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+					return path
+				}
+				direct := writeRegistryModuleCaller(t, filepath.Join(repo, "direct"), "shared", shared)
+				wrapped := write(filepath.Join(repo, "wrapped"), "module \"wrapper\" { source = \"./wrapper\" }")
+				wrapper := writeRegistryModuleCaller(t, filepath.Join(repo, "wrapped", "wrapper"), "shared", shared)
+				sharedDir, childDir, leafDir := filepath.Join(base, "shared"), filepath.Join(base, "child"), filepath.Join(base, "leaf")
+				sharedFile := writeRegistryModuleCaller(t, sharedDir, "child", child)
+				childFile := writeRegistryModuleCaller(t, childDir, "leaf", leaf)
+				leafFile := write(leafDir, `resource "aws_vpc" "leaf" {}`)
+				release := make(chan struct{})
+				res := delayedModuleResolver{
+					mapResolver: mapResolver{bySource: map[string]resolver.Resolution{
+						shared: {LocalPath: sharedDir}, child: {LocalPath: childDir}, leaf: {LocalPath: leafDir},
+					}},
+					file: direct, release: release,
+				}
+				var result Result
+				go func() {
+					result = Resolve(t.Context(), &Request{
+						RootPaths: []string{repo}, DiscoveryPaths: []string{direct, wrapped, wrapper},
+						Resolver: res, MaxDepth: tc.maxDepth, ResourceLimits: resolver.ResourceLimits{MaxTotalBytes: tc.maximum, MaxPackageBytes: 512},
+					})
+				}()
+				synctest.Wait()
+				close(release)
+				synctest.Wait()
+				defer result.Cleanup()
+				require.Empty(t, result.Failures)
+				wantPaths := []string{sharedFile, childFile}
+				if tc.maxDepth == 3 {
+					wantPaths = append(wantPaths, leafFile)
+				}
+				require.ElementsMatch(t, wantPaths, result.ScanPaths)
+				require.Len(t, result.Modules, len(wantPaths)+1)
+				for _, module := range result.Modules {
+					if module.Source == child {
+						require.Equal(t, 2, module.Depth)
+					}
+				}
+			})
+		})
+	}
 }
 
 func TestResolveSlowFetchDoesNotHoldBackQueuedModules(t *testing.T) {

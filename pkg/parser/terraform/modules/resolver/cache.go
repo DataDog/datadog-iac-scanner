@@ -38,7 +38,9 @@ const (
 
 var errCacheEntryTooLarge = errors.New("cache entry exceeds cache size limit")
 
-// moduleCache is a content-addressed on-disk module store.
+// moduleCache stores extracted packages across scans. Its cache budget evicts
+// entries once active readers release their pins. Scan charges and acquisition
+// errors belong to the scan that used the cache.
 type moduleCache struct {
 	dir    string
 	budget *ModuleCacheBudget

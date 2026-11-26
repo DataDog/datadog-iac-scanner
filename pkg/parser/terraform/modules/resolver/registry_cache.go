@@ -28,6 +28,9 @@ type cachedFailure struct {
 	permanent bool
 }
 
+// registryCache coalesces and caches discovery, version and download URL
+// lookups. It retains metadata failures according to their retry policy.
+// The scan package table owns archive acquisition and its terminal outcome.
 type registryCache struct {
 	client *http.Client
 
@@ -151,10 +154,28 @@ func (c *registryCache) modulesV1(ctx context.Context, host string) (string, err
 }
 
 func (c *registryCache) resolvedVersion(ctx context.Context, ep, host, namespace, name, provider, constraint string) (string, error) {
-	key := host + "\x00" + namespace + "/" + name + "/" + provider + "\x00" + constraint
+	key := registryVersionKey(host, namespace, name, provider, constraint)
 	return c.cachedString(&c.verMu, c.verMap, c.verErrMap, &c.verSF, key, func() (string, error) {
 		return resolveRegistryVersion(ctx, c.client, ep, namespace, name, provider, constraint, host)
 	})
+}
+
+func registryVersionKey(host, namespace, name, provider, constraint string) string {
+	return host + "\x00" + namespace + "/" + name + "/" + provider + "\x00" + constraint
+}
+
+func (c *registryCache) cachedConcreteVersion(source, constraint string) (string, bool) {
+	if version, ok := NormalizeExactRegistryVersion(constraint); ok {
+		return version, true
+	}
+	host, namespace, name, provider, err := parseRegistrySource(source)
+	if err != nil {
+		return "", false
+	}
+	c.verMu.RLock()
+	defer c.verMu.RUnlock()
+	version, ok := c.verMap[registryVersionKey(host, namespace, name, provider, constraint)]
+	return version, ok
 }
 
 func (c *registryCache) downloadURL(ctx context.Context, ep, host, namespace, name, provider, version string) (string, error) {

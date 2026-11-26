@@ -50,6 +50,23 @@ func (c *ChainResolver) Resolve(ctx context.Context, mod *tfmodules.ParsedModule
 	return Resolution{}, failures.err()
 }
 
+func (c *ChainResolver) LookupRetainedPackage(ctx context.Context, mod *tfmodules.ParsedModule) RetainedPackageStatus {
+	for _, r := range c.resolvers {
+		if lookup, ok := r.(RetainedPackageLookup); ok {
+			if status := lookup.LookupRetainedPackage(ctx, mod); status.Reuse || status.Ready != nil {
+				return status
+			}
+		}
+		// Resolve still runs the chain in order. If this resolver might handle
+		// the call, probing a later one could do unnecessary registry I/O.
+		screener, ok := r.(Screener)
+		if !ok || screener.Screen(ctx, mod) == nil {
+			break
+		}
+	}
+	return RetainedPackageStatus{}
+}
+
 // Screen returns the error Resolve would return for mod when every resolver in
 // the chain rules it out, and nil as soon as one might resolve it or cannot tell.
 func (c *ChainResolver) Screen(ctx context.Context, mod *tfmodules.ParsedModule) error {
