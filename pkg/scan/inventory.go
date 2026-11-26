@@ -296,6 +296,7 @@ func (c *Client) finishInventory(ctx context.Context, results *Results, summary 
 			Branch:    commit.Branch,
 		},
 		PlatformsScanned: run.platforms,
+		Incomplete:       results != nil && results.Incomplete(),
 	})
 	// The path was cleared when the scan started, so a file there now is one
 	// the scan wrote, such as a report given the same name.

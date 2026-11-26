@@ -16,58 +16,84 @@ import (
 
 var documentNamespace = uuid.NewSHA1(uuid.NameSpaceURL, []byte("https://github.com/DataDog/datadog-iac-scanner/document"))
 
-// DocumentPath names a file in the scan root relative to that root. Fetched
-// modules outside the root use their source address and ref. For other files,
-// it uses the lexical path relative to the root when possible, and the supplied
-// path otherwise. Content-push scans have no root and may supply absolute
-// paths. The key preserves the caller's path coordinates and filesystem aliases.
-func DocumentPath(path, root string, extraction map[string]ExtractedPathObject) string {
-	if path == "" {
-		return ""
+type documentSourceScope uint8
+
+const (
+	documentPath documentSourceScope = iota
+	documentExtractedFile
+	documentModuleDirectory
+	documentModulePackage
+)
+
+// DocumentSource identifies a scan input independently of its reporting path.
+type DocumentSource struct {
+	origin   string
+	file     string
+	scope    documentSourceScope
+	location *moduleDocumentLocation
+}
+
+// LexicalDocumentPath preserves the supplied filesystem coordinates and
+// aliases. It makes paths relative to the checkout or package when possible.
+func LexicalDocumentPath(path, root string) string {
+	lexical, _ := lexicalDocumentPath(path, root)
+	return lexical
+}
+
+// DocumentPath identifies a checkout file by its relative path. A file
+// outside the checkout can belong to a selected module directory, somewhere
+// else in the same package, or another kind of extracted source.
+func DocumentPath(path, root string, extraction map[string]ExtractedPathObject) DocumentSource {
+	lexical, inRoot := lexicalDocumentPath(path, root)
+	if path == "" || inRoot {
+		return DocumentSource{origin: lexical}
 	}
 	path = filepath.FromSlash(path)
-	rel, err := filepath.Rel(root, path)
-	if root != "" && err == nil && filepath.IsLocal(rel) {
-		return filepath.ToSlash(rel)
-	}
 	dir := extractedSourceDir(path, extraction)
 	source := extraction[dir]
 	if source.DocumentSource == "" && !source.LocalPath {
-		if key := documentPackagePath(path, extraction); key != "" {
-			return key
+		if packageRoot, pkg := enclosingDocumentPackage(path, extraction); packageRoot != "" {
+			return DocumentSource{
+				origin: pkg.DocumentSource, file: filepath.ToSlash(path[len(packageRoot):]),
+				scope: documentModulePackage, location: pkg.documentLocation,
+			}
 		}
 	}
 	if dir == "" {
-		if err != nil {
-			return filepath.ToSlash(path)
-		}
-		return filepath.ToSlash(rel)
+		return DocumentSource{origin: lexical}
 	}
-	name := cmp.Or(source.DocumentSource, RedactURLCredentials(source.Path))
+	file := filepath.ToSlash(path[len(dir):])
 	if source.LocalPath {
-		name = filepath.ToSlash(getRelativePath(root, filepath.FromSlash(source.Path)))
+		origin := filepath.ToSlash(getRelativePath(root, filepath.FromSlash(source.Path)))
+		return DocumentSource{origin: origin, file: file, scope: documentExtractedFile}
 	}
-	return name + "\x00" + filepath.ToSlash(path[len(dir):])
+	if source.DocumentSource != "" {
+		return DocumentSource{
+			origin: source.DocumentSource, file: file,
+			scope: documentModuleDirectory, location: source.documentLocation,
+		}
+	}
+	return DocumentSource{origin: RedactURLCredentials(source.Path), file: file, scope: documentExtractedFile}
 }
 
-// documentPackagePath uses the innermost containing package. A package can
-// have several selected module directories, so choose its lowest source key.
-func documentPackagePath(path string, extraction map[string]ExtractedPathObject) string {
-	var root, source string
-	for _, candidate := range extraction {
-		dir := candidate.DocumentPackageRoot
-		if dir == "" || !pathWithinDir(path, dir) {
-			continue
-		}
-		if len(dir) > len(root) || (dir == root && candidate.DocumentSource < source) {
-			root, source = dir, candidate.DocumentSource
-		}
+func lexicalDocumentPath(path, root string) (string, bool) {
+	if path == "" {
+		return "", false
 	}
-	if root == "" {
-		return ""
+	rel, err := filepath.Rel(root, filepath.FromSlash(path))
+	if err != nil {
+		return filepath.ToSlash(path), false
 	}
-	// Distinguish package-relative paths from selected module-relative paths.
-	return source + "\x00package\x00" + filepath.ToSlash(path[len(root):])
+	return filepath.ToSlash(rel), root != "" && filepath.IsLocal(rel)
+}
+
+func (s DocumentSource) compare(other DocumentSource) int {
+	return cmp.Or(
+		cmp.Compare(s.origin, other.origin),
+		compareModuleDocumentLocations(s.location, other.location),
+		cmp.Compare(s.scope, other.scope),
+		cmp.Compare(s.file, other.file),
+	)
 }
 
 // DocumentKey identifies a parsed document by its position in the scan input.
@@ -75,10 +101,10 @@ func documentPackagePath(path string, extraction map[string]ExtractedPathObject)
 // RenderedPath is the path in the resolver output, and SplitPosition is the
 // split's manifest order.
 type DocumentKey struct {
-	Path          string
+	Path          DocumentSource
 	Kind          FileKind
 	Platform      string
-	ResolverRoot  string
+	ResolverRoot  DocumentSource
 	RenderedPath  string
 	SplitPosition int
 	DocumentIndex int
@@ -87,24 +113,50 @@ type DocumentKey struct {
 // ID gives rules a stable UUID for the document.
 func (k *DocumentKey) ID() string {
 	var name []byte
-	for _, part := range [...]string{k.Path, string(k.Kind), k.Platform, k.ResolverRoot, k.RenderedPath} {
-		name = binary.AppendUvarint(name, uint64(len(part)))
-		name = append(name, part...)
+	for _, part := range [...]string{k.Path.origin, string(k.Kind), k.Platform, k.ResolverRoot.origin, k.RenderedPath} {
+		name = appendDocumentKeyString(name, part)
 	}
 	name = binary.AppendUvarint(name, uint64(k.SplitPosition))
 	name = binary.AppendUvarint(name, uint64(k.DocumentIndex))
+	// The fixed fields preserve the IDs of ordinary checkout documents. An
+	// extracted source has additional coordinates, framed after those fields.
+	if k.Path.scope != documentPath || k.ResolverRoot.scope != documentPath {
+		name = k.Path.appendExtractionID(name)
+		name = k.ResolverRoot.appendExtractionID(name)
+	}
 	return uuid.NewSHA1(documentNamespace, name).String()
+}
+
+func appendDocumentKeyString(name []byte, part string) []byte {
+	name = binary.AppendUvarint(name, uint64(len(part)))
+	return append(name, part...)
+}
+
+func (s DocumentSource) appendExtractionID(name []byte) []byte {
+	name = append(name, byte(s.scope))
+	name = appendDocumentKeyString(name, s.file)
+	if s.scope == documentModuleDirectory || s.scope == documentModulePackage {
+		name = s.location.appendID(name)
+	}
+	return name
 }
 
 // SortByDocumentKey orders documents by source path and position.
 func (m FileMetadatas) SortByDocumentKey() {
 	slices.SortStableFunc(m, func(a, b *FileMetadata) int {
 		ak, bk := a.DocumentKey, b.DocumentKey
+		as, bs := ak.Path, bk.Path
+		if as.scope == documentPath && as.origin == "" {
+			as.origin = a.FilePath
+		}
+		if bs.scope == documentPath && bs.origin == "" {
+			bs.origin = b.FilePath
+		}
 		return cmp.Or(
-			cmp.Compare(cmp.Or(ak.Path, a.FilePath), cmp.Or(bk.Path, b.FilePath)),
+			as.compare(bs),
 			cmp.Compare(ak.Kind, bk.Kind),
 			cmp.Compare(ak.Platform, bk.Platform),
-			cmp.Compare(ak.ResolverRoot, bk.ResolverRoot),
+			ak.ResolverRoot.compare(bk.ResolverRoot),
 			cmp.Compare(ak.RenderedPath, bk.RenderedPath),
 			cmp.Compare(ak.SplitPosition, bk.SplitPosition),
 			cmp.Compare(ak.DocumentIndex, bk.DocumentIndex),

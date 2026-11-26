@@ -577,6 +577,9 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 		return s.BuildInventoryFromPrebuilt(ctx, extensions, chartPool, chartFn)
 	}
 	var files []InventoryFile
+	// Overlapping roots can reach the same chart in separate walks. Reuse
+	// both outcomes so every walk applies the same raw-file coverage.
+	chartResults := make(map[string]bool)
 
 	for _, scanPath := range s.paths {
 		fileInfo, err := os.Stat(scanPath)
@@ -598,7 +601,13 @@ func (s *FileSystemSourceProvider) WalkInventory(ctx context.Context,
 
 		walkErr := s.walkDirectory(ctx, scanPath, extensions,
 			func(ctx context.Context, path string, resolved *[]string) error {
-				if renderChart(ctx, chartFn, toSlash(path)) {
+				root := toSlash(filepath.Clean(path))
+				rendered, seen := chartResults[root]
+				if !seen {
+					rendered = renderChart(ctx, chartFn, root)
+					chartResults[root] = rendered
+				}
+				if rendered {
 					*resolved = append(*resolved, path)
 				}
 				return nil

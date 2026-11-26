@@ -26,6 +26,8 @@ type Metadata struct {
 	ScannedAt        time.Time
 	Repository       Repository
 	PlatformsScanned []string
+	// Incomplete records coverage loss outside the file and source manifests.
+	Incomplete bool
 }
 
 // Collector gathers the inventory while a scan runs. It is safe for
@@ -260,7 +262,7 @@ func (c *Collector) Build(meta *Metadata) *Inventory {
 	platforms = slices.Compact(platforms)
 
 	status := StatusComplete
-	if failed > 0 || len(unresolved) > 0 {
+	if meta.Incomplete || failed > 0 || len(unresolved) > 0 {
 		status = StatusPartial
 	}
 

@@ -17,6 +17,8 @@ type ScanMetadata struct {
 	Stats ScanStats
 	// RuleStats contains statistics about rules.
 	RuleStats RuleStats
+	// Incomplete reports that an unexpected duplicate ID caused a document to be rejected.
+	Incomplete bool `json:",omitempty"`
 	// PeakRSSBytes is the scanner process high-water resident set size.
 	PeakRSSBytes uint64 `json:",omitempty"`
 	// PeakRSSPhase is the scan phase in which PeakRSSBytes was reached.
