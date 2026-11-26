@@ -36,9 +36,10 @@ type Resolution struct {
 	Cache string
 	// Usage is PackageRoot's exact on-disk usage when the resolver already knows
 	// it; nil means callers must measure PackageRoot themselves.
-	Usage         *PackageUsage
-	Cleanup       func() // optional post-scan cleanup
-	chargedBudget *ResourceBudget
+	Usage                 *PackageUsage
+	Cleanup               func() // optional post-scan cleanup
+	chargedBudget         *ResourceBudget
+	registryArchiveSubdir string // effective selection, including the registry download prefix
 }
 
 // ChargedTo reports whether the scan already accounted for this extraction.

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -91,6 +92,28 @@ func TestScanSharesRegistryFallbackFailure(t *testing.T) {
 			require.Empty(t, files)
 		})
 	}
+}
+
+func TestScanRegistryArchiveDirectoryKeepsDownloadPrefix(t *testing.T) {
+	r, _, release := scanPackageFixtureWithDownload(t, registryPackageArchiveAt(t, "prefix"), false, "https://archive.example/module.zip//prefix")
+	close(release)
+	ctx, cleanup := WithScanPackages(t.Context())
+	defer cleanup()
+
+	var packageRoot string
+	for _, name := range []string{"entry", "sibling"} {
+		mod := &tfmodules.ParsedModule{Source: scanPackageSource + "//" + name, Version: "1.0.0"}
+		res, err := r.Resolve(ctx, mod)
+		require.NoError(t, err)
+		if packageRoot == "" {
+			packageRoot = res.PackageRoot
+		}
+		require.Equal(t, packageRoot, res.PackageRoot)
+		require.Equal(t, filepath.Join(packageRoot, "prefix", name), res.LocalPath)
+		require.Equal(t, path.Join("prefix", name), RequestedModuleDirectory(mod, &res).Subdir)
+		require.Empty(t, res.RegistryGitDirectory)
+	}
+	require.EqualValues(t, 1, r.cfg.fetchCount.Load())
 }
 
 func TestScanReusesAcquisitionFailureAtLimit(t *testing.T) {
@@ -304,10 +327,15 @@ func TestScanChargesCachedPackageWhenSelectionFails(t *testing.T) {
 
 func registryPackageArchive(t *testing.T) []byte {
 	t.Helper()
+	return registryPackageArchiveAt(t, "")
+}
+
+func registryPackageArchiveAt(t *testing.T, prefix string) []byte {
+	t.Helper()
 	var archive bytes.Buffer
 	zipper := zip.NewWriter(&archive)
 	for _, name := range []string{"entry/main.tf", "sibling/main.tf"} {
-		file, err := zipper.Create(name)
+		file, err := zipper.Create(path.Join(prefix, name))
 		require.NoError(t, err)
 		_, err = io.WriteString(file, "resource \"example\" \"fixture\" {}\n")
 		require.NoError(t, err)
@@ -317,6 +345,11 @@ func registryPackageArchive(t *testing.T) []byte {
 }
 
 func scanPackageFixture(t *testing.T, archive []byte, cacheAvailable bool) (*GoGetterResolver, <-chan struct{}, chan<- struct{}) {
+	t.Helper()
+	return scanPackageFixtureWithDownload(t, archive, cacheAvailable, "https://archive.example/module.zip")
+}
+
+func scanPackageFixtureWithDownload(t *testing.T, archive []byte, cacheAvailable bool, downloadURL string) (*GoGetterResolver, <-chan struct{}, chan<- struct{}) {
 	t.Helper()
 	cfg := NewGoGetterConfig()
 	cfg.TmpDir = t.TempDir()
@@ -335,7 +368,7 @@ func scanPackageFixture(t *testing.T, archive []byte, cacheAvailable bool) (*GoG
 		case strings.HasSuffix(req.URL.Path, "/versions"):
 			body = `{"modules":[{"versions":[{"version":"1.0.0"}]}]}`
 		case strings.HasSuffix(req.URL.Path, "/download"):
-			header.Set("X-Terraform-Get", "https://archive.example/module.zip")
+			header.Set("X-Terraform-Get", downloadURL)
 			status, body = http.StatusNoContent, ""
 		}
 		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: header}, nil
