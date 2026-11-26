@@ -12,7 +12,9 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
@@ -20,8 +22,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver/helm"
+	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
@@ -669,20 +673,50 @@ func TestWithoutExcludedFiles(t *testing.T) {
 	require.Equal(t, []model.ResolvedHelm{{FileName: "app/templates/cm.yaml"}}, got.File)
 }
 
-func TestFirstHelmRender(t *testing.T) {
-	s := &Service{}
-	render := func(source, body string) *model.ResolvedHelm {
-		return &model.ResolvedHelm{
+func TestPrepareChartBatchesOrdersSharedRenders(t *testing.T) {
+	libRendered := make(chan struct{})
+	webStarted := make(chan struct{})
+	var mu sync.Mutex
+	counts := make(map[string]int)
+	render := prepareChartBatches(utils.PoolOptions{Workers: 2}, func(_ context.Context, root string) (resolvedChart, bool) {
+		body := "name: lib\n"
+		switch root {
+		case "app":
+			<-libRendered
+		case "lib":
+			close(libRendered)
+		case "web":
+			close(webStarted)
+			body = "name: overridden\n"
+		}
+		file := model.ResolvedHelm{
 			FileName: "/repo/lib/templates/cm.yaml",
 			SplitID:  "# KICS_HELM_ID_0:",
-			Content:  []byte("\n# Source: " + source + "\n" + body),
+			Content:  []byte("\n# Source: " + root + "/templates/cm.yaml\n" + body),
 		}
-	}
-	require.True(t, s.firstHelmRender(render("lib/templates/cm.yaml", "name: lib\n")))
-	require.False(t, s.firstHelmRender(render("app/charts/lib/templates/cm.yaml", "name: lib\n")),
-		"the same document attached through a parent is already stored")
-	require.True(t, s.firstHelmRender(render("web/charts/lib/templates/cm.yaml", "name: overridden\n")),
-		"a parent overriding the dependency's values renders a different document")
+		return resolvedChart{
+			path:  root,
+			kind:  model.KindHELM,
+			files: model.ResolvedFiles{File: []model.ResolvedHelm{file}},
+		}, true
+	}, func(ctx context.Context, chart *resolvedChart) {
+		if chart.path == "app" {
+			// Completing the other worker's store lets Web start while
+			// App is still storing its render.
+			select {
+			case <-webStarted:
+			case <-ctx.Done():
+				assert.NoError(t, ctx.Err(), "a completed worker must let the next render start")
+			}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		counts[chart.path] = len(chart.files.File)
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	require.Equal(t, []bool{true, true, true}, render(ctx, []string{"app", "lib", "web"}))
+	require.Equal(t, map[string]int{"app": 1, "lib": 0, "web": 1}, counts)
 }
 
 func TestBlankPlainComments(t *testing.T) {

@@ -33,7 +33,7 @@ func (r *chartFailureRecorder) chartFailed(chartPath string) { r.failed = append
 // A chart whose rendering panics goes through the same failure handling as a
 // chart that fails to render: it is recorded failed and its raw files scanned.
 // It runs the real Helm resolver, which recovers panics itself.
-func TestResolveAndStoreChartHandlesResolvePanic(t *testing.T) {
+func TestResolveChartHandlesResolvePanic(t *testing.T) {
 	ctx := context.Background()
 	memfs := vfs.NewMemFS(map[string][]byte{
 		"chart/Chart.yaml":        []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"),
@@ -44,8 +44,7 @@ func TestResolveAndStoreChartHandlesResolvePanic(t *testing.T) {
 	service := &Service{Resolver: res}
 	src := &chartFailureRecorder{}
 
-	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15,
-		&unrenderedHelmCharts{}, &renderCoverage{})
+	_, rendered := resolveChart(ctx, src, []*Service{service}, "chart", &unrenderedHelmCharts{})
 
 	require.False(t, rendered)
 	require.Equal(t, []string{"chart"}, src.failed)
@@ -55,7 +54,7 @@ func TestResolveAndStoreChartHandlesResolvePanic(t *testing.T) {
 // A panic while storing the files of a rendered chart leaves documents already
 // stored, so the chart counts as rendered and its raw templates are not
 // scanned on top of them.
-func TestResolveAndStoreChartKeepsRenderedWhenStoringPanics(t *testing.T) {
+func TestStoreChartHandlesPanic(t *testing.T) {
 	ctx := context.Background()
 	memfs := vfs.NewMemFS(map[string][]byte{
 		"chart/Chart.yaml":        []byte("apiVersion: v2\nname: app\nversion: 1.0.0\n"),
@@ -66,9 +65,11 @@ func TestResolveAndStoreChartKeepsRenderedWhenStoringPanics(t *testing.T) {
 	service := &Service{Resolver: res} // no parser: storing the files panics
 	src := &chartFailureRecorder{}
 
-	rendered := resolveAndStoreChart(ctx, src, []*Service{service}, "chart", "scan", false, 15,
-		&unrenderedHelmCharts{}, &renderCoverage{})
-
+	chart, rendered := resolveChart(ctx, src, []*Service{service}, "chart", &unrenderedHelmCharts{})
 	require.True(t, rendered)
+	require.NotEmpty(t, chart.files.File)
+	require.NotPanics(t, func() {
+		storeChart(ctx, []*Service{service}, &chart, "scan", false, 15, &renderCoverage{})
+	})
 	require.Empty(t, src.failed)
 }

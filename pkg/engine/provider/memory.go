@@ -72,6 +72,13 @@ func (m *MemorySourceProvider) eligibleFiles(extensions model.Extensions) []stri
 func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 	extensions model.Extensions, chartPool utils.PoolOptions,
 	chartFn func(ctx context.Context, chartPath string) (rendered bool)) ([]InventoryFile, error) {
+	return m.WalkInventoryWithChartBatches(ctx, extensions, parallelChartRenderer(chartPool, chartFn))
+}
+
+// WalkInventoryWithChartBatches lists pushed files and offers each wave of
+// eligible chart roots to render.
+func (m *MemorySourceProvider) WalkInventoryWithChartBatches(ctx context.Context,
+	extensions model.Extensions, render ChartBatchRenderer) ([]InventoryFile, error) {
 	eligible := m.eligibleFiles(extensions)
 
 	// Roots come from every pushed path the request's platforms read, not only
@@ -83,7 +90,7 @@ func (m *MemorySourceProvider) WalkInventory(ctx context.Context,
 		}
 	}
 	inScope, outOfScope := m.partitionChartRoots(ChartRoots(readable))
-	renderedRoots := renderChartsShallowFirst(ctx, inScope, chartPool, chartFn)
+	renderedRoots := renderChartWaves(ctx, inScope, render)
 
 	files := make([]InventoryFile, 0, len(eligible))
 	for _, p := range eligible {

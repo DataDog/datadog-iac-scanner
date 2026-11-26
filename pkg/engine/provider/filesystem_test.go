@@ -1007,9 +1007,8 @@ func TestChartRootWaves(t *testing.T) {
 // enclosing chart rendered it, and a failed parent leaves it to render alone.
 func TestRenderChartsShallowFirst(t *testing.T) {
 	failing := map[string]bool{"b": true}
-	rendered := renderChartsShallowFirst(context.Background(),
-		[]string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"}, utils.PoolOptions{CPUBound: true},
-		func(_ context.Context, root string) bool { return !failing[root] })
+	rendered := renderChartWaves(context.Background(), []string{"a/charts/sub", "b/charts/sub", "a", "b", "c", "d/nested"},
+		parallelChartRenderer(utils.PoolOptions{CPUBound: true}, func(_ context.Context, root string) bool { return !failing[root] }))
 	require.ElementsMatch(t, []string{"a", "c", "d/nested", "b/charts/sub"}, rendered)
 }
 
@@ -1017,20 +1016,20 @@ func TestRenderChartsShallowFirst(t *testing.T) {
 // parallel-parsing flag off asks for.
 func TestRenderChartsShallowFirstSequentialPool(t *testing.T) {
 	var running, peak atomic.Int32
-	rendered := renderChartsShallowFirst(context.Background(),
-		[]string{"a", "b", "c", "d"}, utils.PoolOptions{Workers: 1},
-		func(context.Context, string) bool {
-			n := running.Add(1)
-			for {
-				p := peak.Load()
-				if n <= p || peak.CompareAndSwap(p, n) {
-					break
+	rendered := renderChartWaves(context.Background(), []string{"a", "b", "c", "d"},
+		parallelChartRenderer(utils.PoolOptions{Workers: 1},
+			func(context.Context, string) bool {
+				n := running.Add(1)
+				for {
+					p := peak.Load()
+					if n <= p || peak.CompareAndSwap(p, n) {
+						break
+					}
 				}
-			}
-			time.Sleep(time.Millisecond)
-			running.Add(-1)
-			return true
-		})
+				time.Sleep(time.Millisecond)
+				running.Add(-1)
+				return true
+			}))
 	require.ElementsMatch(t, []string{"a", "b", "c", "d"}, rendered)
 	require.Equal(t, int32(1), peak.Load())
 }
@@ -1069,14 +1068,14 @@ func TestWalkInventoryRecoversChartPanic(t *testing.T) {
 // A chart whose render panics is left unrendered without taking down the
 // others: renders run on pool goroutines, out of reach of the caller's recover.
 func TestRenderChartsShallowFirstRecoversPanic(t *testing.T) {
-	rendered := renderChartsShallowFirst(context.Background(),
-		[]string{"a", "b", "c"}, utils.PoolOptions{CPUBound: true},
-		func(_ context.Context, root string) bool {
-			if root == "b" {
-				panic("boom")
-			}
-			return true
-		})
+	rendered := renderChartWaves(context.Background(), []string{"a", "b", "c"},
+		parallelChartRenderer(utils.PoolOptions{CPUBound: true},
+			func(_ context.Context, root string) bool {
+				if root == "b" {
+					panic("boom")
+				}
+				return true
+			}))
 	require.ElementsMatch(t, []string{"a", "c"}, rendered)
 }
 
