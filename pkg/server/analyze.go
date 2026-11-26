@@ -102,6 +102,7 @@ type analyzeResponse struct {
 	MissingFiles  []string              `json:"missing_files"`
 	FailedQueries map[string]string     `json:"failed_queries,omitempty"`
 	ArchiveFiles  map[string]string     `json:"archive_files,omitempty"`
+	Incomplete    bool                  `json:"incomplete,omitempty"`
 }
 
 func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
@@ -394,6 +395,7 @@ func (s *Server) analyze(ctx context.Context, req *analyzeRequest) (*analyzeResp
 		// No analyzable content for the requested platforms.
 		return resp, nil
 	}
+	resp.Incomplete = res.Incomplete()
 	if len(res.Results) > 0 {
 		resp.Findings = res.Results
 		resp.ArchiveFiles = archiveSources(ctx, res.Results, memfs)
