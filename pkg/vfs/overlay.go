@@ -8,6 +8,7 @@ package vfs
 
 import (
 	"io/fs"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -20,19 +21,27 @@ import (
 // An Overlay is immutable after construction, so it is safe for concurrent use
 // when its base is.
 type Overlay struct {
-	base  FS
-	files map[string][]byte
+	base FS
+	// files is keyed by the slash form of each path, so lookups do not depend
+	// on separators; display is the path in the base's own form.
+	files map[string]overlayFile
+}
+
+type overlayFile struct {
+	display string
+	content []byte
 }
 
 // NewOverlay returns an Overlay of files over base (the real disk when nil).
-// Keys are resolved with base.Abs and cleaned; contents are copied.
+// Keys are resolved with base.Abs; contents are copied.
 func NewOverlay(base FS, files map[string][]byte) *Overlay {
 	if base == nil {
 		base = Default()
 	}
-	o := &Overlay{base: base, files: make(map[string][]byte, len(files))}
+	o := &Overlay{base: base, files: make(map[string]overlayFile, len(files))}
 	for p, c := range files {
-		o.files[o.key(p)] = append([]byte(nil), c...)
+		display := o.abs(p)
+		o.files[slashKey(display)] = overlayFile{display: display, content: append([]byte(nil), c...)}
 	}
 	return o
 }
@@ -40,18 +49,23 @@ func NewOverlay(base FS, files map[string][]byte) *Overlay {
 // Unwrap returns the base FS, so type checks can see through the overlay.
 func (o *Overlay) Unwrap() FS { return o.base }
 
-// key returns the cleaned absolute form of name.
-func (o *Overlay) key(name string) string {
+// abs returns name as the base resolves it (MemFS keeps forward slashes).
+func (o *Overlay) abs(name string) string {
 	if abs, err := o.base.Abs(name); err == nil {
-		name = abs
+		return abs
 	}
 	return filepath.Clean(name)
 }
 
+// slashKey is the separator-independent form paths are compared in.
+func slashKey(p string) string { return filepath.ToSlash(filepath.Clean(p)) }
+
+func (o *Overlay) key(name string) string { return slashKey(o.abs(name)) }
+
 // ReadFile reads an overlay file, else the base file.
 func (o *Overlay) ReadFile(name string) ([]byte, error) {
-	if c, ok := o.files[o.key(name)]; ok {
-		return append([]byte(nil), c...), nil
+	if f, ok := o.files[o.key(name)]; ok {
+		return append([]byte(nil), f.content...), nil
 	}
 	return o.base.ReadFile(name)
 }
@@ -59,12 +73,12 @@ func (o *Overlay) ReadFile(name string) ([]byte, error) {
 // Stat stats an overlay file, else the base path, else an overlay-only directory.
 func (o *Overlay) Stat(name string) (fs.FileInfo, error) {
 	key := o.key(name)
-	if c, ok := o.files[key]; ok {
-		return memFileInfo{name: filepath.Base(key), size: int64(len(c))}, nil
+	if f, ok := o.files[key]; ok {
+		return memFileInfo{name: path.Base(key), size: int64(len(f.content))}, nil
 	}
 	info, err := o.base.Stat(name)
 	if err != nil && len(o.children(key)) > 0 {
-		return memFileInfo{name: filepath.Base(key), dir: true}, nil
+		return memFileInfo{name: path.Base(key), dir: true}, nil
 	}
 	return info, err
 }
@@ -95,7 +109,7 @@ func (o *Overlay) ReadDir(name string) ([]fs.DirEntry, error) {
 }
 
 // Glob returns the sorted, deduplicated union of the base matches and the
-// overlay files matching pattern. Overlay matches are absolute paths.
+// overlay files matching pattern, overlay matches in the base's path form.
 func (o *Overlay) Glob(pattern string) ([]string, error) {
 	out, err := o.base.Glob(pattern)
 	if err != nil {
@@ -104,15 +118,15 @@ func (o *Overlay) Glob(pattern string) ([]string, error) {
 	pat := o.key(pattern)
 	seen := make(map[string]struct{}, len(out))
 	for _, p := range out {
-		seen[p] = struct{}{}
+		seen[slashKey(p)] = struct{}{}
 	}
-	for key := range o.files {
-		ok, err := filepath.Match(pat, key)
+	for key, f := range o.files {
+		ok, err := path.Match(pat, key)
 		if err != nil {
 			return nil, err
 		}
 		if _, dup := seen[key]; ok && !dup {
-			out = append(out, key)
+			out = append(out, f.display)
 			seen[key] = struct{}{}
 		}
 	}
@@ -123,21 +137,18 @@ func (o *Overlay) Glob(pattern string) ([]string, error) {
 // Abs resolves name against the base.
 func (o *Overlay) Abs(name string) (string, error) { return o.base.Abs(name) }
 
-// children returns the overlay entries directly under dir, by name.
+// children returns the overlay entries directly under dir (a slash key), by name.
 func (o *Overlay) children(dir string) map[string]fs.DirEntry {
 	out := make(map[string]fs.DirEntry)
-	prefix := dir
-	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
-		prefix += string(filepath.Separator)
-	}
-	for key, c := range o.files {
+	prefix := strings.TrimSuffix(dir, "/") + "/"
+	for key, f := range o.files {
 		rel, ok := strings.CutPrefix(key, prefix)
 		if !ok || rel == "" {
 			continue
 		}
-		seg, _, nested := strings.Cut(rel, string(filepath.Separator))
+		seg, _, nested := strings.Cut(rel, "/")
 		if !nested {
-			out[rel] = memDirEntry{name: rel, size: int64(len(c))}
+			out[rel] = memDirEntry{name: rel, size: int64(len(f.content))}
 		} else if _, ok := out[seg]; !ok {
 			out[seg] = memDirEntry{name: seg, dir: true}
 		}

@@ -165,21 +165,31 @@ func TestOverlay_ReadDirOverlayDirKeepsBaseDir(t *testing.T) {
 	}
 }
 
+func slashed(paths ...string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = filepath.ToSlash(p)
+	}
+	return out
+}
+
 func TestOverlay_Glob(t *testing.T) {
 	for _, c := range overlayCases(t) {
 		t.Run(c.name, func(t *testing.T) {
 			o := c.overlay()
+			// MemFS answers with forward slashes, the disk with native separators;
+			// compare in slash form.
 			got, err := o.Glob(filepath.Join(c.root, "a", "*.tf"))
 			require.NoError(t, err)
-			require.Equal(t, []string{
+			require.Equal(t, slashed(
 				filepath.Join(c.root, "a/gen.tf"),
 				filepath.Join(c.root, "a/main.tf"),
 				filepath.Join(c.root, "a/other.tf"),
-			}, got, "union, sorted, without duplicates")
+			), slashed(got...), "union, sorted, without duplicates")
 
 			got, err = o.Glob(filepath.Join(c.root, "v", "*.tf"))
 			require.NoError(t, err)
-			require.Equal(t, []string{filepath.Join(c.root, "v/only.tf")}, got)
+			require.Equal(t, slashed(filepath.Join(c.root, "v/only.tf")), slashed(got...))
 
 			got, err = o.Glob(filepath.Join(c.root, "a", "*.json"))
 			require.NoError(t, err)

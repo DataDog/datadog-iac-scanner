@@ -1684,6 +1684,9 @@ func BenchmarkPlan(b *testing.B) {
 }
 
 func TestAdapterStatDirectoryThroughOverlay(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("MemFS keys are forward-slash paths")
+	}
 	mem := vfs.NewMemFS(map[string][]byte{"/ws/app/kustomization.yaml": []byte("x")})
 	a := &adapter{fsys: vfs.NewOverlay(mem, map[string][]byte{"/ws/gen/a.yaml": []byte("y")}), root: "/ws"}
 	for _, dir := range []string{"/ws/app", "/ws/gen"} {
