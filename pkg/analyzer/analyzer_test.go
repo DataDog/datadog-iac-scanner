@@ -490,6 +490,14 @@ func TestClassifyFile_CICDNeedsTopLevelOnAndJobs(t *testing.T) {
 			content: "'on':\n  push:\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
 			want:    true,
 		},
+		"workflow with quoted jobs": {
+			content: "on: push\n\"jobs\": {build: {runs-on: ubuntu-latest}}\n",
+			want:    true,
+		},
+		"workflow with padded jobs": {
+			content: "on: push\njobs : {build: {runs-on: ubuntu-latest}}\n",
+			want:    true,
+		},
 		"workflow with an indented root": {
 			content: "  on: push\n  jobs:\n    build:\n      runs-on: ubuntu-latest\n",
 			want:    true,
@@ -1156,8 +1164,8 @@ func TestAnalyze_DockerfileVariants(t *testing.T) {
 	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "app.debian", nil, platforms.Supported))
 }
 
-func TestClassifyFile_GitLabDeclarations(t *testing.T) {
-	for _, path := range []string{".gitlab-ci.yml", "ci/.gitlab-ci.yaml"} {
+func TestClassifyFile_CIEntrypoints(t *testing.T) {
+	for _, path := range []string{".gitlab-ci.yml", "ci/.gitlab-ci.yaml", ".github/workflows/ci.yml"} {
 		for _, content := range []string{
 			"build: {script: echo ok}\n",
 			".template: {image: alpine}\n",
@@ -1179,4 +1187,26 @@ func TestClassifyFile_GitLabDeclarations(t *testing.T) {
 	path := filepath.Join(".github", "workflows", ".gitlab-ci.yml")
 	content := []byte("on: push\njobs: {build: {runs-on: ubuntu-latest}}\n")
 	require.Equal(t, "cicd", ClassifyFile(context.Background(), vfs.NewMemFS(map[string][]byte{path: content}), path, content, nil))
+}
+
+func TestClassifyFile_ActionNameDoesNotOverrideContent(t *testing.T) {
+	for _, tc := range []struct{ path, content, want string }{
+		{"k8s/action.yaml", "apiVersion: v1\nkind: Pod\nmetadata: {name: app}\nspec: {containers: []}\n", "kubernetes"},
+		{"roles/web/tasks/action.yml", "- name: deploy\n  debug: {msg: hello}\n", "ansible"},
+		{"action.yml", "runs: {using: composite, steps: [{run: echo ok, shell: bash}]}\n", "cicd"},
+		{"tools/action.yaml", "runs: {using: node24, main: index.js}\n", "cicd"},
+		{"action.yaml", "scalar\n", ""},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			content := []byte(tc.content)
+			fsys := vfs.NewMemFS(map[string][]byte{tc.path: content})
+			for _, enabled := range [][]string{nil, {"Kubernetes", "Ansible", "CICD"}, {"Kubernetes", "Ansible"}} {
+				want := tc.want
+				if len(enabled) == 2 && want == "cicd" {
+					want = ""
+				}
+				require.Equal(t, want, ClassifyFile(t.Context(), fsys, tc.path, content, enabled))
+			}
+		})
+	}
 }

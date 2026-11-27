@@ -6,6 +6,7 @@
 package cicd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,8 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
@@ -817,9 +820,11 @@ func TestParser_ParseContract(t *testing.T) {
 	for _, tt := range []struct{ path, provider, contract string }{
 		{".gitlab-ci.yml", provider.GitLab, provider.GitLabDeclarations},
 		{"ci/.gitlab-ci.yaml", provider.GitLab, provider.GitLabDeclarations},
+		{`C:\repo\.gitlab-ci.yml`, provider.GitLab, provider.GitLabDeclarations},
+		{`C:\repo\.github\workflows\ci.yaml`, provider.GitHub, provider.LegacyEnriched},
 		{".github/workflows/.gitlab-ci.yml", provider.GitHub, provider.LegacyEnriched},
-		{".github/dependabot.yml", provider.GitHub, provider.LegacyEnriched},
-		{"action.yml", provider.GitHub, provider.LegacyEnriched},
+		{".github/dependabot.yml", provider.Unknown, provider.LegacyEnriched},
+		{"action.yml", provider.Unknown, provider.LegacyEnriched},
 		{"azure-pipelines.yml", provider.Unknown, provider.LegacyEnriched},
 		{"bitbucket-pipelines.yml", provider.Unknown, provider.LegacyEnriched},
 		{"custom.gitlab-ci.yml", provider.Unknown, provider.LegacyEnriched},
@@ -839,5 +844,167 @@ func TestParser_ParseContract(t *testing.T) {
 			_, err = root.ParseContent(parser.WithLineInfoOnly(ctx), tt.path, content, false, false, 1)
 			require.NoError(t, err)
 		})
+	}
+}
+
+// CI files must be pure declarations even when scalar values name real files.
+func TestParser_CILiteralReferences(t *testing.T) {
+	content := []byte("on: push\njobs: {build: {steps: [{run: echo ok, env: {CONFIG: ./config.yaml}}]}}\n")
+	for _, path := range []string{".github/workflows/ci.yml", "action.yaml", ".gitlab-ci.yml", "pipeline.yml"} {
+		t.Run(path, func(t *testing.T) {
+			fsys := vfs.NewMemFS(map[string][]byte{"config.yaml": []byte("injected: true\n"),
+				".github/workflows/config.yaml": []byte("injected: true\n")})
+			for _, resolve := range []bool{false, true} {
+				parsers, err := parser.NewBuilder(t.Context()).WithFS(fsys).Add(&Parser{}).Build([]string{"cicd"}, []string{""})
+				require.NoError(t, err)
+				parsed, err := parsers[0].ParseContent(t.Context(), path, content, resolve, false, 15)
+				resolved, docs, files := []byte(parsed.Content), parsed.Docs, parsed.ResolvedFiles
+				require.NoError(t, err)
+				require.Equal(t, content, resolved)
+				require.Empty(t, files)
+				step := docs[0]["jobs"].(map[string]interface{})["build"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+				require.Equal(t, "./config.yaml", step["env"].(map[string]interface{})["CONFIG"])
+			}
+		})
+	}
+}
+
+func TestParser_GitHubImplicitConditions(t *testing.T) {
+	condition := "contains('main', github.ref)"
+	for _, wrapped := range []bool{false, true} {
+		value := condition
+		if wrapped {
+			value = "${{ " + value + " }}"
+		}
+		for _, content := range []string{
+			fmt.Sprintf("on: push\njobs: {build: {if: %q, env: {if: %q}, steps: [{if: %q, run: echo ok}]}}", value, condition, value),
+			fmt.Sprintf("runs: {using: composite, steps: [{if: %q, run: echo ok, shell: bash}]}", value),
+		} {
+			doc := parseWorkflowDocument(t, content)
+			var steps []interface{}
+			if jobs, ok := doc["jobs"].(map[string]interface{}); ok {
+				job := jobs["build"].(map[string]interface{})
+				require.Equal(t, []string{condition}, parsedExpressionRaws(t, job, "_parsed_expressions_if"))
+				require.NotContains(t, job["env"], "_parsed_expressions_if")
+				steps = job["steps"].([]interface{})
+			} else {
+				steps = doc["runs"].(map[string]interface{})["steps"].([]interface{})
+			}
+			require.Len(t, steps, 1)
+			require.Equal(t, []string{condition}, parsedExpressionRaws(t, steps[0].(map[string]interface{}), "_parsed_expressions_if"))
+		}
+	}
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte("jobs: {if: github.ref, script: echo ok}"), ".gitlab-ci.yml", false, 15)
+	require.NoError(t, err)
+	require.NotContains(t, docs[0]["jobs"], "_parsed_expressions_if")
+}
+
+func TestParser_GitHubShellContext(t *testing.T) {
+	for _, tt := range []struct {
+		name, workflow, job, step, shell string
+		supported                        bool
+	}{
+		{"linux", "", "runs-on: ubuntu-latest", "", "bash", true},
+		{"windows", "", "runs-on: windows-latest", "", "pwsh", false},
+		{"runner labels", "", "runs-on: [self-hosted, windows]", "", "pwsh", false},
+		{"runner group", "", "runs-on: {group: builders, labels: macos-latest}", "", "bash", true},
+		{"container", "", "container: alpine", "", "sh", true},
+		{"workflow default", "defaults: {run: {shell: pwsh}}", "runs-on: ubuntu-latest", "", "pwsh", false},
+		{"job default", "defaults: {run: {shell: pwsh}}", "defaults: {run: {shell: sh}}", "", "sh", true},
+		{"step override", "defaults: {run: {shell: pwsh}}", "defaults: {run: {shell: sh}}", "shell: bash", "bash", true},
+		{"dynamic runner", "", "runs-on: '${{ matrix.os }}'", "", "bash", true},
+		{"self-hosted runner", "", "runs-on: self-hosted", "", "bash", true},
+		{"custom Windows-like label", "", "runs-on: windows-builders", "", "bash", true},
+		{"conflicting labels", "", "runs-on: [self-hosted, windows, linux]", "", "bash", true},
+		{"custom runner", "", "runs-on: private-runner", "", "bash", true},
+		{"empty override", "", "runs-on: ubuntu-latest", "shell: ''", "", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			content := fmt.Sprintf("%s\non: push\njobs:\n  build:\n    %s\n    steps:\n      - run: echo ok\n        %s\n", tt.workflow, tt.job, tt.step)
+			doc := parseWorkflowDocument(t, content)
+			job := doc["jobs"].(map[string]interface{})["build"].(map[string]interface{})
+			steps := job["steps"].([]interface{})
+			require.Len(t, steps, 1)
+			parsed := steps[0].(map[string]interface{})["_parsed_run"].(*ParsedRun)
+			require.Equal(t, tt.shell, parsed.Shell)
+			require.Equal(t, tt.supported, parsed.ParseOK)
+		})
+	}
+}
+
+func TestParser_ReusableJobCondition(t *testing.T) {
+	doc := parseWorkflowDocument(t, "on: push\njobs: {call: {if: github.ref, uses: org/repo/.github/workflows/reuse.yml@main}}")
+	job := doc["jobs"].(map[string]interface{})["call"].(map[string]interface{})
+	require.Equal(t, []string{"github.ref"}, parsedExpressionRaws(t, job, "_parsed_expressions_if"))
+}
+
+func TestParser_ExpressionDiagnosticLevels(t *testing.T) {
+	for _, tc := range []struct {
+		name, expression string
+		level            zerolog.Level
+		want             string
+	}{
+		{"recovery at default level", "${{ join(github.event.commits[*].message, ',') }}", zerolog.ErrorLevel, ""},
+		{"recovery at debug level", "${{ join(github.event.commits[*].message, ',') }}", zerolog.DebugLevel, "debug"},
+		{"unterminated", "${{ toJSON(secrets) && 'unfinished }}", zerolog.ErrorLevel, "error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			log := zerolog.New(&output).Level(tc.level)
+			content := fmt.Sprintf("on: push\njobs: {build: {runs-on: ubuntu-latest, steps: [{run: %q}]}}", "echo "+tc.expression)
+			_, _, _, _, err := (&Parser{}).Parse(log.WithContext(t.Context()), []byte(content), "ci.yml", false, 15)
+			require.NoError(t, err)
+			if tc.want == "" {
+				require.Empty(t, output.String())
+				return
+			}
+			var event struct{ Level string }
+			require.NoError(t, json.Unmarshal(bytes.TrimSpace(output.Bytes()), &event))
+			require.Equal(t, tc.want, event.Level)
+		})
+	}
+}
+
+func TestParser_CompositeRunShell(t *testing.T) {
+	for _, shell := range []string{"", ", shell: bash"} {
+		doc := parseWorkflowDocument(t, "runs: {using: composite, steps: [{run: echo ok"+shell+"}]}")
+		step := doc["runs"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+		parsed := step["_parsed_run"].(*ParsedRun)
+		require.Equal(t, shell != "", parsed.ParseOK)
+		if shell == "" {
+			require.Empty(t, parsed.Shell)
+			require.Error(t, parsed.Error)
+		}
+	}
+}
+
+func TestParser_TemplateTerminationIsConsistent(t *testing.T) {
+	for _, tc := range []struct {
+		expression string
+		terminated bool
+	}{
+		{"${{ toJSON(secrets) }}", true},
+		{"${{ toJSON(secrets)", false},
+		{"${{ toJSON(secrets) && 'unfinished }}", false},
+	} {
+		content := fmt.Sprintf("on: push\njobs: {build: {runs-on: ubuntu-latest, steps: [{run: %q}]}}", "echo "+tc.expression)
+		doc := parseWorkflowDocument(t, content)
+		step := doc["jobs"].(map[string]interface{})["build"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+		expressions := step["_parsed_expressions_run"].([]ParsedExpression)
+		require.Len(t, expressions, 1)
+		require.Equal(t, tc.terminated, expressions[0].ParseOK)
+		require.Equal(t, tc.terminated, step["_parsed_run"].(*ParsedRun).ParseOK)
+	}
+}
+
+func TestParser_ParsedRunCanonicalValue(t *testing.T) {
+	for _, parsed := range []*ParsedRun{nil, {}, parseRunBlock("echo hello", "bash"), parseRunBlock(`bash < script.sh`, "bash"), parseRunBlock(`exec 3>> "$GITHUB_ENV"`, "bash"), parseRunBlock(`echo "$X" | cat >> "$GITHUB_ENV"`, "bash"), parseRunBlock(`echo "unterminated`, "bash"), parseRunBlock("x", "pwsh")} {
+		encoded, err := json.Marshal(parsed)
+		require.NoError(t, err)
+		var expected interface{}
+		require.NoError(t, json.Unmarshal(encoded, &expected))
+		got, err := parsed.CanonicalDocumentValue()
+		require.NoError(t, err)
+		require.Equal(t, expected, got)
 	}
 }

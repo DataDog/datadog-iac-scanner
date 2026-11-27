@@ -371,10 +371,10 @@ func ansibleFromYAMLNode(root *yamlParser.Node) bool {
 	return false
 }
 
-// gitLabDeclarationPlatform routes canonical paths even when their contents
+// ciEntrypointPlatform routes canonical paths even when their contents
 // are malformed or template-only, while honoring explicit platform exclusion.
-func gitLabDeclarationPlatform(path string, enabled []string) (string, bool) {
-	if provider.Detect(path) != provider.GitLab {
+func ciEntrypointPlatform(path string, enabled []string) (string, bool) {
+	if provider.Entrypoint(path) == provider.Unknown {
 		return "", false
 	}
 	if len(enabled) == 0 || enabled[0] == "" {

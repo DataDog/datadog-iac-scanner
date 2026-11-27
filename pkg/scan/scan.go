@@ -403,7 +403,7 @@ func (c *Client) createService(
 		Add(dockerComposeParser.NewDefaultWithFS(c.fsys)).
 		Add(tfParser).
 		Add(&bicepParser.Parser{}).
-		Add(&cicdParser.Parser{FS: c.fsys}).
+		Add(&cicdParser.Parser{}).
 		Add(&dockerParser.Parser{}).
 		Add(&protoParser.Parser{}).
 		Add(&buildahParser.Parser{}).

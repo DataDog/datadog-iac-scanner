@@ -8,7 +8,7 @@
 package provider
 
 import (
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -22,19 +22,18 @@ const (
 	GitLabDeclarations = "cicd/gitlab-declarations-v1"
 )
 
-// Detect identifies only existing CI entrypoint conventions. It does not
-// discover new files or inspect/compile their configuration.
-func Detect(path string) string {
-	base := filepath.Base(path)
-	dir := filepath.ToSlash(filepath.Dir(path))
-	if dir == ".github/workflows" || strings.HasSuffix(dir, "/.github/workflows") {
+// Entrypoint identifies canonical CI files independently of their contents.
+// Other files may still be discovered by content, but must not inherit a
+// provider merely because an unrelated YAML file lives in the same directory.
+func Entrypoint(filename string) string {
+	filename = strings.ReplaceAll(filename, `\`, "/")
+	base, dir := path.Base(filename), path.Dir(filename)
+	if (dir == ".github/workflows" || strings.HasSuffix(dir, "/.github/workflows")) &&
+		(path.Ext(base) == ".yml" || path.Ext(base) == ".yaml") {
 		return GitHub
 	}
 	if base == ".gitlab-ci.yml" || base == ".gitlab-ci.yaml" {
 		return GitLab
-	}
-	if base == "action.yml" || base == "action.yaml" || strings.Contains("/"+dir+"/", "/.github/") {
-		return GitHub
 	}
 	return Unknown
 }

@@ -307,36 +307,40 @@ func TestInventoryKeyedRows(t *testing.T) {
 }
 
 func TestInventoryGitLabDeclaredJobs(t *testing.T) {
-	root := writeRepo(t, map[string]string{
-		"tmpl/.gitlab-ci.yml":     "build:\n\tscript: echo invalid\n",
-		".gitlab-ci.yml":          "{}\n---\ninclude: missing.yml\n.base: {script: echo base}\nbuild: {extends: .base}\nid: {script: echo id}\nfile: {script: echo file}\n_dd_lines: {}\n",
-		"ci/.gitlab-ci.yaml":      "deploy: {trigger: other/project}\n",
-		".gitlab/ci/fragment.yml": "fragment: {script: echo fragment}\n",
-		"pipeline.yml":            "custom: {script: echo custom}\n",
-	})
-	for _, explicit := range []bool{false, true} {
-		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
-			params := documentParams(root)
-			params.Platform = []string{"CICD"}
-			if explicit {
-				params.Path = []string{filepath.Join(root, ".gitlab-ci.yml"), filepath.Join(root, "ci/.gitlab-ci.yaml")}
-			}
-			inv := scanInventory(t, params)
-			require.Len(t, inv.Resources, 5)
-			if explicit {
-				require.Equal(t, inventory.StatusComplete, inv.Status)
-			} else {
-				require.Equal(t, inventory.StatusPartial, inv.Status)
-				require.Equal(t, 1, inv.Stats.FilesFailed)
-				require.Contains(t, inv.Files, inventory.File{
-					Platform: platforms.CICD, Path: "tmpl/.gitlab-ci.yml", Status: inventory.FileFailed, Reason: inventory.ReasonParseError,
+	for _, malformed := range []string{"build:\n\tscript: echo invalid\n", "valid: {script: echo ok}\n---\nbroken: [\n"} {
+		t.Run(malformed, func(t *testing.T) {
+			root := writeRepo(t, map[string]string{
+				"tmpl/.gitlab-ci.yml":     malformed,
+				".gitlab-ci.yml":          "{}\n---\ninclude: missing.yml\n.base: {script: echo base}\nbuild: {extends: .base}\nid: {script: echo id}\nfile: {script: echo file}\n_dd_lines: {}\n",
+				"ci/.gitlab-ci.yaml":      "deploy: {trigger: other/project}\n",
+				".gitlab/ci/fragment.yml": "fragment: {script: echo fragment}\n",
+				"pipeline.yml":            "custom: {script: echo custom}\n",
+			})
+			for _, explicit := range []bool{false, true} {
+				t.Run(fmt.Sprint(explicit), func(t *testing.T) {
+					params := documentParams(root)
+					params.Platform = []string{"CICD"}
+					if explicit {
+						params.Path = []string{filepath.Join(root, ".gitlab-ci.yml"), filepath.Join(root, "ci/.gitlab-ci.yaml")}
+					}
+					inv := scanInventory(t, params)
+					require.Len(t, inv.Resources, 5)
+					if explicit {
+						require.Equal(t, inventory.StatusComplete, inv.Status)
+					} else {
+						require.Equal(t, inventory.StatusPartial, inv.Status)
+						require.Equal(t, 1, inv.Stats.FilesFailed)
+						require.Contains(t, inv.Files, inventory.File{
+							Platform: platforms.CICD, Path: "tmpl/.gitlab-ci.yml", Status: inventory.FileFailed, Reason: inventory.ReasonParseError,
+						})
+					}
+					for _, row := range inv.Resources {
+						require.Equal(t, "gitlab_ci_job", row.ResourceType)
+						require.Equal(t, "cicd", row.Platform)
+						require.Greater(t, row.LineStart, 0)
+						require.Equal(t, row.LineStart, row.LineEnd)
+					}
 				})
-			}
-			for _, row := range inv.Resources {
-				require.Equal(t, "gitlab_ci_job", row.ResourceType)
-				require.Equal(t, "cicd", row.Platform)
-				require.Greater(t, row.LineStart, 0)
-				require.Equal(t, row.LineStart, row.LineEnd)
 			}
 		})
 	}
@@ -376,6 +380,35 @@ func TestInventoryGitLabDeclaredJobsInHelmChart(t *testing.T) {
 			}
 			require.Equal(t, 1, jobs)
 			require.Equal(t, 1, pods)
+		})
+	}
+}
+
+func TestInventoryActionNamesPreservePlatforms(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"k8s/action.yaml":                  "apiVersion: v1\nkind: Pod\nmetadata: {name: action}\nspec: {containers: []}\n",
+		"k8s/pod.yaml":                     "apiVersion: v1\nkind: Pod\nmetadata: {name: pod}\nspec: {containers: []}\n",
+		"roles/web/tasks/action.yml":       "- name: deploy\n  debug: {msg: hello}\n",
+		"charts/app/Chart.yaml":            "apiVersion: v2\nname: app\nversion: 0.1.0\n",
+		"charts/app/values.yaml":           "replicas: 2\n",
+		"charts/app/templates/action.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: chart-app}\nspec: {replicas: {{ .Values.replicas }}}\n",
+	})
+	for _, enabled := range [][]string{{"Kubernetes", "Ansible"}, {"Kubernetes", "Ansible", "CICD"}, {""}} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			params := documentParams(root)
+			params.Platform = enabled
+			inv := scanInventory(t, params)
+			require.Equal(t, inventory.StatusComplete, inv.Status)
+			var files []string
+			for _, row := range inv.Resources {
+				files = append(files, row.File)
+				if row.File == "roles/web/tasks/action.yml" {
+					require.Equal(t, "ansible", row.Platform)
+				} else {
+					require.Equal(t, "kubernetes", row.Platform)
+				}
+			}
+			require.ElementsMatch(t, []string{"k8s/action.yaml", "k8s/pod.yaml", "roles/web/tasks/action.yml", "charts/app/templates/action.yaml"}, files)
 		})
 	}
 }

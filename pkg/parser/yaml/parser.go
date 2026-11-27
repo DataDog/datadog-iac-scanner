@@ -66,7 +66,7 @@ func ParseWithNodeTransform(ctx context.Context, fsys vfs.FS, fileContent []byte
 	err error) {
 	resolvedDocs, resolvedFiles := resolve(ctx, fsys, fileContent, filePath, resolveReferences, maxResolverDepth)
 	if resolvedDocs == nil {
-		documents, ignoreLines, err = parseNodes(ctx, fileContent, filePath, fn)
+		documents, ignoreLines, err = parseNodes(ctx, fileContent, filePath, fn, false)
 		return fileContent, documents, ignoreLines, resolvedFiles, err
 	}
 	documents, err = convertResolvedNodes(ctx, resolvedDocs, filePath, fn)
@@ -89,7 +89,15 @@ func ParseWithNodeTransformNoResolve(ctx context.Context, fileContent []byte, fi
 	documents []model.Document,
 	ignoreLines []int,
 	err error) {
-	return parseNodes(ctx, fileContent, filePath, fn)
+	return parseNodes(ctx, fileContent, filePath, fn, false)
+}
+
+// ParseStrictNoResolve parses a complete source file atomically, without generic
+// references. CI entrypoints use it so malformed tails cannot hide declarations.
+// Other YAML consumers retain their existing completed-document behavior.
+func ParseStrictNoResolve(ctx context.Context, content []byte, filename string) (
+	[]model.Document, []int, error) {
+	return parseNodes(ctx, content, filename, nil, true)
 }
 
 // ErrNoDocuments is returned for a YAML file that holds no document and no
@@ -98,7 +106,7 @@ var ErrNoDocuments = errors.New("no documents found in yaml file")
 
 // parseNodes decodes the (already resolved) YAML bytes into documents,
 // applying fn to each document's root node before conversion.
-func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(node *yaml.Node)) (
+func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(node *yaml.Node), strict bool) (
 	documents []model.Document,
 	ignoreLines []int,
 	err error) {
@@ -118,11 +126,11 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 		documents = appendDocument(ctx, documents, &node, filePath, fn, ignore)
 	}
 
+	if decodeErr != nil && (strict || len(documents) == 0) {
+		// Strict consumers must not mistake a valid prefix for a complete file.
+		return nil, []int{}, errors.Wrap(decodeErr, "invalid yaml document")
+	}
 	if len(documents) == 0 {
-		if decodeErr != nil {
-			// A syntax error before any document: invalid, not empty.
-			return nil, []int{}, errors.Wrap(decodeErr, ErrNoDocuments.Error())
-		}
 		return nil, []int{}, ErrNoDocuments
 	}
 

@@ -1368,6 +1368,13 @@ type Documents struct {
 	Documents []Document `json:"document"`
 }
 
+// CanonicalDocumentValue lets parser enrichments produce the same maps,
+// slices and scalars as a JSON round-trip while retaining shared source strings.
+// Implementations must preserve their JSON field/value semantics exactly.
+type CanonicalDocumentValue interface {
+	CanonicalDocumentValue() (interface{}, error)
+}
+
 // Document
 type Document map[string]interface{}
 

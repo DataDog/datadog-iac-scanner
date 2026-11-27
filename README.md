@@ -70,6 +70,26 @@ datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR1 -q QUERYDIR2
 
 Run `datadog-iac-scanner scan --help` to see all available flags.
 
+### CI/CD source parsing
+
+Canonical GitHub workflow files under `.github/workflows/` and GitLab entrypoints
+are routed to CI/CD, honoring platform exclusions. Action manifests are detected
+by their content: naming a Kubernetes, Ansible or Helm file `action.yml` or
+`action.yaml` does not change its platform. Content-based workflow discovery also
+accepts quoted keys and whitespace before colons. CI scalar values remain literal;
+naming a sibling YAML file does not inline its contents.
+
+GitHub job and step conditions support implicit expressions, multiline values
+and quoted delimiters. Shell settings follow step, job and workflow defaults,
+then container or recognized runner labels. PowerShell remains unsupported by the
+shell parser, whether selected explicitly or by a Windows runner; existing rules
+may use their text fallbacks. Unresolved runners retain a Bash analysis candidate,
+which does not establish their actual OS or shell. Composite run steps require an
+explicit shell. Expressions are never executed. Pipelines writing GitHub
+environment/path files are analyzed conservatively and may be reported even
+when their arguments appear literal.
+
+
 ### GitLab CI declaration inventory
 
 The CI/CD platform discovers canonical `.gitlab-ci.yml` and

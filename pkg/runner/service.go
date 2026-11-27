@@ -771,6 +771,11 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 	if isCanonicalDocumentValue(v) {
 		return v, false
 	}
+	if value, ok := v.(model.CanonicalDocumentValue); ok {
+		if normalized, err := value.CanonicalDocumentValue(); err == nil {
+			return normalized, true
+		}
+	}
 	if normalized, handled := normalizeScalarDocumentValue(v); handled {
 		return normalized, true
 	}
