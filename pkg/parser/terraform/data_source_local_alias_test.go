@@ -100,10 +100,7 @@ data "aws_iam_policy_document" "combined" {
 
 func scanDataSourceDir(t *testing.T, files map[string]string) (before, after map[string]cty.Value) {
 	t.Helper()
-	dir := t.TempDir()
-	for name, content := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
-	}
+	dir := writeTerraformDir(t, files)
 	ctx := context.Background()
 	inputVars := getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
 	before = inputVars["local"].AsValueMap()
@@ -132,9 +129,12 @@ data "aws_iam_policy_document" "x" {
 }
 `,
 	})
-	require.NotContains(t, before, "bucket")
-	require.NotContains(t, withoutDoc, "bucket")
-	require.NotContains(t, withDoc, "bucket")
+	// The variable default resolves the local before any data pass, so it has
+	// the same value with and without a policy document.
+	for _, locals := range []map[string]cty.Value{before, withoutDoc, withDoc} {
+		require.Contains(t, locals, "bucket")
+		require.Equal(t, "logs-prod", locals["bucket"].AsString())
+	}
 }
 
 func Test_getDataSourcePolicy_tryDoesNotKeepFallbackForExistingValues(t *testing.T) {
@@ -150,13 +150,14 @@ locals {
 }
 `})
 	// var.acl exists, so the fallback must not replace it.
-	require.NotContains(t, locals, "from_var")
+	require.Contains(t, locals, "from_var")
+	require.Equal(t, "public-read", locals["from_var"].AsString())
 	require.Equal(t, "public-read", locals["from_local"].AsString())
 	require.True(t, locals["has_local"].True())
 }
 
-// Two locals blocks pin the evaluation order: the first block is walked
-// before the second, so the pre-pass must wait for local.y.
+// Two locals blocks pin the declaration order: the first block is walked
+// before the second, so x must be evaluated after local.y.
 func Test_getDataSourcePolicy_tryWaitsForLocalFromLaterBlock(t *testing.T) {
 	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
 locals {
@@ -203,7 +204,7 @@ locals {
   x = try(local, "fb")
 }
 `})
-	require.NotContains(t, locals, "x")
+	requireUnresolvedLocal(t, locals, "x")
 }
 
 func Test_getDataSourcePolicy_dataDependentNullLocalIsStored(t *testing.T) {
@@ -214,11 +215,39 @@ data "aws_iam_policy_document" "plain" {
   }
 }
 locals {
-  out = try(data.aws_iam_policy_document.missing.json, null)
+  out      = data.aws_iam_policy_document.plain.json != "" ? null : "set"
+  missing  = try(data.aws_iam_policy_document.missing.json, null)
 }
 `})
 	require.Contains(t, locals, "out")
+	require.True(t, locals["out"].IsKnown())
 	require.True(t, locals["out"].IsNull())
+	// A data document the scanner did not render is not read as missing.
+	requireUnresolvedLocal(t, locals, "missing")
+}
+
+// An unresolved local is missing from the locals returned, but a local read
+// again once data is rendered still sees it as declared: a read of local as a
+// whole does not take the fallback for it.
+func Test_getDataSourcePolicy_wholeLocalReadSeesUnresolvedLocals(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+variable "nodef" {
+  type = string
+}
+data "aws_iam_policy_document" "plain" {
+  statement {
+    actions = ["s3:*"]
+  }
+}
+locals {
+  blocked = var.nodef
+  doc     = data.aws_iam_policy_document.plain.json
+  picked  = lookup(local, "blocked", "fallback")
+}
+`})
+	require.Contains(t, locals, "doc")
+	requireUnresolvedLocal(t, locals, "blocked")
+	requireUnresolvedLocal(t, locals, "picked")
 }
 
 func Test_getDataSourcePolicy_localsReadingDataResolveThroughVariables(t *testing.T) {
@@ -237,7 +266,8 @@ data "aws_iam_policy_document" "base" {
 }
 `,
 	})
-	require.NotContains(t, locals, "bucket")
+	require.Contains(t, locals, "bucket")
+	require.Equal(t, "logs-prod", locals["bucket"].AsString())
 	for _, name := range []string{"tagged", "indirect"} {
 		require.True(t, locals[name].IsKnown(), name)
 		require.Contains(t, locals[name].AsString(), `prod:{"Statement"`, name)
@@ -372,14 +402,18 @@ data "aws_iam_policy_document" "plain" {
 	require.Contains(t, docs, "plain")
 	require.Contains(t, docs, "via")
 	require.Contains(t, docs["via"].AsValueMap()["json"].AsString(), `"Sid":"FromLocal"`)
-	// Unrelated var-only locals must still stay unresolved when a policy exists.
+	// An unrelated var-only local keeps the value the variables give it when a
+	// policy exists.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "extra.tf"), []byte(`
 variable "env" { default = "prod" }
 locals { bucket = "logs-${var.env}" }
 `), 0o600))
 	vars = getInputVariables(ctx, vfs.DiskFS{}, dir, "", "", nil, "")
+	require.Contains(t, vars["local"].AsValueMap(), "bucket")
+	require.Equal(t, "logs-prod", vars["local"].AsValueMap()["bucket"].AsString())
 	result = getDataSourcePolicy(ctx, vfs.DiskFS{}, dir, vars, nil, "")
-	require.NotContains(t, result["local"].AsValueMap(), "bucket")
+	require.Contains(t, result["local"].AsValueMap(), "bucket")
+	require.Equal(t, "logs-prod", result["local"].AsValueMap()["bucket"].AsString())
 	require.Contains(t, result["data"].AsValueMap()["aws_iam_policy_document"].AsValueMap(), "via")
 }
 
@@ -633,4 +667,106 @@ func TestDataCycles_WholeDataReferenceReachesEveryBlock(t *testing.T) {
 		DataKey("t", "bare"):    true,
 		DataKey("t", "dynType"): true,
 	}, DataCycles(reads, nil))
+}
+
+// Locals reading data are refreshed with the functions and path the other
+// locals read, and a fallback is not taken past a root the scanner cannot read.
+func Test_getDataSourcePolicy_dataLocalsReadFilesAndKeepUnreadableRootsUnresolved(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{
+		"actions.json": `["s3:GetObject"]`,
+		"main.tf": `
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions = ["s3:*"]
+  }
+}
+locals {
+  from_file     = try(file("${path.module}/actions.json"), data.aws_iam_policy_document.p.json)
+  from_resource = try(aws_s3_bucket.b.arn, data.aws_iam_policy_document.p.json)
+}
+`,
+	})
+	requireLocal(t, locals, "from_file", cty.StringVal(`["s3:GetObject"]`))
+	requireUnresolvedLocal(t, locals, "from_resource")
+}
+
+// An override file decides a local reading data whatever its name sorts to.
+func Test_getDataSourcePolicy_overrideFileWinsWhateverItsName(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{
+		"zmain.tf": `
+locals {
+  base_json = data.aws_iam_policy_document.first.json
+}
+data "aws_iam_policy_document" "first" {
+  statement {
+    sid     = "First"
+    actions = ["sqs:*"]
+  }
+}
+data "aws_iam_policy_document" "second" {
+  statement {
+    sid     = "Second"
+    actions = ["s3:*"]
+  }
+}
+`,
+		"a_override.tf": `
+locals {
+  base_json = data.aws_iam_policy_document.second.json
+}
+`,
+	})
+	require.Contains(t, locals, "base_json")
+	require.Contains(t, locals["base_json"].AsString(), `"Sid":"Second"`)
+}
+
+// A data-reading local that also reads a resource stays unresolved, even when
+// the known first try argument comes from data: the scanner has no value for
+// the resource, so it does not evaluate the local.
+func Test_getDataSourcePolicy_dataLocalReadingAResourceStaysUnresolved(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{"main.tf": `
+data "aws_iam_policy_document" "p" {
+  statement {
+    sid     = "Known"
+    actions = ["s3:GetObject"]
+  }
+}
+locals {
+  doc = try(data.aws_iam_policy_document.p.json, aws_iam_policy.x.policy)
+}
+`})
+	requireUnresolvedLocal(t, locals, "doc")
+}
+
+// Data-reading locals evaluate templates as the other locals do: a template
+// calling a function the scanner does not implement is unresolved, a supported
+// file is read.
+func Test_getDataSourcePolicy_dataLocalsTemplatesAndFiles(t *testing.T) {
+	_, locals := scanDataSourceDir(t, map[string]string{
+		"days.txt": "0",
+		"main.tf": `
+variable "template" {
+  default = "$${ephemeralasnull(0)}"
+}
+variable "filename" {
+  default = "days.txt"
+}
+data "aws_iam_policy_document" "p" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["*"]
+  }
+}
+locals {
+  from_template = length(data.aws_iam_policy_document.p.json) > 0 ? try(tonumber(templatestring(var.template, {})), 90) : 90
+  template_alias = local.from_template
+  from_file      = length(data.aws_iam_policy_document.p.json) > 0 ? tonumber(file("${path.module}/${var.filename}")) : 90
+  file_alias     = local.from_file
+}
+`,
+	})
+	requireUnresolvedLocal(t, locals, "from_template")
+	requireUnresolvedLocal(t, locals, "template_alias")
+	requireLocal(t, locals, "from_file", cty.NumberIntVal(0))
+	requireLocal(t, locals, "file_alias", cty.NumberIntVal(0))
 }

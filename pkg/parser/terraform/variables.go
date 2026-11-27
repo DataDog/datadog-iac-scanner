@@ -11,14 +11,15 @@ import (
 	"errors"
 	"path/filepath"
 	"regexp"
-	"slices"
+	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/converter"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/vartype"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -34,6 +35,11 @@ const (
 	blockTypeLocals            = "locals"
 	// blockTypeLocalReference is the root name expressions read locals through.
 	blockTypeLocalReference = "local"
+	// varReference is the root name expressions read input variables through.
+	varReference = "var"
+	// pathReference is the root name expressions read path.module, path.root
+	// and path.cwd through.
+	pathReference = "path"
 )
 
 var terraformVarsPathRegex = regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
@@ -66,7 +72,7 @@ func getInputVariablesFromFile(ctx context.Context, fsys vfs.FS, filename string
 	if err != nil {
 		return nil, err
 	}
-	return extractInputVariables(body, filename, variableDefaultMerge{}), nil
+	return extractInputVariables(body, filename), nil
 }
 
 func getInputVariablesFromJSONFile(ctx context.Context, fsys vfs.FS, filename string) (converter.VariableMap, error) {
@@ -81,7 +87,9 @@ func getInputVariablesFromJSONFile(ctx context.Context, fsys vfs.FS, filename st
 	attrs, _ := parsed.Body.JustAttributes()
 	variables := make(converter.VariableMap, len(attrs))
 	for name, attr := range attrs {
-		val, diags := attr.Expr.Value(&hcl.EvalContext{})
+		// JSON values are literal, as Terraform reads them: without an
+		// evaluation context, "${0}" stays that string.
+		val, diags := attr.Expr.Value(nil)
 		if !diags.HasErrors() && val.IsKnown() {
 			variables[name] = val
 		}
@@ -94,54 +102,53 @@ var (
 	localsBlockMarker   = []byte("locals")
 )
 
-// getInputVariablesAndLocalsFromFile parses filename once for both variables and locals.
+// getInputVariablesAndLocalsFromFile parses filename once for its variable
+// declarations and locals assignments. A file declaring no variable may hold
+// variable values as top-level attributes, which values returns.
 func getInputVariablesAndLocalsFromFile(
-	ctx context.Context, fsys vfs.FS, filename string, merge variableDefaultMerge,
-) (vars, locals converter.VariableMap, err error) {
+	ctx context.Context, fsys vfs.FS, filename string,
+) (decls []variableDeclaration, values converter.VariableMap, assignments []localAssignment, err error) {
 	if tfpath.IsJSONConfig(filename) {
-		return extractVarsAndLocalsFromJSON(ctx, fsys, filename, merge)
+		return extractVarsAndLocalsFromJSON(ctx, fsys, filename)
 	}
 	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	// A .tf/.tofu file without "variable" or "locals" cannot declare variable
 	// or locals blocks, skipping a redundant full HCL parse for resource files.
 	if !bytes.Contains(src, variableBlockMarker) && !bytes.Contains(src, localsBlockMarker) {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	parsedFile, diags := hclcache.ParseConfig(ctx, src, filename)
 	if diags.HasErrors() {
-		return nil, nil, diags
+		return nil, nil, nil, diags
 	}
 	body, _ := parsedFile.Body.(*hclsyntax.Body)
-	return extractInputVariables(body, filename, merge), extractLocals(body), nil
-}
-
-// variableDefaultMerge tracks primary declarations in a directory with overrides.
-// A default-less override keeps the earlier value only for a unique base.
-type variableDefaultMerge struct {
-	baseCounts map[string]int
-	override   bool
-}
-
-type fileVariableContext struct {
-	vars, locals converter.VariableMap
-}
-
-func (m variableDefaultMerge) inheritDefault(name string, hasDefault bool) bool {
-	if m.baseCounts == nil {
-		return false
+	if body == nil {
+		return nil, nil, nil, nil
 	}
-	if m.override {
-		return !hasDefault && m.baseCounts[name] == 1
+	for _, block := range body.Blocks {
+		if block.Type != blockTypeVariable || len(block.Labels) != 1 || block.Labels[0] == "" {
+			continue
+		}
+		attrs := block.Body.Attributes
+		decls = append(decls, newVariableDeclaration(block.Labels[0], func(name string) (hcl.Expression, bool) {
+			attr, ok := attrs[name]
+			if !ok {
+				return nil, false
+			}
+			return attr.Expr, true
+		}))
 	}
-	m.baseCounts[name]++
-	return false
+	if len(decls) == 0 {
+		values = extractInputVariables(body, filename)
+	}
+	return decls, values, localAssignmentsFromBody(body), nil
 }
 
 // nolint:gocyclo
-func extractInputVariables(body *hclsyntax.Body, filename string, merge variableDefaultMerge) converter.VariableMap {
+func extractInputVariables(body *hclsyntax.Body, filename string) converter.VariableMap {
 	variables := make(converter.VariableMap)
 	if body == nil {
 		return variables
@@ -161,24 +168,19 @@ func extractInputVariables(body *hclsyntax.Body, filename string, merge variable
 	// Case 2: .tf variable "x" { default = ... }
 	hasVariableBlock := false
 	for _, block := range body.Blocks {
-		if block.Type != blockTypeVariable || len(block.Labels) != 1 || block.Labels[0] == "" {
-			continue
-		}
-		hasVariableBlock = true
-		varName := block.Labels[0]
-		defaultAttr := block.Body.Attributes["default"]
-		if merge.inheritDefault(varName, defaultAttr != nil) {
-			continue
-		}
-		if defaultAttr != nil {
-			val, diags := defaultAttr.Expr.Value(&hcl.EvalContext{})
-			if !diags.HasErrors() && val.IsKnown() {
-				variables[varName] = val
-				continue
+		if block.Type == blockTypeVariable && len(block.Labels) == 1 && block.Labels[0] != "" {
+			hasVariableBlock = true
+			varName := block.Labels[0]
+			if defaultAttr, exists := block.Body.Attributes["default"]; exists {
+				val, diags := defaultAttr.Expr.Value(&hcl.EvalContext{})
+				if !diags.HasErrors() && val.IsKnown() {
+					variables[varName] = val
+					continue
+				}
 			}
+			// Declared but unset: keep the attribute so try/can see unknown, not a missing key.
+			variables[varName] = cty.UnknownVal(cty.DynamicPseudoType)
 		}
-		// Declared but unset: keep the attribute so try/can see unknown, not a missing key.
-		variables[varName] = cty.UnknownVal(cty.DynamicPseudoType)
 	}
 
 	// If no variable blocks found but has attributes, treat as .tfvars-style
@@ -195,154 +197,65 @@ func extractInputVariables(body *hclsyntax.Body, filename string, merge variable
 }
 
 func extractVarsAndLocalsFromJSON(
-	ctx context.Context, fsys vfs.FS, filename string, merge variableDefaultMerge,
-) (vars, locals converter.VariableMap, err error) {
+	ctx context.Context, fsys vfs.FS, filename string,
+) (decls []variableDeclaration, values converter.VariableMap, assignments []localAssignment, err error) {
 	src, err := tfmodules.ReadConfigFile(ctx, fsys, filename, "")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	parsed, diags := hcljson.Parse(src, filename)
 	if diags.HasErrors() {
-		return nil, nil, diags
+		return nil, nil, nil, diags
 	}
 	content, _, diags := parsed.Body.PartialContent(jsonConfigSchema)
 	if diags.HasErrors() && content == nil {
-		return nil, nil, diags
+		return nil, nil, nil, diags
 	}
 
-	vars, locals = varsAndLocalsFromJSONBlocks(content.Blocks, merge)
-	return vars, locals, nil
+	decls, assignments = varsAndLocalsFromJSONBlocks(content.Blocks)
+	return decls, nil, assignments, nil
 }
 
-func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks, merge variableDefaultMerge) (vars, locals converter.VariableMap) {
-	vars = make(converter.VariableMap)
-	locals = make(converter.VariableMap)
-	evalCtx := &hcl.EvalContext{}
+func varsAndLocalsFromJSONBlocks(blocks hcl.Blocks) (decls []variableDeclaration, assignments []localAssignment) {
 	for _, block := range blocks {
 		switch block.Type {
 		case blockTypeVariable:
 			if len(block.Labels) != 1 || block.Labels[0] == "" {
 				continue
 			}
-			name := block.Labels[0]
 			attrs, _ := block.Body.JustAttributes()
-			def := attrs["default"]
-			if !merge.inheritDefault(name, def != nil) {
-				vars[name] = knownDefaultOrUnknown(def, evalCtx)
-			}
+			decls = append(decls, newVariableDeclaration(block.Labels[0], func(name string) (hcl.Expression, bool) {
+				attr, ok := attrs[name]
+				if !ok {
+					return nil, false
+				}
+				return attr.Expr, true
+			}))
 		case blockTypeLocals:
-			mergeKnownAttributes(locals, block.Body)
+			assignments = append(assignments, jsonLocalAssignments(block.Body)...)
 		}
 	}
-	return vars, locals
+	return decls, assignments
 }
 
-func knownDefaultOrUnknown(def *hcl.Attribute, evalCtx *hcl.EvalContext) cty.Value {
-	if def != nil {
-		val, diags := def.Expr.Value(evalCtx)
-		if !diags.HasErrors() && val.IsKnown() {
-			return val
-		}
-	}
-	return cty.UnknownVal(cty.DynamicPseudoType)
-}
-
-func mergeKnownAttributes(dst converter.VariableMap, body hcl.Body) {
+// jsonLocalAssignments returns the assignments of a JSON locals block, by name.
+func jsonLocalAssignments(body hcl.Body) []localAssignment {
 	attrs, _ := body.JustAttributes()
+	names := make([]string, 0, len(attrs))
+	for name := range attrs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	assignments := make([]localAssignment, 0, len(attrs))
-	for name, attr := range attrs {
-		assignments = append(assignments, localAssignment{name: name, expr: attr.Expr})
+	for _, name := range names {
+		assignments = append(assignments, localAssignment{name: name, expr: attrs[name].Expr})
 	}
-	assignments = lastLocalAssignments(assignments)
-	evalLocalPrePass(dst, assignments)
+	return assignments
 }
 
-func extractLocals(body *hclsyntax.Body) converter.VariableMap {
-	locals := make(converter.VariableMap)
-	if body == nil {
-		return locals
-	}
-	assignments := lastLocalAssignments(localAssignmentsFromBody(body))
-	evalLocalPrePass(locals, assignments)
-	return locals
-}
-
-// evalLocalPrePass resolves the locals a locals-only context can compute: an
-// assignment waits until it reads only resolved locals, so try and can do not
-// keep a fallback for a value that exists. Nulls are stored like other values.
-func evalLocalPrePass(dst converter.VariableMap, assignments []localAssignment) {
-	for pass := 0; pass < len(assignments)+1; pass++ {
-		changed := false
-		for _, item := range assignments {
-			if _, ok := dst[item.name]; ok {
-				continue
-			}
-			if !evaluableWithLocalsOnly(item.expr, dst) {
-				continue
-			}
-			// The context holds the locals resolved so far, including ones
-			// this pass resolved, so it is built per assignment.
-			evalCtx := &hcl.EvalContext{
-				Variables: map[string]cty.Value{"local": cty.ObjectVal(dst)},
-				Functions: functions.TerraformFuncs,
-			}
-			val, diags := item.expr.Value(evalCtx)
-			if !diags.HasErrors() && val.IsKnown() {
-				dst[item.name] = val
-				changed = true
-			}
-		}
-		if !changed {
-			break
-		}
-	}
-}
-
-// evaluableWithLocalsOnly reports whether expr reads nothing but locals that
-// already hold a value in resolved. Whole-object reads (local[local.k]) may
-// evaluate once the key they read resolves, except under try or can, which
-// would keep a fallback for a key that appears later.
-func evaluableWithLocalsOnly(expr hcl.Expression, resolved converter.VariableMap) bool {
-	strict := usesTryOrCan(expr)
-	for _, traversal := range expr.Variables() {
-		if traversal.RootName() != blockTypeLocalReference {
-			return false
-		}
-		name, ok := LocalTraversalName(traversal)
-		if !ok {
-			if strict {
-				return false
-			}
-			continue
-		}
-		if _, done := resolved[name]; !done {
-			return false
-		}
-	}
-	return true
-}
-
-// usesTryOrCan reports whether expr calls try or can, which turn a missing
-// local into a value instead of an error. An expression whose syntax tree
-// cannot be inspected is treated as if it did.
-func usesTryOrCan(expr hcl.Expression) bool {
-	syntaxExpr, ok := expr.(hclsyntax.Expression)
-	if !ok {
-		return true
-	}
-	uses := false
-	_ = hclsyntax.VisitAll(syntaxExpr, func(node hclsyntax.Node) hcl.Diagnostics {
-		if call, ok := node.(*hclsyntax.FunctionCallExpr); ok && (call.Name == "try" || call.Name == "can") {
-			uses = true
-		}
-		return nil
-	})
-	return uses
-}
-
-// localAssignment is a locals attribute, held back from the locals-only
-// pre-pass while it reads more than resolved locals and evaluated again once
-// data (or other) namespaces become available.
+// localAssignment is a locals attribute. getInputVariables evaluates the
+// effective assignments of a directory once every variable value is known,
+// and getDataSourcePolicy those reading data again once data is rendered.
 type localAssignment struct {
 	name string
 	expr hcl.Expression
@@ -380,9 +293,9 @@ func lastLocalAssignments(all []localAssignment) []localAssignment {
 // dataDependentLocals returns the locals that read data, directly or through
 // other locals. A local declared in several files takes its last declaration,
 // as the locals of the input variables do. Only these locals can change once
-// data is rendered, so only these are worth re-evaluating: evaluating the
-// others here, with variables and functions, would resolve them differently
-// depending on whether the directory declares a policy document.
+// data is rendered, so only these are worth re-evaluating: getInputVariables
+// already resolved the others with variables and functions, whether or not
+// the directory declares a policy document.
 func dataDependentLocals(all []localAssignment) []localAssignment {
 	last := make(map[string]int, len(all))
 	for i, item := range all {
@@ -466,26 +379,55 @@ func LocalTraversalName(traversal hcl.Traversal) (string, bool) {
 
 // refreshLocals re-evaluates locals against vars (including data) so try /
 // coalesce fallbacks that succeeded early can pick up chained data sources.
-func refreshLocals(vars converter.VariableMap, assignments []localAssignment) bool {
+// assignments are the data-dependent locals the directory's refresh can
+// evaluate, already filtered against its declared locals and the var, data
+// and path roots (see refreshableLocals, which the caller runs once). They
+// are evaluated with the functions and path of evalCtx: a local reading a
+// value that is not wholly known (an unrendered data document included)
+// keeps its value, so try and can do not fall back past what the scanner
+// cannot read. The locals of declared that vars does not hold are unknown
+// while they are evaluated, and only resolved values are written back to
+// vars.
+func refreshLocals(
+	vars converter.VariableMap, declared, assignments []localAssignment, evalCtx localEvalContext,
+) bool {
 	if len(assignments) == 0 {
 		return false
 	}
-	current := objectValues(vars["local"])
+	resolved := objectValues(vars[blockTypeLocalReference])
+	current := declaredLocals(resolved, declared)
+	scope := map[string]cty.Value{varReference: vars[varReference], terraformDataIdentifier: vars[terraformDataIdentifier]}
+	if evalCtx.path != cty.NilVal {
+		scope[pathReference] = evalCtx.path
+	}
+	// The traversals each local reads, collected once: every pass checks
+	// them against the variables of that pass.
+	traversals := make([][]hcl.Traversal, len(assignments))
+	for i, item := range assignments {
+		traversals[i] = item.expr.Variables()
+	}
 	changed := false
 	for pass := 0; pass < len(assignments)+1; pass++ {
 		passChanged := false
 		evalVars := cloneVariableMap(vars)
-		evalVars["local"] = cty.ObjectVal(current)
-		evalCtx := &hcl.EvalContext{Variables: evalVars, Functions: functions.TerraformFuncs}
-		for _, item := range assignments {
-			val, diags := item.expr.Value(evalCtx)
-			if diags.HasErrors() || !val.IsKnown() {
+		for name, value := range scope {
+			evalVars[name] = value
+		}
+		evalVars[blockTypeLocalReference] = cty.ObjectVal(current)
+		hclCtx := &hcl.EvalContext{Variables: evalVars, Functions: evalCtx.funcs}
+		for i, item := range assignments {
+			if !readsOnlyKnownValues(traversals[i], evalVars) {
+				continue
+			}
+			val, diags := item.expr.Value(hclCtx)
+			if diags.HasErrors() || !val.IsWhollyKnown() {
 				continue
 			}
 			if prev, ok := current[item.name]; ok && prev.RawEquals(val) {
 				continue
 			}
 			current[item.name] = val
+			resolved[item.name] = val
 			passChanged = true
 			changed = true
 		}
@@ -494,7 +436,7 @@ func refreshLocals(vars converter.VariableMap, assignments []localAssignment) bo
 		}
 	}
 	if changed {
-		vars["local"] = cty.ObjectVal(current)
+		vars[blockTypeLocalReference] = cty.ObjectVal(resolved)
 	}
 	return changed
 }
@@ -527,39 +469,38 @@ func getInputVariables(
 	allow map[string]struct{}, keep string,
 ) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
-	variablesMap := make(converter.VariableMap)
-	localsMap := make(converter.VariableMap)
+	fileValues := make(converter.VariableMap)
 
-	tfFiles := hclConfigFiles(ctx, fsys, currentPath, allow, keep)
-	ordered := tfFiles
-	var merge variableDefaultMerge
-	var parsedFiles map[string]fileVariableContext
-	if slices.ContainsFunc(tfFiles, tfpath.IsOverrideFile) {
-		ordered = tfpath.OrderOverrideLast(tfFiles, func(path string) string { return path })
-		merge.baseCounts = make(map[string]int)
-		parsedFiles = make(map[string]fileVariableContext)
-	}
+	// Terraform applies override files after every other configuration file,
+	// in lexical order.
+	tfFiles := tfpath.OrderOverrideLast(hclConfigFiles(ctx, fsys, currentPath, allow, keep), func(path string) string { return path })
+	var (
+		locals    localDeclarations
+		variables variableDeclarations
+	)
 
 	// Parse all .tf/.tofu files for variables and locals
-	for _, tfFile := range ordered {
-		merge.override = merge.baseCounts != nil && tfpath.IsOverrideFile(tfFile)
-		vars, locals, err := getInputVariablesAndLocalsFromFile(ctx, fsys, tfFile, merge)
+	for _, tfFile := range tfFiles {
+		decls, values, assignments, err := getInputVariablesAndLocalsFromFile(ctx, fsys, tfFile)
 		if err != nil {
 			// Non-fatal: a sibling may be unreadable (broken symlink, partial
 			// MemFS push) or invalid HCL (testdata). Match getDataSourcePolicy.
 			contextLogger.Debug().Err(err).Msgf("Skipping default values and locals from %s", tfFile)
 			continue
 		}
-		mergeMaps(variablesMap, vars)
-		if parsedFiles != nil {
-			parsedFiles[tfFile] = fileVariableContext{vars: vars, locals: locals}
-		} else {
-			mergeMaps(localsMap, locals)
-		}
+		variables.add(tfFile, decls)
+		mergeMaps(fileValues, values)
+		locals.add(tfFile, assignments)
 	}
-	if parsedFiles != nil {
-		mergeStandaloneValues(tfFiles, parsedFiles, merge.baseCounts, variablesMap, localsMap)
+
+	// Values in increasing precedence: defaults, then variable definitions
+	// files, then the explicit variables file.
+	declared := variables.effective()
+	variablesMap := make(converter.VariableMap, len(declared))
+	for name, decl := range declared {
+		variablesMap[name] = decl.defaultValue()
 	}
+	mergeMaps(variablesMap, fileValues)
 
 	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
 		vars, errInput := getInputVariablesFromFile(ctx, fsys, tfVarsFile)
@@ -580,29 +521,152 @@ func getInputVariables(
 
 	mergeMaps(variablesMap, ReadExplicitVariables(ctx, fsys, terraformVarsPath))
 
+	for name, decl := range declared {
+		variablesMap[name] = decl.conform(variablesMap[name])
+	}
+
 	// Final sanitized maps
 	cleanVars := sanitizeCtyMap(variablesMap)
+	// Every variable value is now known, so each local is evaluated once, from
+	// its declaration in the order Terraform applies files, as a direct var.x
+	// in a resource already is. A local that does not resolve is missing, as
+	// before (see resolveRootLocals). The evaluation context is built only when
+	// the directory declares a local: resolving none touches neither its
+	// functions nor its path.
+	var localsMap converter.VariableMap
+	if assignments := lastLocalAssignments(locals.all()); len(assignments) > 0 {
+		evalCtx := newLocalEvalContext(fsys, currentPath)
+		localsMap = resolveRootLocals(assignments, evalCtx.scope(cty.ObjectVal(cleanVars)), evalCtx.funcs)
+	}
 	cleanLocals := sanitizeCtyMap(localsMap)
 
 	result := make(converter.VariableMap)
-	result["var"] = cty.ObjectVal(cleanVars)
-	result["local"] = cty.ObjectVal(cleanLocals)
+	result[varReference] = cty.ObjectVal(cleanVars)
+	result[blockTypeLocalReference] = cty.ObjectVal(cleanLocals)
 	return result
 }
 
-// Keep the parser's file order for locals and variables without a unique base.
-func mergeStandaloneValues(
-	files []string, parsed map[string]fileVariableContext, baseCounts map[string]int, vars, locals converter.VariableMap,
-) {
-	for _, path := range files {
-		file := parsed[path]
-		for name, value := range file.vars {
-			if baseCounts[name] != 1 {
-				vars[name] = value
-			}
+// variableDeclaration is what one variable block sets. An argument the block
+// does not set is nil, so an override file replaces only the arguments it
+// sets, as Terraform merges it.
+type variableDeclaration struct {
+	name string
+	// def is the default, unknown when it does not evaluate.
+	def        *cty.Value
+	constraint *vartype.Constraint
+	nullable   *bool
+}
+
+// newVariableDeclaration reads a variable block through attr, which returns
+// the expression of one of its arguments. The default is evaluated without an
+// evaluation context, as Terraform does: a JSON default is a literal value,
+// so "${0}" stays that string rather than a template.
+func newVariableDeclaration(name string, attr func(string) (hcl.Expression, bool)) variableDeclaration {
+	decl := variableDeclaration{name: name}
+	if expr, ok := attr("default"); ok {
+		v, diags := expr.Value(nil)
+		if diags.HasErrors() || !v.IsKnown() {
+			v = cty.DynamicVal
 		}
-		mergeMaps(locals, file.locals)
+		decl.def = &v
 	}
+	if expr, ok := attr("type"); ok {
+		constraint, _ := vartype.Parse(expr)
+		decl.constraint = &constraint
+	}
+	if expr, ok := attr("nullable"); ok {
+		if v, diags := expr.Value(nil); !diags.HasErrors() && v.Type() == cty.Bool && ctyutil.Materialized(v) {
+			nullable := v.True()
+			decl.nullable = &nullable
+		}
+	}
+	return decl
+}
+
+// defaultValue is the value of the variable before any variable definitions
+// file: its default, or unknown without one, so try and can see a variable
+// that exists.
+func (d variableDeclaration) defaultValue() cty.Value {
+	if d.def == nil {
+		return cty.UnknownVal(cty.DynamicPseudoType)
+	}
+	return *d.def
+}
+
+// conform returns the value the configuration reads for the variable given v,
+// as Terraform resolves it: a null given to a non-nullable variable takes the
+// default, and the value is converted to the type, with the defaults of its
+// optional attributes. A value Terraform rejects is unknown; module
+// evaluation (tfeval) keeps such a value as given instead.
+func (d variableDeclaration) conform(v cty.Value) cty.Value {
+	if v.IsNull() && d.nullable != nil && !*d.nullable {
+		v = d.defaultValue()
+		if v.IsNull() {
+			return cty.UnknownVal(cty.DynamicPseudoType)
+		}
+	}
+	if d.constraint == nil || !v.IsWhollyKnown() {
+		return v
+	}
+	conformed, err := d.constraint.Conform(v)
+	if err != nil {
+		return cty.UnknownVal(cty.DynamicPseudoType)
+	}
+	return conformed
+}
+
+// variableDeclarations collects the variable blocks of a directory in the
+// order Terraform applies them: those of ordinary files, then those of
+// override files, each in file order.
+type variableDeclarations struct {
+	ordinary, overrides []variableDeclaration
+}
+
+func (d *variableDeclarations) add(file string, decls []variableDeclaration) {
+	if tfpath.IsOverrideFile(file) {
+		d.overrides = append(d.overrides, decls...)
+		return
+	}
+	d.ordinary = append(d.ordinary, decls...)
+}
+
+// effective returns the declaration of each variable: its last ordinary
+// block, with the arguments each override block sets replaced in turn. An
+// override without a default keeps the inherited one. A variable declared
+// in several ordinary files has no unique base: Terraform rejects such a
+// directory, and this root-module fallback conservatively reads it as
+// unknown. Module evaluation (tfeval) reads the last declaration instead,
+// so the two agree only when an override file provides the value.
+func (d *variableDeclarations) effective() map[string]variableDeclaration {
+	out := make(map[string]variableDeclaration, len(d.ordinary))
+	bases := make(map[string]int, len(d.ordinary))
+	for _, decl := range d.ordinary {
+		out[decl.name] = decl
+		bases[decl.name]++
+	}
+	for name, count := range bases {
+		if count > 1 {
+			out[name] = variableDeclaration{name: name}
+		}
+	}
+	for _, override := range d.overrides {
+		base, ok := out[override.name]
+		if !ok {
+			out[override.name] = override
+			continue
+		}
+		if override.def != nil {
+			base.def = override.def
+		}
+		if override.constraint != nil {
+			base.constraint = override.constraint
+		}
+		if override.nullable != nil {
+			base.nullable = override.nullable
+		}
+		out[override.name] = base
+	}
+	return out
 }
 
 func fileVariablePath(dir, content string) string {

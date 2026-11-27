@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -67,7 +66,7 @@ func getDataSourcePolicy(
 	contextLogger := logger.FromContext(ctx)
 	var (
 		blocks []localDataBlock
-		locals []localAssignment
+		decls  localDeclarations
 	)
 	for _, tfFile := range hclConfigFiles(ctx, fsys, currentPath, allow, keep) {
 		content, readErr := tfmodules.ReadConfigFile(ctx, fsys, tfFile, "")
@@ -82,11 +81,12 @@ func getDataSourcePolicy(
 		}
 		fileBlocks, fileLocals := parseLocalDataFile(ctx, content, tfFile, wantsData, wantsLocals)
 		blocks = append(blocks, fileBlocks...)
-		locals = append(locals, fileLocals...)
+		decls.add(tfFile, fileLocals)
 	}
 	if len(blocks) == 0 {
 		return inputVariables
 	}
+	locals := decls.all()
 	readsData := false
 	for i := range blocks {
 		readsData = readsData || blocks[i].readsData
@@ -97,6 +97,22 @@ func getDataSourcePolicy(
 	// Locals that read data only resolve after a data pass, so keep their
 	// expressions and refresh them when data grows.
 	assignments := dataDependentLocals(locals)
+	// The refresh keeps only the locals reading nothing but var, data, path
+	// and declared locals, and that set depends only on the directory, so it
+	// is filtered once here instead of on every pass. The scope values are
+	// never read by the filter, only their names.
+	var (
+		evalCtx     localEvalContext
+		refreshable []localAssignment
+	)
+	if len(assignments) > 0 {
+		evalCtx = newLocalEvalContext(fsys, currentPath)
+		scope := map[string]cty.Value{varReference: cty.DynamicVal, terraformDataIdentifier: cty.DynamicVal}
+		if evalCtx.path != cty.NilVal {
+			scope[pathReference] = evalCtx.path
+		}
+		refreshable = refreshableLocals(assignments, locals, scope, evalCtx.funcs)
+	}
 	var rendered map[string]map[string]map[string]string
 	// Each pass exposes one more link of a dependency chain through data or
 	// locals, so a chain can be at most as long as the blocks plus locals.
@@ -108,7 +124,10 @@ func getDataSourcePolicy(
 			return inputVariables
 		}
 		inputVariables["data"] = data
-		localsChanged := refreshLocals(inputVariables, assignments)
+		localsChanged := false
+		if len(refreshable) > 0 {
+			localsChanged = refreshLocals(inputVariables, locals, refreshable, evalCtx)
+		}
 		if rendered != nil && reflect.DeepEqual(rendered, next) && !localsChanged {
 			break
 		}
@@ -531,15 +550,7 @@ func jsonLocalDataFile(
 	for _, block := range content.Blocks {
 		switch {
 		case block.Type == blockTypeLocals && wantsLocals:
-			attrs, _ := block.Body.JustAttributes()
-			names := make([]string, 0, len(attrs))
-			for name := range attrs {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-			for _, name := range names {
-				locals = append(locals, localAssignment{name: name, expr: attrs[name].Expr})
-			}
+			locals = append(locals, jsonLocalAssignments(block.Body)...)
 		case block.Type == terraformDataIdentifier && wantsData && len(block.Labels) >= 2:
 			source, ok := localdata.Lookup(block.Labels[0])
 			if !ok {
