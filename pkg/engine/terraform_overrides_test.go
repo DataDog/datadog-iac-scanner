@@ -52,7 +52,7 @@ resource "aws_s3_bucket" "example" {
 		files.SortByDocumentKey()
 		ctx := t.Context()
 		ins := newTestInspector(t, inspectorOpts{repoPath: root})
-		moduleDocs, synthetic, _, _ := ins.instantiateLocalModules(ctx, files, nil, nil)
+		moduleDocs, synthetic, _, _ := ins.instantiateLocalModules(ctx, files, nil, nil, nil, false, nil)
 		require.Len(t, synthetic, 4)
 		require.Len(t, moduleDocs, len(synthetic))
 

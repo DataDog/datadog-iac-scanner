@@ -12,12 +12,65 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestFilesystemSource_GetQueryLibrary verifies that GetQueryLibrary reads library files from disk.
+func TestFilesystemSourceClassifiesQueriesByRoot(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	for _, query := range []struct {
+		path    string
+		id      string
+		content string
+	}{
+		{path: filepath.Join("assets", "queries", "default-rule"), id: "default-rule", content: "package datadog\n("},
+		{path: filepath.Join("custom", "broken-rule"), id: "broken-rule", content: "package datadog\n("},
+	} {
+		require.NoError(t, os.MkdirAll(query.path, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(query.path, QueryFileName), []byte(query.content), 0o600))
+		metadata := `{"id":"` + query.id + `","platform":"Terraform"}`
+		require.NoError(t, os.WriteFile(filepath.Join(query.path, MetadataFileName), []byte(metadata), 0o600))
+	}
+
+	source := NewFilesystemSource(t.Context(), []string{"assets/queries", "custom"}, nil, nil, "", false)
+	queries, err := source.GetQueries(t.Context(), &QueryInspectorParameters{})
+	require.NoError(t, err)
+	require.Len(t, queries, 2)
+	got := make(map[string]model.QuerySource, len(queries))
+	for _, query := range queries {
+		got[query.Metadata["id"].(string)] = query.Source
+	}
+	require.Equal(t, model.QuerySourceDefault, got["default-rule"])
+	require.Equal(t, model.QuerySourceCustom, got["broken-rule"])
+}
+
+func TestIsDefaultQueryRootIsIndependentOfPathSpelling(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "assets", "queries"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "custom"), 0o755))
+	t.Chdir(root)
+	absoluteDefault := filepath.Join(root, "assets", "queries")
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{path: "assets/queries", want: true},
+		{path: filepath.Join(".", "assets", "queries"), want: true},
+		{path: filepath.Join("assets", "queries", "..", "queries"), want: true},
+		{path: absoluteDefault, want: true},
+		{path: filepath.Join(absoluteDefault, "terraform"), want: false},
+		{path: filepath.Join(root, "custom"), want: false},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			require.Equal(t, tc.want, isDefaultQueryRoot(tc.path))
+		})
+	}
+}
+
 func TestFilesystemSource_GetQueryLibrary(t *testing.T) { //nolint
 	libDir := t.TempDir()
 	for _, platform := range []string{"terraform", "common", "cloudformation", "ansible", "k8s", "cicd"} {

@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,12 +31,15 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/docker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/helm"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector/terraform"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/contractlibs"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -49,6 +53,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/storage/inmem"
 	"github.com/open-policy-agent/opa/v1/topdown"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/zclconf/go-cty/cty"
 	"golang.org/x/sync/singleflight"
 )
@@ -71,6 +76,21 @@ const (
 // may take before it is logged as slow. We surface slow rules so they can be optimized later.
 const slowQueryWarnThreshold = 60 * time.Second
 
+func warnSlowRule(contextLogger *zerolog.Logger, queryID, platform string, evalDuration, decodeDuration, threshold time.Duration) {
+	total := evalDuration + decodeDuration
+	if total > threshold {
+		contextLogger.Warn().
+			Str("event", "slow_rule").
+			Str("queryID", queryID).
+			Str("platform", platform).
+			Int64("evalMs", evalDuration.Milliseconds()).
+			Int64("decodeMs", decodeDuration.Milliseconds()).
+			Int64("totalMs", total.Milliseconds()).
+			Int64("thresholdMs", threshold.Milliseconds()).
+			Msg("slow rule")
+	}
+}
+
 // ErrNoResult - error representing when a query didn't return a result
 var ErrNoResult = errors.New("query: not result")
 
@@ -90,6 +110,8 @@ type QueryLoader struct {
 	parsedCommon *ast.Module
 	// parsedGeneric holds the per-platform Generic library module, also parsed once.
 	parsedGeneric map[string]*ast.Module
+	// Libraries may expose v2 helpers while legacy queries still coexist.
+	contractLibraries map[string]map[string]*ast.Module
 	// platformKeyBases holds, per platform, a precomputed hash of the common and
 	// platform library code + input data. It is the library-dependent part of a
 	// compiled-query cache key, hashed once at load time instead of hashing
@@ -128,6 +150,7 @@ type sharedQueryCacheResult struct {
 
 // ResetCompiledQueryCachesForTest clears process-global compiled-query caches.
 func ResetCompiledQueryCachesForTest() {
+	resetContractV2PreparedQueryCacheForTest()
 	sharedPreparedQueryCache.Lock()
 	sharedPreparedQueryCache.key = 0
 	sharedPreparedQueryCache.queries = nil
@@ -226,18 +249,37 @@ type PreparedQuery struct {
 
 // Inspector represents a list of compiled queries, a builder for vulnerabilities, an information tracker
 // a flag to enable coverage and the coverage report if it is enabled
+type QueryFailureKind string
+
+const (
+	QueryFailureCompile  QueryFailureKind = "compile"
+	QueryFailureEvaluate QueryFailureKind = "evaluate"
+)
+
+type QueryFailure struct {
+	Kind   QueryFailureKind
+	Source model.QuerySource
+}
+
+type queryCompileError struct{ err error }
+
+func (e queryCompileError) Error() string { return e.err.Error() }
+func (e queryCompileError) Unwrap() error { return e.err }
+
 type Inspector struct {
 	QueryLoader   *QueryLoader
 	vb            VulnerabilityBuilder
 	tracker       Tracker
 	failedQueries map[string]error
+	queryFailures map[string]QueryFailure
 	// failedQueriesMu guards failedQueries. Inspect writes it from two places
 	// concurrently: the collector goroutine (processResult, on a query error)
 	// and every worker goroutine (getVulnerabilitiesFromQuery, on a
 	// vulnerability-build error)
-	failedQueriesMu sync.Mutex
-	ruleConfigs     map[string]config.IacRuleConfig
-	detector        *detector.DetectLine
+	failedQueriesMu   sync.Mutex
+	contractV2StatsMu sync.Mutex
+	ruleConfigs       map[string]config.IacRuleConfig
+	detector          *detector.DetectLine
 
 	repoPath             string
 	enableCoverageReport bool
@@ -275,6 +317,23 @@ type Inspector struct {
 	// findings are decoded (see findingSet) instead of returning every decoded
 	// finding (see SetCompactFindingsAtDecode).
 	compactFindingsAtDecode bool
+	contractV2RunStats      ContractV2RunStats
+}
+
+// ContractV2RunStats reports Terraform roots and plans that could not be
+// evaluated, plus roots whose Terraform module scope was incomplete.
+func (c *Inspector) ContractV2RunStats() ContractV2RunStats {
+	c.contractV2StatsMu.Lock()
+	defer c.contractV2StatsMu.Unlock()
+	return c.contractV2RunStats
+}
+
+func (c *Inspector) addContractV2RunStats(stats ContractV2RunStats) {
+	c.contractV2StatsMu.Lock()
+	c.contractV2RunStats.RootsFailed += stats.RootsFailed
+	c.contractV2RunStats.PlansFailed += stats.PlansFailed
+	c.contractV2RunStats.RootsScopeIncomplete += stats.RootsScopeIncomplete
+	c.contractV2StatsMu.Unlock()
 }
 
 func (c *Inspector) SetRemoteModuleDirectories(sourceToDir map[string]RemoteModuleDirectory) {
@@ -497,6 +556,7 @@ func NewInspector(
 		vb:               vb,
 		tracker:          tracker,
 		failedQueries:    failedQueries,
+		queryFailures:    make(map[string]QueryFailure),
 		ruleConfigs:      ruleConfigs,
 		detector:         lineDetector,
 		repoPath:         repoPath,
@@ -606,6 +666,7 @@ func (c *Inspector) evalQuery(ctx context.Context, scanID string, filesMap map[s
 	}
 }
 
+// nolint:gocyclo
 func (c *Inspector) Inspect(
 	ctx context.Context,
 	scanID string,
@@ -618,19 +679,79 @@ func (c *Inspector) Inspect(
 	queries := c.getQueriesByPlat(platforms)
 	occurrences := c.inventoryDocuments(ctx, files)
 
+	v2Specs, legacyQueries := splitContractQueries(queries)
+	var v2Runner *contractV2Runner
+	var v2Vulns []model.Vulnerability
+	if len(v2Specs) > 0 {
+		var err error
+		v2Runner, err = c.newContractV2Runner(ctx, scanID, files, v2Specs)
+		if err != nil {
+			return nil, err
+		}
+		if v2Runner != nil {
+			defer func() { c.addContractV2RunStats(v2Runner.runStats()) }()
+		}
+		if len(legacyQueries) == 0 {
+			if v2Runner != nil {
+				v2Vulns, err = v2Runner.runStandalone(ctx, true)
+				if err != nil {
+					return nil, err
+				}
+			}
+			c.releasePostEvalFileData(files.ToMap())
+			return v2Vulns, nil
+		}
+	}
+	queries = legacyQueries
+
 	var moduleDocs []model.Document
 	var moduleExtras map[string][]extraCallerInfo
 	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
 	if shouldInstantiateLocalModules(platforms, files) {
+		// Close the scan-scoped HCL parse cache only from the Terraform service
+		// right before tfeval begins (never from concurrent non-Terraform
+		// services), freeing cached ASTs and preventing tfeval/module-metadata
+		// parsing from refilling hclcache alongside tfeval's own dirCache.
+		if cache := hclcache.FromContext(ctx); cache != nil {
+			cache.Close()
+		}
 		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets, occurrences)
+		var v2Hook rootV2Hook
+		var v2FailureHook rootV2FailureHook
+		if v2Runner != nil {
+			v2FailureHook = func(string, error) { v2Runner.countRootFailure() }
+			v2Hook = func(
+				dir string,
+				resources []tfeval.ResolvedResource,
+				instances []tfeval.ModuleInstance,
+				rootScope *tfeval.ModuleScope,
+				scopeIncomplete bool,
+				attrCache *moduleAttributionCache,
+				occurrences map[string]*model.ResourceOccurrence,
+			) error {
+				return v2Runner.onRoot(ctx, dir, resources, instances, rootScope, scopeIncomplete, attrCache, occurrences)
+			}
+		}
+		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(
+			ctx, files, targets, v2Hook, v2FailureHook, v2Runner != nil, occurrences,
+		)
 		// A canceled scan must not scan the modules that were evaluated only in
 		// part; instantiateLocalModules mutates nothing in that case.
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		memwatch.Sample(ctx, memwatch.PhaseModuleEval)
+	}
+	if v2Runner != nil {
+		if err := v2Runner.evalPlans(ctx); err != nil {
+			return nil, err
+		}
+		var err error
+		v2Vulns, err = v2Runner.finish(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Must run after module mutations (which suppress module bodies in place).
@@ -744,6 +865,9 @@ func (c *Inspector) Inspect(
 		enrichedModules, baseStores, baseDataHashes, sharedQueries, routing, rulePlans, batches)
 	if err != nil {
 		return nil, err
+	}
+	if len(v2Vulns) > 0 {
+		vulnerabilities = append(v2Vulns, vulnerabilities...)
 	}
 
 	c.releasePostEvalFileData(filesMap)
@@ -964,10 +1088,14 @@ func processResult(ctx context.Context, result *QueryResult,
 	queries []model.QueryMetadata, c *Inspector) {
 	contextLogger := logger.FromContext(ctx)
 	if result.err != nil {
-		contextLogger.Warn().Err(result.err).Msgf("query failed to execute: %s", queries[result.queryID].Query)
-		c.failedQueriesMu.Lock()
-		c.failedQueries[queries[result.queryID].Query] = result.err
-		c.failedQueriesMu.Unlock()
+		query := queries[result.queryID]
+		contextLogger.Warn().Err(result.err).Msgf("query failed to execute: %s", query.Query)
+		kind := QueryFailureEvaluate
+		var compileErr queryCompileError
+		if errors.As(result.err, &compileErr) {
+			kind = QueryFailureCompile
+		}
+		c.recordQueryFailure(&query, result.err, kind)
 		return
 	}
 
@@ -1067,6 +1195,27 @@ func (c *Inspector) GetFailedQueries() map[string]error {
 	return maps.Clone(c.failedQueries)
 }
 
+func (c *Inspector) GetQueryFailures() map[string]QueryFailure {
+	c.failedQueriesMu.Lock()
+	defer c.failedQueriesMu.Unlock()
+	return maps.Clone(c.queryFailures)
+}
+
+func (c *Inspector) recordQueryFailure(query *model.QueryMetadata, err error, kind QueryFailureKind) {
+	if err == nil {
+		return
+	}
+	c.failedQueriesMu.Lock()
+	if c.queryFailures == nil {
+		c.queryFailures = make(map[string]QueryFailure)
+	}
+	if _, exists := c.failedQueries[query.Query]; !exists {
+		c.failedQueries[query.Query] = err
+	}
+	c.queryFailures[query.Query] = QueryFailure{Kind: kind, Source: query.Source}
+	c.failedQueriesMu.Unlock()
+}
+
 func ruleArgumentsValue(rc config.IacRuleConfig) (ast.Value, bool, error) {
 	if rc.Arguments == nil {
 		return nil, false, nil
@@ -1158,18 +1307,15 @@ func (c *Inspector) doRun(ctx context.Context, qCtx *QueryContext) (
 		Int64("decodeNs", decodeDuration.Nanoseconds()).
 		Msg("query completed")
 
-	// Flag slow rules so they can be debugged/optimized later
-	if total := evalDuration + decodeDuration; total > slowQueryWarnThreshold {
-		contextLogger.Warn().
-			Str("event", "slow_rule").
-			Str("queryID", qCtx.Query.Metadata.Query).
-			Str("platform", qCtx.Query.Metadata.Platform).
-			Int64("evalMs", evalDuration.Milliseconds()).
-			Int64("decodeMs", decodeDuration.Milliseconds()).
-			Int64("totalMs", total.Milliseconds()).
-			Int64("thresholdMs", slowQueryWarnThreshold.Milliseconds()).
-			Msg("slow rule")
-	}
+	// Flag slow rules so they can be debugged/optimized later.
+	warnSlowRule(
+		&contextLogger,
+		qCtx.Query.Metadata.Query,
+		qCtx.Query.Metadata.Platform,
+		evalDuration,
+		decodeDuration,
+		slowQueryWarnThreshold,
+	)
 	return vulns, moduleRaised, moduleSeverity, err
 }
 
@@ -1762,12 +1908,7 @@ func getVulnerabilitiesFromQuery(ctx context.Context, qCtx *QueryContext, c *Ins
 		return nil, false
 	}
 	if err != nil {
-		c.failedQueriesMu.Lock()
-		if _, ok := c.failedQueries[qCtx.Query.Metadata.Query]; !ok {
-			c.failedQueries[qCtx.Query.Metadata.Query] = err
-		}
-		c.failedQueriesMu.Unlock()
-
+		c.recordQueryFailure(&qCtx.Query.Metadata, err, QueryFailureEvaluate)
 		return nil, false
 	}
 	file, ok := qCtx.Files[vulnerability.FileID]
@@ -2190,6 +2331,17 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 		)
 	}
 
+	contractLibraries := make(map[string]map[string]*ast.Module)
+	for platform, library := range platformLibraries {
+		if !strings.Contains(commonLibrary.LibraryCode, "data.datadog.") && !strings.Contains(library.LibraryCode, "data.datadog.") {
+			continue
+		}
+		modules, err := contractlibs.Modules()
+		if err != nil {
+			return QueryLoader{}, err
+		}
+		contractLibraries[platform] = modules
+	}
 	return QueryLoader{
 		commonLibrary:       commonLibrary,
 		platformLibraries:   platformLibraries,
@@ -2197,6 +2349,7 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 		QueriesMetadata:     queries,
 		parsedCommon:        parsedCommon,
 		parsedGeneric:       parsedGeneric,
+		contractLibraries:   contractLibraries,
 		platformKeyBases:    platformKeyBases,
 		commonReadsInput:    moduleReadsInput(parsedCommon),
 		genericReadsInput:   genericReadsInput,
@@ -2272,6 +2425,139 @@ func precomputeBaseStores(baseInputData map[string]string) map[string]storage.St
 // reused by a later scan whose base data is byte-identical. This makes warm
 // scans skip the expensive PrepareForEval compile even when Terraform module
 // data is present, as long as that data is unchanged.
+func contractLibrariesUsedByQuery(
+	query *model.QueryMetadata,
+	libraries map[string]*ast.Module,
+	dependencies ...*ast.Module,
+) map[string]*ast.Module {
+	if query == nil {
+		return nil
+	}
+	module, err := ast.ParseModuleWithOpts(query.Query, query.Content, ast.ParserOptions{RegoVersion: ast.RegoV1})
+	if err != nil {
+		return nil
+	}
+	return contractLibrariesUsedByModules(append(dependencies, module), libraries)
+}
+
+func contractLibrariesUsedByModules(modules []*ast.Module, libraries map[string]*ast.Module) map[string]*ast.Module {
+	used := make(map[string]*ast.Module)
+	for _, module := range modules {
+		for name, candidate := range contractLibrariesUsedByModule(module, libraries) {
+			used[name] = candidate
+		}
+	}
+	return used
+}
+
+func contractLibrariesUsedByModule(module *ast.Module, libraries map[string]*ast.Module) map[string]*ast.Module {
+	if module == nil {
+		return nil
+	}
+	if contractModuleHasDynamicDataReference(module) {
+		return allContractLibraries(libraries)
+	}
+	used := make(map[string]*ast.Module)
+	for name, candidate := range libraries {
+		if candidate != nil && contractModuleReferencesPackage(module, candidate.Package.Path) {
+			used[name] = candidate
+		}
+	}
+	return expandContractLibraryDependencies(used, libraries)
+}
+
+func allContractLibraries(libraries map[string]*ast.Module) map[string]*ast.Module {
+	all := make(map[string]*ast.Module, len(libraries))
+	for name, module := range libraries {
+		all[name] = module
+	}
+	return all
+}
+
+func expandContractLibraryDependencies(used, libraries map[string]*ast.Module) map[string]*ast.Module {
+	for changed := true; changed; {
+		changed = false
+		for _, current := range used {
+			if contractModuleHasDynamicDataReference(current) {
+				for name, candidate := range libraries {
+					if _, ok := used[name]; !ok {
+						used[name] = candidate
+						changed = true
+					}
+				}
+				continue
+			}
+			for name, candidate := range libraries {
+				if _, ok := used[name]; !ok && candidate != nil &&
+					contractModuleReferencesPackage(current, candidate.Package.Path) {
+					used[name] = candidate
+					changed = true
+				}
+			}
+		}
+	}
+	return used
+}
+
+func contractModuleReferencesPackage(module *ast.Module, packagePath ast.Ref) bool {
+	if module == nil || len(packagePath) == 0 {
+		return false
+	}
+	for _, imp := range module.Imports {
+		if imp == nil || imp.Path == nil {
+			continue
+		}
+		if ref, ok := imp.Path.Value.(ast.Ref); ok && contractV2RefsEqual(ref, packagePath) {
+			return true
+		}
+	}
+	found := false
+	ast.WalkRefs(module, func(ref ast.Ref) bool {
+		if len(ref) > len(packagePath) && contractV2RefsPrefix(ref, packagePath) {
+			found = true
+			return true
+		}
+		return false
+	})
+	return found
+}
+
+func contractModuleHasDynamicDataReference(module *ast.Module) bool {
+	if module == nil {
+		return false
+	}
+	found := false
+	ast.WalkRefs(module, func(ref ast.Ref) bool {
+		if len(ref) < 2 || ref[0].Value.Compare(ast.Var("data")) != 0 {
+			return false
+		}
+		for _, part := range ref[1:] {
+			if _, ok := part.Value.(ast.String); !ok {
+				found = true
+				return true
+			}
+		}
+		return false
+	})
+	return found
+}
+
+func contractV2RefsEqual(a, b ast.Ref) bool {
+	return len(a) == len(b) && contractV2RefsPrefix(a, b)
+}
+
+func contractV2RefsPrefix(ref, prefix ast.Ref) bool {
+	if len(ref) < len(prefix) {
+		return false
+	}
+	for i := range prefix {
+		if ref[i].Value.Compare(prefix[i].Value) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 	modules []tfmodules.ParsedModule,
 	baseStores map[string]storage.Store, baseDataHashes map[string]uint64,
@@ -2335,11 +2621,23 @@ func (q *QueryLoader) LoadQuery(ctx context.Context, query *model.QueryMetadata,
 		} else {
 			opts = append(opts, rego.Module("Generic", platformGeneralQuery.LibraryCode))
 		}
+		contractModules := q.contractLibraries[query.Platform]
+		if !UsesContractV2(query) {
+			contractModules = contractLibrariesUsedByQuery(
+				query,
+				contractModules,
+				q.parsedCommon,
+				q.parsedGeneric[query.Platform],
+			)
+		}
+		for _, name := range slices.Sorted(maps.Keys(contractModules)) {
+			opts = append(opts, rego.ParsedModule(contractModules[name].Copy()))
+		}
 		opts = append(opts, rego.Module(query.Query, query.Content))
 
 		opaQuery, err := rego.New(opts...).PrepareForEval(ctx)
 		if err != nil {
-			return nil, err
+			return nil, queryCompileError{err: err}
 		}
 
 		if useCache {
@@ -2440,6 +2738,25 @@ func (q *QueryLoader) buildSharedPlatformModules(
 	if modules["Generic"] == nil {
 		modules["Generic"], _ = ast.ParseModuleWithOpts("Generic", platformLib.LibraryCode,
 			ast.ParserOptions{RegoVersion: ast.RegoV1})
+	}
+	for _, i := range indices {
+		var contractModules map[string]*ast.Module
+		if i < len(plans) && plans[i].mod != nil {
+			contractModules = contractLibrariesUsedByModules(
+				[]*ast.Module{plans[i].mod, modules["Common"], modules["Generic"]},
+				q.contractLibraries[platform],
+			)
+		} else {
+			contractModules = contractLibrariesUsedByQuery(
+				&queries[i],
+				q.contractLibraries[platform],
+				modules["Common"],
+				modules["Generic"],
+			)
+		}
+		for name, module := range contractModules {
+			modules[name] = module.Copy()
+		}
 	}
 	queryPath = make(map[int]string, len(indices))
 	for _, i := range indices {

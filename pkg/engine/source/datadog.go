@@ -80,7 +80,15 @@ func (s *DatadogSource) GetQueries(ctx context.Context, querySelection *QueryIns
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving custom rules from Datadog: %w", err)
 	}
-	return s.filterRules(datadog.MergeRulesets(defaultRuleset, customRuleset), querySelection)
+	defaultQueries := s.filterRules(defaultRuleset, querySelection)
+	customQueries := s.filterRules(customRuleset, querySelection)
+	for i := range defaultQueries {
+		defaultQueries[i].Source = model.QuerySourceDefault
+	}
+	for i := range customQueries {
+		customQueries[i].Source = model.QuerySourceCustom
+	}
+	return append(defaultQueries, customQueries...), nil
 }
 
 func (s *DatadogSource) loadLibraries(ctx context.Context) (map[string]RegoLibraries, error) {
@@ -130,7 +138,10 @@ func (s *DatadogSource) GetQueryLibrary(ctx context.Context, platform string) (R
 }
 
 // filterRules selects the rules from the given ruleset according to the selection criteria.
-func (s *DatadogSource) filterRules(ruleset *datadog.Ruleset, selection *QueryInspectorParameters) ([]model.QueryMetadata, error) {
+func (s *DatadogSource) filterRules(ruleset *datadog.Ruleset, selection *QueryInspectorParameters) []model.QueryMetadata {
+	if ruleset == nil {
+		return nil
+	}
 	var out []model.QueryMetadata
 	for _, rule := range ruleset.Rules {
 		if !rule.IsPublished {
@@ -150,7 +161,7 @@ func (s *DatadogSource) filterRules(ruleset *datadog.Ruleset, selection *QueryIn
 		}
 		out = append(out, ConvertRule(rule))
 	}
-	return out, nil
+	return out
 }
 
 // isWantedPlatform checks if the given platform is in the list of wanted platforms.

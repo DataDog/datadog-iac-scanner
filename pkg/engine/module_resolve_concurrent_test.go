@@ -26,6 +26,7 @@ type rootEvaluationOutcome struct {
 	ResourceCount                                    int
 	RootEvalOK                                       bool
 	NotEvaluated                                     []string
+	ScopeIncomplete                                  map[string]bool
 	// ModuleCalls are the evaluated calls of the module directories, by directory.
 	ModuleCalls map[string][]string
 }
@@ -48,12 +49,21 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
 	instantiated := make(instantiatedIndex)
-	out := rootEvaluationOutcome{Successful: map[string]bool{}, Unresolved: map[string]bool{}, Called: map[string]bool{}}
+	out := rootEvaluationOutcome{
+		Successful:      map[string]bool{},
+		Unresolved:      map[string]bool{},
+		Called:          map[string]bool{},
+		ScopeIncomplete: map[string]bool{},
+	}
 	var docs []model.Document
 	var synthetic []*model.FileMetadata
+	v2Hook := rootV2Hook(func(dir string, _ []tfeval.ResolvedResource, _ []tfeval.ModuleInstance, _ *tfeval.ModuleScope, scopeIncomplete bool, _ *moduleAttributionCache, _ map[string]*model.ResourceOccurrence) error {
+		out.ScopeIncomplete[dir] = scopeIncomplete
+		return nil
+	})
 	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated, out.Successful, out.Unresolved, out.Called,
-		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls, nil, nil)
+		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls, nil, v2Hook, nil, true, nil)
 
 	encode := func(v any) string {
 		b, err := json.Marshal(v)
@@ -85,6 +95,55 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	out.NotEvaluated = evaluator.NotEvaluatedDirs()
 	sort.Strings(out.NotEvaluated)
 	return out
+}
+
+func TestSerialRootScopeCompletenessDoesNotInheritSkippedDirs(t *testing.T) {
+	root := t.TempDir()
+	// The indexed module directory keeps this fixture on the same evaluator
+	// path used by mixed legacy/v2 scans.
+	childFile := writeFile(t, filepath.Join(root, "modules", "child"), "main.tf", `
+resource "aws_s3_bucket" "child" { bucket = "child" }
+`)
+	cycleFile := writeFile(t, filepath.Join(root, "modules", "cycle"), "main.tf", `
+module "again" { source = "./" }
+`)
+	unresolvedDir := filepath.Join(root, "a-unresolved")
+	unresolvedFile := writeFile(t, unresolvedDir, "main.tf", `
+resource "aws_s3_bucket" "unresolved" { bucket = "unresolved" }
+module "cycle" {
+  source = "../modules/cycle"
+}
+`)
+	completeDir := filepath.Join(root, "b-complete")
+	completeFile := writeFile(t, completeDir, "main.tf", `
+resource "aws_s3_bucket" "complete" { bucket = "complete" }
+`)
+	files := model.FileMetadatas{
+		fileMeta("child", childFile),
+		fileMeta("cycle", cycleFile),
+		fileMeta("unresolved", unresolvedFile),
+		fileMeta("complete", completeFile),
+	}
+	roots := []string{unresolvedDir, completeDir}
+
+	serial := evaluateRootsWith(t, 1, root, roots, files)
+	if !serial.ScopeIncomplete[unresolvedDir] {
+		t.Fatal("root with an unresolved remote module must be incomplete")
+	}
+	if _, ok := serial.ScopeIncomplete[completeDir]; !ok {
+		t.Fatal("v2 hook must receive the complete sibling root")
+	}
+	if serial.ScopeIncomplete[completeDir] {
+		t.Fatal("complete root must not inherit a skipped directory from its sibling")
+	}
+	if len(serial.NotEvaluated) == 0 {
+		t.Fatal("scan-wide skipped directories must remain available after root evaluation")
+	}
+
+	concurrent := evaluateRootsWith(t, 2, root, roots, files)
+	if !reflect.DeepEqual(concurrent.ScopeIncomplete, serial.ScopeIncomplete) {
+		t.Fatalf("serial root completeness differs from concurrent evaluation: serial=%v concurrent=%v", serial.ScopeIncomplete, concurrent.ScopeIncomplete)
+	}
 }
 
 func TestConcurrentRootEvaluationMatchesSerial(t *testing.T) {

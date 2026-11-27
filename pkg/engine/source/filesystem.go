@@ -336,8 +336,53 @@ func (s *FilesystemSource) GetQueries(ctx context.Context, queryParameters *Quer
 	if err != nil {
 		return nil, err
 	}
-	queries := s.iterateQueryDirs(ctx, dirs, queryParameters)
-	return queries, nil
+	return s.iterateQueryDirs(ctx, dirs, queryParameters), nil
+}
+
+func (s *FilesystemSource) querySourceForDir(queryDir string) model.QuerySource {
+	queryPath, err := filepath.Abs(queryDir)
+	if err != nil {
+		return model.QuerySourceCustom
+	}
+	queryPath = filepath.Clean(queryPath)
+	bestRootLen := -1
+	querySource := model.QuerySourceCustom
+	for _, root := range s.Source {
+		evaluatedRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		rootPath, err := filepath.Abs(evaluatedRoot)
+		if err != nil {
+			continue
+		}
+		rootPath = filepath.Clean(rootPath)
+		rel, err := filepath.Rel(rootPath, queryPath)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			continue
+		}
+		if len(rootPath) > bestRootLen {
+			bestRootLen = len(rootPath)
+			if isDefaultQueryRoot(root) {
+				querySource = model.QuerySourceDefault
+			} else {
+				querySource = model.QuerySourceCustom
+			}
+		}
+	}
+	return querySource
+}
+
+func isDefaultQueryRoot(root string) bool {
+	defaultRoot, err := filepath.Abs(filepath.Join("assets", "queries"))
+	if err != nil {
+		return false
+	}
+	selectedRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(selectedRoot) == filepath.Clean(defaultRoot)
 }
 
 // localQueryDirs recursively collects sub-directories from each path in s.Source.
@@ -411,6 +456,7 @@ func (s *FilesystemSource) iterateQueryDirs(ctx context.Context, queryDirs []str
 			continue
 		}
 
+		query.Source = s.querySourceForDir(queryDir)
 		queries = append(queries, query)
 	}
 	return queries
