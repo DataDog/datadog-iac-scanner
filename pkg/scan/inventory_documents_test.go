@@ -308,6 +308,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 
 func TestInventoryGitLabDeclaredJobs(t *testing.T) {
 	root := writeRepo(t, map[string]string{
+		"tmpl/.gitlab-ci.yml":     "build:\n\tscript: echo invalid\n",
 		".gitlab-ci.yml":          "{}\n---\ninclude: missing.yml\n.base: {script: echo base}\nbuild: {extends: .base}\nid: {script: echo id}\nfile: {script: echo file}\n_dd_lines: {}\n",
 		"ci/.gitlab-ci.yaml":      "deploy: {trigger: other/project}\n",
 		".gitlab/ci/fragment.yml": "fragment: {script: echo fragment}\n",
@@ -322,6 +323,15 @@ func TestInventoryGitLabDeclaredJobs(t *testing.T) {
 			}
 			inv := scanInventory(t, params)
 			require.Len(t, inv.Resources, 5)
+			if explicit {
+				require.Equal(t, inventory.StatusComplete, inv.Status)
+			} else {
+				require.Equal(t, inventory.StatusPartial, inv.Status)
+				require.Equal(t, 1, inv.Stats.FilesFailed)
+				require.Contains(t, inv.Files, inventory.File{
+					Platform: platforms.CICD, Path: "tmpl/.gitlab-ci.yml", Status: inventory.FileFailed, Reason: inventory.ReasonParseError,
+				})
+			}
 			for _, row := range inv.Resources {
 				require.Equal(t, "gitlab_ci_job", row.ResourceType)
 				require.Equal(t, "cicd", row.Platform)

@@ -138,14 +138,21 @@ func childSpans(mapping *yaml.Node, bound int, lines []string) map[string]lineRa
 		return spans
 	}
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		start := mapping.Content[i].Line
-		next := bound + 1
-		if i+3 < len(mapping.Content) {
-			next = mapping.Content[i+2].Line
-		}
-		spans[mapping.Content[i].Value] = lineRange{start: start, end: trimEnd(start, next-1, lines)}
+		spans[mapping.Content[i].Value] = childSpan(mapping, i, bound, lines)
 	}
 	return spans
+}
+
+// childSpan returns one mapping entry's range without indexing by name.
+// Both ordered declarations and name-keyed collections use this arithmetic.
+// index is the key's even index in mapping.Content.
+func childSpan(mapping *yaml.Node, index, bound int, lines []string) lineRange {
+	start := mapping.Content[index].Line
+	next := bound + 1
+	if index+3 < len(mapping.Content) {
+		next = mapping.Content[index+2].Line
+	}
+	return lineRange{start: start, end: trimEnd(start, next-1, lines)}
 }
 
 // itemSpans returns the line range of each item of a sequence node: from
@@ -472,6 +479,8 @@ func firstNonEmpty(values ...string) string {
 // gitLabJobOccurrences inventories written, non-hidden mapping declarations,
 // not effective jobs. Source nodes avoid collisions with parser/scanner metadata;
 // includes, extends and references are never compiled for inventory.
+// ResourcePath is the bare job name and StructuralPath has one segment because
+// GitLab declares jobs at the document root, without a synthetic jobs collection.
 func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
 	root, doc, found := e.documentNode(f, index)
 	if !found || root.Kind != yaml.MappingNode {
@@ -490,13 +499,8 @@ func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index i
 		if value == nil || value.Kind != yaml.MappingNode {
 			continue
 		}
-		// A name may be declared repeatedly. Its source range belongs to
-		// this occurrence, rather than the last entry in a name-keyed map.
-		next := doc.end + 1
-		if i+3 < len(root.Content) {
-			next = root.Content[i+2].Line
-		}
-		source := lineSource(key.Line, trimEnd(key.Line, next-1, lines))
+		span := childSpan(root, i, doc.end, lines)
+		source := lineSource(span.start, span.end)
 		rows = append(rows, model.ResourceOccurrence{
 			File: f.FilePath, Platform: platforms.CICD,
 			ResourceType: "gitlab_ci_job", ResourceName: key.Value, ResourcePath: key.Value,

@@ -8,6 +8,7 @@ package occurrence
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
@@ -50,6 +51,40 @@ metadata:
 	require.Equal(t, []lineRange{{1, 1}}, parseYAMLFile("a: b\n---\nc: [\n").ranges, "documents before a syntax error are kept, as the parser keeps them")
 	require.Equal(t, []lineRange{{1, 1}, {5, 5}}, parseYAMLFile("a: 1\n---\njust a string\n---\nb: 2\n").ranges,
 		"a scalar document is skipped, as the parser skips it")
+	for _, tt := range []struct {
+		platform, first, second, name1, name2 string
+	}{
+		{platforms.Kubernetes, "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: first}\n", "apiVersion: v1\nkind: Service\nmetadata: {name: second}\n", "first", "second"},
+		{platforms.DockerCompose, "services: {first: {image: nginx}}\n", "services: {second: {image: nginx}}\n", "first", "second"},
+		{platforms.CloudFormation, "Resources: {First: {Type: AWS::S3::Bucket}}\n", "Resources: {Second: {Type: AWS::SQS::Queue}}\n", "First", "Second"},
+		{platforms.CICD, "on: push\njobs: {first: {runs-on: ubuntu-latest}}\n", "on: push\njobs: {second: {runs-on: ubuntu-latest}}\n", "first", "second"},
+	} {
+		t.Run(tt.platform, func(t *testing.T) {
+			source := "{}\n---\n" + tt.first + "---\n{}\n---\n[]\n---\n" + tt.second
+			_, docs, _, _, err := (&yamlparser.Parser{}).Parse(model.WithLazyLineInfo(context.Background()), []byte(source), "inventory.yml", false, 0)
+			require.NoError(t, err)
+			require.Len(t, docs, 3, "empty sequences remain in the runtime document list")
+			var files model.FileMetadatas
+			for _, doc := range docs {
+				files = append(files, &model.FileMetadata{ID: "doc", FilePath: "inventory.yml", OriginalData: source, Platform: tt.platform, Document: doc})
+			}
+			rows := collectDocumentResources(files)
+			require.Len(t, rows, 2)
+			require.Equal(t, tt.name1, rows[0].ResourceName)
+			require.Equal(t, tt.name2, rows[1].ResourceName)
+			require.Equal(t, 0, rows[0].DocumentIndex)
+			require.Equal(t, 2, rows[1].DocumentIndex)
+			secondStart := strings.Count("{}\n---\n"+tt.first+"---\n{}\n---\n[]\n---\n", "\n") + 1
+			offset := 0
+			if tt.platform == platforms.CICD {
+				offset = 1 // jobs follow the workflow's on key
+			}
+			require.Equal(t, lineRange{3 + offset, 2 + strings.Count(tt.first, "\n")},
+				lineRange{rows[0].Source.Start.Line, rows[0].Source.End.Line})
+			require.Equal(t, lineRange{secondStart + offset, secondStart + strings.Count(tt.second, "\n") - 1},
+				lineRange{rows[1].Source.Start.Line, rows[1].Source.End.Line})
+		})
+	}
 }
 
 func TestSplitChartPath(t *testing.T) {

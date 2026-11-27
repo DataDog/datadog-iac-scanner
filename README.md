@@ -77,6 +77,11 @@ The CI/CD platform discovers canonical `.gitlab-ci.yml` and
 mapping entries as `gitlab_ci_job` resources with source ranges. Reserved
 pipeline sections and hidden templates are excluded. Inventory describes
 declarations in each file, not the jobs GitLab will execute or their validity.
+Canonical filenames are discovered in nested directories too, including templates
+and fixtures. If YAML parsing fails for a discovered file, inventory records a
+failed file and a partial status even when the root entrypoint parses successfully.
+Exclude fixture/template paths with the existing scan path exclusions when they
+should not be analyzed.
 
 This support uses the existing YAML parser. It does not compile includes,
 `extends`, `!reference`, inputs or defaults, evaluate job conditions, add shell
