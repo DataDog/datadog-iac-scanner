@@ -565,3 +565,15 @@ func TestLinesContainingIndexConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestFileMetadata_ParseIdentityViews(t *testing.T) {
+	f := &FileMetadata{ParseIdentity: ParseIdentity{Provider: "gitlab", Contract: "cicd/gitlab-declarations-v1"}}
+	f.SetLineInfoLoader(func(context.Context, *FileMetadata) (map[string]interface{}, error) {
+		return map[string]interface{}{}, nil
+	})
+	require.Equal(t, f.ParseIdentity, f.ShallowCopy().ParseIdentity)
+	require.Equal(t, f.ParseIdentity, f.WithoutLineInfoView().ParseIdentity)
+	encoded, err := json.Marshal(f)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "gitlab", "parse identity must remain internal metadata")
+}

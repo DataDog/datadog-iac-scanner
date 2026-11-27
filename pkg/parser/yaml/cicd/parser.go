@@ -14,7 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
@@ -104,9 +104,32 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	if names.IsGitLabFile(filePath) {
-		// Declaration-only parsing: do not inline YAML-valued scalars or apply
-		// GitHub expression/run enrichment to a GitLab job named jobs or runs.
+	return p.SelectFile(filePath, fileContent).Parse(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
+}
+
+// selectedParser retains provider selection through parsing and lazy reparses.
+type selectedParser struct {
+	*Parser
+	identity model.ParseIdentity
+}
+
+// SelectFile binds the existing CI parse behavior to one provider identity.
+func (p *Parser) SelectFile(path string, _ []byte) parser.KindParser {
+	identity := model.ParseIdentity{Provider: provider.Detect(path), Contract: provider.LegacyEnriched}
+	if identity.Provider == provider.GitLab {
+		identity.Contract = provider.GitLabDeclarations
+	}
+	return &selectedParser{Parser: p, identity: identity}
+}
+
+func (p *selectedParser) ParseIdentity() model.ParseIdentity { return p.identity }
+
+func (p *selectedParser) Parse(ctx context.Context, fileContent []byte, filePath string,
+	resolveReferences bool, maxResolverDepth int) (
+	resolved []byte, documents []model.Document, ignoreLines []int,
+	resolvedFiles map[string]model.ResolvedFile, err error,
+) {
+	if p.identity.Contract == provider.GitLabDeclarations {
 		documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(ctx, fileContent, filePath, nil)
 		return fileContent, documents, ignoreLines, nil, err
 	}

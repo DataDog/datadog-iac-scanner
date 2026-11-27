@@ -14,6 +14,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
 	"github.com/stretchr/testify/require"
 )
 
@@ -805,4 +806,43 @@ func TestParser_GitLabDeclarationsOnly(t *testing.T) {
 	}
 	_, _, _, _, err := (&Parser{}).Parse(context.Background(), []byte("build: [\n"), ".gitlab-ci.yml", false, 15)
 	require.Error(t, err)
+}
+
+func TestParser_FileSelection(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := parser.NewBuilder(ctx).Add(&Parser{}).Build([]string{"cicd"}, []string{""})
+	require.NoError(t, err)
+	root := parsers[0]
+	content := []byte("on: push\njobs: {build: {steps: [{run: echo literal}]}}\n")
+	for _, tt := range []struct{ path, provider, contract string }{
+		{".gitlab-ci.yml", provider.GitLab, provider.GitLabDeclarations},
+		{"ci/.gitlab-ci.yaml", provider.GitLab, provider.GitLabDeclarations},
+		{".github/workflows/.gitlab-ci.yml", provider.GitHub, provider.LegacyEnriched},
+		{".github/dependabot.yml", provider.GitHub, provider.LegacyEnriched},
+		{"action.yml", provider.GitHub, provider.LegacyEnriched},
+		{"azure-pipelines.yml", provider.Unknown, provider.LegacyEnriched},
+		{"bitbucket-pipelines.yml", provider.Unknown, provider.LegacyEnriched},
+		{"custom.gitlab-ci.yml", provider.Unknown, provider.LegacyEnriched},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
+			selected := root.ForFile(tt.path, content)
+			want := model.ParseIdentity{Provider: tt.provider, Contract: tt.contract}
+			require.Equal(t, want, selected.Identity())
+			require.Equal(t, model.ParseIdentity{}, root.Identity(), "selection must not mutate the scan parser")
+			parsed, err := selected.ParseContent(ctx, tt.path, content, false, false, 1)
+			require.NoError(t, err)
+			require.Equal(t, want, parsed.Identity)
+			encoded, err := json.Marshal(parsed.Docs)
+			require.NoError(t, err)
+			if tt.provider == provider.GitLab {
+				require.NotContains(t, string(encoded), "_parsed_run")
+			} else {
+				require.Contains(t, string(encoded), "_parsed_run", "legacy fallback retains enrichment")
+			}
+			lines, err := selected.ParseContent(parser.WithLineInfoOnly(ctx), tt.path, content, false, false, 1)
+			require.NoError(t, err)
+			require.Equal(t, want, lines.Identity)
+		})
+	}
 }

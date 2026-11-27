@@ -311,9 +311,17 @@ func (st *linesLazyState) cacheLineMatches(lines, n int) bool {
 	return len(st.matches) < lines && st.matchedIndexes+n <= cachedLineMatchesPerLine*lines
 }
 
+// ParseIdentity separates provider identity from the parser behavior that may
+// be safely shared for identical bytes. It never participates in resource IDs.
+type ParseIdentity struct {
+	Provider string
+	Contract string
+}
+
 // FileMetadata is a representation of basic information and content of a file
 type FileMetadata struct {
-	DocumentKey DocumentKey `json:"-"`
+	ParseIdentity ParseIdentity `json:"-"`
+	DocumentKey   DocumentKey   `json:"-"`
 
 	// SourceDocumentIndex selects the written document within a source snapshot.
 	// It is location metadata only and never participates in finding identity.
@@ -455,6 +463,7 @@ func (f *FileMetadata) WithoutLineInfoView() *FileMetadata {
 	}
 	return &FileMetadata{
 		DocumentKey:         f.DocumentKey,
+		ParseIdentity:       f.ParseIdentity,
 		ID:                  f.ID,
 		ScanID:              f.ScanID,
 		Document:            f.Document,

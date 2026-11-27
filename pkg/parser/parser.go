@@ -64,7 +64,18 @@ type directoryDependentParser interface {
 	DirectoryDependent() bool
 }
 
-type kindParser interface {
+// fileParserSelector selects an immutable parser for one file. The runner uses
+// this selection for cache lookup, parsing and lazy line-info reconstruction.
+type fileParserSelector interface {
+	SelectFile(path string, content []byte) KindParser
+}
+
+type identifiedParser interface {
+	ParseIdentity() model.ParseIdentity
+}
+
+// KindParser is the parser implementation registered with Builder.
+type KindParser interface {
 	GetKind() model.FileKind
 	GetCommentToken() string
 	SupportedExtensions() []string
@@ -77,7 +88,7 @@ type kindParser interface {
 
 // Builder is a representation of parsers that will be construct
 type Builder struct {
-	parsers []kindParser
+	parsers []KindParser
 	fsys    vfs.FS
 }
 
@@ -99,7 +110,7 @@ func (b *Builder) WithFS(fsys vfs.FS) *Builder {
 }
 
 // Add is a function that adds a new parser to the caller and returns it
-func (b *Builder) Add(p kindParser) *Builder {
+func (b *Builder) Add(p KindParser) *Builder {
 	b.parsers = append(b.parsers, p)
 	return b
 }
@@ -148,12 +159,36 @@ var ErrNotSupportedFile = errors.New("unsupported file to parse")
 // Parser is a struct that associates a parser to its supported extensions
 type Parser struct {
 	// Parsers is public because necessary for testing purposes
-	Parsers          kindParser
+	Parsers          KindParser
 	extensions       model.Extensions
 	Platform         []string
 	SCIInfo          model.SCIInfo
 	fsys             vfs.FS
 	documentPlatform string
+	selected         bool
+}
+
+// ForFile binds optional provider selection to a file without mutating the
+// scan's shared parser. The result must only be used for that file's parses.
+func (c *Parser) ForFile(path string, content []byte) *Parser {
+	if c.selected {
+		return c
+	}
+	if selector, ok := c.Parsers.(fileParserSelector); ok {
+		selected := *c
+		selected.Parsers = selector.SelectFile(path, content)
+		selected.selected = true
+		return &selected
+	}
+	return c
+}
+
+// Identity describes the selected parse behavior; ordinary parsers use zero.
+func (c *Parser) Identity() model.ParseIdentity {
+	if identified, ok := c.Parsers.(identifiedParser); ok {
+		return identified.ParseIdentity()
+	}
+	return model.ParseIdentity{}
 }
 
 // DocumentPlatform identifies the parser's platform set independently of the
@@ -174,6 +209,7 @@ func (c *Parser) FS() vfs.FS {
 
 // ParsedDocument is a struct containing data retrieved from parsing
 type ParsedDocument struct {
+	Identity      model.ParseIdentity `json:"-"`
 	Docs          []model.Document
 	Kind          model.FileKind
 	Content       string
@@ -251,7 +287,7 @@ func (c *Parser) Parse(
 	if !c.isValidExtension(ctx, filePath) {
 		return unsupportedDocument(), ErrNotSupportedFile
 	}
-	return c.parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
+	return c.ForFile(filePath, fileContent).parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
 }
 
 // ParseContent uses the selected parser regardless of the file extension.
@@ -261,7 +297,7 @@ func (c *Parser) ParseContent(
 	fileContent []byte,
 	openAPIResolveReferences, isMinified bool,
 	maxResolverDepth int) (ParsedDocument, error) {
-	return c.parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
+	return c.ForFile(filePath, fileContent).parseContent(ctx, filePath, fileContent, openAPIResolveReferences, isMinified, maxResolverDepth)
 }
 
 func (c *Parser) parseContent(
@@ -321,6 +357,7 @@ func (c *Parser) parseContent(
 		IsMinified:         isMinified,
 		TerraformPlan:      out.TerraformPlan,
 		DirectoryDependent: directoryDependent,
+		Identity:           c.Identity(),
 	}, nil
 }
 

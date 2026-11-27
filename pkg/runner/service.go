@@ -122,10 +122,10 @@ type Service struct {
 	// content (47%+ on community-operators); guarded by contentInternerMu.
 	contentInternerMu sync.Mutex
 	contentInterner   map[string]string
-	// parsedShareMu guards parsedShares, the content-keyed cache of parse results
+	// parsedShareMu guards parsedShares, the contract/content cache of parse results
 	// shared between files with identical content (see sharedParse).
 	parsedShareMu sync.Mutex
-	parsedShares  map[string]*sharedParse
+	parsedShares  map[parseCacheKey]*sharedParse
 	// treeCons canonicalizes structurally identical subtrees of sanitized
 	// shareable documents (see treeHashCons); guarded by treeConsMu.
 	treeConsMu sync.Mutex
@@ -159,6 +159,11 @@ func (s *Service) consTreeChildren(doc map[string]interface{}) map[string]interf
 		s.treeCons = newTreeHashCons()
 	}
 	return s.treeCons.consChildren(doc)
+}
+
+type parseCacheKey struct {
+	contract string
+	content  string
 }
 
 // sharedParse is the parse result of one unique content: sanitized docs
@@ -221,21 +226,21 @@ func (s *Service) ClearContentInterner() {
 }
 
 // lookupSharedParse returns the cached shared parse of content, if any. A hit
-// is exact (parses are pure functions of content); the result is read-only —
+// is exact within a parse contract; the result is read-only —
 // copy top-level maps before per-file use. The lookup does not copy content:
 // interning every file before parsing kept a copy of each file that is never
 // shared, such as a Terraform plan, through the whole prepare phase.
-func (s *Service) lookupSharedParse(content []byte) *sharedParse {
+func (s *Service) lookupSharedParse(contract string, content []byte) *sharedParse {
 	if len(content) == 0 {
 		return nil
 	}
 	s.parsedShareMu.Lock()
 	defer s.parsedShareMu.Unlock()
-	return s.parsedShares[string(content)]
+	return s.parsedShares[parseCacheKey{contract: contract, content: string(content)}]
 }
 
 // storeSharedParse caches a sanitized parse result for later files with the
-// same content. docs are the sanitized top-level maps; each is shallow-copied
+// same content and contract. docs are the sanitized top-level maps; each is shallow-copied
 // so Combine's per-file id/file insertion cannot touch the cached entries.
 func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument, docs []model.Document) {
 	cached := make([]model.Document, len(docs))
@@ -244,9 +249,9 @@ func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument,
 	}
 	s.parsedShareMu.Lock()
 	if s.parsedShares == nil {
-		s.parsedShares = make(map[string]*sharedParse)
+		s.parsedShares = make(map[parseCacheKey]*sharedParse)
 	}
-	s.parsedShares[key] = &sharedParse{
+	s.parsedShares[parseCacheKey{contract: documents.Identity.Contract, content: key}] = &sharedParse{
 		content:     key,
 		docs:        cached,
 		kind:        documents.Kind,

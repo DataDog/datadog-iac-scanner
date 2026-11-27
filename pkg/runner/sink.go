@@ -18,7 +18,6 @@ import (
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
-	cicdnames "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/pkg/errors"
@@ -101,19 +100,17 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if err != nil {
 		return errors.Wrapf(err, "failed to get file content: %s", filename)
 	}
-	// Fast path: duplicate content already parsed and sanitized — reuse the shared
-	// trees with a per-file top-level map and skip parsing.
-	// GitLab entrypoints use declaration-only parsing; the content-only cache
-	// may hold a GitHub-enriched parse of identical bytes.
-	if shared := s.lookupFileParse(filename, *c.Content); shared != nil {
-		fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
-		return s.sinkSharedParse(ctx, filename, scanID, shared.content, shared,
+	// Select the parser once for cache lookup, metadata and lazy reparsing.
+	fileParser := s.Parser.ForFile(filename, *content)
+	if shared := s.lookupSharedParse(fileParser.Identity().Contract, *content); shared != nil {
+		fileCommands := fileParser.CommentsCommands(ctx, filename, *content)
+		return s.sinkSharedParse(ctx, fileParser, filename, scanID, shared.content, shared,
 			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
 	}
 
 	// Line info is rebuilt on demand (see SetLineInfoLoader below), so the
 	// documents' line markers are never read.
-	documents, err := s.Parser.Parse(iacparser.WithLazyLineInfo(ctx), filename, *content,
+	documents, err := fileParser.Parse(iacparser.WithLazyLineInfo(ctx), filename, *content,
 		openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
 		reason := s.parseFailureReason(filename, *content)
@@ -130,9 +127,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if documents.Kind == model.KindTerraform {
 		// Checkout placeholders carry only the target path. File directives,
 		// like line detection, must use the resolved Terraform source.
-		fileCommands = s.Parser.CommentsCommandsFromString(ctx, filename, documents.Content)
+		fileCommands = fileParser.CommentsCommandsFromString(ctx, filename, documents.Content)
 	} else {
-		fileCommands = s.Parser.CommentsCommands(ctx, filename, *content)
+		fileCommands = fileParser.CommentsCommands(ctx, filename, *content)
 	}
 
 	linesResolved := 0
@@ -149,11 +146,11 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		sort.Ints(documents.IgnoreLines)
 	}
 
-	shareable := shareableFileParse(filename, &documents)
+	shareable := shareableParse(&documents)
 	var sharedDocs []model.Document
 
 	for docIdx := range documents.Docs {
-		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, shareable,
+		if doc := s.sinkDocument(ctx, fileParser, filename, scanID, &documents, docIdx, shareable,
 			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands); doc != nil {
 			sharedDocs = append(sharedDocs, doc)
 		}
@@ -179,6 +176,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 // cache (nil when the document was skipped or the parse is not shareable).
 func (s *Service) sinkDocument(
 	ctx context.Context,
+	fileParser *iacparser.Parser,
 	filename, scanID string,
 	documents *iacparser.ParsedDocument,
 	docIdx int,
@@ -221,6 +219,7 @@ func (s *Service) sinkDocument(
 	key := s.documentKey(filename, documents.Kind, docIdx)
 	file := model.FileMetadata{
 		SourceDocumentIndex: docIdx,
+		ParseIdentity:       fileParser.Identity(),
 
 		DocumentKey:   key,
 		ID:            key.ID(),
@@ -236,12 +235,12 @@ func (s *Service) sinkDocument(
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
-		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+		fileParser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
 	file.SetLineInfoOptional()
 	if documents.Kind == model.KindTerraformPlan {
 		file.SetLineInfoRetention(s.planLineInfoRetention())
 		if !s.LineInfoPayload {
-			file.SetLineInfoSectionLoader(newLineInfoSectionLoader(s.Parser, filename))
+			file.SetLineInfoSectionLoader(newLineInfoSectionLoader(fileParser, filename))
 		}
 	}
 	// Lazy lines, as in sinkContent.
@@ -258,6 +257,7 @@ func (s *Service) sinkDocument(
 // top-level copies, per-file id and loader, cached tracker counts.
 func (s *Service) sinkSharedParse(
 	ctx context.Context,
+	fileParser *iacparser.Parser,
 	filename, scanID, key string,
 	shared *sharedParse,
 	fileCommands model.CommentsCommands,
@@ -269,6 +269,7 @@ func (s *Service) sinkSharedParse(
 		docKey := s.documentKey(filename, shared.kind, docIdx)
 		file := model.FileMetadata{
 			SourceDocumentIndex: docIdx,
+			ParseIdentity:       fileParser.Identity(),
 
 			DocumentKey:  docKey,
 			ID:           docKey.ID(),
@@ -283,7 +284,7 @@ func (s *Service) sinkSharedParse(
 			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
 		}
 		file.SetLineInfoLoader(newLineInfoLoader(
-			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+			fileParser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
 		file.SetLineInfoOptional()
 		file.SetLazyLines()
 		s.saveToFile(ctx, &file)
@@ -342,17 +343,4 @@ func resolveJSONFilter(jsonFilter string) string {
 	}
 
 	return string(parsedByte)
-}
-
-// A canonical GitLab file uses a different parse contract than a GitHub file
-// containing identical bytes. Keep it out of the content-only parse cache.
-func (s *Service) lookupFileParse(filename string, content []byte) *sharedParse {
-	if cicdnames.IsGitLabFile(filename) {
-		return nil
-	}
-	return s.lookupSharedParse(content)
-}
-
-func shareableFileParse(filename string, documents *iacparser.ParsedDocument) bool {
-	return !cicdnames.IsGitLabFile(filename) && shareableParse(documents)
 }

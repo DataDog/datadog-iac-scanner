@@ -8,11 +8,14 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/occurrence"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
 	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
@@ -101,28 +104,87 @@ func (nopLineInfoStorage) GetVulnerabilities(context.Context, string) ([]model.V
 
 func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 	content := []byte("on: push\njobs: {build: {steps: [{run: echo literal}]}}\n")
-	for _, order := range [][]string{
-		{".github/workflows/ci.yml", ".gitlab-ci.yml"},
-		{".gitlab-ci.yml", ".github/workflows/ci.yml"},
-	} {
+	paths := []string{".github/workflows/a.yml", ".github/workflows/b.yml",
+		"a/.gitlab-ci.yml", "b/.gitlab-ci.yaml", "pipeline.yml", ".github/workflows/.gitlab-ci.yml"}
+	fsFiles := make(map[string][]byte)
+	for _, path := range paths {
+		fsFiles[path] = content
+	}
+	fsys := vfs.NewMemFS(fsFiles)
+	orders := [][]string{paths, {paths[3], paths[2], paths[4], paths[5], paths[1], paths[0]}}
+	for _, order := range orders {
 		ctx := context.Background()
-		parsers, err := parser.NewBuilder(ctx).Add(&cicd.Parser{}).Build([]string{"cicd"}, []string{""})
+		counted := &countingCIParser{Parser: &cicd.Parser{FS: fsys}, calls: make(map[string]int)}
+		parsers, err := parser.NewBuilder(ctx).WithFS(fsys).Add(counted).Build([]string{"cicd"}, []string{""})
 		require.NoError(t, err)
 		svc := &Service{Parser: parsers[0], Tracker: noopTracker{}, Storage: nopLineInfoStorage{}, Platforms: []string{"cicd"}}
+		pointers := make(map[string]uintptr)
 		for _, path := range order {
 			data := append([]byte(nil), content...)
 			require.NoError(t, svc.sinkContent(ctx, path, "scan", &Content{Content: &data}, nil, false, 1))
 		}
-		require.Len(t, svc.files, 2)
+		require.Len(t, svc.files, len(paths))
+		require.Len(t, svc.parsedShares, 2, "identical bytes share only within their parse contract")
+		require.Equal(t, map[string]int{provider.LegacyEnriched: 1, provider.GitLabDeclarations: 1}, counted.calls,
+			"duplicates must skip parsing, including GitLab declarations")
 		for _, f := range svc.files {
+			identity := f.ParseIdentity
+			require.Equal(t, provider.Detect(f.FilePath), identity.Provider)
 			encoded, err := json.Marshal(f.Document)
 			require.NoError(t, err)
-			// A GitLab declaration named jobs must never acquire GitHub annotations.
-			if f.FilePath == ".gitlab-ci.yml" {
+			if identity.Provider == provider.GitLab {
 				require.NotContains(t, string(encoded), "_parsed_run")
 			} else {
 				require.Contains(t, string(encoded), "_parsed_run")
 			}
+			require.Equal(t, f.FilePath, f.Document["_path"], "cache hits retain the receiving file's path")
+			pointer := reflect.ValueOf(f.Document["jobs"]).Pointer()
+			if previous, ok := pointers[identity.Contract]; ok {
+				require.Equal(t, previous, pointer, "cached nested documents must be shared")
+			}
+			pointers[identity.Contract] = pointer
+			require.NoError(t, f.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
+				require.Equal(t, f.FilePath, doc["_path"])
+				return nil
+			}))
 		}
+		var rows []model.ResourceOccurrence
+		occurrence.Documents(ctx, svc.files, func(f *model.FileMetadata, r *model.ResourceOccurrence) {
+			if f.ParseIdentity.Provider == provider.GitLab {
+				require.Equal(t, "gitlab_ci_job", r.ResourceType)
+				require.Equal(t, "jobs", r.ResourceName)
+			} else {
+				require.Equal(t, "github_actions_job", r.ResourceType)
+				require.Equal(t, "build", r.ResourceName)
+			}
+			rows = append(rows, *r)
+		})
+		require.Len(t, rows, len(paths))
 	}
+}
+
+// These wrappers count actual parse invocations without changing the selected
+// parser's behavior or identity. Lazy line-info reparses happen after assertions.
+type countingCIParser struct {
+	*cicd.Parser
+	calls map[string]int
+}
+
+func (p *countingCIParser) SelectFile(path string, content []byte) parser.KindParser {
+	selected := p.Parser.SelectFile(path, content)
+	identity := selected.(interface{ ParseIdentity() model.ParseIdentity }).ParseIdentity()
+	return &countedCIFileParser{KindParser: selected, identity: identity, calls: p.calls}
+}
+
+type countedCIFileParser struct {
+	parser.KindParser
+	identity model.ParseIdentity
+	calls    map[string]int
+}
+
+func (p *countedCIFileParser) ParseIdentity() model.ParseIdentity { return p.identity }
+func (p *countedCIFileParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
+	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error) {
+	p.calls[p.identity.Contract]++
+	return p.KindParser.Parse(ctx, content, path, resolve, depth)
 }

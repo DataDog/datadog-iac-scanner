@@ -234,7 +234,7 @@ func TestReferenceFilesystemAuthority(t *testing.T) {
 				{"disk-default", nil, "host", 1},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					var specific kindParser = &jsonParser.Parser{FS: tc.fsys}
+					var specific KindParser = &jsonParser.Parser{FS: tc.fsys}
 					if ext == "yaml" {
 						specific = &yamlParser.Parser{FS: tc.fsys}
 					}
