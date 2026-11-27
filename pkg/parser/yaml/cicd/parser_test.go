@@ -257,6 +257,9 @@ resources:
 						},
 						"_dd__default": {
 						  "_dd_line": 9
+						},
+						"_dd_group": {
+						  "_dd_line": 4
 						}
 					  }
 					],
@@ -266,8 +269,14 @@ resources:
 				"perm": [
 					{
 						"_dd_lines": {
+						  "_dd_<<": {
+						    "_dd_line": 9
+						  },
 							"_dd__default": {
 								"_dd_line": 9
+							},
+							"_dd_group": {
+							  "_dd_line": 4
 							}
 						},
 						"group": {
@@ -792,7 +801,8 @@ func TestParser_GitLabDeclarationsOnly(t *testing.T) {
 	content := []byte("include: missing.yml\n.template: &base {script: echo base}\n" +
 		"build: {extends: .template, variables: {FILE: missing.yml}}\n" +
 		"jobs: {steps: [{run: echo literal}]}\nruns: {steps: [{run: echo literal}]}\n" +
-		"ref: !reference [.template]\n")
+		"ref: !reference [.template]\nvariables: &vars {CHECK: false}\naliased: *base\n" +
+		"script_job: {script: &commands [echo literal]}\nreused_script: {script: *commands, variables: *vars}\n")
 	for _, path := range []string{".gitlab-ci.yml", ".gitlab-ci.yaml"} {
 		resolved, docs, _, files, err := (&Parser{}).Parse(context.Background(), content, path, true, 15)
 		require.NoError(t, err)
@@ -802,6 +812,11 @@ func TestParser_GitLabDeclarationsOnly(t *testing.T) {
 		build := docs[0]["build"].(map[string]interface{})
 		require.Equal(t, ".template", build["extends"])
 		require.NotContains(t, build, "script")
+		require.Equal(t, "echo base", docs[0]["aliased"].(map[string]interface{})["script"])
+		reused := docs[0]["reused_script"].(map[string]interface{})
+		require.Equal(t, []interface{}{"echo literal"}, reused["script"])
+		require.Equal(t, false, reused["variables"].(map[string]interface{})["CHECK"])
+		require.NotContains(t, reused, "_parsed_run")
 		for _, key := range []string{"jobs", "runs"} {
 			step := docs[0][key].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
 			require.NotContains(t, step, "_parsed_run")

@@ -1406,3 +1406,140 @@ func TestDocument_UnmarshalSharedYAML_SharesNodeReachedTwice(t *testing.T) {
 	require.Equal(t, "nginx", a["container"].(map[string]interface{})["image"])
 	require.Equal(t, reflect.ValueOf(a["container"]).Pointer(), reflect.ValueOf(b["container"]).Pointer())
 }
+
+// yaml.v3 is the independent value oracle; both conversion paths must retain
+// ordinary aliases and YAML merge precedence without changing scalar types.
+func TestDocument_YAMLAliasValues(t *testing.T) {
+	for _, source := range []string{
+		"base: &base {enabled: false, name: example}\ncopy: *base\n",
+		"base: &base [one, two]\ncopy: *base\n",
+		"text: &s text\nnumber: &n 42\nboolean: &b false\nnil_value: &z null\n" +
+			"copy: {s: *s, n: *n, b: *b, z: *z}\nitems: [*s, *n, *b, *z]\n",
+		"base: &base {enabled: false}\nitems: [*base, *base]\n",
+		"base: &base {}\nlist: &list []\ncopy: *base\nsequence: *list\n",
+		"base: &base {enabled: false, name: inherited}\ncopy: {enabled: true, <<: *base}\n",
+		"base: &base {enabled: true, name: inherited}\ncopy: {<<: *base, enabled: false}\n",
+		"a: &a {enabled: false, one: 1}\nb: &b {enabled: true, two: 2}\ncopy: {<<: [*a, *b]}\n",
+		"base: &base {enabled: false}\ncopy: {'<<': *base}\n",
+		"copy: {!!merge other: {enabled: false}}\n",
+		"copy: {<<: {enabled: false}, name: explicit}\n",
+		"key: &key run\ncopy: {*key : echo unsafe}\n",
+		"key: &key '<<'\ncopy: {*key : {enabled: false}}\n",
+	} {
+		t.Run(source, func(t *testing.T) {
+			var root yaml.Node
+			require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+			var want map[string]interface{}
+			require.NoError(t, root.Content[0].Decode(&want))
+			wantJSON, err := json.Marshal(want)
+			require.NoError(t, err)
+			for _, shared := range []bool{false, true} {
+				for _, lazy := range []bool{false, true} {
+					ctx := context.Background()
+					if lazy {
+						ctx = WithLazyLineInfo(ctx)
+					}
+					doc := Document{}
+					if shared {
+						require.NoError(t, doc.UnmarshalSharedYAML(ctx, root.Content[0]))
+					} else {
+						require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+					}
+					got, err := json.Marshal(stripDDLines(map[string]interface{}(doc)))
+					require.NoError(t, err)
+					require.JSONEq(t, string(wantJSON), string(got), "shared=%v lazy=%v", shared, lazy)
+				}
+			}
+		})
+	}
+}
+
+func TestDocument_YAMLAliasCycles(t *testing.T) {
+	for _, source := range []string{
+		"value: &self {next: *self}\n",
+		"value: &self [*self]\n",
+		"value: &self {<<: *self, enabled: false}\n",
+	} {
+		var root yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+		for _, shared := range []bool{false, true} {
+			doc := Document{}
+			if shared {
+				require.NoError(t, doc.UnmarshalSharedYAML(context.Background(), root.Content[0]))
+			} else {
+				require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+			}
+			_, err := json.Marshal(doc)
+			require.NoError(t, err, "cycles must not create recursive document values")
+		}
+	}
+}
+
+func TestDocument_YAMLAliasSourceAndIsolation(t *testing.T) {
+	const source = "job: &job\n  steps: &steps\n    - &step\n      run: echo unsafe\n" +
+		"copy: *job\nlist: *steps\nitems: [*step]\nbase: &base {enabled: false}\nmerged: {<<: *base}\n"
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+	for _, shared := range []bool{false, true} {
+		doc := Document{}
+		if shared {
+			require.NoError(t, doc.UnmarshalSharedYAML(context.Background(), root.Content[0]))
+		} else {
+			require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+		}
+		copyJob := doc["copy"].(map[string]interface{})
+		lines := copyJob["_dd_lines"].(map[string]*LineObject)
+		require.Equal(t, 5, lines["_dd__default"].Line, "alias key uses its written location")
+		require.Equal(t, 2, lines["_dd_steps"].Line, "inherited field points to its definition")
+		rootLines := doc["_dd_lines"].(map[string]*LineObject)
+		for _, key := range []string{"_dd_list", "_dd_items"} {
+			require.Equal(t, 4, rootLines[key].Arr[0]["_dd_run"].Line)
+		}
+		merged := doc["merged"].(map[string]interface{})["_dd_lines"].(map[string]*LineObject)
+		require.Equal(t, 8, merged["_dd_enabled"].Line)
+		copyJob["steps"].([]interface{})[0].(map[string]interface{})["run"] = "echo safe"
+		original := doc["job"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+		require.Equal(t, "echo unsafe", original["run"], "enriching one alias must not mutate its siblings")
+	}
+}
+
+func TestDocument_YAMLAliasInlineContract(t *testing.T) {
+	for _, tc := range []struct{ prefix, value, alias, inline string }{
+		{"", "[one, [two, three]]", "copy: *value", "copy: [one, [two, three]]"},
+		{"", "{nested: [one, two]}", "items: [*value]", "items: [{nested: [one, two]}]"},
+		{"Resources: {}\n", "!Sub '${Name}'", "copy: *value", "copy: !Sub '${Name}'"},
+		{"Resources: {}\n", "!Join [':', [one, two]]", "copy: *value", "copy: !Join [':', [one, two]]"},
+		{"Resources: {}\n", "one", "copy: !Join [':', [*value, two]]", "copy: !Join [':', [one, two]]"},
+	} {
+		for _, shared := range []bool{false, true} {
+			var documents []interface{}
+			for _, field := range []string{tc.alias, tc.inline} {
+				source := tc.prefix + "value: &value " + tc.value + "\n" + field + "\n"
+				var root yaml.Node
+				require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+				doc := Document{}
+				if shared {
+					require.NoError(t, doc.UnmarshalSharedYAML(context.Background(), root.Content[0]))
+				} else {
+					require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+				}
+				documents = append(documents, stripDDLines(map[string]interface{}(doc)))
+			}
+			require.Equal(t, documents[0], documents[1], "alias must match existing inline contract: %s", tc.value)
+		}
+	}
+}
+
+func TestDocument_YAMLMergeSequenceLocations(t *testing.T) {
+	const source = "a: &a {first: one}\nb: &b {second: two}\nitems:\n  - <<: [*a, *b]\n    own: three\n"
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+	var doc Document
+	require.NoError(t, doc.UnmarshalYAML(context.Background(), root.Content[0], nil))
+	item := doc["items"].([]interface{})[0].(map[string]interface{})
+	lines := item["_dd_lines"].(map[string]*LineObject)
+	for name, line := range map[string]int{"first": 1, "second": 2, "own": 5} {
+		require.Contains(t, lines, "_dd_"+name)
+		require.Equal(t, line, lines["_dd_"+name].Line)
+	}
+}

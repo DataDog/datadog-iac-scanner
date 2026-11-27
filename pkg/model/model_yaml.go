@@ -22,6 +22,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const yamlLineInfoKey = "_dd_lines"
+
 // cfnShortFormTags maps CloudFormation short-form intrinsic tags to long-form keys.
 var cfnShortFormTags = map[string]string{
 	"!Ref":          "Ref",
@@ -187,7 +189,7 @@ func (m *Document) unmarshalYAML(ctx context.Context, value *yaml.Node, shared *
 		}
 		if !skipLines {
 			// set line information for root level objects
-			mapDcp["_dd_lines"] = getLines(value, 0, shared)
+			mapDcp[yamlLineInfoKey] = getLines(value, 0, shared)
 		}
 
 		// mapDcp is freshly built and exclusively owned: assign it directly instead of
@@ -204,7 +206,7 @@ func expandCloudFormationForEach(doc map[string]interface{}) {
 	if resources == nil {
 		return
 	}
-	lines, _ := resources["_dd_lines"].(map[string]*LineObject)
+	lines, _ := resources[yamlLineInfoKey].(map[string]*LineObject)
 	for _, key := range collectForEachKeys(resources) {
 		lineKey := "_dd_" + key
 		if expandForEachEntry(resources, resources[key], parameters, lines, lines[lineKey]) {
@@ -264,7 +266,7 @@ func expandForEachEntry(resources map[string]interface{}, spec interface{}, para
 // generated resource in an annotated YAML document.
 func CloudFormationResourceLoopLine(doc map[string]interface{}, logicalID string) (int, bool) {
 	resources, _ := doc["Resources"].(map[string]interface{})
-	lines, _ := resources["_dd_lines"].(map[string]*LineObject)
+	lines, _ := resources[yamlLineInfoKey].(map[string]*LineObject)
 	marker := lines["_dd_"+logicalID]
 	// A generated resource mapping inherits its loop's three argument markers.
 	// A written resource mapping has no such array.
@@ -424,7 +426,7 @@ func substituteForEachLineKeys(lines map[string]*LineObject, bindings map[string
 
 func isPureRefNode(m map[string]interface{}) bool {
 	for k := range m {
-		if k != "Ref" && k != "_dd_lines" {
+		if k != "Ref" && k != yamlLineInfoKey {
 			return false
 		}
 	}
@@ -494,6 +496,9 @@ func unmarshal(ctx context.Context, val *yaml.Node, shared *sharedNodes, ignore 
 // unmarshalWithDepth handles recursive unmarshaling with circular reference detection
 func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.Node]bool, //nolint:gocyclo
 	shared *sharedNodes, ignore *Ignore, skipLines bool) interface{} {
+	if val == nil {
+		return nil
+	}
 	if shared != nil {
 		if value, ok := shared.values[val]; ok {
 			return value
@@ -508,9 +513,12 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 		ignore.ignoreCommentsYAML(val)
 	}
 
-	// if Yaml Node is an Array than we are working with ansible
-	// which need to be placed inside "playbooks"
-	// nolint:staticcheck
+	if val.Kind == yaml.AliasNode {
+		return unmarshalWithDepth(ctx, val.Alias, visited, shared.forAlias(), ignore, skipLines)
+	}
+
+	// Preserve the legacy representation of sequence documents and nested
+	// sequence elements. Mapping fields use arrays in unmarshalYAMLField.
 	if val.Kind == yaml.SequenceNode {
 		contentArray := make([]interface{}, 0, len(val.Content))
 		for _, contentEntry := range val.Content {
@@ -527,57 +535,36 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 	}
 
 	tmp := make(map[string]interface{}, len(val.Content)/2+1)
+	var merges []*yaml.Node
 	// iterate two by two, since first iteration is the key and the second is the value
 	for i := 0; i < len(val.Content); i += 2 {
-		if val.Content[i].Kind == yaml.ScalarNode {
-			if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val.Content[i+1], visited, shared, ignore, skipLines); ok {
-				if !skipLines {
-					if m, ok := rewritten.(map[string]interface{}); ok {
-						m["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line, shared)
-					}
-				}
-				tmp[internYAMLScalar(val.Content[i].Value)] = rewritten
+		field := yamlAliasTarget(val.Content[i])
+		if field != nil && field.Kind == yaml.ScalarNode {
+			if isYAMLMergeKey(val.Content[i]) {
+				merges = append(merges, val.Content[i+1])
 				continue
 			}
-			switch val.Content[i+1].Kind {
-			case yaml.ScalarNode:
-				tmp[internYAMLScalar(val.Content[i].Value)] = internedScalarNodeResolver(ctx, val.Content[i+1])
-			// in case value iteration is a map
-			case yaml.MappingNode:
-				// unmarshall map value and get its line information
-				result := unmarshalWithDepth(ctx, val.Content[i+1], visited, shared, ignore, skipLines)
-				if tt, ok := result.(map[string]interface{}); ok {
-					if !skipLines {
-						tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line, shared)
-					}
-					tmp[internYAMLScalar(val.Content[i].Value)] = tt
-				} else {
-					tmp[internYAMLScalar(val.Content[i].Value)] = result
-				}
-			// in case value iteration is an array
-			case yaml.SequenceNode:
-				contentArray := make([]interface{}, 0, len(val.Content[i+1].Content))
-				// unmarshall each iteration of the array
-				for _, contentEntry := range val.Content[i+1].Content {
-					contentArray = append(contentArray, unmarshalWithDepth(ctx, contentEntry, visited, shared, ignore, skipLines))
-				}
-				tmp[internYAMLScalar(val.Content[i].Value)] = contentArray
-			case yaml.AliasNode:
-				if val.Content[i+1].Alias != nil {
-					aliasShared := shared.forAlias()
-					result := unmarshalWithDepth(ctx, val.Content[i+1].Alias, visited, aliasShared, ignore, skipLines)
-					if tt, ok := result.(map[string]interface{}); ok {
-						if !skipLines {
-							tt["_dd_lines"] = getLines(val.Content[i+1], val.Content[i].Line, aliasShared)
-						}
-						utils.MergeMaps(tmp, tt)
-					}
-					if v, ok := result.(string); ok {
-						tmp[internYAMLScalar(val.Content[i].Value)] = v
-					}
+
+			tmp[internYAMLScalar(field.Value)] = unmarshalYAMLField(
+				ctx, val.Content[i+1], val.Content[i].Line, visited, shared, ignore, skipLines)
+		}
+	}
+	// Explicit keys win regardless of source order; earlier merge sources win
+	// over later ones. A quoted "<<" is an ordinary key, not a merge.
+	for _, merge := range merges {
+		walkYAMLMerges(merge, visited, shared, func(node *yaml.Node, memo *sharedNodes) {
+			values, _ := unmarshalWithDepth(ctx, node, visited, memo, ignore, skipLines).(map[string]interface{})
+			for key, value := range values {
+				if _, exists := tmp[key]; !exists && key != yamlLineInfoKey {
+					tmp[key] = value
 				}
 			}
-		}
+		})
+	}
+	if !skipLines && len(merges) > 0 {
+		// Locations belong to the resulting mapping, including explicit keys
+		// and every merge source, not just the first inherited marker map.
+		tmp[yamlLineInfoKey] = getLines(val, merges[0].Line, shared)
 	}
 	if shared != nil {
 		shared.values[val] = tmp
@@ -585,78 +572,161 @@ func unmarshalWithDepth(ctx context.Context, val *yaml.Node, visited map[*yaml.N
 	return tmp
 }
 
+// Field aliases must use the same representation as an inline field value.
+// In particular, sequences here are arrays, not top-level Ansible documents.
+func unmarshalYAMLField(ctx context.Context, node *yaml.Node, def int, visited map[*yaml.Node]bool,
+	shared *sharedNodes, ignore *Ignore, skipLines bool) interface{} {
+	if node == nil || visited[node] {
+		return nil
+	}
+	if node.Kind == yaml.AliasNode {
+		visited[node] = true
+		defer delete(visited, node)
+		return unmarshalYAMLField(ctx, node.Alias, def, visited, shared.forAlias(), ignore, skipLines)
+	}
+	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, node, visited, shared, ignore, skipLines); ok {
+		if mapping, ok := rewritten.(map[string]interface{}); ok && !skipLines {
+			mapping[yamlLineInfoKey] = getLines(node, def, shared)
+		}
+		return rewritten
+	}
+	if node.Kind == yaml.SequenceNode {
+		visited[node] = true
+		defer delete(visited, node)
+		items := make([]interface{}, 0, len(node.Content))
+		for _, child := range node.Content {
+			items = append(items, unmarshalWithDepth(ctx, child, visited, shared, ignore, skipLines))
+		}
+		return items
+	}
+	value := unmarshalWithDepth(ctx, node, visited, shared, ignore, skipLines)
+	if mapping, ok := value.(map[string]interface{}); ok && !skipLines {
+		mapping[yamlLineInfoKey] = getLines(node, def, shared)
+	}
+	return value
+}
+
+// Only actual merge keys reach this walk. Alias and sequence cycles are cut
+// using the same active path as conversion; sibling aliases remain independent.
+func walkYAMLMerges(node *yaml.Node, visited map[*yaml.Node]bool, shared *sharedNodes,
+	visit func(*yaml.Node, *sharedNodes)) {
+	if node == nil || visited[node] {
+		return
+	}
+	switch node.Kind {
+	case yaml.AliasNode:
+		visited[node] = true
+		defer delete(visited, node)
+		walkYAMLMerges(node.Alias, visited, shared.forAlias(), visit)
+	case yaml.SequenceNode:
+		visited[node] = true
+		defer delete(visited, node)
+		for _, child := range node.Content {
+			walkYAMLMerges(child, visited, shared, visit)
+		}
+	case yaml.MappingNode:
+		visit(node, shared)
+	}
+}
+
 // getLines creates the map containing the line information for the yaml Node
 // def is the line to be used as "_dd__default"
 func getLines(val *yaml.Node, def int, shared *sharedNodes) map[string]*LineObject {
-	if shared == nil {
-		return buildLines(val, def, nil)
+	return getYAMLLines(val, def, shared, make(map[*yaml.Node]bool))
+}
+
+func getYAMLLines(val *yaml.Node, def int, shared *sharedNodes, visited map[*yaml.Node]bool) map[string]*LineObject {
+	lineMap := map[string]*LineObject{"_dd__default": {Line: def, Arr: []map[string]*LineObject{}}}
+	if val == nil || visited[val] {
+		return lineMap
+	}
+	visited[val] = true
+	defer delete(visited, val)
+	if val.Kind == yaml.AliasNode {
+		return getYAMLLines(val.Alias, def, shared.forAlias(), visited)
 	}
 	key := linesKey{node: val, def: def}
-	if lines, ok := shared.lines[key]; ok {
-		return lines
+	if shared != nil {
+		if lines, ok := shared.lines[key]; ok {
+			return lines
+		}
 	}
-	lines := buildLines(val, def, shared)
-	shared.lines[key] = lines
-	return lines
+	if val.Kind == yaml.SequenceNode {
+		lineMap["_dd__default"].Arr = yamlSequenceLines(val, shared, visited)
+	} else {
+		yamlMappingLines(val, def, shared, visited, lineMap)
+	}
+	if shared != nil {
+		shared.lines[key] = lineMap
+	}
+	return lineMap
 }
 
-func buildLines(val *yaml.Node, def int, shared *sharedNodes) map[string]*LineObject {
-	lineMap := make(map[string]*LineObject)
+func isYAMLMergeKey(node *yaml.Node) bool {
+	return node.Kind == yaml.ScalarNode && node.Value == "<<" && node.ShortTag() == "!!merge"
+}
 
-	// line information map
-	lineMap["_dd__default"] = &LineObject{
-		Line: def,
-		Arr:  []map[string]*LineObject{},
-	}
-
-	// if yaml Node is an Array use func getSeqLines
-	if val.Kind == yaml.SequenceNode {
-		return getSeqLines(val, def, shared)
-	}
-
-	// iterate two by two, since first iteration is the key and the second is the value
-	for i := 0; i < len(val.Content); i += 2 {
-		lineArr := make([]map[string]*LineObject, 0)
-		// in case the value iteration is an array call getLines for each iteration of the array
-		if val.Content[i+1].Kind == yaml.SequenceNode {
-			for _, contentEntry := range val.Content[i+1].Content {
-				defaultLine := val.Content[i].Line
-				if contentEntry.Kind == yaml.ScalarNode {
-					defaultLine = contentEntry.Line
-				} else if contentEntry.Kind == yaml.MappingNode && len(contentEntry.Content) > 0 {
-					defaultLine = contentEntry.Content[0].Line
+func yamlMappingLines(val *yaml.Node, def int, shared *sharedNodes, visited map[*yaml.Node]bool,
+	lineMap map[string]*LineObject) {
+	var merges []*yaml.Node
+	for i := 0; i+1 < len(val.Content); i += 2 {
+		field, value := val.Content[i], val.Content[i+1]
+		name := yamlAliasTarget(field)
+		if name == nil || name.Kind != yaml.ScalarNode {
+			continue
+		}
+		var array []map[string]*LineObject
+		if target := yamlAliasTarget(value); target != nil && target.Kind == yaml.SequenceNode {
+			for _, child := range target.Content {
+				defaultLine := field.Line
+				if child.Kind == yaml.ScalarNode {
+					defaultLine = child.Line
+				} else if child.Kind == yaml.MappingNode && len(child.Content) > 0 {
+					defaultLine = child.Content[0].Line
 				}
-				lineArr = append(lineArr, getLines(contentEntry, defaultLine, shared))
+				array = append(array, getYAMLLines(child, defaultLine, shared, visited))
 			}
 		}
-
-		// line information map of each key of the yaml Node
-		lineMap["_dd_"+val.Content[i].Value] = &LineObject{
-			Line: val.Content[i].Line,
-			Arr:  lineArr,
+		if array == nil {
+			array = []map[string]*LineObject{}
+		}
+		lineMap["_dd_"+name.Value] = &LineObject{Line: field.Line, Arr: array}
+		if isYAMLMergeKey(field) {
+			merges = append(merges, value)
 		}
 	}
-
-	return lineMap
+	for _, merge := range merges {
+		walkYAMLMerges(merge, visited, shared, func(node *yaml.Node, memo *sharedNodes) {
+			for name, marker := range getYAMLLines(node, def, memo, visited) {
+				if _, exists := lineMap[name]; !exists {
+					lineMap[name] = marker
+				}
+			}
+		})
+	}
 }
 
-// getSeqLines iterates through the elements of an Array
-// creating a map with each iteration lines information
-func getSeqLines(val *yaml.Node, def int, shared *sharedNodes) map[string]*LineObject {
-	lineMap := make(map[string]*LineObject)
-	lineArr := make([]map[string]*LineObject, 0)
-
-	// get line information slice of every element in the array
-	for _, cont := range val.Content {
-		lineArr = append(lineArr, getLines(cont, cont.Line, shared))
+func yamlAliasTarget(node *yaml.Node) *yaml.Node {
+	var visited map[*yaml.Node]bool
+	for node != nil && node.Kind == yaml.AliasNode {
+		if visited[node] {
+			return nil
+		}
+		if visited == nil {
+			visited = make(map[*yaml.Node]bool)
+		}
+		visited[node] = true
+		node = node.Alias
 	}
+	return node
+}
 
-	// create line information of array with its line and elements line information
-	lineMap["_dd__default"] = &LineObject{
-		Line: def,
-		Arr:  lineArr,
+func yamlSequenceLines(node *yaml.Node, shared *sharedNodes, visited map[*yaml.Node]bool) []map[string]*LineObject {
+	array := make([]map[string]*LineObject, 0, len(node.Content))
+	for _, child := range node.Content {
+		array = append(array, getYAMLLines(child, child.Line, shared, visited))
 	}
-	return lineMap
+	return array
 }
 
 // yamlScalarInterner canonicalizes YAML scalar strings so repeated values
@@ -808,6 +878,17 @@ func decodeIntrinsicChild(ctx context.Context, val *yaml.Node, visited map[*yaml
 	shared *sharedNodes, ignore *Ignore, skipLines bool) interface{} {
 	if val == nil {
 		return nil
+	}
+	if val.Kind == yaml.AliasNode {
+		if visited == nil {
+			visited = make(map[*yaml.Node]bool)
+		}
+		if visited[val] {
+			return nil
+		}
+		visited[val] = true
+		defer delete(visited, val)
+		return decodeIntrinsicChild(ctx, val.Alias, visited, shared.forAlias(), ignore, skipLines)
 	}
 	if rewritten, ok := rewriteCFNShortFormIntrinsic(ctx, val, visited, shared, ignore, skipLines); ok {
 		return rewritten
