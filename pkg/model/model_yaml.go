@@ -11,7 +11,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -430,12 +432,16 @@ func isPureRefNode(m map[string]interface{}) bool {
 }
 
 func replaceForEachVars(template string, bindings map[string]string) string {
-	resolved := template
-	for name, value := range bindings {
-		resolved = strings.ReplaceAll(resolved, "${"+name+"}", value)
-		resolved = strings.ReplaceAll(resolved, "&{"+name+"}", value)
+	if !strings.Contains(template, "${") && !strings.Contains(template, "&{") {
+		return template
 	}
-	return resolved
+	const entriesPerBinding = 4
+	replacements := make([]string, 0, entriesPerBinding*len(bindings))
+	for _, name := range slices.Sorted(maps.Keys(bindings)) {
+		value := bindings[name]
+		replacements = append(replacements, "${"+name+"}", value, "&{"+name+"}", value)
+	}
+	return strings.NewReplacer(replacements...).Replace(template)
 }
 
 /*
