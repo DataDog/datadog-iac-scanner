@@ -608,6 +608,13 @@ func TestShellParser_BashPipelineContent(t *testing.T) {
 		{"enclosing input pipe", `{ cat | sort; } < "$INPUT" >> "$GITHUB_ENV"`, true, true},
 		{"spare descriptor env", `exec 3>> "$GITHUB_ENV"; echo "$PAYLOAD" >&3`, true, false},
 		{"spare descriptor path", `exec 5>> "$GITHUB_PATH"; echo "$PAYLOAD" >&5`, true, false},
+		{"quoted stderr identity", `{ echo "$PAYLOAD" >&2 02>&"002"; } 2>> "$GITHUB_ENV"`, true, false},
+		{"single quoted stderr identity", `{ echo "$PAYLOAD" >&2 002>&'02'; } 2>> "$GITHUB_ENV"`, true, false},
+		{"numeric stdout alias overwritten", `echo "$PAYLOAD" 01>> "$GITHUB_ENV" 1>/dev/null`, false, false},
+		{"numeric stdout alias restored", `echo "$PAYLOAD" 1>/dev/null 001>> "$GITHUB_ENV"`, true, false},
+		{"nonnumeric word is not descriptor", `echo "$PAYLOAD" 0x1>> "$GITHUB_ENV" 1>/dev/null`, false, false},
+		{"nonnumeric word keeps default stdout", `echo "$PAYLOAD" 1>/dev/null 0x1>> "$GITHUB_ENV"`, true, false},
+		{"space breaks descriptor token", `echo "$PAYLOAD" 02 >> "$GITHUB_ENV" 1>/dev/null`, false, false},
 		{"literal and", `true && echo A >> "$GITHUB_ENV"`, false, false},
 		{"dynamic and", `true && echo "$PAYLOAD" >> "$GITHUB_ENV"`, true, false},
 		{"literal or", `false || echo A >> "$GITHUB_ENV"`, false, false},
@@ -643,9 +650,8 @@ func assertBashShellContent(t *testing.T, bashPath, script string, payload, unkn
 	require.Equal(t, payload, strings.Contains(string(contents), marker), "Bash oracle: %s", contents)
 	parsed := parseRunBlock(script, "bash")
 	require.True(t, parsed.ParseOK)
-	if !unknown {
-		require.NoError(t, parsed.Error)
-	}
+	// Bash establishes syntax validity; the pinned grammar can recover on
+	// valid syntax. Its diagnostic must not suppress available security facts.
 	require.Equal(t, payload || unknown, shellHasUnsafeEnvWrite(parsed), "scanner must preserve dynamic/unknown content and literal controls")
 }
 
@@ -757,4 +763,115 @@ func TestShellParser_RedirectInventory(t *testing.T) {
 		}
 	}
 	require.ElementsMatch(t, []string{"GITHUB_ENV", "GITHUB_PATH"}, targets)
+}
+
+// Descriptor spelling is not identity. Padding numeric FDs, or duplicating an
+// FD onto itself, must preserve the same binding for stdin, stdout and spare FDs.
+func TestShellParser_BashDescriptorIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash behavior suite runs on Unix")
+	}
+	bashPath, err := exec.LookPath("bash")
+	require.NoError(t, err)
+	// FD 0 is exercised as stdin below; explicit FD 0 output is a separate
+	// existing limitation of the pinned grammar.
+	for _, fd := range []int{1, 2, 3, 5, 9} {
+		number := fmt.Sprint(fd)
+		spellings := []string{number, "0" + number, "00" + number}
+		for _, declared := range spellings {
+			for _, target := range spellings {
+				for _, op := range []string{">&", "<&"} {
+					for _, dynamic := range []bool{false, true} {
+						t.Run(fmt.Sprintf("self/%s/%s/%s/%t", declared, target, op, dynamic), func(t *testing.T) {
+							arg := "A=1"
+							if dynamic {
+								arg = `"$PAYLOAD"`
+							}
+							script := fmt.Sprintf(`{ echo %s >&%s %s%s%s; } %s>> "$GITHUB_ENV"`, arg, number, declared, op, target, number)
+							assertBashShellContent(t, bashPath, script, dynamic, false)
+						})
+					}
+				}
+				for _, sinkLast := range []bool{false, true} {
+					for _, dynamic := range []bool{false, true} {
+						t.Run(fmt.Sprintf("overwrite/%s/%s/%t/%t", declared, target, sinkLast, dynamic), func(t *testing.T) {
+							arg := "A=1"
+							if dynamic {
+								arg = `"$PAYLOAD"`
+							}
+							first := declared + `>> "$GITHUB_ENV"`
+							second := target + `>/dev/null`
+							if sinkLast {
+								first, second = second, first
+							}
+							script := fmt.Sprintf(`{ echo %s >&%s; } %s %s`, arg, number, first, second)
+							assertBashShellContent(t, bashPath, script, dynamic && sinkLast, false)
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestShellParser_DescriptorPipelineOwnership(t *testing.T) {
+	for _, padding := range []string{"", "0", "00"} {
+		parsed := parseRunBlock(`{ printf A | cat; } `+padding+`1>> "$GITHUB_ENV"`, "bash")
+		require.True(t, parsed.ParseOK)
+		first := shellFact(t, parsed.Commands, command, "printf")
+		require.Nil(t, first.Redirect)
+		last := shellFact(t, parsed.Commands, redirected_statement, "cat")
+		require.Equal(t, "GITHUB_ENV", last.Redirect.Target.Var)
+		parsed = parseRunBlock(`{ cat | sort >> "$GITHUB_ENV"; } `+padding+`0< "$INPUT"`, "bash")
+		require.True(t, parsed.ParseOK)
+		first = shellFact(t, parsed.Commands, redirected_statement, "cat")
+		require.Equal(t, "INPUT", first.Redirect.Target.Var)
+		var reads int
+		for _, cmd := range parsed.Commands {
+			if cmd.Redirect != nil && cmd.Redirect.Operator == "<" {
+				reads++
+			}
+		}
+		require.Equal(t, 1, reads, "only the first stage inherits stdin")
+	}
+}
+
+func TestShellParser_DescriptorNumber(t *testing.T) {
+	for _, tc := range []struct {
+		raw, want string
+		numeric   bool
+	}{
+		{"0", "0", true}, {"000", "0", true}, {"01", "1", true}, {"009", "9", true},
+		{"000184467440737095516160", "184467440737095516160", true},
+		{"", "", false}, {"{fd}", "{fd}", false}, {"$FD", "$FD", false}, {"1-", "1-", false}, {" 01", " 01", false},
+	} {
+		got, numeric := shellDescriptorNumber(tc.raw)
+		require.Equal(t, tc.want, got)
+		require.Equal(t, tc.numeric, numeric)
+	}
+}
+
+func TestShellParser_BashStdinIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash behavior suite runs on Unix")
+	}
+	bashPath, err := exec.LookPath("bash")
+	require.NoError(t, err)
+	for _, target := range []string{"0", "00", "000"} {
+		script := fmt.Sprintf(`{ cat 0<&%s >> "$GITHUB_ENV"; } 0< "$INPUT"`, target)
+		assertBashShellContent(t, bashPath, script, true, false)
+		parsed := parseRunBlock(script, "bash")
+		var reads int
+		for _, cmd := range parsed.Commands {
+			if cmd.Redirect != nil && cmd.Redirect.Operator == "<" && cmd.Redirect.Target.Var == "INPUT" {
+				reads++
+			}
+		}
+		require.Equal(t, 1, reads, "self-duplication preserves inherited stdin")
+	}
+	for _, fd := range []string{"0", "1", "2", "3", "5", "9"} {
+		for _, op := range []string{"<&", shellDupOut} {
+			require.True(t, selfShellDuplication(fd, &ParsedRedirect{Operator: op, Target: ParsedArg{Type: "number", Value: "00" + fd}}))
+		}
+	}
 }

@@ -337,26 +337,81 @@ func applyShellRedirect(node *sitter.Node, source *shellSource, local shellRedir
 	if strings.HasPrefix(value.Operator, "<") {
 		descriptor = "0"
 	}
-	if declared := node.ChildByFieldName("descriptor"); declared != nil {
-		descriptor = shellText(declared, source)
-	}
+	descriptor = declaredShellDescriptor(node, source, descriptor)
 	if strings.HasPrefix(value.Operator, "&") {
 		local["1"], local["2"] = value, value
+		return
+	}
+	if local[descriptor] != nil && selfShellDuplication(descriptor, value) {
 		return
 	}
 	if descriptor == "1" && local["1"] != nil && identityShellOutput(value) {
 		return
 	}
-	if descriptor == "0" && local["0"] != nil && value.Operator == "<&" && value.Target.Value == "0" {
-		return
-	}
 	local[descriptor] = value
 }
 
-func identityShellOutput(redirect *ParsedRedirect) bool {
-	if redirect.Operator == shellDupOut && redirect.Target.Value == "1" {
-		return true
+// The grammar can split a padded descriptor into a descriptor and an ERROR
+// token. Read the complete numeric prefix before the operator in that case.
+func declaredShellDescriptor(node *sitter.Node, source *shellSource, fallback string) string {
+	for i := uint(0); i < node.ChildCount(); i++ {
+		child := node.Child(i)
+		kind := child.Kind()
+		if strings.HasPrefix(kind, "<") || strings.HasPrefix(kind, ">") || strings.HasPrefix(kind, "&>") {
+			prefix := source.raw[node.StartByte():child.StartByte()]
+			if normalized, ok := shellDescriptorNumber(prefix); ok {
+				return normalized
+			}
+			// A numeric fragment in a nonnumeric word is not an explicit FD.
+			if declared := node.ChildByFieldName("descriptor"); declared != nil {
+				if _, numeric := shellDescriptorNumber(shellText(declared, source)); numeric {
+					return fallback
+				}
+			}
+			break
+		}
 	}
+	if declared := node.ChildByFieldName("descriptor"); declared != nil {
+		raw := shellText(declared, source)
+		if normalized, ok := shellDescriptorNumber(raw); ok {
+			return normalized
+		}
+		return raw
+	}
+	return fallback
+}
+
+// Numeric FDs are decimal identities, not source spellings. String-based
+// canonicalization avoids imposing a parser-side integer/range limit.
+func shellDescriptorNumber(value string) (string, bool) {
+	if value == "" {
+		return value, false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return value, false
+		}
+	}
+	normalized := strings.TrimLeft(value, "0")
+	if normalized == "" {
+		normalized = "0"
+	}
+	return normalized, true
+}
+
+func selfShellDuplication(descriptor string, redirect *ParsedRedirect) bool {
+	if redirect.Operator != shellDupOut && redirect.Operator != "<&" {
+		return false
+	}
+	value := redirect.Target.Value
+	if redirect.Target.Type == literal {
+		value = literalShellPath(redirect.Target)
+	}
+	target, ok := shellDescriptorNumber(value)
+	return ok && descriptor == target
+}
+
+func identityShellOutput(redirect *ParsedRedirect) bool {
 	filePath := literalShellPath(redirect.Target)
 	return filePath == "/dev/stdout" || filePath == "/dev/fd/1"
 }
