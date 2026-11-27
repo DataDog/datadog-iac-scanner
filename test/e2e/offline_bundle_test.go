@@ -212,3 +212,41 @@ DatadogPolicy contains result if {
 		}
 	}
 }
+
+// Parser recovery must not disable existing rule gates for valid GitHub syntax.
+func Test_E2ECIExpressionFacts(t *testing.T) {
+	const query = `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+    some doc in input.document
+    some step_index, step in doc.jobs.build.steps
+    some expression in step._parsed_expressions_run
+    expression.parse_ok == true
+    expression.has_secrets_expansion == true
+    result := {"documentId": doc.id, "resourceType": "github_action",
+        "resourceName": "build", "searchKey": sprintf("jobs.build.steps.%d.run", [step_index])}
+}`
+	for _, tc := range []struct {
+		expression string
+		want       int
+	}{
+		{"${{ format('{0}{1}', toJSON(secrets), join(github.event.commits[*].message, ',')) }}", 1},
+		{"${{ format('{0}{1}', join(github.event.commits[*].message, ','), toJSON(secrets)) }}", 1},
+		{"${{ format('{0}{1}', toJSON(secrets), join(github.event.commits.*.message, ',')) }}", 1},
+		{"${{ format('{0}{1}', 'toJSON(secrets)', join(github.event.commits[*].message, ',')) }}", 0},
+		{"${{ format('{0}{1}', toJSON(secrets.TOKEN), join(github.event.commits[*].message, ',')) }}", 0},
+		{"${{ toJSON(secrets)", 0},
+		{"${{ toJSON(secrets) && 'unfinished }}", 0},
+	} {
+		t.Run(tc.expression, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "ci.yml")
+			content := fmt.Sprintf("on: push\njobs: {build: {runs-on: ubuntu-latest, steps: [{run: %q}]}}", "echo "+tc.expression)
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+			metadata := scanWithOfflineBundle(t, path, "CICD", "cicd", &datadog.Rule{
+				ID: "ci-expression-facts", Name: "Expression facts", ShortDescription: "Expression facts",
+				Platform: "CICD", Type: "rego", RegoQuery: []byte(query), Severity: "LOW", IsPublished: true,
+			})
+			require.Equal(t, tc.want, metadata.Stats.Violations)
+		})
+	}
+}

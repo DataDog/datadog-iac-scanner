@@ -74,15 +74,22 @@ func parseExpression(ctx context.Context, expr ExpressionMatch) *ParsedExpressio
 	// Walk the AST and extract information
 	rootNode := tree.RootNode()
 	result.AST = buildAST(rootNode, exprBytes)
-	if rootNode.HasError() {
-		result.Error = fmt.Errorf("invalid GitHub Actions expression syntax")
-		return result
+	// The pinned grammar is not a GitHub validator (e.g. it recovers on [*]).
+	// Existing rules gate all facts on ParseOK, so retain recovered facts and
+	// report the grammar diagnostic separately, as for shell parsing.
+	result.ParseOK = strings.HasPrefix(expr.Full, "${{") && expressionEnd(expr.Full, len("${{")) == len(expr.Full)-len("}}")
+	if rootNode.HasError() || strings.TrimSpace(expr.Expression) == "" {
+		result.Error = fmt.Errorf("GitHub expression parser recovered from unsupported or invalid syntax")
 	}
-	result.ParseOK = true
 
 	// Analyze the AST for patterns
 	// Start analysis from root which will recursively check all children
 	analyzeExpression(rootNode, exprBytes, result)
+	if result.Error != nil {
+		// Recovery facts are useful evidence, not proof that the complete
+		// expression can be reduced to a constant.
+		return result
+	}
 
 	// Check if entire expression is constant-reducible
 	// The root is always "source", so check if all its children are constant

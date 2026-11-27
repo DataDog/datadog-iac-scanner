@@ -89,8 +89,10 @@ not establish the runner's actual OS or shell. Explicitly unsupported shells
 keep `parse_ok: false`. The command list includes executable commands inside
 pipelines and compound statements, alongside existing pipeline grouping entries.
 For compatibility, `parse_ok` gates availability of parser facts, not complete
-syntax validity: recovered command facts remain available with an error recorded
-separately. A shell syntax error can occur after earlier commands have executed.
+syntax validity: recovered command and expression facts remain available with
+an error recorded separately. The expression grammar can recover on valid GitHub syntax such as
+bracket wildcard filters; recovery does not establish constant reducibility.
+A shell syntax error can occur after earlier commands have executed.
 GitHub templates are treated as opaque substitutions during shell parsing;
 original argument text is retained and expressions are never executed.
 

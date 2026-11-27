@@ -72,7 +72,7 @@ type ExpressionMatch struct {
 type ParsedExpression struct {
 	Raw                   string                `json:"raw"`                      // Original expression text
 	AST                   ASTNode               `json:"ast,omitempty"`            // Parsed AST
-	ParseOK               bool                  `json:"parse_ok"`                 // Whether parsing succeeded
+	ParseOK               bool                  `json:"parse_ok"`                 // Facts are available; Error may report recovery
 	Error                 error                 `json:"error,omitempty"`          // Parse error if any
 	ConstantReducible     bool                  `json:"constant_reducible"`       // Can be evaluated at parse time
 	ConstantSubexprs      []ParsedSubExpression `json:"constant_subexprs"`        // Sub-expressions that are constant
