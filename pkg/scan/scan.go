@@ -46,7 +46,9 @@ type Results struct {
 	ExtractedPaths       provider.ExtractedPath
 	Files                model.FileMetadatas
 	FailedQueries        map[string]error
+	QueryFailures        map[string]engine.QueryFailure
 	DuplicateDocumentIDs int
+	ContractV2RunStats   engine.ContractV2RunStats
 }
 
 // Incomplete reports a loss of coverage from rejected document IDs.
@@ -302,7 +304,9 @@ func (c *Client) executeScan(ctx context.Context) (*Results, error) {
 		ExtractedPaths:       executeScanParameters.extractedPaths,
 		Files:                files,
 		FailedQueries:        failedQueries,
+		QueryFailures:        executeScanParameters.inspector.GetQueryFailures(),
 		DuplicateDocumentIDs: c.Storage.DuplicateDocumentIDs(),
+		ContractV2RunStats:   executeScanParameters.inspector.ContractV2RunStats(),
 	}
 	if scanResults.Incomplete() {
 		contextLogger.Warn().Int("duplicate_document_ids", scanResults.DuplicateDocumentIDs).
@@ -434,22 +438,24 @@ func (c *Client) createService(
 	services := make([]*runner.Service, 0, len(combinedParser))
 
 	for _, p := range combinedParser {
+		skipLegacyTF := c.ScanParams.PayloadPath == "" && inspector.OnlyTerraformContractV2(p.Platform)
 		services = append(
 			services,
 			&runner.Service{
-				SourceProvider:     filesSource,
-				Storage:            store,
-				Parser:             p,
-				Inspector:          inspector,
-				Tracker:            t,
-				Resolver:           combinedResolver,
-				RenderedFileFilter: renderedFileFilter,
-				MaxFileSize:        c.ScanParams.MaxFileSizeFlag,
-				ScanRoot:           cmp.Or(c.documentRoot, c.ScanParams.RepoPath),
-				Platforms:          types,
-				FilePlatform:       filePlatform,
-				PathExtractionMap:  pathExtractionMap,
-				LineInfoPayload:    c.ScanParams.LineInfoPayload,
+				SourceProvider:                     filesSource,
+				Storage:                            store,
+				Parser:                             p,
+				Inspector:                          inspector,
+				Tracker:                            t,
+				Resolver:                           combinedResolver,
+				RenderedFileFilter:                 renderedFileFilter,
+				MaxFileSize:                        c.ScanParams.MaxFileSizeFlag,
+				ScanRoot:                           cmp.Or(c.documentRoot, c.ScanParams.RepoPath),
+				Platforms:                          types,
+				FilePlatform:                       filePlatform,
+				PathExtractionMap:                  pathExtractionMap,
+				LineInfoPayload:                    c.ScanParams.LineInfoPayload,
+				SkipLegacyTerraformDocumentParsing: skipLegacyTF,
 			},
 		)
 	}

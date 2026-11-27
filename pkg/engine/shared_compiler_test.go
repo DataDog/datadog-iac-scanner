@@ -7,6 +7,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,10 +18,16 @@ import (
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/v1/storage"
+	"github.com/open-policy-agent/opa/v1/storage/inmem"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/contractlibs"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 )
 
 // TestSafeCapabilities_BlocksUnsafeBuiltins is the security guard for the
@@ -51,6 +58,151 @@ func TestSafeCapabilities_AllowsNormalBuiltins(t *testing.T) {
 	c := ast.NewCompiler().WithCapabilities(safeCapabilities())
 	c.Compile(map[string]*ast.Module{"rule": mod})
 	require.False(t, c.Failed(), "compile must allow safe builtins: %v", c.Errors)
+}
+
+func TestLegacyCompileOnlyInjectsReferencedContractLibraries(t *testing.T) {
+	parse := func(name, content string) *ast.Module {
+		t.Helper()
+		module, err := ast.ParseModuleWithOpts(name, content, ast.ParserOptions{RegoVersion: ast.RegoV1})
+		require.NoError(t, err)
+		return module
+	}
+
+	libraries, err := contractlibs.Modules()
+	require.NoError(t, err)
+	outputRule := parse("legacy", `package datadog
+import rego.v1
+output := true
+DatadogPolicy contains result if { result := {"ok": true} }
+`)
+	used := contractLibrariesUsedByModule(outputRule, libraries)
+	require.Empty(t, used, "a legacy rule with no Contract v2 references must not receive Contract v2 packages")
+
+	outputConsumer := parse("legacy", `package datadog
+import rego.v1
+import data.datadog.output as dd_output
+DatadogPolicy contains result if { result := dd_output.format({}, {}) }
+`)
+	used = contractLibrariesUsedByModule(outputConsumer, libraries)
+	require.Len(t, used, 1)
+	require.Contains(t, used, "datadog_output.rego")
+
+	common := source.RegoLibraries{LibraryCode: "package generic.common\n", LibraryInputData: "{}"}
+	platform := source.RegoLibraries{
+		LibraryCode:      "package generic.terraform\n# source refers to data.datadog.iac in v2\n",
+		LibraryInputData: "{}",
+	}
+	parsedCommon := parse("Common", common.LibraryCode)
+	parsedGeneric := parse("Generic", platform.LibraryCode)
+	loader := &QueryLoader{
+		commonLibrary:     common,
+		platformLibraries: map[string]source.RegoLibraries{"terraform": platform},
+		parsedCommon:      parsedCommon,
+		parsedGeneric:     map[string]*ast.Module{"terraform": parsedGeneric},
+		contractLibraries: map[string]map[string]*ast.Module{"terraform": libraries},
+	}
+	query := model.QueryMetadata{
+		Query:    "legacy-output-rule",
+		Platform: "terraform",
+		Content:  outputRule.String(),
+	}
+	_, err = loader.LoadQuery(context.Background(), &query, nil, nil, nil, false)
+	require.NoError(t, err, "isolated legacy compile must not collide with data.datadog.output")
+
+	renamed := parse("legacy", pkgDatadogDecl.ReplaceAllString(query.Content, "package datadog.q0"))
+	sharedModules, queryPath := loader.buildSharedPlatformModules(
+		context.Background(), "terraform", platform, []int{0}, []model.QueryMetadata{query},
+		[]ruleExecPlan{{mod: renamed}},
+	)
+	require.Len(t, queryPath, 1)
+	for name, module := range sharedModules {
+		if module != nil {
+			require.NotContains(t, []string{"datadog_output.rego", "datadog_iac.rego", "datadog_terraform.rego"}, name)
+		}
+	}
+	compiler := ast.NewCompiler().WithCapabilities(safeCapabilities())
+	compiler.Compile(sharedModules)
+	require.False(t, compiler.Failed(), "%v", compiler.Errors)
+}
+
+func TestContractV2SelectPlatformLibraries(t *testing.T) {
+	parse := func(name, source string) *ast.Module {
+		t.Helper()
+		module, err := ast.ParseModuleWithOpts(name, source, ast.ParserOptions{RegoVersion: ast.RegoV1})
+		require.NoError(t, err)
+		return module
+	}
+	common := parse("Common", `package generic.common
+import rego.v1
+helper := true
+`)
+	generic := parse("Generic", `package generic.terraform
+import rego.v1
+import data.generic.common as common_lib
+helper := common_lib.helper
+`)
+
+	for _, tc := range []struct {
+		name        string
+		root        string
+		wantCommon  bool
+		wantGeneric bool
+	}{
+		{
+			name: "facades only",
+			root: `package datadog
+import rego.v1
+results contains result if { result := {"ok": true} }
+`,
+		},
+		{
+			name: "direct common dependency",
+			root: `package datadog
+import rego.v1
+import data.generic.common as common_lib
+results contains result if { result := common_lib.helper }
+`,
+			wantCommon: true,
+		},
+		{
+			name: "generic dependency retains its common dependency",
+			root: `package datadog
+import rego.v1
+import data.generic.terraform as tf
+results contains result if { result := tf.helper }
+`,
+			wantCommon:  true,
+			wantGeneric: true,
+		},
+		{
+			name: "dynamic data references retain both libraries",
+			root: `package datadog
+import rego.v1
+results contains result if {
+  value := data[input.library]
+  result := value
+}
+`,
+			wantCommon:  true,
+			wantGeneric: true,
+		},
+		{
+			name: "bare data references retain both libraries",
+			root: `package datadog
+import rego.v1
+results contains result if { result := data }
+`,
+			wantCommon:  true,
+			wantGeneric: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := parse("Rule", tc.root)
+			gotCommon, gotGeneric := contractV2SelectPlatformLibraries([]*ast.Module{root}, common, generic)
+			assert.Equal(t, tc.wantCommon, gotCommon)
+			assert.Equal(t, tc.wantGeneric, gotGeneric)
+		})
+	}
 }
 
 // secondRule is a second self-contained rule, distinct from aclRule, so the
@@ -639,4 +791,590 @@ DatadogPolicy contains result if {
 	require.Len(t, optimizedIDs, 6)
 	require.Contains(t, baselineFailed, "malformed_decode_rule")
 	require.Contains(t, optimizedFailed, "malformed_decode_rule")
+}
+func TestContractV2SharedCompilerNamespacesAndRemediation(t *testing.T) {
+	queries := []model.QueryMetadata{
+		staticQuery("terraform", "v2-first", `import rego.v1
+allow if { true }
+results contains {"_dd_id": "first", "path": []} if { allow }
+remediate(_, _) := {"remediation": "first-fix", "remediationType": "addition"}
+`),
+		staticQuery("terraform", "v2-second", `import rego.v1
+allow if { true }
+results contains {"_dd_id": "second", "path": []} if { allow }
+remediate(_, _) := {"remediation": "second-fix", "remediationType": "replacement"}
+`),
+	}
+	loader := newCacheTestLoader(t, "terraform", queries)
+	inspector := &Inspector{QueryLoader: loader}
+	libs, err := contractlibs.Modules()
+	require.NoError(t, err)
+	stores, _ := baseStoresFor("terraform", "{}")
+
+	groups := make(map[string][]contractV2SharedSpec)
+	for i := range queries {
+		module, shareable := contractV2ModuleForSharedCompiler(&queries[i], i)
+		require.True(t, shareable)
+		groups[queries[i].Platform] = append(groups[queries[i].Platform], contractV2SharedSpec{
+			index: i, module: module, hasRemediate: true,
+		})
+	}
+	prepared, err := inspector.compileSharedContractV2Rules(t.Context(), groups, libs, stores)
+	require.NoError(t, err)
+	require.Len(t, prepared, 2)
+
+	for i, want := range []string{"first", "second"} {
+		entry := prepared[i]
+		require.NotNil(t, entry.results)
+		results, err := entry.results.Eval(t.Context())
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+		values, ok := results[0].Bindings["result"].([]any)
+		require.True(t, ok, "partial set result should be an array")
+		require.Len(t, values, 1)
+		finding, ok := values[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, want, finding["_dd_id"], "each entrypoint must use its own rule package")
+
+		require.NotNil(t, entry.remediate)
+		remediation, err := entry.remediate.Eval(t.Context(), rego.EvalInput(map[string]any{
+			"resource": map[string]any{},
+			"finding":  map[string]any{},
+		}))
+		require.NoError(t, err)
+		require.Len(t, remediation, 1)
+		remediationValue, ok := remediation[0].Bindings["out"].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, want+"-fix", remediationValue["remediation"])
+	}
+}
+
+func TestContractV2SharedCompilerRenamePreservesRawStringLiterals(t *testing.T) {
+	query := staticQuery("terraform", "v2-raw-string", "import rego.v1\n"+
+		"message := `first\npackage datadog\nlast`\n"+
+		"results contains {\"_dd_id\": \"literal\", \"path\": []} if { message == \"first\\npackage datadog\\nlast\" }\n")
+	module, ok := contractV2ModuleForSharedCompiler(&query, 7)
+	require.True(t, ok)
+	require.Equal(t, "data.datadog.q7", module.Package.Path.String())
+	require.Contains(t, module.String(), `package datadog\nlast`,
+		"the normalized raw string should retain its original package-like line")
+
+	loader := newCacheTestLoader(t, "terraform", []model.QueryMetadata{query})
+	inspector := &Inspector{QueryLoader: loader}
+	spec, recognized := analyzeContractV2Rule(&query)
+	require.True(t, recognized)
+	stores, hashes := baseStoresFor("terraform", "{}")
+	ready, err := inspector.compileContractV2Rules(t.Context(), []*contractV2Rule{spec}, stores, hashes)
+	require.NoError(t, err)
+	require.Len(t, ready, 1)
+	results, err := ready[0].prepared.Eval(t.Context())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	items := results[0].Bindings["result"].([]any)
+	require.Len(t, items, 1, "the literal remains intact and the renamed module remains evaluable")
+}
+
+func TestContractV2SharedCompilerRejectsNamespaceInspection(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		content   string
+		shareable bool
+	}{
+		{
+			name: "engine facade import",
+			content: `package datadog
+import rego.v1
+import data.datadog.iac
+results contains {"_dd_id": "x", "path": []} if { iac.is_known({}, []) }
+`,
+			shareable: true,
+		},
+		{
+			name: "sibling package reference",
+			content: `package datadog
+import rego.v1
+results contains {"_dd_id": "x", "path": []} if { data.datadog.q1.results }
+`,
+		},
+		{
+			name: "root namespace import",
+			content: `package datadog
+import rego.v1
+import data.datadog as dd
+results contains {"_dd_id": "x", "path": []} if { dd.iac }
+`,
+		},
+		{
+			name: "bare data value",
+			content: `package datadog
+import rego.v1
+results contains {"_dd_id": "x", "path": []} if { object.get(data, "datadog", {}) != {} }
+`,
+		},
+		{
+			name: "dynamic data root",
+			content: `package datadog
+import rego.v1
+results contains {"_dd_id": "x", "path": []} if {
+	some key in ["datadog"]
+	ns := data[key]
+	ns != {}
+}
+`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mod, err := ast.ParseModuleWithOpts(tc.name, tc.content, ast.ParserOptions{RegoVersion: ast.RegoV1})
+			require.NoError(t, err)
+			assert.Equal(t, tc.shareable, contractV2ModuleCanShare(mod))
+		})
+	}
+}
+
+func TestContractV2SharedCompilerFallsBackForSelfNamespaceReferences(t *testing.T) {
+	query := staticQuery("terraform", "v2-self-reference", `import rego.v1
+local if { true }
+results contains {"_dd_id": "self", "path": []} if { data.datadog.local }
+`)
+	module, shareable := contractV2ModuleForSharedCompiler(&query, 0)
+	require.Nil(t, module)
+	require.False(t, shareable)
+
+	loader := newCacheTestLoader(t, "terraform", []model.QueryMetadata{query})
+	inspector := &Inspector{QueryLoader: loader}
+	spec, ok := analyzeContractV2Rule(&query)
+	require.True(t, ok)
+	stores, hashes := baseStoresFor("terraform", "{}")
+	ready, err := inspector.compileContractV2Rules(t.Context(), []*contractV2Rule{spec}, stores, hashes)
+	require.NoError(t, err)
+	require.Len(t, ready, 1)
+
+	results, err := ready[0].prepared.Eval(t.Context())
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	values, ok := results[0].Bindings["result"].([]any)
+	require.True(t, ok)
+	require.Len(t, values, 1)
+	finding := values[0].(map[string]any)
+	require.Equal(t, "self", finding["_dd_id"], "isolated fallback preserves the original self-package reference")
+}
+
+func TestContractV2SharedCompilerFallsBackForNamespaceCollisions(t *testing.T) {
+	query := staticQuery("terraform", "v2-collision", `import rego.v1
+results contains {"_dd_id": "safe", "path": []} if { true }
+`)
+	tests := []struct {
+		name        string
+		libraryCode string
+		baseData    string
+	}{
+		{
+			name: "library exact generated package",
+			libraryCode: `package datadog.q0
+import rego.v1
+results contains {"_dd_id": "library-only", "path": []} if { true }
+`,
+		},
+		{
+			name: "library descendant of generated package",
+			libraryCode: `package datadog.q0.helper
+import rego.v1
+marker := true
+`,
+		},
+		{
+			name: "library ancestor of generated package",
+			libraryCode: `package datadog
+import rego.v1
+marker := true
+`,
+		},
+		{
+			name:     "base input document at generated package",
+			baseData: `{"datadog":{"q0":{"marker":"from-input"}}}`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			libraryCode := tc.libraryCode
+			if libraryCode == "" {
+				libraryCode = "package generic.terraform\n"
+			}
+			loader, err := prepareQueries([]model.QueryMetadata{query},
+				source.RegoLibraries{LibraryCode: "package common\n", LibraryInputData: "{}"},
+				map[string]source.RegoLibraries{"terraform": {
+					LibraryCode: libraryCode, LibraryInputData: "{}",
+				}}, cacheTracker{})
+			require.NoError(t, err)
+			inspector := &Inspector{QueryLoader: &loader}
+			data := tc.baseData
+			if data == "" {
+				data = "{}"
+			}
+			stores, hashes := baseStoresFor("terraform", data)
+			spec, ok := analyzeContractV2Rule(&query)
+			require.True(t, ok)
+			ready, err := inspector.compileContractV2Rules(t.Context(), []*contractV2Rule{spec}, stores, hashes)
+			require.NoError(t, err)
+			require.Len(t, ready, 1)
+			require.Nil(t, ready[0].sharedCompiler, "a namespace collision must use isolated compilation")
+
+			v2Libs, err := contractlibs.Modules()
+			require.NoError(t, err)
+			isolated, err := inspector.compileOneContractV2Rule(
+				t.Context(), &query, contractV2Query, v2Libs, stores, hashes)
+			require.NoError(t, err)
+			actualResults, err := ready[0].prepared.Eval(t.Context())
+			require.NoError(t, err)
+			expectedResults, err := isolated.Eval(t.Context())
+			require.NoError(t, err)
+			actual, err := resultItems(actualResults)
+			require.NoError(t, err)
+			expected, err := resultItems(expectedResults)
+			require.NoError(t, err)
+			require.Equal(t, expected, actual, "isolated fallback preserves the original finding set")
+			require.Len(t, actual, 1, "the colliding library's partial set must not leak into a rule result")
+		})
+	}
+}
+
+func TestContractV2CustomInputRulesKeepIsolatedStores(t *testing.T) {
+	queries := []model.QueryMetadata{
+		staticQuery("terraform", "v2-custom-one", `import rego.v1
+results contains {"_dd_id": "one", "path": []} if { data.selected == "one" }
+`),
+		staticQuery("terraform", "v2-custom-two", `import rego.v1
+results contains {"_dd_id": "two", "path": []} if { data.selected == "two" }
+`),
+	}
+	queries[0].InputData = `{"selected":"one"}`
+	queries[1].InputData = `{"selected":"two"}`
+	loader := newCacheTestLoader(t, "terraform", queries)
+	inspector := &Inspector{QueryLoader: loader}
+	specs := make([]*contractV2Rule, 0, len(queries))
+	for i := range queries {
+		spec, ok := analyzeContractV2Rule(&queries[i])
+		require.True(t, ok)
+		specs = append(specs, spec)
+	}
+	stores, hashes := baseStoresFor("terraform", "{}")
+	ready, err := inspector.compileContractV2Rules(t.Context(), specs, stores, hashes)
+	require.NoError(t, err)
+	require.Len(t, ready, 2)
+	runner := &contractV2Runner{c: inspector}
+	tasks := runner.contractV2EvalTasks(t.Context(), ready)
+	require.Len(t, tasks, 2, "custom-input rules remain independent eval tasks")
+	for _, rule := range ready {
+		require.Nil(t, rule.sharedCompiler, "custom InputData must not enter the shared batch cohort")
+	}
+	for _, task := range tasks {
+		require.Nil(t, task.prepared, "custom-input rules are not batched")
+		require.Len(t, task.rules, 1)
+	}
+	for i, want := range []string{"one", "two"} {
+		results, err := ready[i].prepared.Eval(t.Context())
+		require.NoError(t, err)
+		require.Len(t, results, 1, "rule %d must see only its own custom InputData", i)
+		values := results[0].Bindings["result"].([]any)
+		finding := values[0].(map[string]any)
+		require.Equal(t, want, finding["_dd_id"])
+	}
+}
+
+func TestContractV2BatchTaskConservationAndExclusions(t *testing.T) {
+	compiler, _, cohort := newContractV2BatchTestCohort(t, 33)
+	for _, count := range []int{1, 2, 3, 16, 17, 33} {
+		for _, workers := range []int{1, 2, 4, 8} {
+			inspector := &Inspector{numWorkers: workers}
+			runner := &contractV2Runner{c: inspector}
+			tasks := runner.contractV2EvalTasks(t.Context(), cohort[:count])
+			seen := make(map[*contractV2Rule]int, count)
+			for _, task := range tasks {
+				require.NotEmpty(t, task.rules)
+				if task.prepared != nil {
+					require.GreaterOrEqual(t, len(task.rules), 2)
+					require.LessOrEqual(t, len(task.rules), contractV2MaxBatchQueries)
+				} else {
+					require.Len(t, task.rules, 1)
+				}
+				for _, rule := range task.rules {
+					seen[rule]++
+				}
+			}
+			require.Len(t, seen, count, "every candidate must occur in exactly one eval task")
+			for _, rule := range cohort[:count] {
+				require.Equal(t, 1, seen[rule], "rule %s must not be dropped or duplicated", rule.meta.Query)
+			}
+		}
+	}
+
+	inspector := &Inspector{
+		numWorkers: 2,
+		ruleConfigs: map[string]config.IacRuleConfig{
+			"with-arguments": {Arguments: map[string]any{"strict": true}},
+		},
+	}
+	argumentRule := *cohort[0]
+	argumentRule.meta = model.QueryMetadata{
+		Query:    "with-arguments",
+		Platform: "terraform",
+		Metadata: map[string]interface{}{"id": "with-arguments"},
+	}
+	customInputRule := &contractV2Rule{
+		meta: model.QueryMetadata{Query: "custom-input", InputData: `{"setting":true}`},
+	}
+	nonPartialRule := *cohort[1]
+	nonPartialRule.meta.Query = "non-partial-results"
+	nonPartialRule.partialSetResults = false
+	runner := &contractV2Runner{c: inspector}
+	candidates := []*contractV2Rule{cohort[0], cohort[1], &argumentRule, customInputRule, &nonPartialRule}
+	tasks := runner.contractV2EvalTasks(t.Context(), candidates)
+	seen := make(map[*contractV2Rule]int, len(candidates))
+	batchCount := 0
+	for _, task := range tasks {
+		if task.prepared != nil {
+			batchCount++
+			require.ElementsMatch(t, []*contractV2Rule{cohort[0], cohort[1]}, task.rules)
+			continue
+		}
+		require.Len(t, task.rules, 1)
+		require.Contains(t, []*contractV2Rule{&argumentRule, customInputRule, &nonPartialRule}, task.rules[0])
+	}
+	require.Equal(t, 1, batchCount)
+	for _, task := range tasks {
+		for _, rule := range task.rules {
+			seen[rule]++
+		}
+	}
+	for _, rule := range candidates {
+		require.Equal(t, 1, seen[rule], "excluded candidates still run singly")
+	}
+
+	coverageInspector := &Inspector{numWorkers: 2}
+	coverageInspector.EnableCoverageReport()
+	coverageRunner := &contractV2Runner{c: coverageInspector}
+	coverageTasks := coverageRunner.contractV2EvalTasks(t.Context(), cohort[:2])
+	require.Len(t, coverageTasks, 2, "coverage keeps per-rule tracing")
+	for _, task := range coverageTasks {
+		require.Nil(t, task.prepared)
+		require.Len(t, task.rules, 1)
+	}
+
+	cacheRunner := &contractV2Runner{c: &Inspector{numWorkers: 2}}
+	firstBatch, err := cacheRunner.prepareContractV2Batch(t.Context(), cohort[:2])
+	require.NoError(t, err)
+	reusedBatch, err := cacheRunner.prepareContractV2Batch(t.Context(), cohort[:2])
+	require.NoError(t, err)
+	require.Same(t, firstBatch, reusedBatch, "identical batch packages reuse the prepared query")
+	differentStoreRule := *cohort[2]
+	differentStoreRule.sharedStore = inmem.New()
+	_, err = cacheRunner.prepareContractV2Batch(t.Context(), []*contractV2Rule{cohort[0], &differentStoreRule})
+	require.Error(t, err, "one compiler cohort must not mix stores")
+
+	added := 0
+	for left := range len(cohort) {
+		for right := left + 1; right < len(cohort); right++ {
+			if left == 0 && right == 1 {
+				continue
+			}
+			_, err = cacheRunner.prepareContractV2Batch(t.Context(), []*contractV2Rule{cohort[left], cohort[right]})
+			require.NoError(t, err)
+			added++
+			if added == contractV2BatchCacheEntryLimit+1 {
+				break
+			}
+		}
+		if added == contractV2BatchCacheEntryLimit+1 {
+			break
+		}
+	}
+	require.Equal(t, contractV2BatchCacheEntryLimit, len(cacheRunner.batchCache))
+	firstKey := contractV2BatchCacheKey{
+		compiler: compiler,
+		packages: cohort[0].sharedPackage + "\x00" + cohort[1].sharedPackage,
+	}
+	require.NotContains(t, cacheRunner.batchCache, firstKey, "the least-recently used entry is evicted at the fixed cache bound")
+}
+
+func TestContractV2BatchesKeepEmptyResultsAndInputBoundaries(t *testing.T) {
+	queries := []model.QueryMetadata{
+		staticQuery("terraform", "v2-batch-first", `import rego.v1
+results contains {"_dd_id": "first", "path": []} if {
+	some resource in input.resources.aws_s3_bucket
+	resource.name == "first"
+}
+`),
+		staticQuery("terraform", "v2-batch-second", `import rego.v1
+results contains {"_dd_id": "second", "path": []} if {
+	some resource in input.resources.aws_s3_bucket
+	resource.name == "second"
+}
+`),
+		staticQuery("terraform", "v2-batch-empty", `import rego.v1
+results contains {"_dd_id": "empty", "path": []} if { false }
+`),
+	}
+	inspector := newTestInspector(t, inspectorOpts{queries: queries, numWorkers: 1})
+	specs := make([]*contractV2Rule, len(queries))
+	for i := range queries {
+		spec, ok := analyzeContractV2Rule(&queries[i])
+		require.True(t, ok)
+		specs[i] = spec
+	}
+	stores, hashes := baseStoresFor("terraform", "{}")
+	ready, err := inspector.compileContractV2Rules(t.Context(), specs, stores, hashes)
+	require.NoError(t, err)
+	require.Len(t, ready, 3)
+	runner := &contractV2Runner{c: inspector}
+	tasks := runner.contractV2EvalTasks(t.Context(), ready)
+	require.Len(t, tasks, 1)
+	require.NotNil(t, tasks[0].prepared)
+	require.Len(t, tasks[0].rules, 3)
+
+	input := func(names ...string) ast.Value {
+		resources := make([]*policy.Resource, 0, len(names))
+		for i, name := range names {
+			resources = append(resources, &policy.Resource{
+				ID: fmt.Sprintf("bucket-%d", i), Kind: "resource", Type: "aws_s3_bucket",
+				ResourceKey: "aws_s3_bucket", Name: name,
+			})
+		}
+		unit := &policy.Unit{ID: "scope", Platform: "terraform", ScopeComplete: true, Resources: resources}
+		return policy.ProjectUnits("terraform", []*policy.Unit{unit}, policy.ProjectOptions{})
+	}
+	evaluate := func(payload ast.Value) [][]interface{} {
+		t.Helper()
+		results, err := tasks[0].prepared.Eval(t.Context(), rego.EvalParsedInput(payload),
+			rego.EvalVirtualCache(newIdentityVirtualCache()))
+		require.NoError(t, err)
+		items, ok := contractV2BatchResultItems(results, 3)
+		require.True(t, ok, "every partial set, including an empty one, must bind independently")
+		return items
+	}
+	firstScope := evaluate(input("first", "other"))
+	require.Len(t, firstScope[0], 1)
+	require.Equal(t, "first", firstScope[0][0].(map[string]any)["_dd_id"])
+	require.Empty(t, firstScope[1])
+	require.Empty(t, firstScope[2])
+	secondScope := evaluate(input("second"))
+	require.Empty(t, secondScope[0])
+	require.Len(t, secondScope[1], 1)
+	require.Equal(t, "second", secondScope[1][0].(map[string]any)["_dd_id"])
+	require.Empty(t, secondScope[2])
+}
+
+func TestContractV2BatchFailureReplaysRulesIndependently(t *testing.T) {
+	queries := []model.QueryMetadata{
+		staticQuery("terraform", "v2-batch-healthy", `import rego.v1
+results contains {"_dd_id": "bucket-1", "path": []} if { true }
+`),
+		staticQuery("terraform", "v2-batch-failing", `import rego.v1
+value := 1 if { input.fail }
+value := 2 if { input.fail }
+results contains {"_dd_id": "bucket-1", "path": []} if { value == 1 }
+`),
+	}
+	inspector := newTestInspector(t, inspectorOpts{queries: queries, numWorkers: 2})
+	specs := make([]*contractV2Rule, len(queries))
+	for i := range queries {
+		spec, ok := analyzeContractV2Rule(&queries[i])
+		require.True(t, ok)
+		specs[i] = spec
+	}
+	stores, hashes := baseStoresFor("terraform", "{}")
+	ready, err := inspector.compileContractV2Rules(t.Context(), specs, stores, hashes)
+	require.NoError(t, err)
+	runner := &contractV2Runner{
+		c:           inspector,
+		scanID:      "batch-fallback",
+		callers:     map[string]*model.FileMetadata{},
+		filesByPath: map[string]*model.FileMetadata{},
+		findings:    newFindingSet(false, nil),
+	}
+	lines := []string{`resource "aws_s3_bucket" "bucket" {}`}
+	file := &model.FileMetadata{
+		ID: "file-1", FilePath: "main.tf", Kind: model.KindTerraform,
+		OriginalData: lines[0], LinesOriginalData: &lines,
+	}
+	resource := &policy.Resource{
+		ID: "bucket-1", Kind: "resource", Type: "aws_s3_bucket", ResourceKey: "aws_s3_bucket",
+		Name: "bucket", Address: "aws_s3_bucket.bucket", File: "main.tf",
+		Source: &policy.SourceMapping{BlockSpan: policy.SourceSpan{File: "main.tf", StartLine: 1, StartCol: 1, EndLine: 1, EndCol: 1}},
+	}
+	runner.filesByPath["main.tf"] = file
+	payload, err := ast.InterfaceToValue(map[string]any{"fail": true})
+	require.NoError(t, err)
+	tasks := runner.contractV2EvalTasks(t.Context(), ready)
+	require.Len(t, tasks, 1)
+	require.NotNil(t, tasks[0].prepared)
+	require.NoError(t, runner.evalContractV2Batch(t.Context(), tasks[0], payload,
+		map[string]*policy.Resource{resource.ID: resource}))
+	failed := inspector.GetFailedQueries()
+	require.Contains(t, failed, queries[1].Query, "the runtime error belongs only to the failing sibling")
+	require.NotContains(t, failed, queries[0].Query)
+	require.Len(t, runner.findings.out, 1, "the successful sibling still contributes its finding")
+	require.Equal(t, resource.Address, runner.findings.out[0].ResourceID)
+}
+
+func newContractV2BatchTestCohort(t *testing.T, count int) (*ast.Compiler, storage.Store, []*contractV2Rule) {
+	t.Helper()
+	modules := make(map[string]*ast.Module, count)
+	rules := make([]*contractV2Rule, count)
+	store := inmem.New()
+	for i := range count {
+		pkg := "data.datadog.q" + strconv.Itoa(i)
+		content := fmt.Sprintf("package datadog.q%d\nresults contains {\"_dd_id\": \"rule-%d\", \"path\": []} if { true }\n", i, i)
+		module, err := ast.ParseModuleWithOpts(fmt.Sprintf("rule-%d", i), content, ast.ParserOptions{RegoVersion: ast.RegoV1})
+		require.NoError(t, err)
+		modules[fmt.Sprintf("rule-%d", i)] = module
+		rules[i] = &contractV2Rule{
+			meta:           model.QueryMetadata{Query: fmt.Sprintf("v2-rule-%d", i), Platform: "terraform"},
+			sharedCompiler: nil, sharedStore: store, sharedPackage: pkg, partialSetResults: true,
+		}
+	}
+	compiler := ast.NewCompiler().WithCapabilities(safeCapabilities())
+	compiler.Compile(modules)
+	require.False(t, compiler.Failed(), "batch fixture rules compile: %v", compiler.Errors)
+	for _, rule := range rules {
+		rule.sharedCompiler = compiler
+	}
+	return compiler, store, rules
+}
+
+func TestContractV2SharedCacheTracksWholeCohort(t *testing.T) {
+	ResetCompiledQueryCachesForTest()
+	t.Cleanup(ResetCompiledQueryCachesForTest)
+	queries := []model.QueryMetadata{
+		staticQuery("terraform", "v2-first", `import rego.v1
+results contains {"_dd_id": "first", "path": []} if { true }
+`),
+		staticQuery("terraform", "v2-second", `import rego.v1
+results contains {"_dd_id": "second", "path": []} if { true }
+`),
+	}
+	loader := newCacheTestLoader(t, "terraform", queries)
+	inspector := &Inspector{QueryLoader: loader, useRulesCache: true}
+	stores, hashes := baseStoresFor("terraform", "{}")
+	compile := func(input []model.QueryMetadata) []*contractV2Rule {
+		t.Helper()
+		specs := make([]*contractV2Rule, 0, len(input))
+		for i := range input {
+			spec, ok := analyzeContractV2Rule(&input[i])
+			require.True(t, ok)
+			specs = append(specs, spec)
+		}
+		ready, err := inspector.compileContractV2Rules(t.Context(), specs, stores, hashes)
+		require.NoError(t, err)
+		require.Len(t, ready, 2)
+		return ready
+	}
+	first := compile(queries)
+	second := compile(queries)
+	require.Same(t, first[0].prepared, second[0].prepared, "identical cohorts reuse one bounded shared compiler cache entry")
+	require.Same(t, first[1].prepared, second[1].prepared)
+
+	changed := append([]model.QueryMetadata(nil), queries...)
+	changed[1].Content += "\nunused := true\n"
+	third := compile(changed)
+	require.NotSame(t, first[0].prepared, third[0].prepared, "changing any rule invalidates the whole cohort")
 }

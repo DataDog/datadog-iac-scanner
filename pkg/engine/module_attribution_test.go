@@ -557,6 +557,23 @@ func TestRepositoryLocationsNormalizeRootForms(t *testing.T) {
 			require.True(t, external(outside))
 		})
 	}
+	// MemFS scans use rooted paths such as "/repo/stack/main.tf". On Windows,
+	// NewInspector's filepath.Abs gives the root a drive (`D:\repo`) while
+	// absPath keeps those files drive-less; both must still name one location.
+	t.Run("rooted paths without a volume", func(t *testing.T) {
+		root, inside, outside := "/repo", "/repo/stack/main.tf", "/cache/main.tf"
+		absRoot, err := filepath.Abs(root)
+		require.NoError(t, err)
+		name, ok := repositoryFileName(inside, root)
+		require.True(t, ok)
+		require.Equal(t, "stack/main.tf", name)
+		require.Equal(t, name, repoRelativeFile(inside, root))
+		_, ok = repositoryFileName(outside, root)
+		require.False(t, ok)
+		require.False(t, externalModuleFiles(root, nil)(inside))
+		chain := []tfeval.CallSite{{CalledFrom: inside, ModuleName: "app"}}
+		require.Equal(t, "stack/main.tf|module.app", moduleCallChainKey(chain, "module.app", absRoot))
+	})
 	t.Run("content push preserves supplied paths", func(t *testing.T) {
 		for _, path := range []string{inside, filepath.Join("stack", "main.tf")} {
 			name, ok := repositoryFileName(path, "")

@@ -16,6 +16,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/rego"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/contractlibs"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -152,11 +153,11 @@ func ValidateCustomRegoQuery(
 	module, parseErrs := parseRegoModule(regoContent)
 	if module == nil {
 		return finalizeDiagnostics(
-			recoverFromMissingPackage(ctx, regoContent, parseErrs, libs),
+			recoverFromMissingPackage(ctx, platform, regoContent, parseErrs, libs),
 		), nil
 	}
 
-	return validateParsedModule(ctx, regoContent, module, libs)
+	return validateParsedModule(ctx, platform, regoContent, module, libs)
 }
 
 // ValidateRegoStructure parses regoContent and runs the Datadog contract checks without
@@ -177,27 +178,95 @@ func ValidateRegoStructure(regoContent string) []RegoValidationError {
 }
 
 func validateParsedModule(
-	ctx context.Context, regoContent string, module *ast.Module, libs regoLibraries,
+	ctx context.Context, platform, regoContent string, module *ast.Module, libs regoLibraries,
 ) ([]RegoValidationError, error) {
 	contractErrs, err := lintWithRegal(ctx, regoContent)
 	if err != nil {
 		return nil, err
 	}
 
-	compileErrs := compileAgainstLibraries(ctx, regoContent, libs)
+	isV2, resultsLoc := moduleUsesContractV2(module)
+	if isV2 {
+		contractErrs = append(contractErrs, contractReservedNameDiagnostics(module)...)
+	}
+	if isV2 && !strings.EqualFold(platform, "terraform") {
+		vErr := RegoValidationError{
+			Code:    "contract/unsupported-platform",
+			Message: fmt.Sprintf("Contract v2 (`results`) rules are currently supported only for Terraform, not %q", platform),
+		}
+		if resultsLoc != nil {
+			vErr.StartLine = resultsLoc.Row
+			vErr.StartCol = resultsLoc.Col
+			vErr.EndLine = resultsLoc.Row
+			vErr.EndCol = resultsLoc.Col + len("results")
+		}
+		contractErrs = append(contractErrs, vErr)
+	}
+
+	compileErrs := compileAgainstLibraries(ctx, regoContent, isV2, libs)
 	if len(compileErrs) > 0 {
 		compileErrs = dropConsequentialErrors(contractErrs, compileErrs)
-		compileErrs = enrichCompileDiagnostics(module, libs.definitions(), compileErrs)
+		compileErrs = enrichCompileDiagnostics(module, libs.definitions(isV2), compileErrs)
 	}
 
 	return finalizeDiagnostics(append(contractErrs, compileErrs...)), nil
+}
+
+func contractReservedNameDiagnostics(module *ast.Module) []RegoValidationError {
+	reserved := map[string]struct{}{"iac": {}, "output": {}, "terraform": {}}
+	var diagnostics []RegoValidationError
+	for _, rule := range module.Rules {
+		if rule.Head == nil || len(rule.Head.Ref()) != 1 {
+			continue
+		}
+		name := rule.Head.Ref().String()
+		if _, ok := reserved[name]; !ok {
+			continue
+		}
+		diagnostic := RegoValidationError{
+			Code:    "contract/reserved-name",
+			Message: fmt.Sprintf("top-level rule %q conflicts with a reserved Contract v2 library name", name),
+		}
+		if rule.Head.Location != nil {
+			diagnostic.StartLine = rule.Head.Location.Row
+			diagnostic.StartCol = rule.Head.Location.Col
+			diagnostic.EndLine = rule.Head.Location.Row
+			diagnostic.EndCol = rule.Head.Location.Col + len(name)
+		}
+		diagnostics = append(diagnostics, diagnostic)
+	}
+	return diagnostics
+}
+
+func moduleUsesContractV2(module *ast.Module) (isV2 bool, resultsLoc *ast.Location) {
+	if module == nil {
+		return false, nil
+	}
+	hasResults, hasLegacy := false, false
+	for _, r := range module.Rules {
+		if r.Head == nil || len(r.Head.Args) > 0 {
+			continue
+		}
+		switch r.Head.Ref().String() {
+		case "results":
+			if r.Head.Key != nil {
+				hasResults = true
+				if resultsLoc == nil {
+					resultsLoc = r.Head.Location
+				}
+			}
+		case "DatadogPolicy":
+			hasLegacy = true
+		}
+	}
+	return hasResults && !hasLegacy, resultsLoc
 }
 
 // recoverFromMissingPackage re-runs validation on a synthetically packaged copy so the
 // author sees contract and compile problems in the same pass, not just the parse error.
 func recoverFromMissingPackage(
 	ctx context.Context,
-	regoContent string,
+	platform, regoContent string,
 	parseErrs []RegoValidationError,
 	libs regoLibraries,
 ) []RegoValidationError {
@@ -219,7 +288,7 @@ func recoverFromMissingPackage(
 		return append(parseErrs, recovered...)
 	}
 
-	recovered, err := validateParsedModule(ctx, recoveredContent, recoveredModule, libs)
+	recovered, err := validateParsedModule(ctx, platform, recoveredContent, recoveredModule, libs)
 	if err != nil {
 		return parseErrs
 	}
@@ -272,9 +341,13 @@ func loadLibraries(
 
 // compileAgainstLibraries compiles regoContent together with the platform libraries
 // using the same OPA setup as a real scan.
-func compileAgainstLibraries(ctx context.Context, regoContent string, libs regoLibraries) []RegoValidationError {
-	_, compileErr := rego.New(
-		rego.Query(utils.RegoQuery),
+func compileAgainstLibraries(ctx context.Context, regoContent string, isV2 bool, libs regoLibraries) []RegoValidationError {
+	query := utils.RegoQuery
+	if isV2 {
+		query = "result = data.datadog.results"
+	}
+	opts := []func(*rego.Rego){
+		rego.Query(query),
 		rego.SetRegoVersion(ast.RegoV1),
 		rego.Module("Common", libs.common),
 		rego.Module("Generic", libs.platform),
@@ -283,7 +356,15 @@ func compileAgainstLibraries(ctx context.Context, regoContent string, libs regoL
 			"http.send":   {},
 			"opa.runtime": {},
 		}),
-	).PrepareForEval(ctx)
+	}
+	if isV2 {
+		if v2Libs, err := contractlibs.Modules(); err == nil {
+			for _, mod := range v2Libs {
+				opts = append(opts, rego.ParsedModule(mod))
+			}
+		}
+	}
+	_, compileErr := rego.New(opts...).PrepareForEval(ctx)
 
 	if compileErr == nil {
 		return nil

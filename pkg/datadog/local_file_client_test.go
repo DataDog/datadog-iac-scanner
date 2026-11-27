@@ -20,7 +20,7 @@ func TestNewLocalFileClient_RoundTrip(t *testing.T) {
 		ID:   "default-ruleset",
 		Name: "Default",
 		Rules: []*Rule{
-			{ID: "rule-1", Name: "rule-1", Platform: "Terraform", RegoQuery: []byte("query"), IsPublished: true},
+			{ID: "rule-1", Name: "rule-1", Platform: "Terraform", RegoQuery: []byte("query"), IsPublished: true, Origin: RuleOriginDefault},
 		},
 	}
 	libraries := map[string]Library{
@@ -50,6 +50,23 @@ func TestNewLocalFileClient_RoundTrip(t *testing.T) {
 	gotConfig, err := client.GetRemoteConfig(t.Context(), "https://example.com/repo", localConfig)
 	require.NoError(t, err)
 	assert.Equal(t, localConfig, gotConfig)
+}
+
+func TestNewLocalFileClient_UnmarkedRulesAreCustom(t *testing.T) {
+	dir := t.TempDir()
+	writeJSON(t, filepath.Join(dir, "rules.json"), &Ruleset{Rules: []*Rule{{
+		ID: "legacy-bundle-rule", Name: "legacy-bundle-rule", IsPublished: true,
+	}}})
+	writeJSON(t, filepath.Join(dir, "libraries.json"), map[string]Library{})
+
+	client, err := NewLocalFileClient(filepath.Join(dir, "rules.json"), filepath.Join(dir, "libraries.json"))
+	require.NoError(t, err)
+	defaultRules, err := client.GetDefaultRuleset(t.Context())
+	require.NoError(t, err)
+	require.Empty(t, defaultRules.Rules)
+	customRules, err := client.GetCustomRuleset(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []string{"legacy-bundle-rule"}, []string{customRules.Rules[0].ID})
 }
 
 func TestNewLocalFileClient_MissingFile(t *testing.T) {

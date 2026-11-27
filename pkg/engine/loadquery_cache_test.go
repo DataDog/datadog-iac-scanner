@@ -10,10 +10,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/open-policy-agent/opa/v1/storage"
 	"github.com/open-policy-agent/opa/v1/storage/inmem"
 	"github.com/stretchr/testify/require"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/contractlibs"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
@@ -173,4 +175,63 @@ func TestLoadQuery_CustomInputNotCached(t *testing.T) {
 	second, err := loader.LoadQuery(ctx, &q, nil, stores, hashes, true)
 	require.NoError(t, err)
 	require.NotSame(t, first, second, "custom-input queries must bypass the cache even when it is enabled")
+}
+
+func TestContractV2PreparedCache(t *testing.T) {
+	clearPreparedCache()
+	t.Cleanup(clearPreparedCache)
+	q := staticQuery("terraform", "v2-cache", `import rego.v1
+results contains {"_dd_id": "r", "path": []} if { true }
+remediate(_, _) := {"remediation": "fix", "remediationType": "addition"}
+`)
+	loader := newCacheTestLoader(t, q.Platform, []model.QueryMetadata{q})
+	inspector := &Inspector{QueryLoader: loader, useRulesCache: true}
+	libs, err := contractlibs.Modules()
+	require.NoError(t, err)
+	stores, hashes := baseStoresFor(q.Platform, "{}")
+	compile := func(query model.QueryMetadata, entry string, data string) *rego.PreparedEvalQuery {
+		t.Helper()
+		if data != "" {
+			stores, hashes = baseStoresFor(q.Platform, data)
+		}
+		prepared, err := inspector.compileOneContractV2Rule(t.Context(), &query, entry, libs, stores, hashes)
+		require.NoError(t, err)
+		return prepared
+	}
+	first := compile(q, contractV2Query, "{}")
+	require.Same(t, first, compile(q, contractV2Query, ""))
+	require.NotSame(t, first, compile(q, contractV2RemediateQry, ""), "remediation has a different entrypoint")
+	require.NotSame(t, first, compile(q, contractV2Query, `{"different": true}`), "baked-in store data must be part of the key")
+	changed := q
+	changed.Content += "\nother := true\n"
+	require.NotSame(t, first, compile(changed, contractV2Query, "{}"), "source changes invalidate the cache")
+	custom := q
+	custom.InputData = `{"custom": true}`
+	require.NotSame(t, compile(custom, contractV2Query, ""), compile(custom, contractV2Query, ""))
+	inspector.useRulesCache = false
+	require.NotSame(t, compile(q, contractV2Query, ""), compile(q, contractV2Query, ""))
+}
+
+func TestLegacyCompilersWithContractHelpers(t *testing.T) {
+	query := staticQuery("terraform", "legacy-with-v2-library", `import rego.v1
+DatadogPolicy contains {"documentId": "d", "searchKey": "enabled"} if { data.generic.terraform.enabled }
+`)
+	loader, err := prepareQueries([]model.QueryMetadata{query},
+		source.RegoLibraries{LibraryCode: "package generic.common\n", LibraryInputData: "{}"},
+		map[string]source.RegoLibraries{"terraform": {LibraryInputData: "{}", LibraryCode: `package generic.terraform
+import rego.v1
+import data.datadog.iac
+enabled if { iac.equals({"attributes": {"enabled": true}}, ["enabled"], true) }
+`}}, cacheTracker{})
+	require.NoError(t, err)
+	stores, hashes := baseStoresFor(query.Platform, "{}")
+	isolated, err := loader.LoadQuery(t.Context(), &query, nil, stores, hashes, false)
+	require.NoError(t, err)
+	shared := loader.loadSharedQueries(t.Context(), []model.QueryMetadata{query}, stores)
+	require.Contains(t, shared, 0)
+	for _, prepared := range []*rego.PreparedEvalQuery{isolated, shared[0]} {
+		results, err := prepared.Eval(t.Context())
+		require.NoError(t, err)
+		require.Len(t, results, 1)
+	}
 }

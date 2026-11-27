@@ -203,10 +203,10 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
-// looksLikeTerraformPlan is a fast byte-level heuristic that avoids a full
-// JSON parse. Both keys are required by the Terraform plan JSON spec, so their
-// co-presence is a reliable signal. Used by KindForContent and StringifyContent
-// where a full parseTFPlan call would be redundant (Parse already does it).
+// looksLikeTerraformPlan is a fast byte-level heuristic for candidate Terraform
+// plan JSON. Its result can classify content for parsing, but ParsePlan still
+// confirms the plan shape with parseTFPlan and falls back to ordinary JSON when
+// that validation fails.
 func looksLikeTerraformPlan(content []byte) bool {
 	return bytes.Contains(content, []byte(`"format_version"`)) &&
 		bytes.Contains(content, []byte(`"planned_values"`))

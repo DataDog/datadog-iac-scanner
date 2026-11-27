@@ -75,6 +75,9 @@ func (c *Inspector) instantiateLocalModules(
 	ctx context.Context,
 	files model.FileMetadatas,
 	targets *ruleTargets,
+	v2Hook rootV2Hook,
+	v2FailureHook rootV2FailureHook,
+	trackRelationScopes bool,
 	occurrences documentOccurrenceIndex,
 ) (
 	docs []model.Document,
@@ -83,7 +86,7 @@ func (c *Inspector) instantiateLocalModules(
 	moduleFiles map[string]*moduleFileCalls,
 ) {
 	resolver := c.buildRemoteResolver()
-	res := c.resolveModulesSafely(ctx, files, resolver, targets, occurrences)
+	res := c.resolveModulesSafely(ctx, files, resolver, targets, v2Hook, v2FailureHook, trackRelationScopes, occurrences)
 	contextLogger := logger.FromContext(ctx)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
@@ -354,6 +357,9 @@ func (c *Inspector) resolveModulesSafely(
 	files model.FileMetadatas,
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
+	v2Hook rootV2Hook,
+	v2FailureHook rootV2FailureHook,
+	trackRelationScopes bool,
 	occurrences documentOccurrenceIndex,
 ) (res moduleResolutionResult) {
 	var inv *terraformInventory
@@ -373,19 +379,12 @@ func (c *Inspector) resolveModulesSafely(
 	inv = c.newTerraformInventory(lookup, externalModuleFile, occurrences)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
-		externalModuleFile, inv, c.terraformRootVars,
+		externalModuleFile, inv, v2Hook, v2FailureHook, trackRelationScopes, c.terraformRootVars,
 	)
 }
 
-// resolveModuleDocuments instantiates all local modules referenced by the
-// scanned files and returns synthetic resource documents (one per resolved
-// resource, attributed to its defining file) and the set of FileMetadata IDs
-// that should be suppressed to avoid double-scanning. Uncalled modules are
-// left untouched and continue to be scanned standalone.
-//
-// `ok` is true when at least one root module evaluated successfully and the
-// caller should apply call-site / suppression mutations; otherwise it is false
-// and the returned maps are nil.
+// evaluateRootModules evaluates every root directory in roots using a bounded
+// worker pool and merges the results in deterministic root order.
 func evaluateRootModules(
 	ctx context.Context,
 	evaluator *tfeval.Evaluator,
@@ -408,31 +407,55 @@ func evaluateRootModules(
 	rootEvalOK *bool,
 	moduleCalls *moduleCallIndex,
 	inv *terraformInventory,
+	v2Hook rootV2Hook,
+	v2FailureHook rootV2FailureHook,
+	runLegacyInstantiation bool,
 	overrides *terraformOverrides,
 ) {
+	// Retain the scan-wide skipped-directory set for legacy suppression, but do
+	// not feed it back into the evaluator between roots. Root completeness is
+	// computed from only the directories skipped during that root's evaluation.
+	skippedDirs := make(map[string]struct{})
+	for _, dir := range evaluator.TakeNotEvaluatedDirs() {
+		skippedDirs[dir] = struct{}{}
+	}
+	defer func() {
+		dirs := make([]string, 0, len(skippedDirs))
+		for dir := range skippedDirs {
+			dirs = append(dirs, dir)
+		}
+		evaluator.AddNotEvaluatedDirs(dirs)
+	}()
+
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
+		v2Hook: v2Hook, v2FailureHook: v2FailureHook, runLegacyInstantiation: runLegacyInstantiation,
 		overrides: overrides,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
 		next = m.evaluateConcurrently(ctx, roots, workers)
 	}
+	// Concurrent workers collect their skipped directories on the parent
+	// evaluator. Move those into the scan-wide set and clear it before any
+	// remaining roots use the serial evaluator.
+	for _, dir := range evaluator.TakeNotEvaluatedDirs() {
+		skippedDirs[dir] = struct{}{}
+	}
 	if ctx.Err() != nil {
 		// The workers stop with the context; do not merge their partial results.
 		return
 	}
-	for _, dir := range roots[next:] {
-		resources, _, childDirs, err := evaluator.EvaluateModule(ctx, dir, evaluator.LoadRootVarsWithContext(ctx, dir))
-		// The cache key includes rootDir, so the next root cannot reuse these
-		// evaluations. Release their subtree slices and memo keys before building
-		// documents; resources and instances keep the values merging still needs.
-		evaluator.ReleaseEvalCache()
-		m.merge(dir, resources, evaluator.TakeModuleInstances(), childDirs, err)
+	for i, dir := range roots[next:] {
+		result := evaluateRoot(ctx, evaluator, dir)
+		for _, skipped := range result.notEvaluated {
+			skippedDirs[skipped] = struct{}{}
+		}
+		m.mergeResult(dir, &result, roots[next+i:])
 	}
 }
 
@@ -443,27 +466,43 @@ var rootEvalWorkers = 4
 
 // rootMerge folds root evaluations into the scan's documents, in root order.
 type rootMerge struct {
-	ctx                  context.Context
-	evaluator            *tfeval.Evaluator
-	filesByDir           map[string][]*model.FileMetadata
-	repoPath             string
-	resolver             tfeval.RemoteResolver
-	targets              *ruleTargets
-	lookup               moduleProvenanceLookup
-	byAbsPath            map[string]*model.FileMetadata
-	seen                 map[docContentKey]string
-	extras               map[string][]extraCallerInfo
-	instantiated         instantiatedIndex
-	successfulRoots      map[string]bool
-	unresolvedModuleDirs map[string]bool
-	actualCalledDirs     map[string]bool
-	extra                *[]model.Document
-	syntheticFiles       *[]*model.FileMetadata
-	resourceCount        *int
-	rootEvalOK           *bool
-	moduleCalls          *moduleCallIndex
-	inventory            *terraformInventory
-	overrides            *terraformOverrides
+	ctx                    context.Context
+	evaluator              *tfeval.Evaluator
+	filesByDir             map[string][]*model.FileMetadata
+	repoPath               string
+	resolver               tfeval.RemoteResolver
+	targets                *ruleTargets
+	lookup                 moduleProvenanceLookup
+	byAbsPath              map[string]*model.FileMetadata
+	seen                   map[docContentKey]string
+	extras                 map[string][]extraCallerInfo
+	instantiated           instantiatedIndex
+	successfulRoots        map[string]bool
+	unresolvedModuleDirs   map[string]bool
+	actualCalledDirs       map[string]bool
+	extra                  *[]model.Document
+	syntheticFiles         *[]*model.FileMetadata
+	resourceCount          *int
+	rootEvalOK             *bool
+	moduleCalls            *moduleCallIndex
+	inventory              *terraformInventory
+	v2Hook                 rootV2Hook
+	v2FailureHook          rootV2FailureHook
+	runLegacyInstantiation bool
+	overrides              *terraformOverrides
+}
+
+func (m *rootMerge) mergeResult(dir string, result *rootResult, notMerged []string) {
+	if result.panicked != nil {
+		if m.v2FailureHook != nil {
+			err := fmt.Errorf("terraform evaluation panicked: %v", result.panicked)
+			for _, root := range notMerged {
+				m.v2FailureHook(root, err)
+			}
+		}
+		panic(result.panicked)
+	}
+	m.merge(dir, result.resources, result.instances, result.childDirs, result.rootScope, result.scopeIncomplete, result.err)
 }
 
 func (m *rootMerge) merge(
@@ -471,6 +510,8 @@ func (m *rootMerge) merge(
 	resources []tfeval.ResolvedResource,
 	instances []tfeval.ModuleInstance,
 	childDirs map[string]bool,
+	rootScope *tfeval.ModuleScope,
+	scopeIncomplete bool,
 	err error,
 ) {
 	defer m.evaluator.ForgetRootParse(dir)
@@ -481,6 +522,9 @@ func (m *rootMerge) merge(
 		}
 		contextLogger := logger.FromContext(m.ctx)
 		contextLogger.Warn().Err(err).Msgf("tfeval: failed to evaluate root module %s", dir)
+		if m.v2FailureHook != nil {
+			m.v2FailureHook(dir, err)
+		}
 		for _, called := range discoverCalledModuleClosure(
 			m.ctx, m.evaluator, m.filesByDir, m.repoPath, m.resolver, dir,
 		) {
@@ -492,19 +536,28 @@ func (m *rootMerge) merge(
 	// only what rules can match.
 	occurrences := m.inventory.addRoot(dir, resources, true, m.targets)
 	var occurrenceDocuments documentOccurrenceIndex
-	if len(occurrences) > 0 {
+	if len(occurrences.moduleInstances) > 0 {
 		occurrenceDocuments = m.inventory.documents
 	}
 	m.overrides.record(m.ctx, m.evaluator, resources)
+	attributions := newModuleAttributionCache()
+	if m.v2Hook != nil {
+		if v2Err := m.v2Hook(dir, resources, instances, rootScope, scopeIncomplete, attributions, occurrences.byAddress); v2Err != nil {
+			contextLogger := logger.FromContext(m.ctx)
+			contextLogger.Warn().Err(v2Err).Msgf("contract v2: failed to evaluate root module %s", dir)
+		}
+	}
+	if !m.runLegacyInstantiation {
+		return
+	}
 	*m.rootEvalOK = true
 	m.successfulRoots[dir] = true
 	for d := range childDirs {
 		m.actualCalledDirs[d] = true
 	}
-	attributions := newModuleAttributionCache()
 	docs, syn, count := instantiatedDocs(
 		m.ctx, resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup,
-		attributions, occurrences, occurrenceDocuments)
+		attributions, occurrences.moduleInstances, occurrenceDocuments)
 	m.moduleCalls.record(instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -513,12 +566,14 @@ func (m *rootMerge) merge(
 
 // rootResult is a root evaluated by a worker.
 type rootResult struct {
-	resources    []tfeval.ResolvedResource
-	instances    []tfeval.ModuleInstance
-	childDirs    map[string]bool
-	err          error
-	notEvaluated []string
-	panicked     any
+	resources       []tfeval.ResolvedResource
+	instances       []tfeval.ModuleInstance
+	childDirs       map[string]bool
+	rootScope       *tfeval.ModuleScope
+	scopeIncomplete bool
+	err             error
+	notEvaluated    []string
+	panicked        any
 }
 
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
@@ -579,11 +634,8 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 			return i
 		}
 		<-window
-		if r.panicked != nil {
-			panic(r.panicked)
-		}
 		m.evaluator.AddNotEvaluatedDirs(r.notEvaluated)
-		m.merge(dir, r.resources, r.instances, r.childDirs, r.err)
+		m.mergeResult(dir, &r, roots[i:])
 	}
 	return len(roots)
 }
@@ -594,9 +646,12 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 			r = rootResult{panicked: p}
 		}
 		r.notEvaluated = worker.TakeNotEvaluatedDirs()
+		droppedFiles := worker.TakeDroppedFiles()
+		r.scopeIncomplete = len(r.notEvaluated) > 0 || len(droppedFiles) > 0 || worker.HasUnresolvedModules()
 		worker.ReleaseEvalCache()
 	}()
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
+	r.rootScope = worker.LastRootScope()
 	r.instances = worker.TakeModuleInstances()
 	return r
 }
@@ -685,7 +740,9 @@ func terraformRootDirs(dirsWithTf, called map[string]bool, external func(string)
 
 // resolveModuleDocuments resolves the scan's local modules, as described above
 // evaluateRootModules. When inv is not nil, every evaluated resource is also
-// reported to it.
+// reported to it. When v2Hook is non-nil, Contract v2 evaluation shares the
+// same root tfeval pass.
+// nolint:gocyclo
 func resolveModuleDocuments(
 	ctx context.Context,
 	files model.FileMetadatas,
@@ -697,6 +754,9 @@ func resolveModuleDocuments(
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
 	inv *terraformInventory,
+	v2Hook rootV2Hook,
+	v2FailureHook rootV2FailureHook,
+	trackRelationScopes bool,
 	rootVars map[string]cty.Value,
 ) moduleResolutionResult {
 	externalModuleFile = externalModuleFiles(repoPath, externalModuleFile)
@@ -714,19 +774,21 @@ func resolveModuleDocuments(
 	// External module files still need their calls, whatever they declare.
 	moduleCalls := newModuleCallIndex(filesByDir, externalModuleFile)
 	declaresResource := declaresTargetedResource(files, targets)
-	if moduleCalls == nil && !declaresResource {
+	if v2Hook == nil && moduleCalls == nil && !declaresResource {
 		inv.evaluateAllRoots(ctx, fsys, mergeAllow, resolver, filesByDir, dirsWithTf)
 		return moduleResolutionResult{}
 	}
-	// With no resource to resolve, a root only matters for the calls it makes
-	// to external module directories, so the others are not evaluated.
-	onlyExternalCalls := moduleCalls != nil && !declaresResource
+	// With no legacy resource to resolve and no v2 hook, a root only matters
+	// for the calls it makes to external module directories.
+	onlyExternalCalls := v2Hook == nil && moduleCalls != nil && !declaresResource
+	runLegacyInstantiation := declaresResource || moduleCalls != nil
 
 	evaluator := tfeval.NewWithFS(fsys)
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetExplicitRootVars(rootVars)
-	evaluator.SetTrackModuleInstances(moduleCalls != nil)
-	evaluator.SetSkipRootResources(inv == nil)
+	evaluator.SetTrackModuleInstances(moduleCalls != nil || v2Hook != nil)
+	evaluator.SetTrackModuleScopes(trackRelationScopes)
+	evaluator.SetSkipRootResources(inv == nil && v2Hook == nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
@@ -761,7 +823,8 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv, overrides,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv,
+		v2Hook, v2FailureHook, runLegacyInstantiation, overrides,
 	)
 	if ctx.Err() != nil {
 		// The scan is stopping: report no resolution rather than one whose
@@ -1226,7 +1289,7 @@ func moduleCallChainKey(chain []tfeval.CallSite, moduleAddress, repoPath string)
 	}
 	root := absPath(chain[0].CalledFrom, repoPath)
 	rel := root
-	if rp, err := filepath.Rel(repoPath, root); err == nil {
+	if rp, err := relToRoot(repoPath, root); err == nil {
 		rel = rp
 	}
 	return filepath.ToSlash(rel) + "|" + moduleAddress
@@ -1451,9 +1514,25 @@ func docAsMap(v interface{}) map[string]interface{} {
 
 // absPath returns a cleaned path. Relative paths are resolved against base
 // (typically the scan repo root), not the process working directory.
+// Leading '/' or '\' is treated as rooted on all platforms so MemFS POSIX paths
+// (and Windows-cleaned '\repo\main.tf') are never doubled with base on Windows.
 func absPath(p, base string) string {
-	if filepath.IsAbs(p) {
+	if filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) {
 		return filepath.Clean(p)
 	}
 	return filepath.Clean(filepath.Join(base, p))
+}
+
+// relToRoot is filepath.Rel(root, target) for a target that absPath resolved.
+// On Windows, filepath.Abs gives the repository root a volume ("/repo" becomes
+// `D:\repo`) while absPath keeps a rooted path such as a MemFS file
+// `\repo\main.tf` without one, and filepath.Rel never relates paths on
+// different volumes. Such a target is read on the root's volume. Volume names
+// exist only on Windows, so elsewhere this is filepath.Rel.
+func relToRoot(root, target string) (string, error) {
+	if vol := filepath.VolumeName(root); vol != "" && filepath.VolumeName(target) == "" &&
+		(strings.HasPrefix(target, "/") || strings.HasPrefix(target, `\`)) {
+		target = vol + target
+	}
+	return filepath.Rel(root, target)
 }

@@ -14,7 +14,7 @@ report contains violation if {
 			# The name itself, not the `package` keyword, is what has to change.
 			result.location(regal.last(input["package"].path)),
 			{"description": sprintf(
-				"package must be 'datadog', got %q. The scanner evaluates data.datadog.DatadogPolicy.",
+				"package must be 'datadog', got %q. The scanner evaluates data.datadog.DatadogPolicy or data.datadog.results.",
 				[ast.package_name],
 			)},
 		),

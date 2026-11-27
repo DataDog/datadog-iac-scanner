@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/internal/constants"
 	iacplatforms "github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/scan"
 	"github.com/stretchr/testify/assert"
@@ -74,6 +75,48 @@ func runTestGit(t *testing.T, repoDir string, args ...string) string {
 	output, err := exec.Command("git", cmdArgs...).CombinedOutput()
 	require.NoError(t, err, strings.TrimSpace(string(output)))
 	return strings.TrimSpace(string(output))
+}
+
+func TestGetExitCodeForRuleCompileFailures(t *testing.T) {
+	tests := []struct {
+		name         string
+		ruleStats    scan.RuleStats
+		wantExitCode int
+	}{
+		{
+			name: "default rule compile failure fails the scan",
+			ruleStats: scan.RuleStats{
+				FailedToCompile:          []string{"default-rule"},
+				DefaultRuleCompileFailed: true,
+			},
+			wantExitCode: constants.EngineErrorCode,
+		},
+		{
+			name: "custom rule compile failure remains warning-only",
+			ruleStats: scan.RuleStats{
+				FailedToCompile: []string{"custom-rule"},
+			},
+		},
+		{
+			name: "default rule runtime and decode failures remain warning-only",
+			ruleStats: scan.RuleStats{
+				FailedToEvaluate: []string{"runtime-rule", "invalid-path-rule"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := getExitCode(&scan.ScanMetadata{RuleStats: tt.ruleStats})
+			if tt.wantExitCode == 0 {
+				require.NoError(t, err)
+				return
+			}
+			var exitErr *withExitCodeError
+			require.ErrorAs(t, err, &exitErr)
+			assert.Equal(t, tt.wantExitCode, exitErr.code)
+		})
+	}
 }
 
 func TestApplyPlatformFilters(t *testing.T) {

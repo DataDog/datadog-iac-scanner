@@ -24,6 +24,93 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testContractV2CompanionCompletenessMatrix(t *testing.T) {
+	for _, mode := range []struct {
+		name  string
+		mixed bool
+	}{
+		{name: "pure-v2"},
+		{name: "mixed", mixed: true},
+	} {
+		for _, rootCount := range []int{1, 3} {
+			for _, companionState := range []string{"valid", "absent", "broken", "oversize"} {
+				t.Run(fmt.Sprintf("%s/%d-roots/%s", mode.name, rootCount, companionState), func(t *testing.T) {
+					repo := t.TempDir()
+					files := make(model.FileMetadatas, 0, rootCount*2)
+					for i := range rootCount {
+						root := filepath.Join(repo, fmt.Sprintf("root-%d", i))
+						require.NoError(t, os.MkdirAll(root, 0o755))
+						mainPath := filepath.Join(root, "main.tf")
+						main := `resource "aws_s3_bucket" "b" { bucket = "target" }`
+						require.NoError(t, os.WriteFile(mainPath, []byte(main), 0o600))
+						files = append(files, &model.FileMetadata{
+							ID: fmt.Sprintf("main-%d", i), FilePath: mainPath, Kind: model.KindTerraform,
+							Platform: "terraform", OriginalData: main,
+						})
+						if companionState == "absent" {
+							continue
+						}
+						companionPath := filepath.Join(root, "versioning.tf")
+						companion := `resource "aws_s3_bucket_versioning" "v" { bucket = aws_s3_bucket.b.id }`
+						switch companionState {
+						case "broken":
+							companion += "\n{{ broken }}\n"
+						case "oversize":
+							companion += "\n#" + strings.Repeat("x", 2048) + "\n"
+						}
+						require.NoError(t, os.WriteFile(companionPath, []byte(companion), 0o600))
+						files = append(files, &model.FileMetadata{
+							ID: fmt.Sprintf("companion-%d", i), FilePath: companionPath, Kind: model.KindTerraform,
+							Platform: "terraform", OriginalData: companion,
+						})
+					}
+					v2 := model.QueryMetadata{
+						Query: "companion-matrix-v2", Platform: "terraform", Aggregation: 1,
+						Metadata: map[string]any{"id": "companion-matrix-v2", "queryName": "Companion matrix", "severity": "HIGH", "platform": "Terraform"},
+						Content: `package datadog
+import rego.v1
+import data.datadog.iac
+import data.datadog.output as dd_output
+results contains result if {
+    some bucket in input.resources.aws_s3_bucket
+    iac.no_related(bucket, "aws_s3_bucket_versioning", "bucket")
+    result := dd_output.format(bucket, {})
+}`,
+					}
+					queries := []model.QueryMetadata{v2}
+					if mode.mixed {
+						queries = append(queries, model.QueryMetadata{
+							Query: "companion-matrix-legacy", Platform: "terraform",
+							Metadata: map[string]any{"id": "companion-matrix-legacy", "platform": "Terraform"},
+							Content:  "package datadog\\nDatadogPolicy contains result if { false; result := {} }",
+						})
+					}
+					ins := newTestInspector(t, inspectorOpts{queries: queries, repoPath: repo, vb: DefaultVulnerabilityBuilder})
+					ctx := tfmodules.WithMaxConfigFileBytes(context.Background(), 1024)
+					vulns, err := ins.Inspect(ctx, "companion-matrix", files, []string{"terraform"})
+					require.NoError(t, err)
+					wantIncomplete := 0
+					if companionState == "broken" || companionState == "oversize" {
+						wantIncomplete = rootCount
+					}
+					require.Equal(t, wantIncomplete, ins.ContractV2RunStats().RootsScopeIncomplete)
+					wantFindings := 0
+					if companionState == "absent" {
+						wantFindings = rootCount
+					}
+					var matched int
+					for _, vuln := range vulns {
+						if vuln.QueryID == "companion-matrix-v2" {
+							matched++
+						}
+					}
+					require.Equal(t, wantFindings, matched)
+				})
+			}
+		}
+	}
+}
+
 // docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
 func docFileID(id interface{}) string {
 	s, _ := id.(string)
@@ -56,6 +143,25 @@ func TestTerraformLegacyPath(t *testing.T) {
 		require.Empty(t, terraformLegacyPath(path[:length]))
 	}
 	require.Equal(t, "data.local_file[{{example}}].filename", terraformLegacyPath(path))
+}
+
+func TestAbsPath(t *testing.T) {
+	base := filepath.Join("repo", "root")
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "slash-rooted", path: "/repo/main.tf", want: filepath.Clean("/repo/main.tf")},
+		{name: "backslash-rooted", path: `\repo\main.tf`, want: filepath.Clean(`\repo\main.tf`)},
+		{name: "relative", path: filepath.Join("modules", "main.tf"), want: filepath.Join(base, "modules", "main.tf")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, absPath(tt.path, base))
+		})
+	}
 }
 
 // writeFile creates dir/name with content and returns the absolute path.
@@ -311,7 +417,8 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated,
 		map[string]bool{}, map[string]bool{}, map[string]bool{},
-		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil, nil,
+		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil,
+		nil, nil, true, nil,
 	)
 
 	if evaluator.LocalMemoSize() != 0 {
@@ -1281,7 +1388,7 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
+	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil, nil, nil, false, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {

@@ -77,7 +77,7 @@ func Test_GetCommentToken(t *testing.T) {
 const minifiedTFPlan = `{"format_version":"0.2","terraform_version":"1.0.5","planned_values":{"root_module":{"resources":[{"address":"fakewebservices_database.prod_db","mode":"managed","type":"fakewebservices_database","name":"prod_db","provider_name":"registry.terraform.io/hashicorp/fakewebservices","schema_version":0,"values":{"name":"Production DB","size":256},"sensitive_values":{}}]}},"resource_changes":[],"configuration":{}}`
 
 func TestJSON_StringifyContent(t *testing.T) {
-	// The indenting decision is now driven per-file by the content itself
+	// All JSON retains its written formatting so source locations stay stable.
 	var indentedPlan bytes.Buffer
 	require.NoError(t, json.Indent(&indentedPlan, []byte(minifiedTFPlan), "", "  "))
 
@@ -100,7 +100,12 @@ func TestJSON_StringifyContent(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "terraform plan JSON is indented",
+			name:    "formatted terraform plan JSON retains written positions",
+			content: indentedPlan.Bytes(),
+			want:    indentedPlan.String(),
+		},
+		{
+			name:    "minified terraform plan JSON is indented for legacy line detection",
 			content: []byte(minifiedTFPlan),
 			want:    indentedPlan.String(),
 			wantErr: false,

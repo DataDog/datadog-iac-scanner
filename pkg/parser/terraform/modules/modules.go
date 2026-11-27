@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/hclexpr"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -273,7 +274,7 @@ func constantString(expr hclsyntax.Expression) (string, bool) {
 // keeps the cache small enough to live for the whole scan.
 var emptyFileExtract = &fileExtract{}
 
-func extractForContent(cache *sync.Map, content, filePath string) (*fileExtract, hcl.Diagnostics) {
+func extractForContent(ctx context.Context, cache *sync.Map, content, filePath string) (*fileExtract, hcl.Diagnostics) {
 	if !tfpath.IsJSONConfig(filePath) &&
 		!strings.Contains(content, "module") &&
 		!strings.Contains(content, "locals") &&
@@ -295,7 +296,7 @@ func extractForContent(cache *sync.Map, content, filePath string) (*fileExtract,
 		cache.Store(key, extract)
 		return extract, nil
 	}
-	hclFile, diags := hclsyntax.ParseConfig([]byte(content), filePath, hcl.Pos{Line: 1, Column: 1})
+	hclFile, diags := hclcache.ParseConfig(ctx, []byte(content), filePath)
 	if diags.HasErrors() {
 		return nil, diags
 	}
@@ -493,7 +494,7 @@ func parseDirModules(
 			}
 			content = string(resolved)
 		}
-		extract, diags := extractForContent(extracts, content, file.FilePath)
+		extract, diags := extractForContent(ctx, extracts, content, file.FilePath)
 		if diags.HasErrors() {
 			utils.WarnUnlessFixture(ctx, file.FilePath).Msgf("Skipping file %s due to parse errors: %s", file.FilePath, diags.Error())
 			continue

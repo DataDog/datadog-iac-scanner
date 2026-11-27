@@ -16,6 +16,7 @@ import (
 
 	consoleHelpers "github.com/DataDog/datadog-iac-scanner/internal/console/helpers"
 	"github.com/DataDog/datadog-iac-scanner/internal/memwatch"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -146,16 +147,16 @@ func (c *Client) postScan(ctx context.Context, scanResults *Results) (ScanMetada
 	}
 
 	// generate metadata payload
-	metadata = c.generateMetadata(scanResults, c.ScanStartTime, endTime)
+	metadata = c.generateMetadata(ctx, scanResults, c.ScanStartTime, endTime)
 	metadata.Inventory = inventoryStatus
 	memwatch.Sample(ctx, memwatch.PhaseGenerateReport)
 
 	return metadata, nil
 }
 
-func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.Time) ScanMetadata {
+func (c *Client) generateMetadata(ctx context.Context, scanResults *Results, startTime, endTime time.Time) ScanMetadata {
 	stats := c.generateStats(scanResults, endTime.Sub(startTime))
-	ruleStats := c.generateRuleStats(scanResults)
+	ruleStats := c.generateRuleStats(ctx, scanResults)
 
 	metadata := ScanMetadata{
 		StartTime:      startTime,
@@ -165,6 +166,11 @@ func (c *Client) generateMetadata(scanResults *Results, startTime, endTime time.
 		Stats:          stats,
 		RuleStats:      ruleStats,
 		Incomplete:     scanResults.Incomplete(),
+	}
+
+	contractV2 := scanResults.ContractV2RunStats
+	if contractV2.RootsFailed != 0 || contractV2.PlansFailed != 0 || contractV2.RootsScopeIncomplete != 0 {
+		metadata.SetContractV2Counters(contractV2.RootsFailed, contractV2.PlansFailed, contractV2.RootsScopeIncomplete)
 	}
 
 	return metadata
@@ -209,13 +215,42 @@ func (c *Client) generateStats(scanResults *Results, scanDuration time.Duration)
 	}
 }
 
-func (c *Client) generateRuleStats(scanResults *Results) RuleStats {
-	failedQueries := make([]string, 0, len(scanResults.FailedQueries))
+func (c *Client) generateRuleStats(ctx context.Context, scanResults *Results) RuleStats {
+	failedQueries := make([]string, 0)
+	failedEvaluations := make([]string, 0)
+	defaultCompileFailed := false
+	for query, failure := range scanResults.QueryFailures {
+		switch failure.Kind {
+		case engine.QueryFailureCompile:
+			failedQueries = append(failedQueries, query)
+			if failure.Source == model.QuerySourceDefault {
+				defaultCompileFailed = true
+			}
+		case engine.QueryFailureEvaluate:
+			failedEvaluations = append(failedEvaluations, query)
+		}
+	}
+	sort.Strings(failedQueries)
+	sort.Strings(failedEvaluations)
+	contextLogger := logger.FromContext(ctx)
+	if len(failedQueries) == 0 {
+		failedQueries = nil
+	} else {
+		contextLogger.Warn().Int("count", len(failedQueries)).Msg("rules_failed_to_compile")
+	}
+	if len(failedEvaluations) == 0 {
+		failedEvaluations = nil
+	} else {
+		contextLogger.Warn().Int("count", len(failedEvaluations)).Msg("rules_failed_to_evaluate")
+	}
 
 	return RuleStats{
-		TimedOut:          failedQueries,
-		MostExpensiveRule: getLongestRunningQuery(scanResults.Results),
-		SlowestRule:       getLongestRunningQuery(scanResults.Results),
+		FailedToCompile:          failedQueries,
+		FailedToEvaluate:         failedEvaluations,
+		DefaultRuleCompileFailed: defaultCompileFailed,
+		TimedOut:                 nil,
+		MostExpensiveRule:        getLongestRunningQuery(scanResults.Results),
+		SlowestRule:              getLongestRunningQuery(scanResults.Results),
 	}
 }
 

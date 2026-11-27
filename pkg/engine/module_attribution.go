@@ -648,7 +648,7 @@ func repoRelativeFile(filePath, repoPath string) string {
 		return filepath.ToSlash(filepath.Clean(filePath))
 	}
 	abs := absPath(filePath, root)
-	rel, err := filepath.Rel(root, abs)
+	rel, err := relToRoot(root, abs)
 	if err != nil {
 		return filepath.ToSlash(filepath.Base(abs))
 	}
@@ -688,7 +688,7 @@ func repositoryFileName(filePath, repoPath string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	rel, err := filepath.Rel(root, absPath(filePath, root))
+	rel, err := relToRoot(root, absPath(filePath, root))
 	if err != nil {
 		return "", false
 	}
@@ -790,6 +790,13 @@ func moduleAttributionForResource(
 		// Retain the exact, unique declaration match when the key misses.
 		attr = moduleAttributionAtDeclaration(attrs, v)
 	}
+	return narrowModuleAttribution(attr, v)
+}
+
+// narrowModuleAttribution clones a shared ModuleAttribution, resolves
+// ArgumentControl and CallSite for v.Line, clears the per-argument lookup
+// table, and narrows ModuleCodeLocation to v's flagged region.
+func narrowModuleAttribution(attr *model.ModuleAttribution, v *model.Vulnerability) *model.ModuleAttribution {
 	clone := cloneModuleAttribution(attr)
 	if clone == nil {
 		return nil

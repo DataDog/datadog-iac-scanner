@@ -159,6 +159,19 @@ var terraformPublicACLRule = syntheticQuery("test-public-acl", "terraform", "Ter
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
 
+func contractV2ACLRule(rule model.QueryMetadata) model.QueryMetadata {
+	rule.Content = `package datadog
+import rego.v1
+import data.datadog.iac
+import data.datadog.output as dd_output
+results contains result if {
+    some bucket in input.resources.aws_s3_bucket
+    iac.equals(bucket, ["acl"], "public-read")
+    result := dd_output.format(bucket, {"path": ["acl"], "after": "\"private\""})
+}`
+	return rule
+}
+
 func TestTerraformOverrideFindings(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"main.tf": `resource "aws_s3_bucket" "example" {
@@ -209,32 +222,45 @@ resource "aws_s3_bucket" "disabled_each" {
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket[%s]", [name])`)
 	queries := []model.QueryMetadata{terraformPublicACLRule, privateOrMissing, missing, siblings, absent}
-	params := terraformParams(root)
-	inv, _ := scanLinks(t, params, queries...)
-	require.Len(t, inv.Resources, 2)
-	require.Contains(t, rowsByPath(inv), "aws_s3_bucket.example")
-	require.Contains(t, rowsByPath(inv), "aws_s3_bucket.sibling")
-	results := readSARIFRun(t, params).Results
-	require.Len(t, results, 2)
-	for _, result := range results {
-		require.NotEmpty(t, result.ResultLocations)
-		loc := result.ResultLocations[0].PhysicalLocation
-		switch result.ResultRuleID {
-		case "test-public-acl":
-			require.Equal(t, "override.tf", loc.ArtifactLocation.ArtifactURI)
-			require.Equal(t, 2, loc.Region.StartLine)
-			require.Equal(t, model.GetDatadogFingerprintHash(model.SCIInfo{}, "override.tf", "Terraform",
-				"aws_s3_bucket", "example", "test-public-acl", "", ""), result.PartialFingerprints.DatadogFingerprint)
-		case "test-same-file":
-			require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
-			require.Equal(t, 2, loc.Region.StartLine)
-		default:
-			t.Fatalf("unexpected finding %s", result.ResultRuleID)
-		}
+	v2Queries := append([]model.QueryMetadata(nil), queries...)
+	v2Queries[0] = contractV2ACLRule(v2Queries[0])
+	for name, selected := range map[string][]model.QueryMetadata{"legacy": queries, "v2_with_legacy": v2Queries} {
+		t.Run(name, func(t *testing.T) {
+			params := terraformParams(root)
+			inv, _ := scanLinks(t, params, selected...)
+			require.Zero(t, inv.Stats.FindingsUnlinked)
+			require.Len(t, inv.Resources, 2)
+			require.Contains(t, rowsByPath(inv), "aws_s3_bucket.example")
+			require.Contains(t, rowsByPath(inv), "aws_s3_bucket.sibling")
+			results := readSARIFRun(t, params).Results
+			require.Len(t, results, 2)
+			for _, result := range results {
+				require.NotEmpty(t, result.ResultLocations)
+				loc := result.ResultLocations[0].PhysicalLocation
+				switch result.ResultRuleID {
+				case "test-public-acl":
+					require.Equal(t, "override.tf", loc.ArtifactLocation.ArtifactURI)
+					require.Equal(t, 2, loc.Region.StartLine)
+					require.Equal(t, model.GetDatadogFingerprintHash(model.SCIInfo{}, "override.tf", "Terraform",
+						"aws_s3_bucket", "example", "test-public-acl", "", ""), result.PartialFingerprints.DatadogFingerprint)
+				case "test-same-file":
+					require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
+					require.Equal(t, 2, loc.Region.StartLine)
+				default:
+					t.Fatalf("unexpected finding %s", result.ResultRuleID)
+				}
+			}
+			withoutInventory := terraformParams(root)
+			scanWithRules(t, t.Context(), withoutInventory, selected...)
+			require.ElementsMatch(t, results, readSARIFRun(t, withoutInventory).Results)
+		})
 	}
-	withoutInventory := terraformParams(root)
-	scanWithRules(t, t.Context(), withoutInventory, queries...)
-	require.ElementsMatch(t, results, readSARIFRun(t, withoutInventory).Results)
+	t.Run("v2_only", func(t *testing.T) {
+		inv, fingerprints := scanLinks(t, terraformParams(root), contractV2ACLRule(terraformPublicACLRule))
+		require.Len(t, fingerprints, 1)
+		require.Zero(t, inv.Stats.FindingsUnlinked)
+		require.Equal(t, []string{".|aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
+	})
 }
 
 func TestTerraformOverrideUsesSelectedRootVariables(t *testing.T) {
@@ -260,16 +286,20 @@ replicas = 2
 	bucket.force_destroy == true
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
-	params := terraformParams(root)
-	params.TerraformVarsPath = filepath.Join(root, "selected.tfvars")
-	inv, fingerprints := scanLinks(t, params, rule)
-	require.Len(t, fingerprints, 1)
-	require.ElementsMatch(t, []string{
-		".|aws_s3_bucket.example[0]", ".|aws_s3_bucket.example[1]",
-	}, linkedRefs(inv)[fingerprints[0]])
-	loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
-	require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
-	require.Equal(t, 6, loc.Region.StartLine)
+	for name, selected := range map[string]model.QueryMetadata{"legacy": rule, "v2": contractV2ACLRule(rule)} {
+		t.Run(name, func(t *testing.T) {
+			params := terraformParams(root)
+			params.TerraformVarsPath = filepath.Join(root, "selected.tfvars")
+			inv, fingerprints := scanLinks(t, params, selected)
+			require.Len(t, fingerprints, 1)
+			require.ElementsMatch(t, []string{
+				".|aws_s3_bucket.example[0]", ".|aws_s3_bucket.example[1]",
+			}, linkedRefs(inv)[fingerprints[0]])
+			loc := readSARIFRun(t, params).Results[0].ResultLocations[0].PhysicalLocation
+			require.Equal(t, "main.tf", loc.ArtifactLocation.ArtifactURI)
+			require.Equal(t, 6, loc.Region.StartLine)
+		})
+	}
 }
 
 func TestTerraformOverrideUsesFileVariableDirective(t *testing.T) {
@@ -581,20 +611,24 @@ DatadogPolicy contains {
 	doc.resource.aws_s3_bucket[name].acl == "public-read"
 }
 `
-	inv, fingerprints := scanLinks(t, terraformParams(root), rule)
-	require.Len(t, fingerprints, 1)
-	require.Equal(t, model.GetDatadogFingerprintHash(model.SCIInfo{}, "override.tf.json", "Terraform",
-		"aws_s3_bucket", "example", "test-public-acl", "", ""), fingerprints[0])
-	require.Equal(t, []string{".|aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
-	require.Zero(t, inv.Stats.FindingsUnlinked)
-	sarif := sarifResults(t, terraformParams(root), rule)
-	var report struct{ Runs []reportmodel.SarifRun }
-	require.NoError(t, json.Unmarshal([]byte(sarif), &report))
-	require.Len(t, report.Runs, 1)
-	require.Len(t, report.Runs[0].Results, 1)
-	loc := report.Runs[0].Results[0].ResultLocations[0].PhysicalLocation
-	require.Equal(t, "override.tf.json", loc.ArtifactLocation.ArtifactURI)
-	require.Equal(t, 5, loc.Region.StartLine)
+	for name, selected := range map[string]model.QueryMetadata{"legacy": rule, "v2": contractV2ACLRule(rule)} {
+		t.Run(name, func(t *testing.T) {
+			inv, fingerprints := scanLinks(t, terraformParams(root), selected)
+			require.Len(t, fingerprints, 1)
+			require.Equal(t, model.GetDatadogFingerprintHash(model.SCIInfo{}, "override.tf.json", "Terraform",
+				"aws_s3_bucket", "example", "test-public-acl", "", ""), fingerprints[0])
+			require.Equal(t, []string{".|aws_s3_bucket.example"}, linkedRefs(inv)[fingerprints[0]])
+			require.Zero(t, inv.Stats.FindingsUnlinked)
+			sarif := sarifResults(t, terraformParams(root), selected)
+			var report struct{ Runs []reportmodel.SarifRun }
+			require.NoError(t, json.Unmarshal([]byte(sarif), &report))
+			require.Len(t, report.Runs, 1)
+			require.Len(t, report.Runs[0].Results, 1)
+			loc := report.Runs[0].Results[0].ResultLocations[0].PhysicalLocation
+			require.Equal(t, "override.tf.json", loc.ArtifactLocation.ArtifactURI)
+			require.Equal(t, 5, loc.Region.StartLine)
+		})
+	}
 }
 
 func TestTerraformOrphanOverrideFindings(t *testing.T) {

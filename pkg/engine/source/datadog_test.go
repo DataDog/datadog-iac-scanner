@@ -435,6 +435,11 @@ func TestConvertRuleCarriesLegacyIdsInMetadata(t *testing.T) {
 
 // TestFilterRulesMatchesLegacyIds checks that a rule is filtered in and out by
 // each of its IDs: canonical id, legacy id, and any legacy_ids entry.
+func TestFilterRulesAcceptsNilRuleset(t *testing.T) {
+	source := &DatadogSource{wantedPlatforms: []string{""}, wantedCloudProviders: []string{""}}
+	require.Nil(t, source.filterRules(nil, &QueryInspectorParameters{}))
+}
+
 func TestFilterRulesMatchesLegacyIds(t *testing.T) {
 	rule := &datadog.Rule{
 		ID:          "terraform-aws-required-tags",
@@ -470,8 +475,7 @@ func TestFilterRulesMatchesLegacyIds(t *testing.T) {
 				IncludeQueries: QueryFilter{ByIDs: tc.includeIDs},
 				ExcludeQueries: QueryFilter{ByIDs: tc.excludeIDs},
 			}
-			got, err := s.filterRules(&datadog.Ruleset{Rules: []*datadog.Rule{rule}}, selection)
-			assert.NoError(t, err)
+			got := s.filterRules(&datadog.Ruleset{Rules: []*datadog.Rule{rule}}, selection)
 			if tc.wantKept {
 				assert.Len(t, got, 1)
 			} else {
@@ -563,6 +567,7 @@ var queries = []model.QueryMetadata{
 			"cwe":             "123",
 		},
 		Platform:    "dockerfile",
+		Source:      model.QuerySourceDefault,
 		Aggregation: 1,
 	},
 	{
@@ -582,6 +587,7 @@ var queries = []model.QueryMetadata{
 			"cwe":             "",
 		},
 		Platform:     "common",
+		Source:       model.QuerySourceDefault,
 		Aggregation:  1,
 		Experimental: true,
 	},
@@ -617,6 +623,7 @@ var queries = []model.QueryMetadata{
 			},
 		},
 		Platform:    "grpc",
+		Source:      model.QuerySourceDefault,
 		Aggregation: 2,
 	},
 }
@@ -658,7 +665,9 @@ func TestGetQueriesMergesCustomRules(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, queries, 2)
 	assert.Equal(t, "default-rule", queries[0].Metadata["id"])
+	assert.Equal(t, model.QuerySourceDefault, queries[0].Source)
 	assert.Equal(t, "custom-dockerfile-rule", queries[1].Metadata["id"])
+	assert.Equal(t, model.QuerySourceCustom, queries[1].Source)
 }
 
 func getDatadogSource(t *testing.T, rules []*datadog.Rule, options ...DatadogSourceOption) QueriesSource {

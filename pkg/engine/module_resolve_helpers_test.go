@@ -27,5 +27,5 @@ func resolveModuleDocumentsForTest(
 	fsys vfs.FS,
 	externalModuleFile func(string) bool,
 ) moduleResolutionResult {
-	return resolveModuleDocuments(ctx, files, repoPath, resolver, targets, lookup, mergeAllow, fsys, externalModuleFile, nil, nil)
+	return resolveModuleDocuments(ctx, files, repoPath, resolver, targets, lookup, mergeAllow, fsys, externalModuleFile, nil, nil, nil, false, nil)
 }

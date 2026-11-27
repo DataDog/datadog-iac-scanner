@@ -246,7 +246,7 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
-	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...), nil)
+	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...), nil, nil, false, nil)
 
 	out := logs.String()
 	if !strings.Contains(out, "tfeval: module instantiation summary") {

@@ -543,7 +543,9 @@ func (f *FileMetadata) LineInfoShareKey() any {
 // SetLazyLines configures on-demand computation of LinesOriginalData from
 // OriginalData on first access via Lines().
 func (f *FileMetadata) SetLazyLines() {
-	f.linesLazy = &linesLazyState{}
+	if f.linesLazy == nil {
+		f.linesLazy = &linesLazyState{}
+	}
 }
 
 // SetReleaseOriginalDataAfterLineInfo instructs EnsureLineInfoDocument to
@@ -990,6 +992,14 @@ func (f *FileMetadata) ensureGroupLineInfoDocument(ctx context.Context, st *line
 	return nil
 }
 
+// QuerySource identifies the source that supplied a query.
+type QuerySource string
+
+const (
+	QuerySourceDefault QuerySource = "default"
+	QuerySourceCustom  QuerySource = "custom"
+)
+
 // QueryMetadata is a representation of general information about a query
 type QueryMetadata struct {
 	InputData string
@@ -997,6 +1007,7 @@ type QueryMetadata struct {
 	Content   string
 	Metadata  map[string]interface{}
 	Platform  string
+	Source    QuerySource
 	CWE       string
 	// special field for generic queries
 	// represents how many queries are aggregated into a single rego file

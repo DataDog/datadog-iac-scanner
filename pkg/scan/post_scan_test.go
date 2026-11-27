@@ -2,12 +2,14 @@ package scan
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/printer"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
@@ -305,6 +307,75 @@ func Test_resolveOutputs(t *testing.T) {
 	}
 }
 
+func TestGenerateRuleStatsClassifiesRuleFailures(t *testing.T) {
+	client := &Client{ScanParams: &Parameters{QueriesPath: []string{"assets/queries"}}}
+	results := &Results{QueryFailures: map[string]engine.QueryFailure{
+		"default-compile": {Kind: engine.QueryFailureCompile, Source: model.QuerySourceDefault},
+		"default-runtime": {Kind: engine.QueryFailureEvaluate, Source: model.QuerySourceDefault},
+		"custom-compile":  {Kind: engine.QueryFailureCompile, Source: model.QuerySourceCustom},
+		"bad-path":        {Kind: engine.QueryFailureEvaluate, Source: model.QuerySourceDefault},
+	}}
+
+	stats := client.generateRuleStats(context.Background(), results)
+	require.Equal(t, []string{"custom-compile", "default-compile"}, stats.FailedToCompile)
+	require.Equal(t, []string{"bad-path", "default-runtime"}, stats.FailedToEvaluate)
+	require.True(t, stats.DefaultRuleCompileFailed)
+
+	results.QueryFailures = map[string]engine.QueryFailure{
+		"custom-compile": {Kind: engine.QueryFailureCompile, Source: model.QuerySourceCustom},
+		"custom-runtime": {Kind: engine.QueryFailureEvaluate, Source: model.QuerySourceCustom},
+	}
+	stats = client.generateRuleStats(context.Background(), results)
+	require.Equal(t, []string{"custom-compile"}, stats.FailedToCompile)
+	require.Equal(t, []string{"custom-runtime"}, stats.FailedToEvaluate)
+	require.False(t, stats.DefaultRuleCompileFailed)
+}
+
+func TestContractV2MetadataSetter(t *testing.T) {
+	var metadata ScanMetadata
+	metadata.SetContractV2Counters(2, 3, 4)
+
+	encoded, err := json.Marshal(metadata)
+	require.NoError(t, err)
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(encoded, &fields))
+	require.JSONEq(t, `{"roots_failed":2,"plans_failed":3,"roots_scope_incomplete":4}`, string(fields["contract_v2"]))
+}
+
+func TestGenerateMetadataIncludesContractV2RunStats(t *testing.T) {
+	ctx := context.Background()
+	client := &Client{Tracker: &tracker.CITracker{}}
+	client.ScanParams, _ = GetDefaultParameters(ctx, ".")
+
+	tests := []struct {
+		name        string
+		stats       [3]int
+		wantEncoded string
+	}{
+		{name: "non-zero counters", stats: [3]int{2, 3, 4}, wantEncoded: `{"roots_failed":2,"plans_failed":3,"roots_scope_incomplete":4}`},
+		{name: "zero counters are omitted", stats: [3]int{0, 0, 0}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			results := &Results{}
+			results.ContractV2RunStats.RootsFailed = tc.stats[0]
+			results.ContractV2RunStats.PlansFailed = tc.stats[1]
+			results.ContractV2RunStats.RootsScopeIncomplete = tc.stats[2]
+			metadata := client.generateMetadata(ctx, results, time.Time{}, time.Time{})
+
+			encoded, err := json.Marshal(metadata)
+			require.NoError(t, err)
+			var fields map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(encoded, &fields))
+			if tc.wantEncoded == "" {
+				require.NotContains(t, fields, "contract_v2")
+				return
+			}
+			require.JSONEq(t, tc.wantEncoded, string(fields["contract_v2"]))
+		})
+	}
+}
+
 func Test_GetScanMetadata(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -441,7 +512,7 @@ func Test_GetScanMetadata(t *testing.T) {
 			c := Client{}
 			c.Tracker = &tt.tracker
 			c.ScanParams, _ = GetDefaultParameters(ctx, ".")
-			v := c.generateMetadata(tt.results, tt.scanStartTime, tt.endTime)
+			v := c.generateMetadata(ctx, tt.results, tt.scanStartTime, tt.endTime)
 
 			require.Equal(t, tt.expectedMetadata.StartTime, v.StartTime)
 			require.Equal(t, tt.expectedMetadata.Stats.Violations, v.Stats.Violations)

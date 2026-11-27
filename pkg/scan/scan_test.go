@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/config"
+	"github.com/DataDog/datadog-iac-scanner/pkg/datadog"
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	consolePrinter "github.com/DataDog/datadog-iac-scanner/pkg/printer"
+	"github.com/open-policy-agent/opa/rego"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -96,6 +98,189 @@ DatadogPolicy contains result if {
 		require.Equalf(t, model.Severity("HIGH"), model.Severity(result.Severity), "result[%d] severity", i)
 		require.Equalf(t, ruleID, result.QueryID, "result[%d] query id", i)
 	}
+}
+
+func requireOPAEvaluationConflict(t *testing.T, query, content string, input any) {
+	t.Helper()
+	prepared, err := rego.New(
+		rego.Query(query),
+		rego.Module("runtime-error.rego", content),
+		rego.Input(input),
+	).PrepareForEval(t.Context())
+	require.NoError(t, err)
+	_, err = prepared.Eval(t.Context())
+	require.ErrorContains(t, err, "eval_conflict_error")
+}
+
+func TestPerformScanClassifiesRuleFailuresByOriginAndPhase(t *testing.T) {
+	failureQueries := map[string]string{
+		"legacy-compile": `package datadog
+DatadogPolicy contains result if {
+    missing_value == true
+    result := {"resourceType": "aws_s3_bucket"}
+}`,
+		"contract-v2-compile": `package datadog
+import rego.v1
+import data.datadog.output as dd_output
+results contains result if {
+    some bucket in input.resources.aws_s3_bucket
+    missing_value == true
+    result := dd_output.format(bucket, {})
+}`,
+		"legacy-runtime": `package datadog
+import rego.v1
+selection := "first" if { input.document[_] }
+selection := "second" if { input.document[_] }
+DatadogPolicy contains result if {
+    input.document[_]
+    selection == "first"
+    result := {"resourceType": "aws_s3_bucket"}
+}`,
+		"contract-v2-runtime": `package datadog
+import rego.v1
+selection := "first" if { some bucket in input.resources.aws_s3_bucket }
+selection := "second" if { some bucket in input.resources.aws_s3_bucket }
+results contains result if {
+    some bucket in input.resources.aws_s3_bucket
+    selection == "first"
+    result := {"resourceType": "aws_s3_bucket"}
+}
+`,
+		"decode": `package datadog
+DatadogPolicy contains result if {
+    result := {"documentId": "missing-document", "resourceType": "aws_s3_bucket", "resourceName": "example", "searchKey": "bucket"}
+}`,
+		"invalid-path": `package datadog
+import rego.v1
+import data.datadog.output as dd_output
+results contains result if {
+    some bucket in input.resources.aws_s3_bucket
+    result := dd_output.format(bucket, {"path": 42})
+}`,
+	}
+	for _, origin := range []struct {
+		name    string
+		source  model.QuerySource
+		offline bool
+	}{
+		{name: "default", source: model.QuerySourceDefault},
+		{name: "custom API", source: model.QuerySourceCustom},
+		{name: "custom offline bundle", source: model.QuerySourceCustom, offline: true},
+	} {
+		for failure, content := range failureQueries {
+			t.Run(origin.name+"/"+failure, func(t *testing.T) {
+				repo := t.TempDir()
+				terraformFile := filepath.Join(repo, "main.tf")
+				require.NoError(t, os.WriteFile(terraformFile, []byte(`resource "aws_s3_bucket" "example" { bucket = "target" }`), 0o600))
+				queryName := failure + "-rule"
+				query := model.QueryMetadata{
+					Query: queryName, Platform: "terraform", Source: origin.source, Content: content, InputData: "{}", Aggregation: 1,
+					Metadata: map[string]any{"id": queryName, "queryName": queryName, "severity": "HIGH", "platform": "Terraform"},
+				}
+				params := Parameters{
+					RepoPath: repo, Path: []string{terraformFile}, QueriesPath: []string{"."},
+					Platform: []string{"Terraform"}, CloudProvider: []string{"aws"},
+					LibrariesPath: "assets/libraries", MaxFileSizeFlag: 5, ScanID: "failure-classification",
+					MaxResolverDepth: 15, PreviewLines: 3, FlagEvaluator: featureflags.NewLocalEvaluator(),
+				}
+				client, err := NewClient(t.Context(), &params, &consolePrinter.Printer{})
+				require.NoError(t, err)
+				client.querySourceFactory = func(context.Context, []string) (source.QueriesSource, error) {
+					if !origin.offline {
+						return &stubQuerySource{queries: []model.QueryMetadata{query}}, nil
+					}
+					bundle := t.TempDir()
+					rules, err := json.Marshal(&datadog.Ruleset{Rules: []*datadog.Rule{{
+						ID: queryName, Name: queryName, Platform: "Terraform", Type: "rego", RegoQuery: []byte(content),
+						IsPublished: true, Origin: datadog.RuleOriginCustom,
+					}}})
+					require.NoError(t, err)
+					libraries, err := json.Marshal(map[string]datadog.Library{
+						"terraform": {ID: "terraform", RegoCode: "package generic.terraform\n"},
+						"common":    {ID: "common", RegoCode: "package generic.common\n"},
+					})
+					require.NoError(t, err)
+					rulesPath, librariesPath := filepath.Join(bundle, "rules.json"), filepath.Join(bundle, "libraries.json")
+					require.NoError(t, os.WriteFile(rulesPath, rules, 0o600))
+					require.NoError(t, os.WriteFile(librariesPath, libraries, 0o600))
+					localClient, err := datadog.NewLocalFileClient(rulesPath, librariesPath)
+					require.NoError(t, err)
+					return source.NewDatadogSource(localClient)
+				}
+				if failure == "legacy-runtime" {
+					requireOPAEvaluationConflict(t, "data.datadog.DatadogPolicy", content, map[string]any{
+						"document": []any{map[string]any{}},
+					})
+				} else if failure == "contract-v2-runtime" {
+					requireOPAEvaluationConflict(t, "data.datadog.results", content, map[string]any{
+						"resources": map[string]any{"aws_s3_bucket": []any{map[string]any{"bucket": "target"}}},
+					})
+				}
+				metadata, err := client.PerformScan(t.Context())
+				require.NoError(t, err)
+				compileFailure := failure == "legacy-compile" || failure == "contract-v2-compile"
+				if compileFailure {
+					require.Equal(t, []string{queryName}, metadata.RuleStats.FailedToCompile)
+					require.Empty(t, metadata.RuleStats.FailedToEvaluate)
+				} else {
+					require.Empty(t, metadata.RuleStats.FailedToCompile)
+					require.Equal(t, []string{queryName}, metadata.RuleStats.FailedToEvaluate)
+				}
+				require.Equal(t, compileFailure && origin.source == model.QuerySourceDefault,
+					metadata.RuleStats.DefaultRuleCompileFailed)
+			})
+		}
+	}
+}
+
+func TestPerformScanClassifiesFilesystemRuleFailuresByRoot(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	tfPath := filepath.Join(repo, "main.tf")
+	require.NoError(t, os.WriteFile(tfPath, []byte(`resource "aws_s3_bucket" "example" { bucket = "target" }`), 0o600))
+	for _, rule := range []struct {
+		root    string
+		id      string
+		content string
+	}{
+		{
+			root: "assets/queries/default-rule", id: "default-rule",
+			content: `package datadog
+DatadogPolicy contains result if { result := {"resourceType": "aws_s3_bucket"} }`,
+		},
+		{
+			root: "custom/broken-rule", id: "custom-broken-rule",
+			content: `package datadog
+DatadogPolicy contains result if {
+    missing_value == true
+    result := {"resourceType": "aws_s3_bucket"}
+}`,
+		},
+	} {
+		path := filepath.Join(repo, rule.root)
+		require.NoError(t, os.MkdirAll(path, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(path, source.QueryFileName), []byte(rule.content), 0o600))
+		metadata := `{"id":"` + rule.id + `","queryName":"` + rule.id + `","severity":"HIGH","platform":"Terraform"}`
+		require.NoError(t, os.WriteFile(filepath.Join(path, source.MetadataFileName), []byte(metadata), 0o600))
+	}
+
+	queryRoots := []string{"assets/queries", "custom"}
+	params := Parameters{
+		RepoPath: repo, Path: []string{tfPath}, QueriesPath: queryRoots,
+		Platform: []string{"Terraform"}, CloudProvider: []string{"aws"},
+		LibrariesPath: "assets/libraries", MaxFileSizeFlag: 5, ScanID: "filesystem-failure-classification",
+		MaxResolverDepth: 15, PreviewLines: 3, FlagEvaluator: featureflags.NewLocalEvaluator(),
+	}
+	client, err := NewClient(t.Context(), &params, &consolePrinter.Printer{})
+	require.NoError(t, err)
+	client.querySourceFactory = func(ctx context.Context, _ []string) (source.QueriesSource, error) {
+		filesystem := source.NewFilesystemSource(ctx, queryRoots, []string{""}, []string{""}, "", false)
+		return source.NewFilesystemSourceWithLibraryOverride(filesystem, &stubQuerySource{}), nil
+	}
+	metadata, err := client.PerformScan(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []string{"broken-rule"}, metadata.RuleStats.FailedToCompile)
+	require.False(t, metadata.RuleStats.DefaultRuleCompileFailed)
 }
 
 func TestHelmSprigKeysProduceStableDocumentIDsAndPayload(t *testing.T) {

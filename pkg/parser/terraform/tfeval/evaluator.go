@@ -137,13 +137,33 @@ type ModuleScope struct {
 	static     *dirStatic
 }
 
+// EvalContext returns the module scope's read-only HCL evaluation context.
+func (s *ModuleScope) EvalContext() *hcl.EvalContext {
+	if s == nil {
+		return nil
+	}
+	return s.evalCtx
+}
+
+// Source returns the raw bytes of filename recorded when this module was parsed.
+func (s *ModuleScope) Source(filename string) ([]byte, bool) {
+	if s == nil || s.sources == nil {
+		return nil, false
+	}
+	b, ok := s.sources[filename]
+	return b, ok
+}
+
 // ModuleInstance is one evaluated call of a module directory, whether or not
 // the module declares resources.
 type ModuleInstance struct {
 	Dir           string
 	ModuleAddress string
 	CallChain     []CallSite // Read-only; prefixes may be shared.
-	chain         *callChain
+	// Scope is retained only when relation scope tracking is enabled, for
+	// tracing outputs from modules that declare no resources.
+	Scope *ModuleScope
+	chain *callChain
 }
 
 // Evaluator evaluates local Terraform modules.
@@ -179,6 +199,15 @@ type Evaluator struct {
 	// evaluation exists only while one recursive root evaluation is running.
 	// Its partial cache and speculative effects are never retained across roots.
 	evaluation *evaluationRun
+	// lastRootScope records the root module's evaluated scope for the most
+	// recent EvaluateModule call (cleared by ReleaseEvalCache) so callers can
+	// inspect root static blocks even when the root emits zero resources.
+	lastRootScope *ModuleScope
+	// hasUnresolvedModules records whether the most recent EvaluateModule call
+	// encountered any instantiated module call whose source could not be
+	// resolved (e.g. remote modules disabled or failed fetch) or whose child
+	// evaluation failed.
+	hasUnresolvedModules bool
 
 	// dataBlockEvals counts the data block expansions that actually ran, so
 	// tests can check what the eval cache saves.
@@ -190,12 +219,14 @@ type Evaluator struct {
 	// one skipped instance means the directory is only partially resolved, so
 	// its body must stay in the scan even though other instances did resolve.
 	notEvaluatedDirs map[string]bool
+	lastDroppedFiles []string
 
 	// instances holds the module calls the running EvaluateModule evaluated.
 	// They are only collected when trackInstances is set.
 	instances         []ModuleInstance
 	instanceWatermark int
 	trackInstances    bool
+	trackModuleScopes bool
 
 	// parseMu guards dirCache, which evaluators forked from one another share.
 	parseMu  *sync.Mutex
@@ -227,6 +258,7 @@ type dirParse struct {
 	resourceTypes map[string]struct{}
 	locals        *localGraph
 	static        *dirStatic
+	droppedFiles  []string
 	err           error
 }
 
@@ -299,8 +331,8 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	}
 	e.parseMu.Unlock()
 
-	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
-	dp := dirParse{bodies: bodies, sources: sources, err: err}
+	bodies, sources, droppedFiles, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	dp := dirParse{bodies: bodies, sources: sources, droppedFiles: droppedFiles, err: err}
 	if err == nil {
 		dp.bodies, dp.overrides = resolveResourceOverrides(ctx, bodies, sources)
 		if len(dp.overrides) > 0 {
@@ -338,6 +370,7 @@ func (e *Evaluator) Fork() *Evaluator {
 		funcFS:            e.funcFS,
 		mergeAllow:        e.mergeAllow,
 		trackInstances:    e.trackInstances,
+		trackModuleScopes: e.trackModuleScopes,
 		skipRootResources: e.skipRootResources,
 	}
 }
@@ -364,6 +397,20 @@ func (e *Evaluator) SetSkipRootResources(skip bool) { e.skipRootResources = skip
 // evaluate, for TakeModuleInstances. Forks inherit the setting.
 func (e *Evaluator) SetTrackModuleInstances(track bool) { e.trackInstances = track }
 
+func (e *Evaluator) prepareRootScope(
+	ctx context.Context, addr string, parsed *dirParse, inputs map[string]cty.Value, scope *ModuleScope,
+) {
+	if addr != "" {
+		return
+	}
+	e.loadOverrideFileInputs(ctx, parsed, inputs, scope)
+	e.lastRootScope = scope
+}
+
+// SetTrackModuleScopes enables retaining each tracked module's expression scope
+// for relation tracing through outputs, including output-only modules.
+func (e *Evaluator) SetTrackModuleScopes(track bool) { e.trackModuleScopes = track }
+
 // DataBlockEvaluations reports how many data block expansions ran, counting
 // only evaluations the eval cache could not avoid.
 func (e *Evaluator) DataBlockEvaluations() int { return e.dataBlockEvals }
@@ -374,6 +421,14 @@ func (e *Evaluator) TakeNotEvaluatedDirs() []string {
 	dirs := e.NotEvaluatedDirs()
 	e.notEvaluatedDirs = make(map[string]bool)
 	return dirs
+}
+
+// TakeDroppedFiles returns the Terraform configuration files skipped by the
+// most recent module evaluation and forgets them.
+func (e *Evaluator) TakeDroppedFiles() []string {
+	files := slices.Clone(e.lastDroppedFiles)
+	e.lastDroppedFiles = nil
+	return files
 }
 
 // TakeModuleInstances returns the module calls the last EvaluateModule
@@ -391,9 +446,13 @@ func (e *Evaluator) TakeModuleInstances() []ModuleInstance {
 
 // recordModuleInstance notes an evaluated call when instances are tracked. The
 // chain is shared with the call's resources and must not be modified.
-func (e *Evaluator) recordModuleInstance(dir, addr string, chain *callChain) {
+func (e *Evaluator) recordModuleInstance(dir, addr string, chain *callChain, scope *ModuleScope) {
 	if e.trackInstances {
-		e.appendInstances([]ModuleInstance{{Dir: dir, ModuleAddress: addr, chain: chain}})
+		instance := ModuleInstance{Dir: dir, ModuleAddress: addr, chain: chain}
+		if e.trackModuleScopes {
+			instance.Scope = scope
+		}
+		e.appendInstances([]ModuleInstance{instance})
 	}
 }
 
@@ -450,6 +509,18 @@ func (e *Evaluator) ReleaseCaches() {
 	e.funcFS = tffunctions.NewScanFS(e.fsys)
 }
 
+// LastRootScope returns the root ModuleScope constructed by the most recent
+// EvaluateModule call (nil if none or cleared by ReleaseEvalCache).
+func (e *Evaluator) LastRootScope() *ModuleScope {
+	return e.lastRootScope
+}
+
+// HasUnresolvedModules reports whether the most recent EvaluateModule call
+// skipped or failed to evaluate any instantiated module call.
+func (e *Evaluator) HasUnresolvedModules() bool {
+	return e.hasUnresolvedModules
+}
+
 // ReleaseEvalCache drops memoized module evaluations while keeping parsed HCL
 // bodies. The key includes rootDir, so a later root does not reuse them, and
 // each entry holds its subtree. The parse cache is keyed by directory alone
@@ -460,6 +531,7 @@ func (e *Evaluator) ReleaseEvalCache() {
 	e.contexts = nil
 	e.ReleaseLocalMemo()
 	e.localReads = nil
+	e.lastRootScope = nil
 }
 
 // ReleaseLocalMemo drops expression values shared across module instances.
@@ -485,6 +557,9 @@ func (e *Evaluator) EvaluateModule(
 	dir string,
 	inputs map[string]cty.Value,
 ) (resources []ResolvedResource, outputs map[string]cty.Value, visitedChildDirs map[string]bool, err error) {
+	e.lastRootScope = nil
+	e.lastDroppedFiles = nil
+	e.hasUnresolvedModules = false
 	ctx = pathutil.WithResolvedPathCache(ctx)
 	// fsys.Abs, not filepath.Abs: a content-push FS keeps the pushed path shape,
 	// and resolving against the process CWD would break key matching against
@@ -499,7 +574,10 @@ func (e *Evaluator) EvaluateModule(
 	allVisited := &directorySet{}
 	e.instances = nil
 	e.instanceWatermark = 0
-	tree, outputs, err := e.evaluateChain(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited)
+	tree, outputs, rootScope, err := e.evaluateChain(ctx, abs, abs, "", inputs, "", nil, visiting, allVisited)
+	if rootScope != nil {
+		e.lastRootScope = rootScope
+	}
 	resources = materializeResources(tree.flatten(ctx))
 	visitedChildDirs = map[string]bool{}
 	allVisited.copyInto(visitedChildDirs)
@@ -525,13 +603,18 @@ func (e *Evaluator) evaluateChain(
 	chain *callChain,
 	visiting map[string]bool,
 	allVisited *directorySet,
-) (*resourceTree, map[string]cty.Value, error) {
+) (*resourceTree, map[string]cty.Value, *ModuleScope, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if e.evaluation == nil {
-		e.evaluation = &evaluationRun{}
-		defer func() { e.evaluation = nil }()
+		run := &evaluationRun{}
+		e.evaluation = run
+		defer func() {
+			e.hasUnresolvedModules = run.unresolvedModules
+			e.lastDroppedFiles = sortedDroppedFileSet(run.droppedFiles)
+			e.evaluation = nil
+		}()
 	}
 	run := e.evaluation
 	effects := run.beginEffects()
@@ -539,13 +622,13 @@ func (e *Evaluator) evaluateChain(
 
 	identity, err := e.moduleDirectoryIdentity(ctx, dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	effects.recordDecision(identity, visiting[identity])
 	if visiting[identity] {
 		contextLogger := logger.FromContext(ctx)
 		contextLogger.Warn().Msgf("tfeval: module cycle detected at %s, stopping recursion", dir)
-		return nil, nil, e.skipEvaluation(dir)
+		return nil, nil, nil, e.skipEvaluation(dir)
 	}
 
 	// A canceled scan skips the cache: hashing a large input collection is
@@ -559,16 +642,22 @@ func (e *Evaluator) evaluateChain(
 		inputs:      inputsKey,
 		canSkipRoot: canSkipRoot,
 	}
-	if resources, outputs, hit := e.reuseCachedEvaluation(ctx, cacheKey, inputsKeyOK, addr, chain, visiting, allVisited); hit {
-		return resources, outputs, nil
+	if resources, outputs, scope, hit := e.reuseCachedEvaluation(ctx, cacheKey, inputsKeyOK, addr, chain, visiting, allVisited); hit {
+		if addr == "" {
+			e.lastRootScope = scope
+		}
+		return resources, outputs, scope, nil
 	}
 
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if entry := run.partialResult(ctx, &cacheKey, inputs, visiting); entry != nil {
 		resources, outputs := e.restoreCachedEvaluation(entry, addr, chain, allVisited)
-		return resources, outputs, nil
+		if addr == "" {
+			e.lastRootScope = entry.scope
+		}
+		return resources, outputs, entry.scope, nil
 	}
 
 	visiting[identity] = true
@@ -581,14 +670,13 @@ func (e *Evaluator) evaluateChain(
 	defer allVisited.include(subtreeVisited)
 
 	parsed := e.parseDirForChain(ctx, dir, packageRoot, addr)
+	run.recordDroppedFiles(parsed.droppedFiles)
 	if parsed.err != nil {
-		return nil, nil, parsed.err
+		return nil, nil, nil, parsed.err
 	}
 	moduleBlocks, resourceBlocks := parsed.modules, parsed.resources
 	scope := e.newModuleScope(ctx, dir, rootDir, &parsed, inputs)
-	if addr == "" {
-		e.loadOverrideFileInputs(ctx, &parsed, inputs, scope)
-	}
+	e.prepareRootScope(ctx, addr, &parsed, inputs, scope)
 	evalCtx := scope.evalCtx
 	data := newModuleData(e, &parsed, addr, chain, scope.overrideInputs)
 	// Module-call preparation retains its existing data view. Without calls,
@@ -610,7 +698,7 @@ func (e *Evaluator) evaluateChain(
 
 	if canSkipRoot && len(parsed.overrides) == 0 {
 		tree, err := e.finishSkippedRootEvaluation(ctx, instancesBefore, childResources)
-		return tree, nil, err
+		return tree, nil, scope, err
 	}
 
 	return e.finalizeChainEvaluation(
@@ -648,7 +736,7 @@ func (e *Evaluator) finalizeChainEvaluation(
 	instancesBefore int,
 	addr string,
 	chain *callChain,
-) (*resourceTree, map[string]cty.Value, error) {
+) (*resourceTree, map[string]cty.Value, *ModuleScope, error) {
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 
 	rootResources := e.scheduleResources(
@@ -673,15 +761,19 @@ func (e *Evaluator) finalizeChainEvaluation(
 	// would reuse it as a complete result.
 	if err := ctx.Err(); err != nil {
 		e.instances = e.instances[:instancesBefore]
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
+	cacheScope := scope
+	if addr != "" && !e.trackModuleScopes {
+		cacheScope = nil
+	}
 	e.cacheEvaluation(
-		cacheKey, inputsKeyOK, inputs, effects, resources,
+		cacheKey, inputsKeyOK, inputs, effects, resources, cacheScope,
 		e.instances[instancesBefore:], outputs, subtreeVisited, addr, chain,
 	)
 
-	return resources, outputs, nil
+	return resources, outputs, scope, nil
 }
 
 // applyModuleOutputs installs the module.* outputs of the module calls and
@@ -740,21 +832,21 @@ func (e *Evaluator) reuseCachedEvaluation(
 	chain *callChain,
 	visiting map[string]bool,
 	allVisited *directorySet,
-) (resources *resourceTree, outputs map[string]cty.Value, hit bool) {
+) (resources *resourceTree, outputs map[string]cty.Value, scope *ModuleScope, hit bool) {
 	if !inputsKeyOK {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	entry, ok := e.cache[key]
 	if !ok {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	// A complete result from another ancestry must not bypass the same cycle
 	// check a fresh traversal would apply to one of its descendants.
 	if !entry.compatible(ctx, visiting) {
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
 	resources, outputs = e.restoreCachedEvaluation(entry, addr, chain, allVisited)
-	return resources, outputs, true
+	return resources, outputs, entry.scope, true
 }
 
 func (e *Evaluator) restoreCachedEvaluation(
@@ -763,11 +855,15 @@ func (e *Evaluator) restoreCachedEvaluation(
 	chain *callChain,
 	allVisited *directorySet,
 ) (resources *resourceTree, outputs map[string]cty.Value) {
+	e.evaluation.recordDroppedFiles(entry.droppedFiles)
 	e.evaluation.effects.entered.include(entry.enteredIdentities)
 	e.evaluation.effects.blocked.include(entry.blockedIdentities)
 	allVisited.include(entry.visitedDirs)
 	for _, stopped := range entry.stoppedDirs {
 		e.evaluation.recordStop(stopped, e.notEvaluatedDirs)
+	}
+	if entry.hasUnresolvedModules {
+		e.evaluation.recordUnresolvedModule()
 	}
 	rebased := chainRebaser{entry.baseChain: chain}
 	e.appendInstances(entry.rebaseInstances(addr, chain, rebased))
@@ -800,6 +896,7 @@ func (e *Evaluator) cacheEvaluation(
 	inputs map[string]cty.Value,
 	effects *evaluationEffects,
 	resources *resourceTree,
+	scope *ModuleScope,
 	instances []ModuleInstance,
 	outputs map[string]cty.Value,
 	subtreeVisited *directorySet,
@@ -815,12 +912,14 @@ func (e *Evaluator) cacheEvaluation(
 		stoppedDirs = append(stoppedDirs, stopped)
 	}
 	entry := &evalCacheEntry{
-		resources: resources, instances: instances[:len(instances):len(instances)], outputs: outputs,
-		visitedDirs: subtreeVisited, stoppedDirs: stoppedDirs, baseAddr: addr, baseChain: chain,
+		resources: resources, scope: scope, instances: instances[:len(instances):len(instances)], outputs: outputs,
+		visitedDirs: subtreeVisited, stoppedDirs: stoppedDirs,
+		droppedFiles: sortedDroppedFileSet(effects.droppedFiles), baseAddr: addr, baseChain: chain,
 	}
 	e.instanceWatermark = max(e.instanceWatermark, len(e.instances))
 	entry.enteredIdentities = effects.entered
 	entry.blockedIdentities = effects.blocked
+	entry.hasUnresolvedModules = effects.unresolvedModules
 	if len(stoppedDirs) > 0 || entry.hasExternalStops() {
 		e.evaluation.rememberPartial(key, inputs, entry)
 		return
@@ -846,6 +945,12 @@ func (e *Evaluator) applySiblingModulePrepass(
 		ctx, moduleBlocks, reads, evalCtx, scope, dir, rootDir, packageRoot, addr, chain, visiting,
 	)
 	e.installModuleOutputs(ctx, evalCtx, scope, data, prelimOutputs)
+}
+
+func (e *Evaluator) recordUnresolvedModuleCall(ctx context.Context, mb *hclsyntax.Block, callCtx *hcl.EvalContext) {
+	if moduleInstances(ctx, mb, callCtx).Len() > 0 {
+		e.evaluation.recordUnresolvedModule()
+	}
 }
 
 func (e *Evaluator) evaluateLocalModuleBlocks(
@@ -892,6 +997,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 		}
 		call, ok := e.resolveModuleCall(ctx, mb, callCtx, dir, packageRoot)
 		if !ok {
+			e.recordUnresolvedModuleCall(ctx, mb, callCtx)
 			results.finish(blockIndex)
 			continue
 		}
@@ -914,11 +1020,12 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 			childChain := chain.append(&instanceSite)
 			instancesBefore := len(e.instances)
 
-			childRes, childOuts, cErr := e.evaluateChain(
+			childRes, childOuts, childScope, cErr := e.evaluateChain(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, childAddr,
 				childChain, visiting, allVisited,
 			)
 			if cErr != nil {
+				e.evaluation.recordUnresolvedModule()
 				if isReportableModuleEvalError(cErr) {
 					contextLogger.Warn().Msgf("tfeval: failed to evaluate module %q at %s: %v", call.label, call.dir, cErr)
 				}
@@ -933,7 +1040,7 @@ func (e *Evaluator) evaluateLocalModuleBlocks(
 				outs = append(outs, cty.NilVal)
 				break
 			}
-			e.recordModuleInstance(call.dir, childAddr, childChain)
+			e.recordModuleInstance(call.dir, childAddr, childChain, childScope)
 			allVisited.add(call.dir)
 			if childRes != nil {
 				results.add(blockIndex, []*resourceTree{childRes})
@@ -1804,7 +1911,7 @@ func (e *Evaluator) preliminaryModuleOutputs(
 				instanceSite.InstanceKey = cty.DynamicVal
 			}
 			childChain := chain.append(&instanceSite)
-			_, childOuts, err := e.evaluateChain(
+			_, childOuts, _, err := e.evaluateChain(
 				ctx, call.dir, rootDir, call.packageRoot, modInputs, instance.address(addr, call.label), childChain,
 				tmpVisiting, &directorySet{},
 			)

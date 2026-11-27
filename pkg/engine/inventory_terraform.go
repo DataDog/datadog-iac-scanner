@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 
@@ -38,6 +39,7 @@ func (c *Inspector) SetInventory(sink InventorySink) {
 
 // terraformInventory turns evaluated Terraform resources into inventory rows.
 type terraformInventory struct {
+	mu        sync.Mutex
 	sink      InventorySink
 	repoPath  string
 	lookup    moduleProvenanceLookup
@@ -143,12 +145,19 @@ func (inv *terraformInventory) evaluate(ctx context.Context, evaluator *tfeval.E
 // addRoot reports the resources of one evaluated root module, once per
 // address. It runs inside the module evaluation findings depend on, so it
 // keeps its own attribution cache and a panic in it fails the inventory only.
+type terraformRootOccurrences struct {
+	moduleInstances map[*tfeval.ResolvedResource]*model.ResourceOccurrence
+	byAddress       map[string]*model.ResourceOccurrence
+}
+
 func (inv *terraformInventory) addRoot(
 	dir string, resources []tfeval.ResolvedResource, associateModuleDocuments bool, targets *ruleTargets,
-) map[*tfeval.ResolvedResource]*model.ResourceOccurrence {
+) (occurrences terraformRootOccurrences) {
 	if inv == nil || (inv.external != nil && inv.external(dir)) {
-		return nil
+		return occurrences
 	}
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
 	defer func() {
 		if r := recover(); r != nil {
 			inv.fail(inventory.FailureTerraformPanic)
@@ -156,7 +165,6 @@ func (inv *terraformInventory) addRoot(
 	}()
 	attributions := newModuleAttributionCache()
 	seen := make(map[string]bool, len(resources))
-	var instances map[*tfeval.ResolvedResource]*model.ResourceOccurrence
 	for i := range resources {
 		r := &resources[i]
 		moduleCall, address, complete := r.PartialAddress()
@@ -167,6 +175,10 @@ func (inv *terraformInventory) addRoot(
 		}
 		seen[address] = true
 		occurrence := inv.occurrence(dir, r, moduleCall, address, complete, attributions)
+		if occurrences.byAddress == nil {
+			occurrences.byAddress = make(map[string]*model.ResourceOccurrence, len(resources))
+		}
+		occurrences.byAddress[address] = occurrence
 		row := inventory.ProjectResource(occurrence)
 		inv.addModuleFields(&row, occurrence.Terraform.Attribution)
 		inv.sink.AddResource(&row)
@@ -179,15 +191,15 @@ func (inv *terraformInventory) addRoot(
 		case !associateModuleDocuments:
 			continue
 		case targets.matches(r.Type):
-			if instances == nil {
-				instances = make(map[*tfeval.ResolvedResource]*model.ResourceOccurrence)
+			if occurrences.moduleInstances == nil {
+				occurrences.moduleInstances = make(map[*tfeval.ResolvedResource]*model.ResourceOccurrence)
 			}
-			instances[r] = occurrence
+			occurrences.moduleInstances[r] = occurrence
 		default:
 			inv.associateWrittenOccurrence(r, occurrence)
 		}
 	}
-	return instances
+	return occurrences
 }
 
 // associateWrittenOccurrence indexes root declarations and external module

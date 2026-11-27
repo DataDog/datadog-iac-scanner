@@ -91,6 +91,10 @@ type DynamicCounts map[*hclsyntax.Block]int
 
 const unknownDynamicCount = -1
 
+// DynamicKeptAsWritten marks a dynamic block whose for_each or labels could not
+// be resolved statically; its generated elements are therefore unknown/incomplete.
+const DynamicKeptAsWritten = keptAsWritten
+
 // keptAsWritten records a dynamic block that was not expanded; it generated no
 // blocks, but its as-written form is in the output.
 const keptAsWritten = -2

@@ -19,8 +19,9 @@ import (
 // back unchanged: any server-side merge is expected to have already happened
 // when the bundle was fetched.
 type LocalFileClient struct {
-	ruleset   *Ruleset
-	libraries map[string]Library
+	defaultRuleset *Ruleset
+	customRuleset  *Ruleset
+	libraries      map[string]Library
 }
 
 var _ Client = (*LocalFileClient)(nil)
@@ -36,7 +37,20 @@ func NewLocalFileClient(rulesetPath, librariesPath string) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not read local libraries bundle %q: %w", librariesPath, err)
 	}
-	return &LocalFileClient{ruleset: ruleset, libraries: *libraries}, nil
+	defaultRuleset := *ruleset
+	customRuleset := Ruleset{ID: CustomRulesetName, Name: CustomRulesetName}
+	defaultRuleset.Rules = nil
+	for _, rule := range ruleset.Rules {
+		if rule.Origin == RuleOriginDefault {
+			defaultRuleset.Rules = append(defaultRuleset.Rules, rule)
+		} else {
+			// Bundles predating origin markers cannot distinguish default from
+			// custom rules. Treat them as custom so they retain warning-only
+			// compile-failure behavior.
+			customRuleset.Rules = append(customRuleset.Rules, rule)
+		}
+	}
+	return &LocalFileClient{defaultRuleset: &defaultRuleset, customRuleset: &customRuleset, libraries: *libraries}, nil
 }
 
 func readJSONFile[T any](path string) (*T, error) {
@@ -52,19 +66,19 @@ func readJSONFile[T any](path string) (*T, error) {
 }
 
 func (c *LocalFileClient) GetDefaultRuleset(_ context.Context) (*Ruleset, error) {
-	return c.ruleset, nil
+	return c.defaultRuleset, nil
 }
 
 func (c *LocalFileClient) GetDefaultRulesetWithTests(_ context.Context) (*Ruleset, error) {
-	return c.ruleset, nil
+	return c.defaultRuleset, nil
 }
 
 func (c *LocalFileClient) GetCustomRuleset(_ context.Context) (*Ruleset, error) {
-	return &Ruleset{ID: CustomRulesetName, Name: CustomRulesetName}, nil
+	return c.customRuleset, nil
 }
 
 func (c *LocalFileClient) GetCustomRulesetWithTests(_ context.Context) (*Ruleset, error) {
-	return &Ruleset{ID: CustomRulesetName, Name: CustomRulesetName}, nil
+	return c.customRuleset, nil
 }
 
 // GetRemoteConfig returns localConfig unchanged. The bundle's config.yaml

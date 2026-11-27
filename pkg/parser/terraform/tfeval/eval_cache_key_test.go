@@ -808,7 +808,7 @@ func TestEvalCache_SpeculativeCycleDependencies(t *testing.T) {
 			e.evaluation.finishEffects(speculative, e.notEvaluatedDirs, false)
 			require.Empty(t, e.NotEvaluatedDirs(), "speculative reporting effects must roll back")
 			key := evalCacheKey{dir: root, rootDir: root, inputs: canonicalInputsKey(nil)}
-			e.cacheEvaluation(&key, true, nil, outer, nil, nil, map[string]cty.Value{}, &directorySet{}, "", nil)
+			e.cacheEvaluation(&key, true, nil, outer, nil, nil, nil, map[string]cty.Value{}, &directorySet{}, "", nil)
 			// This parent has no published children or stops, only pre-pass dependencies.
 			visiting[identity] = !blocked
 			if blocked {
@@ -816,10 +816,10 @@ func TestEvalCache_SpeculativeCycleDependencies(t *testing.T) {
 				visiting[identity] = true
 				require.NotNil(t, e.evaluation.partialResult(t.Context(), &key, nil, visiting))
 			} else {
-				_, _, hit := e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, &directorySet{})
+				_, _, _, hit := e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, &directorySet{})
 				require.False(t, hit, "a speculative child would now stop")
 				visiting[identity] = false
-				_, _, hit = e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, &directorySet{})
+				_, _, _, hit = e.reuseCachedEvaluation(t.Context(), key, true, "", nil, visiting, &directorySet{})
 				require.True(t, hit)
 			}
 		})
@@ -896,7 +896,7 @@ func (e *Evaluator) evaluate(ctx context.Context, dir, rootDir, packageRoot stri
 		chain = chain.append(&site)
 	}
 	footprint := &directorySet{}
-	resources, outputs, err := e.evaluateChain(ctx, dir, rootDir, packageRoot, inputs, addr, chain, visiting, footprint)
+	resources, outputs, _, err := e.evaluateChain(ctx, dir, rootDir, packageRoot, inputs, addr, chain, visiting, footprint)
 	footprint.copyInto(visited)
 	return materializeResources(resources.flatten(ctx)), outputs, err
 }

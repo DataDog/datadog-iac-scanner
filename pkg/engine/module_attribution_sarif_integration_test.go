@@ -11,12 +11,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
 	reportModel "github.com/DataDog/datadog-iac-scanner/pkg/report/model"
 	"github.com/stretchr/testify/require"
 )
@@ -70,25 +72,35 @@ resource "aws_s3_bucket" "this" {
 	files = append(files, parseTerraform(t, modPath)...)
 
 	queries := []model.QueryMetadata{{
-		Query:       "acl_rule",
-		Content:     displayNameAclRule,
-		InputData:   "{}",
-		Platform:    "terraform",
-		Metadata:    map[string]interface{}{"id": "acl-rule"},
+		Query:     "acl_rule",
+		Content:   displayNameAclRule,
+		InputData: "{}",
+		Platform:  "terraform",
+		Metadata: map[string]interface{}{
+			"id": "acl-rule", "defaultRuleId": "cspm-acl-rule",
+			"defaultFrameworks": []interface{}{
+				map[string]interface{}{"framework": "CIS", "framework_version": "1", "control": "1.1"},
+				map[string]interface{}{"framework": "CIS", "framework_version": "1", "control": "1.1"},
+			},
+		},
 		Aggregation: 1,
 	}}
 
 	ins := newTestInspector(t, inspectorOpts{
-		queries:       queries,
-		repoPath:      root,
-		vb:            DefaultVulnerabilityBuilder,
-		flagEvaluator: featureflags.NewLocalEvaluator(),
+		queries:  queries,
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
+			featureflags.IacAttachDefaultFrameworks: true,
+		}),
 	})
 
 	vulns, err := ins.Inspect(context.Background(), "test", files, []string{"terraform"})
 	require.NoError(t, err)
 	require.Len(t, vulns, 1)
 	require.Equal(t, "customer-bucket", vulns[0].ResourceName)
+	require.Equal(t, "cspm-acl-rule", vulns[0].DefaultRuleID)
+	require.Equal(t, []model.Framework{{Framework: "CIS", FrameworkVersion: "1", Control: "1.1"}}, vulns[0].Frameworks)
 
 	summary := model.CreateSummary(context.Background(), model.Counters{}, vulns, "test", nil, root, model.SCIInfo{})
 	require.Len(t, summary.Queries, 1)
@@ -169,6 +181,262 @@ resource "aws_s3_bucket" "this" {
 	require.Equal(t, "stack/main.tf", module.ModulePath[0].CodeLocation.Filename)
 	require.Equal(t, 2, module.ModulePath[0].CodeLocation.LineStart)
 	require.Equal(t, 5, module.ModulePath[0].CodeLocation.LineEnd)
+
+	v2Rule := model.QueryMetadata{
+		Query:    "acl_rule_v2",
+		Platform: "terraform",
+		Metadata: map[string]interface{}{
+			"id":        "acl-rule-v2",
+			"queryName": "ACL v2",
+			"severity":  model.SeverityHigh,
+			"platform":  "Terraform", "defaultRuleId": "cspm-acl-rule",
+			"defaultFrameworks": []interface{}{
+				map[string]interface{}{"framework": "CIS", "framework_version": "1", "control": "1.1"},
+				map[string]interface{}{"framework": "CIS", "framework_version": "1", "control": "1.1"},
+			},
+		},
+		Content: `package datadog
+
+import rego.v1
+
+import data.datadog.iac
+import data.datadog.output as dd_output
+
+results contains result if {
+	some bucket in input.resources.aws_s3_bucket
+	iac.equals(bucket, ["acl"], "public-read")
+	result := dd_output.format(bucket, {"path": ["acl"]})
+}
+`,
+		Aggregation: 1,
+	}
+	v2Inventory := &collectingSink{}
+	v2Inspector := newTestInspector(t, inspectorOpts{
+		queries:  []model.QueryMetadata{v2Rule},
+		repoPath: root,
+		vb:       DefaultVulnerabilityBuilder,
+		flagEvaluator: featureflags.NewLocalEvaluatorWithOverrides(map[string]bool{
+			featureflags.IacAttachDefaultFrameworks: true,
+		}),
+	})
+	v2Inspector.SetInventory(v2Inventory)
+	v2Vulns, err := v2Inspector.Inspect(context.Background(), "test-v2", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, v2Inspector.GetFailedQueries())
+	require.Len(t, v2Vulns, 1)
+	require.Equal(t, vulns[0].DefaultRuleID, v2Vulns[0].DefaultRuleID)
+	require.Equal(t, vulns[0].Frameworks, v2Vulns[0].Frameworks)
+	require.Equal(t, model.TerraformBlock{Kind: "resource", Type: "aws_s3_bucket", Name: "this"}, v2Vulns[0].TerraformBlock)
+	require.Len(t, v2Vulns[0].ResourceOccurrences, 1, "v2 module findings retain the root's inventory occurrence")
+	require.Equal(t, "aws_s3_bucket", v2Vulns[0].ResourceOccurrences[0].ResourceType)
+	require.NotEmpty(t, v2Inventory.rows)
+	v2Summary := model.CreateSummary(context.Background(), model.Counters{}, v2Vulns, "test-v2", nil, root, model.SCIInfo{})
+	v2Report := reportModel.NewSarifReport()
+	_, err = v2Report.BuildSarifIssue(context.Background(), &v2Summary.Queries[0], model.SCIInfo{})
+	require.NoError(t, err)
+	v2Raw, err := json.Marshal(v2Report)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(v2Raw, &doc))
+	require.Len(t, doc.Runs, 1)
+	require.Len(t, doc.Runs[0].Results, 1, "v2 module findings must route through their call-site attribution")
+	require.Equal(t, "stack/main.tf", doc.Runs[0].Results[0].Locations[0].PhysicalLocation.ArtifactLocation.URI)
+	require.Contains(t, string(v2Raw), `"defaultRuleId":"cspm-acl-rule"`, "SARIF retains CSPM identity")
+
+	legacyRule := queries[0]
+	legacyRule.Content = displayNameAclRule
+	mixedInspector := newTestInspector(t, inspectorOpts{
+		queries: []model.QueryMetadata{v2Rule, legacyRule}, repoPath: root,
+		vb: DefaultVulnerabilityBuilder, flagEvaluator: featureflags.NewLocalEvaluator(),
+	})
+	mixedInventory := &collectingSink{}
+	mixedInspector.SetInventory(mixedInventory)
+	mixedVulns, err := mixedInspector.Inspect(context.Background(), "test-v2-mixed", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, mixedInspector.GetFailedQueries())
+	var mixedV2 *model.Vulnerability
+	for i := range mixedVulns {
+		if mixedVulns[i].QueryID == "acl-rule-v2" {
+			mixedV2 = &mixedVulns[i]
+			break
+		}
+	}
+	require.NotNil(t, mixedV2, "mixed scans retain the Contract v2 module finding")
+	require.NotEmpty(t, mixedV2.ResourceOccurrences, "the shared root pass forwards inventory occurrences to Contract v2")
+	foundRootOccurrence := false
+	for _, occurrence := range mixedV2.ResourceOccurrences {
+		if occurrence.Terraform.Root == filepath.Join(root, "stack") {
+			foundRootOccurrence = true
+		}
+	}
+	require.True(t, foundRootOccurrence, "the v2 finding links to the occurrence emitted for its calling root")
+	require.NotEmpty(t, mixedInventory.rows)
+}
+
+func TestContractV2RootDiscoveryLocalSourceLayouts(t *testing.T) {
+	for _, layout := range []string{
+		"relative", "environment-merge", "symlink-placeholder", "absolute-container",
+		"block-comment-before-label", "block-comment-without-spaces",
+	} {
+		t.Run(layout, func(t *testing.T) {
+			repo := t.TempDir()
+			callerRoot := filepath.Join(repo, "stack")
+			moduleRoot := filepath.Join(repo, "modules", "x")
+			var source string
+			header := `module "x"`
+			switch layout {
+			case "block-comment-before-label":
+				header = `module /* c */ "x"`
+				source = "../modules/x"
+			case "block-comment-without-spaces":
+				header = `module/* c */"x"`
+				source = "../modules/x"
+			case "environment-merge":
+				callerRoot = filepath.Join(repo, "svc", "environments", "prod")
+				moduleRoot = filepath.Join(repo, "svc", "modules", "x")
+				source = "./modules/x"
+			case "symlink-placeholder":
+				moduleRoot = filepath.Join(repo, "real", "x")
+				require.NoError(t, os.WriteFile(filepath.Join(repo, "link"), []byte("real"), 0o600))
+				source = "../link/x"
+			case "absolute-container":
+				source = moduleRoot
+			default:
+				source = "../modules/x"
+			}
+			caller := filepath.Join(callerRoot, "main.tf")
+			module := filepath.Join(moduleRoot, "main.tf")
+			require.NoError(t, os.MkdirAll(filepath.Dir(caller), 0o755))
+			require.NoError(t, os.MkdirAll(filepath.Dir(module), 0o755))
+			require.NoError(t, os.WriteFile(caller, []byte(fmt.Sprintf("%s { source = %q }", header, source)), 0o600))
+			require.NoError(t, os.WriteFile(module, []byte(`resource "aws_s3_bucket" "this" { acl = "public-read" }`), 0o600))
+			files := append(parseTerraform(t, caller), parseTerraform(t, module)...)
+			ins := newTestInspector(t, inspectorOpts{repoPath: repo})
+			evaluator := tfeval.NewWithFS(ins.fsys)
+			defer evaluator.ReleaseCaches()
+			runner := &contractV2Runner{c: ins, files: files}
+			roots := runner.discoverRoots(context.Background(), evaluator, nil)
+			require.Equal(t, []string{filepath.Clean(callerRoot)}, roots)
+		})
+	}
+}
+
+func TestContractV2RootDiscoveryExcludesFetchedCacheRoots(t *testing.T) {
+	repo, cache := t.TempDir(), t.TempDir()
+	callerRoot := filepath.Join(repo, "stack")
+	caller := filepath.Join(callerRoot, "main.tf")
+	cacheFile := filepath.Join(cache, "main.tf")
+	const source = "git::https://example.com/modules.git//selected?ref=v1"
+	require.NoError(t, os.MkdirAll(callerRoot, 0o755))
+	require.NoError(t, os.WriteFile(caller, []byte(`module "selected" { source = "`+source+`" }`), 0o600))
+	require.NoError(t, os.WriteFile(cacheFile, []byte(`resource "aws_s3_bucket" "this" { acl = "public-read" }`), 0o600))
+	files := append(parseTerraform(t, caller), parseTerraform(t, cacheFile)...)
+	ins := newTestInspector(t, inspectorOpts{repoPath: repo})
+	ins.SetExternalModulePaths([]string{cache})
+	ins.SetRemoteModuleDirectories(map[string]RemoteModuleDirectory{
+		RemoteModuleKey(callerRoot, source, ""): {Path: cache, PackageRoot: cache},
+	})
+	evaluator := tfeval.NewWithFS(ins.fsys)
+	defer evaluator.ReleaseCaches()
+	runner := &contractV2Runner{c: ins, files: files}
+	roots := runner.discoverRoots(context.Background(), evaluator, ins.buildRemoteResolver())
+	require.Equal(t, []string{filepath.Clean(callerRoot)}, roots)
+}
+
+func TestContractV2RootDiscoveryUsesLegacyModuleCallGraph(t *testing.T) {
+	repo := t.TempDir()
+	caller := filepath.Join(repo, "svc", "environments", "prod", "main.tf")
+	module := filepath.Join(repo, "svc", "modules", "bucket", "main.tf")
+	otherRoot := filepath.Join(repo, "svc", "stacks", "other", "main.tf")
+	for _, path := range []string{caller, module, otherRoot} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	}
+	require.NoError(t, os.WriteFile(caller, []byte(`module "bucket" {
+  source = "./modules/bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(module, []byte(`variable "acl" { type = string }
+resource "aws_s3_bucket" "this" {
+  bucket = "called-bucket"
+  acl    = var.acl
+}
+`), 0o644))
+	require.NoError(t, os.WriteFile(otherRoot, []byte(`resource "aws_s3_bucket" "other" {
+  bucket = "other-bucket"
+  acl    = "public-read"
+}
+`), 0o644))
+
+	v2Rule := model.QueryMetadata{
+		Query: "contract-v2-acl", Platform: "terraform", Aggregation: 1, InputData: "{}",
+		Metadata: map[string]interface{}{
+			"id": "contract-v2-acl", "queryName": "Public bucket ACL", "severity": "HIGH", "platform": "Terraform",
+		},
+		Content: `package datadog
+import rego.v1
+import data.datadog.iac
+import data.datadog.output as dd_output
+results contains result if {
+    some bucket in input.resources.aws_s3_bucket
+    iac.equals(bucket, ["acl"], "public-read")
+    result := dd_output.format(bucket, {"path": ["acl"]})
+}`,
+	}
+	legacyRule := model.QueryMetadata{
+		Query: "legacy-acl", Platform: "terraform", Aggregation: 1, InputData: "{}",
+		Metadata: map[string]interface{}{"id": "legacy-acl", "queryName": "Legacy ACL", "severity": "HIGH", "platform": "Terraform"},
+		Content:  displayNameAclRule,
+	}
+
+	var pureV2Fingerprints []string
+	for _, mixed := range []bool{false, true} {
+		name := "standalone-v2"
+		queries := []model.QueryMetadata{v2Rule}
+		if mixed {
+			name = "mixed-v2-and-legacy"
+			queries = append(queries, legacyRule)
+		}
+		t.Run(name, func(t *testing.T) {
+			files := append(parseTerraform(t, caller), parseTerraform(t, module)...)
+			files = append(files, parseTerraform(t, otherRoot)...)
+			ins := newTestInspector(t, inspectorOpts{queries: queries, repoPath: repo, vb: DefaultVulnerabilityBuilder})
+			vulns, err := ins.Inspect(context.Background(), name, files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			var v2Findings []model.Vulnerability
+			for _, finding := range vulns {
+				if finding.QueryID == v2Rule.Query {
+					v2Findings = append(v2Findings, finding)
+				}
+			}
+			require.Len(t, v2Findings, 2, "the called module is instantiated once and the unrelated root remains covered")
+			var fingerprints []string
+			var called, unrelated bool
+			for _, finding := range v2Findings {
+				fingerprints = append(fingerprints, model.GetDatadogFingerprintHash(
+					model.SCIInfo{}, finding.FileName, finding.Platform, finding.ResourceType,
+					finding.ResourceName, finding.QueryID, finding.SearchKey, finding.ModuleCallChain,
+				))
+				if finding.ModuleCallChain != "" {
+					called = true
+					require.Equal(t, "this", finding.ResourceName)
+					require.Contains(t, finding.ModuleCallChain, "environments/prod/main.tf|module.bucket")
+					continue
+				}
+				unrelated = true
+				require.Equal(t, "other", finding.ResourceName)
+				require.Equal(t, "aws_s3_bucket.other", finding.ResourceID)
+			}
+			require.True(t, called)
+			require.True(t, unrelated)
+			sort.Strings(fingerprints)
+			if mixed {
+				require.Equal(t, pureV2Fingerprints, fingerprints, "legacy rules do not change v2 finding fingerprints")
+			} else {
+				pureV2Fingerprints = fingerprints
+			}
+		})
+	}
 }
 
 // A downloaded package can contain entry points other than the //subdir the

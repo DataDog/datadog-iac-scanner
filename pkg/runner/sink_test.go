@@ -20,11 +20,13 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/internal/storage"
+	"github.com/DataDog/datadog-iac-scanner/internal/tracker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/detector"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	iniHostsParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/ansible/ini/hosts"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
+	terraformParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -570,6 +572,43 @@ func sinkFileWith(t *testing.T, add func(*parser.Builder) *parser.Builder, filen
 	return s.files[0]
 }
 
+func TestSinkTerraformContractOnlyTracksFoundLinesLikeLegacy(t *testing.T) {
+	content := []byte(`resource "aws_s3_bucket" "example" {
+  bucket = "example"
+}
+`)
+	run := func(contractOnly bool) *foundLinesTracker {
+		ctx := context.Background()
+		parsers, err := parser.NewBuilder(ctx).Add(terraformParser.NewDefault()).Build([]string{"terraform"}, []string{""})
+		require.NoError(t, err)
+		require.Len(t, parsers, 1)
+		tracker := &foundLinesTracker{}
+		service := &Service{
+			Parser: parsers[0], Storage: storage.NewMemoryStorage(), Tracker: tracker,
+			MaxFileSize: mbConst, SkipLegacyTerraformDocumentParsing: contractOnly,
+		}
+		require.NoError(t, sinkReader(service, ctx, "main.tf", "scanID", bytes.NewReader(content), make([]byte, mbConst), false, 15))
+		require.Len(t, service.files, 1)
+		return tracker
+	}
+
+	legacy, contractOnly := run(false), run(true)
+	require.Equal(t, legacy.calls, contractOnly.calls)
+	require.Equal(t, 2, contractOnly.calls, "both paths report source and resolved-file line counts")
+	require.Equal(t, legacy.lines, contractOnly.lines)
+}
+
+type foundLinesTracker struct {
+	noopTracker
+	calls int
+	lines int
+}
+
+func (t *foundLinesTracker) TrackFileFoundCountLines(lines int) {
+	t.calls++
+	t.lines += lines
+}
+
 type noopTracker struct{}
 
 func (noopTracker) TrackFileFound(_ string)            {}
@@ -835,4 +874,48 @@ func TestSinkAnchorSectionNameCollisions(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestSinkTerraformContractOnlyConcurrentLinesAndParseFailure(t *testing.T) {
+	ctx := context.Background()
+	parsers, err := parser.NewBuilder(ctx).
+		Add(terraformParser.NewDefault()).
+		Build([]string{"terraform"}, []string{""})
+	require.NoError(t, err)
+	require.NotEmpty(t, parsers)
+
+	store := storage.NewMemoryStorage()
+	trk, err := tracker.NewTracker(3)
+	require.NoError(t, err)
+	svc := &Service{
+		Parser:                             parsers[0],
+		Storage:                            store,
+		Tracker:                            trk,
+		MaxFileSize:                        1,
+		SkipLegacyTerraformDocumentParsing: true,
+	}
+
+	valid := []byte("resource \"aws_s3_bucket\" \"a\" {\n  bucket = \"ok\"\n}\n")
+	require.NoError(t, svc.sinkContent(ctx, "main.tf", "scan1", &Content{Content: &valid, CountLines: 3}, nil, false, 15))
+	require.Equal(t, 1, trk.ParsedFiles)
+	require.Empty(t, trk.FailedFiles)
+
+	// Concurrent file.Lines() calls must be race-free under -race.
+	require.Len(t, svc.files, 1)
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			lines := svc.files[0].Lines()
+			require.Len(t, lines, 4)
+		}()
+	}
+	wg.Wait()
+
+	// Invalid HCL must be tracked as failed rather than parsed.
+	broken := []byte("resource \"aws_s3_bucket\" \"bad\" {\n  bucket = [\n")
+	require.NoError(t, svc.sinkContent(ctx, "broken.tf", "scan1", &Content{Content: &broken, CountLines: 2}, nil, false, 15))
+	require.Equal(t, 1, trk.ParsedFiles)
+	require.Contains(t, trk.FailedFiles, "broken.tf")
 }

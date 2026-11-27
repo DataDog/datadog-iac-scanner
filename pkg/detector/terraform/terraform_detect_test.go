@@ -1687,4 +1687,65 @@ func TestStructuredSourceFormatting(t *testing.T) {
 	indexed := d.indexSourceBody(block.Body)
 	require.Len(t, indexed.groups["rule"].blocks, repeated)
 	require.Same(t, indexed, d.indexSourceBody(block.Body))
+
+	for _, tc := range []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "ordinary nested blocks",
+			source: `resource "example" "ordinary" {
+  name = "ordinary"
+  settings {
+    enabled = true
+  }
+}
+`,
+		},
+		{
+			name: "heredoc",
+			source: `resource "example" "heredoc" {
+  policy = <<-EOT
+    {"Statement": []}
+  EOT
+  name = "heredoc"
+}
+`,
+		},
+		{
+			name: "no heredoc after long prefix",
+			source: strings.Repeat("# unrelated prefix line\n", 512) + `resource "example" "long_prefix" {
+  name = "long-prefix"
+  settings {
+    enabled = true
+  }
+}
+`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed, diags := hclsyntax.ParseConfig([]byte(tc.source), tc.name+".tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), diags.Error())
+			body, ok := parsed.Body.(*hclsyntax.Body)
+			require.True(t, ok)
+			require.Len(t, body.Blocks, 1)
+			block := body.Blocks[0]
+
+			plain := &model.FileMetadata{
+				Kind: model.KindTerraform, FilePath: tc.name + ".tf", OriginalData: tc.source,
+				LinesOriginalData: utils.SplitLines(tc.source),
+			}
+			indexed := &model.FileMetadata{
+				Kind: model.KindTerraform, FilePath: tc.name + ".tf", OriginalData: tc.source,
+			}
+			indexed.SetLazyLines()
+
+			for line := block.TypeRange.Start.Line; line <= block.Body.SrcRange.End.Line; line++ {
+				plainLine, plainCol := RemediationPoint(block, line, plain)
+				indexedLine, indexedCol := RemediationPoint(block, line, indexed)
+				require.Equal(t, plainLine, indexedLine, "remediation line for finding line %d", line)
+				require.Equal(t, plainCol, indexedCol, "remediation column for finding line %d", line)
+			}
+		})
+	}
 }
