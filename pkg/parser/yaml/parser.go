@@ -118,11 +118,12 @@ func parseNodes(ctx context.Context, resolved []byte, filePath string, fn func(n
 		documents = appendDocument(ctx, documents, &node, filePath, fn, ignore)
 	}
 
+	if decodeErr != nil {
+		// A valid prefix does not make a malformed file complete. Discard it
+		// so callers report a failed file instead of silently missing its tail.
+		return nil, []int{}, errors.Wrap(decodeErr, "invalid yaml document")
+	}
 	if len(documents) == 0 {
-		if decodeErr != nil {
-			// A syntax error before any document: invalid, not empty.
-			return nil, []int{}, errors.Wrap(decodeErr, ErrNoDocuments.Error())
-		}
 		return nil, []int{}, ErrNoDocuments
 	}
 

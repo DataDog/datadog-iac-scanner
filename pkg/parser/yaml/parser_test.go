@@ -621,9 +621,16 @@ func TestNoDocumentsError(t *testing.T) {
 	_, _, _, _, err := ParseWithNodeTransform(ctx, nil, []byte("# only a comment\n"), "empty.yaml", false, 15, nil)
 	require.ErrorIs(t, err, ErrNoDocuments, "a file with no document is empty")
 
-	_, _, _, _, err = ParseWithNodeTransform(ctx, nil, []byte("a: [\n"), "broken.yaml", false, 15, nil)
-	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrNoDocuments, "a syntax error before any document is not an empty file")
+	for _, prefix := range []string{"", "valid: true\n---\n"} {
+		content := []byte(prefix + "a: [\n")
+		_, docs, _, _, parseErr := ParseWithNodeTransform(ctx, nil, content, "broken.yaml", false, 15, nil)
+		require.Error(t, parseErr)
+		require.NotErrorIs(t, parseErr, ErrNoDocuments, "invalid YAML is not an empty file")
+		require.Empty(t, docs, "a malformed tail invalidates the file")
+		docs, _, parseErr = ParseWithNodeTransformNoResolve(ctx, content, "broken.yaml", nil)
+		require.Error(t, parseErr)
+		require.Empty(t, docs)
+	}
 
 	// Resolved documents that all convert to nothing.
 	var scalar yaml.Node
