@@ -14,7 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
@@ -96,6 +96,14 @@ type ASTNode struct {
 	Children []ASTNode `json:"children,omitempty"` // Child nodes
 }
 
+// ParseContract separates declaration-only GitLab parses from legacy enrichment.
+func (p *Parser) ParseContract(path string) string {
+	if provider.Detect(path) == provider.GitLab {
+		return provider.GitLabDeclarations
+	}
+	return provider.LegacyEnriched
+}
+
 // Parse parses yaml/yml file and returns it as a Document
 func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
@@ -104,7 +112,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	if names.IsGitLabFile(filePath) {
+	if provider.Detect(filePath) == provider.GitLab {
 		// Declaration-only parsing: do not inline YAML-valued scalars or apply
 		// GitHub expression/run enrichment to a GitLab job named jobs or runs.
 		documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(ctx, fileContent, filePath, nil)

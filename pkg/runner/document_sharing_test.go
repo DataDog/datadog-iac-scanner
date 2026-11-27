@@ -225,12 +225,12 @@ func TestShareableParse(t *testing.T) {
 func TestLookupSharedParseDoesNotIntern(t *testing.T) {
 	s := &Service{}
 	content := []byte(`{"a": 1}`)
-	require.Nil(t, s.lookupSharedParse(content))
+	require.Nil(t, s.lookupSharedParse("", content))
 	require.Empty(t, s.contentInterner)
 
 	key := s.internContentBytes(content)
-	s.storeSharedParse(key, &parser.ParsedDocument{Kind: model.KindJSON}, []model.Document{{"a": 1.0}})
-	shared := s.lookupSharedParse(content)
+	s.storeSharedParse("", key, &parser.ParsedDocument{Kind: model.KindJSON}, []model.Document{{"a": 1.0}})
+	shared := s.lookupSharedParse("", content)
 	require.NotNil(t, shared)
 	require.Equal(t, string(content), shared.content)
 	require.Equal(t, key, s.internContentBytes(content))

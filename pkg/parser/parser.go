@@ -156,6 +156,14 @@ type Parser struct {
 	documentPlatform string
 }
 
+// Contract identifies parse behavior that can share results for identical bytes.
+func (c *Parser) Contract(path string) string {
+	if p, ok := c.Parsers.(interface{ ParseContract(string) string }); ok {
+		return p.ParseContract(path)
+	}
+	return ""
+}
+
 // DocumentPlatform identifies the parser's platform set independently of the
 // platforms selected for a particular scan.
 func (c *Parser) DocumentPlatform() string {
