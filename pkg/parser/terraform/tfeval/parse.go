@@ -26,6 +26,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
@@ -49,13 +50,13 @@ var reservedModuleAttrs = map[string]bool{
 // content-push scans only ever see pushed files.
 func parseDir(
 	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
-) ([]*hclsyntax.Body, map[string][]byte, error) {
+) (bodies []*hclsyntax.Body, sources map[string][]byte, dropped []string, err error) {
 	if fsys == nil {
 		fsys = vfs.Default()
 	}
 	entries, err := fsys.ReadDir(dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	selected := tfmodules.SelectConfigEntries(entries, dir, allow, "")
@@ -64,23 +65,31 @@ func parseDir(
 	// defaults and module attributes they set win over the directory's other
 	// files, matching the order module discovery assembles the same directory in.
 	selected = tfpath.OrderOverrideLast(selected, func(entry fs.DirEntry) string { return entry.Name() })
-	bodies := make([]*hclsyntax.Body, 0, len(selected))
-	sources := make(map[string][]byte, len(selected))
+	bodies = make([]*hclsyntax.Body, 0, len(selected))
+	sources = make(map[string][]byte, len(selected))
 	for _, entry := range selected {
 		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
 		if !ok {
+			dropped = append(dropped, filepath.Join(dir, entry.Name()))
+			continue
+		}
+		if tfmodules.ConfigFileTooLarge(fsys, path, tfmodules.MaxConfigFileBytesFromContext(ctx)) {
+			dropped = append(dropped, path)
 			continue
 		}
 		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
 		if rErr != nil {
+			dropped = append(dropped, path)
 			continue
 		}
-		if body, ok := parseConfigBody(src, path); ok {
+		if body, ok := parseConfigBody(ctx, src, path); ok {
 			bodies = append(bodies, body)
 			sources[path] = src
+		} else {
+			dropped = append(dropped, path)
 		}
 	}
-	return bodies, sources, nil
+	return bodies, sources, dropped, nil
 }
 
 // rootNonResourceMarkers are HCL block keywords that a root directory's module
@@ -180,13 +189,13 @@ type rootFileSlot struct {
 
 func readRootFileSlots(
 	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
-) (slots []rootFileSlot, deferredCount int, err error) {
+) (slots []rootFileSlot, deferredCount int, dropped []string, err error) {
 	if fsys == nil {
 		fsys = vfs.Default()
 	}
 	entries, err := fsys.ReadDir(dir)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
 	selected := tfmodules.SelectConfigEntries(entries, dir, allow, "")
@@ -197,10 +206,16 @@ func readRootFileSlots(
 	for _, entry := range selected {
 		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
 		if !ok {
+			dropped = append(dropped, filepath.Join(dir, entry.Name()))
+			continue
+		}
+		if tfmodules.ConfigFileTooLarge(fsys, path, tfmodules.MaxConfigFileBytesFromContext(ctx)) {
+			dropped = append(dropped, path)
 			continue
 		}
 		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
 		if rErr != nil {
+			dropped = append(dropped, path)
 			continue
 		}
 		if !mayAffectRootModules(src, path) {
@@ -208,20 +223,26 @@ func readRootFileSlots(
 			deferredCount++
 			continue
 		}
-		if body, ok := parseConfigBody(src, path); ok {
+		if body, ok := parseConfigBody(ctx, src, path); ok {
 			slots = append(slots, rootFileSlot{path: path, src: src, body: body})
+		} else {
+			dropped = append(dropped, path)
 		}
 	}
-	return slots, deferredCount, nil
+	return slots, deferredCount, dropped, nil
 }
 
-func assembleRootSlots(slots []rootFileSlot, parseDeferred bool) (bodies []*hclsyntax.Body, sources map[string][]byte) {
+func assembleRootSlots(
+	ctx context.Context, slots []rootFileSlot, parseDeferred bool,
+) (bodies []*hclsyntax.Body, sources map[string][]byte, dropped []string) {
 	bodies = make([]*hclsyntax.Body, 0, len(slots))
 	sources = make(map[string][]byte, len(slots))
 	for i := range slots {
 		if parseDeferred && slots[i].deferred {
-			if body, ok := parseConfigBody(slots[i].src, slots[i].path); ok {
+			if body, ok := parseConfigBody(ctx, slots[i].src, slots[i].path); ok {
 				slots[i].body = body
+			} else {
+				dropped = append(dropped, slots[i].path)
 			}
 		}
 		if slots[i].body != nil {
@@ -229,7 +250,7 @@ func assembleRootSlots(slots []rootFileSlot, parseDeferred bool) (bodies []*hcls
 			sources[slots[i].path] = slots[i].src
 		}
 	}
-	return bodies, sources
+	return bodies, sources, dropped
 }
 
 // parseRootDirForModules parses a root directory when root resources will not
@@ -237,7 +258,7 @@ func assembleRootSlots(slots []rootFileSlot, parseDeferred bool) (bodies []*hcls
 // output / provider blocks are deferred and only parsed if any module, locals,
 // or data block may reference a managed resource.
 func (e *Evaluator) parseRootDirForModules(ctx context.Context, dir, packageRoot string) dirParse {
-	slots, deferredCount, err := readRootFileSlots(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	slots, deferredCount, dropped, err := readRootFileSlots(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
 	if err != nil {
 		return dirParse{err: err}
 	}
@@ -249,23 +270,26 @@ func (e *Evaluator) parseRootDirForModules(ctx context.Context, dir, packageRoot
 		}
 	}
 
-	bodies, sources := assembleRootSlots(slots, false)
+	bodies, sources, _ := assembleRootSlots(ctx, slots, false)
 	varDecls, localExprs, modules, resources, outputs := collectBlocks(bodies)
 	dataBlocks := collectDataBlocks(bodies)
 	if deferredCount > 0 && len(modules) > 0 && rootNeedsDeferredResourceFiles(modules, localExprs, dataBlocks) {
-		bodies, sources = assembleRootSlots(slots, true)
+		var deferredDrops []string
+		bodies, sources, deferredDrops = assembleRootSlots(ctx, slots, true)
+		dropped = append(dropped, deferredDrops...)
 		varDecls, localExprs, modules, resources, outputs = collectBlocks(bodies)
 		dataBlocks = collectDataBlocks(bodies)
 	}
 
 	dp := dirParse{
-		bodies:     bodies,
-		sources:    sources,
-		varDecls:   varDecls,
-		localExprs: localExprs,
-		modules:    modules,
-		resources:  resources,
-		outputs:    outputs,
+		bodies:       bodies,
+		sources:      sources,
+		droppedFiles: dropped,
+		varDecls:     varDecls,
+		localExprs:   localExprs,
+		modules:      modules,
+		resources:    resources,
+		outputs:      outputs,
 	}
 	dp.resourceTypes = declaredResourceTypes(dp.resources)
 	dp.locals = newLocalGraph(dp.localExprs, dp.resourceTypes, dataBlocks)
@@ -273,11 +297,11 @@ func (e *Evaluator) parseRootDirForModules(ctx context.Context, dir, packageRoot
 	return dp
 }
 
-func parseConfigBody(src []byte, path string) (*hclsyntax.Body, bool) {
+func parseConfigBody(ctx context.Context, src []byte, path string) (*hclsyntax.Body, bool) {
 	if tfpath.IsJSONConfig(path) {
 		return parseJSONAsHCLBody(src, path)
 	}
-	f, diags := hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
+	f, diags := hclcache.ParseConfig(ctx, src, path)
 	if diags.HasErrors() {
 		return nil, false
 	}
@@ -491,7 +515,7 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 		if err != nil {
 			continue
 		}
-		for attrName, attr := range parseVarsFile(src, p) {
+		for attrName, attr := range parseVarsFile(ctx, src, p) {
 			v, attrDiags := attr.Expr.Value(emptyCtx)
 			if !attrDiags.HasErrors() && v.IsKnown() {
 				out[attrName] = v
@@ -506,13 +530,13 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 
 // parseVarsFile returns the assignments of a variable definitions file, in
 // native or JSON syntax.
-func parseVarsFile(src []byte, path string) hcl.Attributes {
+func parseVarsFile(ctx context.Context, src []byte, path string) hcl.Attributes {
 	var file *hcl.File
 	var diags hcl.Diagnostics
 	if tfpath.IsTFVarsJSON(path) {
 		file, diags = hcljson.Parse(src, path)
 	} else {
-		file, diags = hclsyntax.ParseConfig(src, path, hcl.Pos{Line: 1, Column: 1})
+		file, diags = hclcache.ParseConfig(ctx, src, path)
 	}
 	if diags.HasErrors() || file == nil {
 		return nil

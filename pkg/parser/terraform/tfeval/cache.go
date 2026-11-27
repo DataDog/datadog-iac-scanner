@@ -49,15 +49,18 @@ type evalCacheKey struct {
 // part of the cache key.
 type evalCacheEntry struct {
 	resources *resourceTree
+	scope     *ModuleScope
 	// instances are the module calls evaluated inside this evaluation.
-	instances         []ModuleInstance
-	outputs           map[string]cty.Value
-	visitedDirs       *directorySet
-	baseAddr          string
-	baseChain         *callChain
-	stoppedDirs       []string
-	enteredIdentities *directorySet
-	blockedIdentities *directorySet
+	instances            []ModuleInstance
+	outputs              map[string]cty.Value
+	visitedDirs          *directorySet
+	baseAddr             string
+	baseChain            *callChain
+	stoppedDirs          []string
+	droppedFiles         []string
+	enteredIdentities    *directorySet
+	blockedIdentities    *directorySet
+	hasUnresolvedModules bool
 }
 
 // rebase returns the cached resources as they would have been recorded had the
@@ -116,8 +119,10 @@ func sameCallSite(a, b *CallSite) bool {
 // Reuse depends on the cycle decisions made by a subtree, not its exact callers.
 // Native values may be reused between caller scopes; their call chains are rebound.
 type evaluationRun struct {
-	partial map[evalCacheKey][]partialEvalCacheEntry
-	effects *evaluationEffects
+	partial           map[evalCacheKey][]partialEvalCacheEntry
+	effects           *evaluationEffects
+	unresolvedModules bool
+	droppedFiles      map[string]bool
 }
 
 type partialEvalCacheEntry struct {
@@ -150,10 +155,12 @@ func (r *evaluationRun) rememberPartial(key *evalCacheKey, inputs map[string]cty
 // stop, even if a sibling or earlier root already marked that directory. This
 // keeps repeated stops compact and lets speculative pre-passes roll back alone.
 type evaluationEffects struct {
-	parent  *evaluationEffects
-	stops   map[string]bool
-	entered *directorySet
-	blocked *directorySet
+	parent            *evaluationEffects
+	stops             map[string]bool
+	droppedFiles      map[string]bool
+	entered           *directorySet
+	blocked           *directorySet
+	unresolvedModules bool
 }
 
 func (f *evaluationEffects) recordDecision(dir string, blocked bool) {
@@ -168,6 +175,49 @@ func (r *evaluationRun) beginEffects() *evaluationEffects {
 	frame := &evaluationEffects{parent: r.effects, entered: &directorySet{}, blocked: &directorySet{}}
 	r.effects = frame
 	return frame
+}
+
+func sortedDroppedFileSet(files map[string]bool) []string {
+	out := make([]string, 0, len(files))
+	for file := range files {
+		out = append(out, file)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (r *evaluationRun) recordDroppedFiles(files []string) {
+	if r == nil || r.effects == nil || len(files) == 0 {
+		return
+	}
+	if r.effects.droppedFiles == nil {
+		r.effects.droppedFiles = make(map[string]bool, len(files))
+	}
+	for _, file := range files {
+		r.effects.droppedFiles[file] = true
+	}
+}
+
+func (r *evaluationRun) commitDroppedFiles(frame *evaluationEffects) {
+	if len(frame.droppedFiles) == 0 {
+		return
+	}
+	files := &r.droppedFiles
+	if frame.parent != nil {
+		files = &frame.parent.droppedFiles
+	}
+	if *files == nil {
+		*files = make(map[string]bool, len(frame.droppedFiles))
+	}
+	for file := range frame.droppedFiles {
+		(*files)[file] = true
+	}
+}
+
+func (r *evaluationRun) recordUnresolvedModule() {
+	if r != nil && r.effects != nil {
+		r.effects.unresolvedModules = true
+	}
 }
 
 func (r *evaluationRun) recordStop(dir string, notEvaluated map[string]bool) {
@@ -195,6 +245,14 @@ func (r *evaluationRun) finishEffects(frame *evaluationEffects, notEvaluated map
 			}
 		}
 		return
+	}
+	r.commitDroppedFiles(frame)
+	if frame.unresolvedModules {
+		if frame.parent != nil {
+			frame.parent.unresolvedModules = true
+		} else {
+			r.unresolvedModules = true
+		}
 	}
 	if frame.parent == nil || len(frame.stops) == 0 {
 		return

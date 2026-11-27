@@ -44,6 +44,25 @@ func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) m
 	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, r.documentScope, newRenderer(ctx, r))
 }
 
+// EvalContextForFile overlays the input bindings selected for filename on base.
+// The caller supplies the lexical context so iteration and dynamic-block
+// bindings already present there remain in scope.
+func (r *ResolvedResource) EvalContextForFile(filename string, base *hcl.EvalContext) *hcl.EvalContext {
+	if base == nil && r != nil && r.Scope != nil {
+		base = r.Scope.EvalContext()
+	}
+	if base == nil {
+		base = &hcl.EvalContext{}
+	}
+	if r == nil || r.documentScope == nil {
+		return base
+	}
+	if view := r.documentScope.files[filename]; view != nil && len(view.bindings) > 0 {
+		return partial.Scope(base, view.bindings)
+	}
+	return base
+}
+
 // newRenderer renders r's attributes in the context they were evaluated in.
 type documentRenderer struct {
 	*partial.Renderer
@@ -58,7 +77,7 @@ func newRenderer(scanCtx context.Context, r *ResolvedResource) *documentRenderer
 	rd := &partial.Renderer{
 		Ctx: r.Scope.evalCtx, Source: partial.FileSources(r.Scope.sources), Reference: references.forFile(nil),
 	}
-	return &documentRenderer{Renderer: rd.WithBindings(documentIteration(r)), references: references}
+	return &documentRenderer{Renderer: rd.WithBindings(r.IterationBindings()), references: references}
 }
 
 func (r *documentRenderer) withSource(src *attrSource) *documentRenderer {
@@ -78,10 +97,11 @@ func (r *documentRenderer) withSource(src *attrSource) *documentRenderer {
 	return &next
 }
 
-// Root resources omit their iteration map during evaluation. Recover its
+// IterationBindings returns the resource's count/each iteration bindings.
+// Root resources omit their iteration map during evaluation; recover its
 // bindings from the concrete key and the already narrowed for_each value,
 // without evaluating or copying the original collection for every consumer.
-func documentIteration(r *ResolvedResource) map[string]cty.Value {
+func (r *ResolvedResource) IterationBindings() map[string]cty.Value {
 	if r.Iteration != nil {
 		return r.Iteration
 	}
@@ -735,7 +755,7 @@ type RemoteResolver func(
 ) (dir, packageRoot string, ok bool)
 
 func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string {
-	bodies, _, err := parseDir(context.Background(), dir, "", nil, fsys)
+	bodies, _, _, err := parseDir(context.Background(), dir, "", nil, fsys)
 	if err != nil {
 		return nil
 	}

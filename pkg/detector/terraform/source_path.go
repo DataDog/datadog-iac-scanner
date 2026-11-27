@@ -261,6 +261,20 @@ func (d *DetectKindLine) sourceVulnerabilityLines(block *hclsyntax.Block, line i
 	}
 }
 
+// RemediationPoint computes the HCL insertion point (1-based line and column)
+// for a finding located at line within block.
+func RemediationPoint(block *hclsyntax.Block, line int, file *model.FileMetadata) (remLine, remCol int) {
+	if block == nil || file == nil {
+		return 0, 0
+	}
+	d := &DetectKindLine{}
+	heredocs, indexed := file.LinesContaining("<<")
+	if indexed && heredocs == nil {
+		heredocs = []int{}
+	}
+	return calculateInsertionPointWith(block, line, file.Lines(), heredocs, d.sourceContainingStructure)
+}
+
 func (d *DetectKindLine) sourceContainingStructure(block *hclsyntax.Block, line int) (name string, start, end hcl.Pos, isAttr bool) {
 	blocks := block.Body.Blocks
 	// Sibling blocks are in source order. Searching by end line preserves the

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func instanceAddresses(instances []ModuleInstance) map[string]string {
@@ -110,6 +111,7 @@ module "loop" { source = "../loop" }
 	addresses := make([]string, 0)
 	for _, instance := range e.TakeModuleInstances() {
 		addresses = append(addresses, instance.ModuleAddress)
+		require.Nil(t, instance.Scope, "module call tracking alone must not retain relation scopes")
 	}
 	sort.Strings(addresses)
 	require.Equal(t, []string{"module.loop", "module.loop.module.leaf", "module.ok"}, addresses)
@@ -131,10 +133,52 @@ module "b" { source = "../leaf" }
 	require.NoError(t, err)
 	require.Empty(t, e.TakeModuleInstances())
 	require.Empty(t, e.Fork().TakeModuleInstances())
+	for key, entry := range e.cache {
+		if key.dir != stack {
+			require.Nil(t, entry.scope, "untracked child evaluations must not retain module scopes")
+		}
+	}
 
 	e.SetTrackModuleInstances(true)
 	fork := e.Fork()
 	_, _, _, err = fork.EvaluateModule(context.Background(), stack, nil)
 	require.NoError(t, err)
 	require.Len(t, fork.TakeModuleInstances(), 2, "forks inherit the setting")
+}
+
+func TestEvaluateModule_TrackedInstancesExposeOutputOnlyScopes(t *testing.T) {
+	root := t.TempDir()
+	writeModule(t, root, "leaf", map[string]string{"main.tf": `
+variable "selected" {}
+output "selected" { value = var.selected }
+`})
+	stack := writeModule(t, root, "stack", map[string]string{
+		"main.tf": `
+module "leaf" {
+  source = "../leaf"
+  selected = "value"
+}
+output "selected" { value = module.leaf.selected }
+`,
+	})
+
+	e := New()
+	e.SetTrackModuleInstances(true)
+	e.SetTrackModuleScopes(true)
+	_, outputs, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.True(t, outputs["selected"].IsKnown())
+	require.Equal(t, cty.StringVal("value"), outputs["selected"])
+	instances := e.TakeModuleInstances()
+	require.Len(t, instances, 1)
+	require.NotNil(t, instances[0].Scope)
+	require.NotEmpty(t, instances[0].Scope.Bodies)
+	require.NotEmpty(t, instances[0].Scope.Bodies[0].Blocks)
+
+	_, cachedOutputs, _, err := e.EvaluateModule(context.Background(), stack, nil)
+	require.NoError(t, err)
+	require.Equal(t, cty.StringVal("value"), cachedOutputs["selected"])
+	cachedInstances := e.TakeModuleInstances()
+	require.Len(t, cachedInstances, 1)
+	require.NotNil(t, cachedInstances[0].Scope, "cache hits must rebase and preserve output-only scopes")
 }

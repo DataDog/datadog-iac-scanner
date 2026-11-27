@@ -1,0 +1,808 @@
+/*
+ * Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
+ *
+ * This product includes software developed at Datadog (https://www.datadoghq.com)  Copyright 2024 Datadog, Inc.
+ */
+
+// Package contract converts evaluated Terraform roots (HCL, .tf.json) and
+// Terraform plan JSON files into platform-agnostic policy.Unit inputs for
+// Contract v2 Rego rules, using explicit 4-state value provenance (Known,
+// Unknown, Null, Absent) without sentinel strings.
+package contract
+
+import (
+	"encoding/json"
+	"math/big"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/tfeval"
+	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
+)
+
+const (
+	functionJSONEncode = "jsonencode"
+	jsonNullLiteral    = "null"
+	metaArgCount       = "count"
+	metaArgForEach     = "for_each"
+	metaArgDependsOn   = "depends_on"
+	blockTypeDynamic   = "dynamic"
+	platformKeySource  = "source_kind"
+	platformKeyModule  = "module_address"
+	platformKeyInst    = "instance_key"
+	sourceKindHCL      = "hcl"
+	sourceKindPlan     = "plan"
+)
+
+var resourceMetaArgs = map[string]bool{
+	metaArgCount:     true,
+	metaArgForEach:   true,
+	"provider":       true,
+	metaArgDependsOn: true,
+	"lifecycle":      true,
+}
+
+var moduleMetaArgs = map[string]bool{
+	metaArgCount:     true,
+	metaArgForEach:   true,
+	"providers":      true,
+	metaArgDependsOn: true,
+}
+
+func hclRangeToSpan(r hcl.Range) policy.SourceSpan {
+	if r.Start.Line <= 0 {
+		return policy.SourceSpan{}
+	}
+	endLine := max(r.End.Line, r.Start.Line)
+	startCol := max(r.Start.Column, 1)
+	endCol := max(r.End.Column, 1)
+	if endLine == r.Start.Line && endCol < startCol {
+		endCol = startCol
+	}
+	return policy.SourceSpan{
+		File:      r.Filename,
+		StartLine: r.Start.Line,
+		StartCol:  startCol,
+		EndLine:   endLine,
+		EndCol:    endCol,
+	}
+}
+
+type bodyConvertIndex struct {
+	nestedBlockPaths   map[string]bool // full pathKey of any nested block field at any depth
+	blockBodies        map[string]bool // full pathKey of any block body ("" or "<blk>.<i>")
+	hasStaticBlock     map[string]bool // full pathKey of nested block fields with >=1 concrete block
+	incompleteDynPaths map[string]bool // full pathKey of nested block fields with an unresolved dynamic block
+}
+
+// convertBody converts an evaluated block's attributes into normalized Contract
+// v2 attributes (nested blocks always arrays at every depth, unknowns omitted),
+// 4-state ValueState, and per-path SourceSpans.
+// nolint:gocyclo
+func convertBody(
+	attrs map[string]cty.Value,
+	body *hclsyntax.Body,
+	dynCounts tfeval.DynamicCounts,
+	skipMeta map[string]bool,
+	headerRange hcl.Range,
+) (out map[string]any, state policy.ValueState, ranges map[string]policy.SourceSpan) {
+	out = make(map[string]any, len(attrs))
+	state = policy.ValueState{
+		Unknown:               make(map[string]bool),
+		Null:                  make(map[string]bool),
+		Written:               make(map[string]bool),
+		IncompleteCollections: make(map[string]bool),
+	}
+	ranges = make(map[string]policy.SourceSpan)
+	if sp := hclRangeToSpan(headerRange); sp.Valid() {
+		ranges[""] = sp
+	}
+
+	idx := &bodyConvertIndex{
+		nestedBlockPaths:   map[string]bool{},
+		blockBodies:        map[string]bool{"": true},
+		hasStaticBlock:     map[string]bool{},
+		incompleteDynPaths: map[string]bool{},
+	}
+	if body != nil {
+		for name, attr := range body.Attributes {
+			if skipMeta[name] {
+				continue
+			}
+			pk := policy.EscapeStep(policy.Key(name))
+			state.Written[pk] = true
+			if sp := hclRangeToSpan(attr.Range()); sp.Valid() {
+				ranges[pk] = sp
+			}
+			collectExprRanges(attr.Expr, pk, ranges)
+		}
+		recordNestedBodyMetadata(body, dynCounts, "", skipMeta, idx, &state, ranges)
+		recordJSONDynamicBlocks(body, skipMeta, &state)
+	}
+
+	for name, val := range attrs {
+		if skipMeta[name] || name == blockTypeDynamic {
+			continue
+		}
+		pk := policy.EscapeStep(policy.Key(name))
+		if idx.nestedBlockPaths[pk] {
+			items := convertNestedBlocks(val, pk, idx, &state)
+			if len(items) > 0 {
+				out[name] = items
+			}
+			continue
+		}
+		converted, present := convertValue(val, pk, idx, &state)
+		if present {
+			out[name] = converted
+		}
+	}
+
+	for dynPath := range idx.incompleteDynPaths {
+		state.IncompleteCollections[dynPath] = true
+		state.Written[dynPath] = true
+		if !idx.hasStaticBlock[dynPath] {
+			state.Unknown[dynPath] = true
+		}
+	}
+
+	// Compact empty maps to nil for smaller memory footprint.
+	if len(state.Unknown) == 0 {
+		state.Unknown = nil
+	}
+	if len(state.Null) == 0 {
+		state.Null = nil
+	}
+	if len(state.Written) == 0 {
+		state.Written = nil
+	}
+	if len(state.IncompleteCollections) == 0 {
+		state.IncompleteCollections = nil
+	}
+	return out, state, ranges
+}
+
+// recordJSONDynamicBlocks keeps the collections generated by .tf.json
+// `dynamic` blocks open. JSON bodies are converted without a schema, so their
+// nested blocks are plain attributes and dynamic blocks are never expanded:
+// the known elements of such a collection are only the static ones. The
+// generated block types are read from the source keys, which are literal in
+// valid JSON even when the content cannot be evaluated.
+func recordJSONDynamicBlocks(body *hclsyntax.Body, skipMeta map[string]bool, state *policy.ValueState) {
+	mark := func(path string, hasStatic bool) {
+		state.IncompleteCollections[path] = true
+		state.Written[path] = true
+		if !hasStatic {
+			state.Unknown[path] = true
+		}
+	}
+	for name, attr := range body.Attributes {
+		if skipMeta[name] {
+			continue
+		}
+		if name == blockTypeDynamic {
+			for _, generated := range jsonDynamicBlockTypes(attr.Expr, false) {
+				if !skipMeta[generated] {
+					_, hasStatic := body.Attributes[generated]
+					mark(policy.JoinPathKey("", policy.Key(generated)), hasStatic)
+				}
+			}
+			continue
+		}
+		walkJSONNestedDynamic(attr.Expr, policy.JoinPathKey("", policy.Key(name)), mark)
+	}
+}
+
+// walkJSONNestedDynamic finds `dynamic` keys inside nested JSON block objects.
+// Unlike the resource body, a nested object may be an ordinary map attribute,
+// so a key named `dynamic` counts only when its value has the shape of
+// dynamic block specifications (objects with `for_each` or `content`).
+func walkJSONNestedDynamic(expr hclsyntax.Expression, path string, mark func(string, bool)) {
+	switch typed := expr.(type) {
+	case *hclsyntax.TupleConsExpr:
+		for i, elem := range typed.Exprs {
+			walkJSONNestedDynamic(elem, policy.JoinPathKey(path, policy.Index(int64(i))), mark)
+		}
+	case *hclsyntax.ObjectConsExpr:
+		keys := map[string]bool{}
+		for _, item := range typed.Items {
+			if key, ok := hclObjectKey(item.KeyExpr); ok {
+				keys[key] = true
+			}
+		}
+		for _, item := range typed.Items {
+			key, ok := hclObjectKey(item.KeyExpr)
+			if !ok {
+				continue
+			}
+			if key == blockTypeDynamic {
+				for _, generated := range jsonDynamicBlockTypes(item.ValueExpr, true) {
+					mark(policy.JoinPathKey(path, policy.Key(generated)), keys[generated])
+				}
+				continue
+			}
+			walkJSONNestedDynamic(item.ValueExpr, policy.JoinPathKey(path, policy.Key(key)), mark)
+		}
+	}
+}
+
+// jsonDynamicBlockTypes returns the block types named by a `dynamic` object
+// (or a list of such objects). With requireSpec, every named value must be a
+// dynamic block specification, or the object is not treated as one.
+func jsonDynamicBlockTypes(expr hclsyntax.Expression, requireSpec bool) []string {
+	var types []string
+	switch typed := expr.(type) {
+	case *hclsyntax.TupleConsExpr:
+		for _, elem := range typed.Exprs {
+			nested := jsonDynamicBlockTypes(elem, requireSpec)
+			if requireSpec && nested == nil {
+				return nil
+			}
+			types = append(types, nested...)
+		}
+	case *hclsyntax.ObjectConsExpr:
+		for _, item := range typed.Items {
+			key, ok := hclObjectKey(item.KeyExpr)
+			if !ok {
+				continue
+			}
+			if requireSpec && !isJSONDynamicSpec(item.ValueExpr) {
+				return nil
+			}
+			types = append(types, key)
+		}
+	}
+	return types
+}
+
+func isJSONDynamicSpec(expr hclsyntax.Expression) bool {
+	switch typed := expr.(type) {
+	case *hclsyntax.TupleConsExpr:
+		for _, elem := range typed.Exprs {
+			if !isJSONDynamicSpec(elem) {
+				return false
+			}
+		}
+		return len(typed.Exprs) > 0
+	case *hclsyntax.ObjectConsExpr:
+		for _, item := range typed.Items {
+			if key, ok := hclObjectKey(item.KeyExpr); ok && (key == "for_each" || key == "content") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hclObjectKey(expr hclsyntax.Expression) (string, bool) {
+	if wrapped, ok := expr.(*hclsyntax.ObjectConsKeyExpr); ok {
+		if keyword := hcl.ExprAsKeyword(wrapped); keyword != "" {
+			return keyword, true
+		}
+		expr = wrapped.Wrapped
+	}
+	value, diags := expr.Value(nil)
+	if diags.HasErrors() || !value.IsKnown() || value.IsNull() || value.Type() != cty.String {
+		return "", false
+	}
+	return value.AsString(), true
+}
+
+// nolint:gocyclo
+func recordNestedBodyMetadata(
+	body *hclsyntax.Body,
+	dynCounts tfeval.DynamicCounts,
+	prefix string,
+	skipMeta map[string]bool,
+	idx *bodyConvertIndex,
+	state *policy.ValueState,
+	ranges map[string]policy.SourceSpan,
+) {
+	if body == nil {
+		return
+	}
+	// Track block index per nested block type in source order so static and
+	// expanded dynamic blocks map cleanly to 0, 1, 2, ...
+	idxByType := map[string]int{}
+	for _, blk := range body.Blocks {
+		if blk.Type == blockTypeDynamic {
+			if !dynamicblock.Is(blk) {
+				continue
+			}
+			genType := dynamicblock.GeneratedType(blk)
+			if genType == "" || skipMeta[genType] {
+				continue
+			}
+			genPath := policy.JoinPathKey(prefix, policy.Key(genType))
+			idx.nestedBlockPaths[genPath] = true
+			state.Written[genPath] = true
+			n := 0
+			if dynCounts != nil {
+				n = dynCounts[blk]
+			}
+			content := dynamicblock.Content(blk)
+			if n == tfeval.DynamicKeptAsWritten || n < 0 {
+				idx.incompleteDynPaths[genPath] = true
+				continue
+			}
+			for i := 0; i < n; i++ {
+				pos := idxByType[genType]
+				idxByType[genType] = pos + 1
+				idx.hasStaticBlock[genPath] = true
+				elemPath := policy.JoinPathKey(genPath, policy.Index(int64(pos)))
+				idx.blockBodies[elemPath] = true
+				if content != nil {
+					if sp := hclRangeToSpan(content.SrcRange); sp.Valid() {
+						ranges[elemPath] = sp
+					}
+					recordSubBodyWrittenAndRanges(content, dynCounts, elemPath, idx, state, ranges)
+				} else if sp := hclRangeToSpan(blk.DefRange()); sp.Valid() {
+					ranges[elemPath] = sp
+				}
+			}
+			continue
+		}
+		if skipMeta[blk.Type] {
+			continue
+		}
+		blkPath := policy.JoinPathKey(prefix, policy.Key(blk.Type))
+		idx.nestedBlockPaths[blkPath] = true
+		idx.hasStaticBlock[blkPath] = true
+		state.Written[blkPath] = true
+		pos := idxByType[blk.Type]
+		idxByType[blk.Type] = pos + 1
+		elemPath := policy.JoinPathKey(blkPath, policy.Index(int64(pos)))
+		idx.blockBodies[elemPath] = true
+		if sp := hclRangeToSpan(blk.DefRange()); sp.Valid() {
+			ranges[elemPath] = sp
+		}
+		recordSubBodyWrittenAndRanges(blk.Body, dynCounts, elemPath, idx, state, ranges)
+	}
+}
+
+func recordSubBodyWrittenAndRanges(
+	body *hclsyntax.Body,
+	dynCounts tfeval.DynamicCounts,
+	prefix string,
+	idx *bodyConvertIndex,
+	state *policy.ValueState,
+	ranges map[string]policy.SourceSpan,
+) {
+	if body == nil {
+		return
+	}
+	for name, attr := range body.Attributes {
+		pk := policy.JoinPathKey(prefix, policy.Key(name))
+		state.Written[pk] = true
+		if sp := hclRangeToSpan(attr.Range()); sp.Valid() {
+			ranges[pk] = sp
+		}
+		collectExprRanges(attr.Expr, pk, ranges)
+	}
+	recordNestedBodyMetadata(body, dynCounts, prefix, nil, idx, state, ranges)
+}
+
+func collectExprRanges(expr hclsyntax.Expression, prefix string, ranges map[string]policy.SourceSpan) {
+	switch e := expr.(type) {
+	case *hclsyntax.ParenthesesExpr:
+		collectExprRanges(e.Expression, prefix, ranges)
+	case *hclsyntax.FunctionCallExpr:
+		if e.Name == functionJSONEncode && len(e.Args) == 1 {
+			collectExprRanges(e.Args[0], prefix, ranges)
+		}
+	case *hclsyntax.TemplateExpr:
+		collectJSONTemplateRanges(e, prefix, ranges)
+	case *hclsyntax.ObjectConsExpr:
+		collectObjectExprRanges(e, prefix, ranges)
+	case *hclsyntax.TupleConsExpr:
+		for i, elem := range e.Exprs {
+			childPath := policy.JoinPathKey(prefix, policy.Index(int64(i)))
+			if sp := hclRangeToSpan(elem.Range()); sp.Valid() {
+				ranges[childPath] = sp
+			}
+			collectExprRanges(elem, childPath, ranges)
+		}
+	}
+}
+
+func collectObjectExprRanges(e *hclsyntax.ObjectConsExpr, prefix string, ranges map[string]policy.SourceSpan) {
+	for _, item := range e.Items {
+		keyVal, diags := item.KeyExpr.Value(nil)
+		if diags.HasErrors() || !keyVal.IsKnown() || keyVal.IsNull() || keyVal.Type() != cty.String {
+			continue
+		}
+		childPath := policy.JoinPathKey(prefix, policy.Key(keyVal.AsString()))
+		r := hcl.RangeBetween(item.KeyExpr.Range(), item.ValueExpr.Range())
+		if sp := hclRangeToSpan(r); sp.Valid() {
+			ranges[childPath] = sp
+		}
+		collectExprRanges(item.ValueExpr, childPath, ranges)
+	}
+}
+
+type jsonTemplateSourceChunk struct {
+	offset int
+	text   string
+	source hcl.Range
+}
+
+// JSON inside a string keeps its own field paths. Build a parseable template
+// skeleton while retaining the source range of every chunk; interpolation
+// values do not need to be known to locate concrete surrounding fields.
+func collectJSONTemplateRanges(expr *hclsyntax.TemplateExpr, prefix string, ranges map[string]policy.SourceSpan) {
+	if len(expr.Parts) == 0 {
+		return
+	}
+	first, ok := expr.Parts[0].(*hclsyntax.LiteralValueExpr)
+	if !ok || first.Val.Type() != cty.String {
+		return
+	}
+	leading := strings.TrimSpace(first.Val.AsString())
+	if leading == "" || (leading[0] != '{' && leading[0] != '[') {
+		return
+	}
+	var text strings.Builder
+	chunks := make([]jsonTemplateSourceChunk, 0, len(expr.Parts))
+	for _, part := range expr.Parts {
+		chunk := jsonNullLiteral
+		if literal, ok := part.(*hclsyntax.LiteralValueExpr); ok && literal.Val.Type() == cty.String {
+			chunk = literal.Val.AsString()
+		}
+		chunks = append(chunks, jsonTemplateSourceChunk{offset: text.Len(), text: chunk, source: part.Range()})
+		text.WriteString(chunk)
+	}
+	raw := []byte(text.String())
+	if !json.Valid(raw) {
+		return
+	}
+	index := newPlanSourceIndex(expr.Range().Filename, raw)
+	jsonRanges := map[string]policy.SourceSpan{}
+	walkPlanValueRanges(index, skipJSONWhitespace(raw, 0), len(raw), nil, jsonRanges)
+	for path, span := range jsonRanges {
+		offset := index.lineStarts[span.StartLine-1] + span.StartCol - 1
+		chunkIndex := sort.Search(len(chunks), func(i int) bool { return chunks[i].offset > offset }) - 1
+		if chunkIndex < 0 {
+			continue
+		}
+		key := prefix + "." + path
+		ranges[key] = jsonTemplateChunkSpan(&chunks[chunkIndex], offset)
+	}
+}
+
+func jsonTemplateChunkSpan(chunk *jsonTemplateSourceChunk, offset int) policy.SourceSpan {
+	span := hclRangeToSpan(chunk.source)
+	relative := min(max(offset-chunk.offset, 0), len(chunk.text))
+	before := chunk.text[:relative]
+	span.StartLine = min(chunk.source.Start.Line+strings.Count(before, "\n"), chunk.source.End.Line)
+	if newline := strings.LastIndex(before, "\n"); newline >= 0 {
+		span.StartCol = len(before) - newline
+	} else {
+		span.StartCol += len(before)
+	}
+	if span.StartLine == chunk.source.End.Line {
+		span.StartCol = min(span.StartCol, chunk.source.End.Column)
+	}
+	span.EndLine = span.StartLine
+	span.EndCol = span.StartCol + 1
+	return span
+}
+
+// convertNestedBlocks always normalizes a nested block value to []any at any depth.
+func convertNestedBlocks(v cty.Value, prefix string, idx *bodyConvertIndex, state *policy.ValueState) []any {
+	if v == cty.NilVal {
+		return nil
+	}
+	v, _ = v.UnmarkDeep()
+	if !v.IsKnown() {
+		state.Unknown[prefix] = true
+		state.IncompleteCollections[prefix] = true
+		return nil
+	}
+	if v.IsNull() {
+		state.Null[prefix] = true
+		return nil
+	}
+	ty := v.Type()
+	if ty.IsListType() || ty.IsTupleType() || ty.IsSetType() {
+		out := make([]any, 0, v.LengthInt())
+		pos := 0
+		for it := v.ElementIterator(); it.Next(); {
+			_, elem := it.Element()
+			elemPath := policy.JoinPathKey(prefix, policy.Index(int64(pos)))
+			pos++
+			elem, _ = elem.UnmarkDeep()
+			if !elem.IsKnown() {
+				state.Unknown[elemPath] = true
+				state.IncompleteCollections[prefix] = true
+				out = append(out, policy.UnknownSlot())
+				continue
+			}
+			conv, ok := convertValue(elem, elemPath, idx, state)
+			if ok {
+				out = append(out, conv)
+			} else {
+				out = append(out, nil)
+			}
+		}
+		return out
+	}
+	if ty.IsObjectType() || ty.IsMapType() {
+		elemPath := policy.JoinPathKey(prefix, policy.Index(0))
+		conv, ok := convertValue(v, elemPath, idx, state)
+		if ok {
+			return []any{conv}
+		}
+		return nil
+	}
+	return nil
+}
+
+// convertValue converts a cty.Value into plain Go JSON-compatible values while
+// omitting unknowns/nulls and recording their exact paths in state.
+// nolint:gocyclo
+func convertValue(v cty.Value, pathKey string, idx *bodyConvertIndex, state *policy.ValueState) (any, bool) {
+	if v == cty.NilVal {
+		return nil, false
+	}
+	v, _ = v.UnmarkDeep()
+	if !v.IsKnown() {
+		state.Unknown[pathKey] = true
+		ty := v.Type()
+		if ty.IsListType() || ty.IsTupleType() || ty.IsSetType() || ty.IsMapType() || ty.IsObjectType() || ty.Equals(cty.DynamicPseudoType) {
+			state.IncompleteCollections[pathKey] = true
+		}
+		return nil, false
+	}
+	if v.IsNull() {
+		state.Null[pathKey] = true
+		return nil, false
+	}
+	ty := v.Type()
+	switch {
+	case ty == cty.String:
+		return v.AsString(), true
+	case ty == cty.Bool:
+		return v.True(), true
+	case ty == cty.Number:
+		return exactNumber(v.AsBigFloat()), true
+	case ty.IsListType() || ty.IsTupleType() || ty.IsSetType():
+		out := make([]any, 0, v.LengthInt())
+		pos := 0
+		for it := v.ElementIterator(); it.Next(); {
+			_, elem := it.Element()
+			elemPath := policy.JoinPathKey(pathKey, policy.Index(int64(pos)))
+			pos++
+			elem, _ = elem.UnmarkDeep()
+			if !elem.IsKnown() {
+				state.Unknown[elemPath] = true
+				// Preserve exact list index so Attributes, State, Ranges, and
+				// BeforeValue never shift out of sync. Do not mark the list's
+				// size incomplete — its length is known; element uncertainty is
+				// tracked via state.Unknown[elemPath].
+				out = append(out, policy.UnknownSlot())
+				continue
+			}
+			if elem.IsNull() {
+				state.Null[elemPath] = true
+				out = append(out, nil)
+				continue
+			}
+			if cv, ok := convertValue(elem, elemPath, idx, state); ok {
+				out = append(out, cv)
+			} else {
+				out = append(out, policy.UnknownSlot())
+			}
+		}
+		return out, true
+	case ty.IsMapType() || ty.IsObjectType():
+		out := make(map[string]any, v.LengthInt())
+		isBlockBody := idx != nil && idx.blockBodies[pathKey]
+		for it := v.ElementIterator(); it.Next(); {
+			k, elem := it.Element()
+			k, _ = k.UnmarkDeep()
+			if !k.IsKnown() || k.IsNull() || k.Type() != cty.String {
+				state.IncompleteCollections[pathKey] = true
+				continue
+			}
+			keyStr := k.AsString()
+			if isBlockBody && keyStr == blockTypeDynamic {
+				continue
+			}
+			childPath := policy.JoinPathKey(pathKey, policy.Key(keyStr))
+			if idx != nil && idx.nestedBlockPaths[childPath] {
+				items := convertNestedBlocks(elem, childPath, idx, state)
+				if len(items) > 0 {
+					out[keyStr] = items
+				}
+				continue
+			}
+			if cv, ok := convertValue(elem, childPath, idx, state); ok {
+				out[keyStr] = cv
+			}
+		}
+		return out, true
+	case ty.Equals(cty.DynamicPseudoType):
+		state.Unknown[pathKey] = true
+		return nil, false
+	default:
+		return nil, false
+	}
+}
+
+func exactNumber(n *big.Float) any {
+	if n == nil {
+		return int64(0)
+	}
+	if n.IsInt() {
+		if i, acc := n.Int64(); acc == big.Exact {
+			return i
+		}
+	}
+	return json.Number(n.Text('f', -1))
+}
+
+// buildBeforeExtractor returns a SourceMapping.BeforeValue function that reads
+// literal attribute values directly from HCL source bytes, aligning nested
+// block indices with expanded dynamic blocks via dynCounts. When the written
+// expression is dynamic (e.g. var.x) or belongs to a generated dynamic block,
+// it returns ("", false) so the scanner skips auto-fix without dropping the finding.
+func buildBeforeExtractor(body *hclsyntax.Body, dynCounts tfeval.DynamicCounts, src []byte) func(policy.Path) (string, bool) {
+	if body == nil || len(src) == 0 {
+		return nil
+	}
+	return func(path policy.Path) (string, bool) {
+		expr, ok := locateAttrExpr(body, dynCounts, path)
+		if !ok || expr == nil {
+			return "", false
+		}
+		return literalBeforeText(expr, src)
+	}
+}
+
+// Effective override bodies can contain expressions from several files. Each
+// literal's byte range must be read from that expression's own captured source.
+func buildOverrideBeforeExtractor(
+	body *hclsyntax.Body, counts tfeval.DynamicCounts, scope *tfeval.ModuleScope,
+) func(policy.Path) (string, bool) {
+	if body == nil || scope == nil {
+		return nil
+	}
+	return func(path policy.Path) (string, bool) {
+		expression, ok := locateAttrExpr(body, counts, path)
+		if !ok || expression == nil {
+			return "", false
+		}
+		source, ok := scope.Source(expression.Range().Filename)
+		if !ok {
+			return "", false
+		}
+		return literalBeforeText(expression, source)
+	}
+}
+
+// nolint:gocyclo
+func locateAttrExpr(body *hclsyntax.Body, dynCounts tfeval.DynamicCounts, path policy.Path) (hclsyntax.Expression, bool) {
+	if body == nil || len(path) == 0 {
+		return nil, false
+	}
+	key, isProp := path[0].Property()
+	if !isProp {
+		return nil, false
+	}
+	if len(path) == 1 {
+		attr, ok := body.Attributes[key]
+		if !ok {
+			return nil, false
+		}
+		return attr.Expr, true
+	}
+	rest := path[1:]
+	wantIdx := 0
+	if pos, isIdx := rest[0].Position(); isIdx {
+		if pos < 0 {
+			return nil, false
+		}
+		wantIdx = int(pos)
+		rest = rest[1:]
+	}
+	// Walk static and dynamic blocks of type key in source order so expanded
+	// dynamic blocks advance the index past generated entries without
+	// misattributing a static block's expression to a generated block.
+	curIdx := 0
+	for _, blk := range body.Blocks {
+		if blk.Type == blockTypeDynamic {
+			if !dynamicblock.Is(blk) || dynamicblock.GeneratedType(blk) != key {
+				continue
+			}
+			n := 0
+			if dynCounts != nil {
+				n = dynCounts[blk]
+			}
+			if n < 0 {
+				// Unresolved dynamic block: subsequent indices are uncertain.
+				return nil, false
+			}
+			if wantIdx < curIdx+n {
+				// Generated dynamic block instance cannot be patched as a single static literal.
+				return nil, false
+			}
+			curIdx += n
+			continue
+		}
+		if blk.Type != key {
+			continue
+		}
+		if curIdx == wantIdx {
+			return locateAttrExpr(blk.Body, dynCounts, rest)
+		}
+		curIdx++
+	}
+	return nil, false
+}
+
+func literalBeforeText(expr hclsyntax.Expression, src []byte) (string, bool) {
+	switch e := expr.(type) {
+	case *hclsyntax.ParenthesesExpr:
+		return literalBeforeText(e.Expression, src)
+	case *hclsyntax.LiteralValueExpr:
+		r := e.Range()
+		if r.Start.Byte >= 0 && r.End.Byte <= len(src) && r.Start.Byte < r.End.Byte {
+			return strings.TrimSpace(string(src[r.Start.Byte:r.End.Byte])), true
+		}
+	case *hclsyntax.TemplateExpr:
+		if e.IsStringLiteral() {
+			v, diags := e.Value(nil)
+			if !diags.HasErrors() && v.IsKnown() && !v.IsNull() && v.Type() == cty.String {
+				return v.AsString(), true
+			}
+		}
+	}
+	return "", false
+}
+
+// buildRemediationPoint wraps terraform detector's RemediationPoint for an HCL block.
+func buildRemediationPoint(
+	blk *hclsyntax.Block,
+	fn func(*hclsyntax.Block, int, *model.FileMetadata) (int, int),
+) func(int, *model.FileMetadata) (int, int, bool) {
+	if blk == nil || fn == nil {
+		return nil
+	}
+	return func(line int, file *model.FileMetadata) (int, int, bool) {
+		if file == nil {
+			return 0, 0, false
+		}
+		l, c := fn(blk, line, file)
+		if l <= 0 {
+			return 0, 0, false
+		}
+		return l, c, true
+	}
+}
+
+func formatInstanceKey(k cty.Value) string {
+	if k == cty.NilVal {
+		return ""
+	}
+	k, _ = k.UnmarkDeep()
+	if !k.IsKnown() || k.IsNull() {
+		return ""
+	}
+	switch k.Type() {
+	case cty.Number:
+		if i, acc := k.AsBigFloat().Int64(); acc == big.Exact {
+			return "[" + strconv.FormatInt(i, 10) + "]"
+		}
+		return "[" + k.AsBigFloat().Text('f', -1) + "]"
+	case cty.String:
+		return "[" + strconv.Quote(k.AsString()) + "]"
+	default:
+		return ""
+	}
+}

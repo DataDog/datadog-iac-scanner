@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/policy"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
@@ -251,6 +252,42 @@ func TestEvaluateModule_TofuJSONShadowsTfJSON(t *testing.T) {
 		t.Fatalf("got %d resources, want 1: %#v", len(resources), resources)
 	}
 	requireString(t, findResource(t, resources, "aws_s3_bucket", "live").Attributes, "bucket", "from-tofu")
+}
+
+func TestTakeDroppedFiles(t *testing.T) {
+	const root = "/repo"
+	mainPath := filepath.Join(root, "main.tf")
+	brokenPath := filepath.Join(root, "broken.tf")
+	tooLargePath := filepath.Join(root, "too-large.tf")
+	files := map[string][]byte{
+		mainPath:     []byte(`resource "aws_s3_bucket" "b" { bucket = "logs" }`),
+		brokenPath:   []byte("{{ broken }}"),
+		tooLargePath: []byte(`resource "aws_s3_bucket" "large" { bucket = "` + strings.Repeat("x", 32) + `" }`),
+	}
+	baseFS := vfs.NewMemFS(files)
+	fsys := readErrorFS{FS: baseFS, path: brokenPath}
+	evaluator := NewWithFS(fsys)
+	ctx := tfmodules.WithMaxConfigFileBytes(t.Context(), 64)
+	_, _, _, err := evaluator.EvaluateModule(ctx, root, nil)
+	require.NoError(t, err)
+	dropped := evaluator.TakeDroppedFiles()
+	require.ElementsMatch(t, []string{brokenPath, tooLargePath}, dropped)
+	require.Empty(t, evaluator.TakeDroppedFiles(), "TakeDroppedFiles drains only files seen since the previous call")
+	_, _, _, err = evaluator.EvaluateModule(ctx, root, nil)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{brokenPath, tooLargePath}, evaluator.TakeDroppedFiles(), "cached module evaluations retain their dropped-file footprint")
+}
+
+type readErrorFS struct {
+	vfs.FS
+	path string
+}
+
+func (f readErrorFS) ReadFile(path string) ([]byte, error) {
+	if path == f.path {
+		return nil, errors.New("injected read error")
+	}
+	return f.FS.ReadFile(path)
 }
 
 func TestEvaluateModule_TofuShadowsTf(t *testing.T) {
