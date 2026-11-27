@@ -808,7 +808,7 @@ func TestParser_GitLabDeclarationsOnly(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestParser_FileSelection(t *testing.T) {
+func TestParser_ParseContract(t *testing.T) {
 	ctx := context.Background()
 	parsers, err := parser.NewBuilder(ctx).Add(&Parser{}).Build([]string{"cicd"}, []string{""})
 	require.NoError(t, err)
@@ -826,13 +826,9 @@ func TestParser_FileSelection(t *testing.T) {
 	} {
 		t.Run(tt.path, func(t *testing.T) {
 			t.Parallel()
-			selected := root.ForFile(tt.path, content)
-			want := model.ParseIdentity{Provider: tt.provider, Contract: tt.contract}
-			require.Equal(t, want, selected.Identity())
-			require.Equal(t, model.ParseIdentity{}, root.Identity(), "selection must not mutate the scan parser")
-			parsed, err := selected.ParseContent(ctx, tt.path, content, false, false, 1)
+			require.Equal(t, tt.contract, root.Contract(tt.path))
+			parsed, err := root.ParseContent(ctx, tt.path, content, false, false, 1)
 			require.NoError(t, err)
-			require.Equal(t, want, parsed.Identity)
 			encoded, err := json.Marshal(parsed.Docs)
 			require.NoError(t, err)
 			if tt.provider == provider.GitLab {
@@ -840,9 +836,8 @@ func TestParser_FileSelection(t *testing.T) {
 			} else {
 				require.Contains(t, string(encoded), "_parsed_run", "legacy fallback retains enrichment")
 			}
-			lines, err := selected.ParseContent(parser.WithLineInfoOnly(ctx), tt.path, content, false, false, 1)
+			_, err = root.ParseContent(parser.WithLineInfoOnly(ctx), tt.path, content, false, false, 1)
 			require.NoError(t, err)
-			require.Equal(t, want, lines.Identity)
 		})
 	}
 }

@@ -100,17 +100,17 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if err != nil {
 		return errors.Wrapf(err, "failed to get file content: %s", filename)
 	}
-	// Select the parser once for cache lookup, metadata and lazy reparsing.
-	fileParser := s.Parser.ForFile(filename, *content)
-	if shared := s.lookupSharedParse(fileParser.Identity().Contract, *content); shared != nil {
-		fileCommands := fileParser.CommentsCommands(ctx, filename, *content)
-		return s.sinkSharedParse(ctx, fileParser, filename, scanID, shared.content, shared,
+	// Use the same path-derived contract for cache lookup and insertion.
+	contract := s.Parser.Contract(filename)
+	if shared := s.lookupSharedParse(contract, *content); shared != nil {
+		fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
+		return s.sinkSharedParse(ctx, filename, scanID, shared.content, shared,
 			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
 	}
 
 	// Line info is rebuilt on demand (see SetLineInfoLoader below), so the
 	// documents' line markers are never read.
-	documents, err := fileParser.Parse(iacparser.WithLazyLineInfo(ctx), filename, *content,
+	documents, err := s.Parser.Parse(iacparser.WithLazyLineInfo(ctx), filename, *content,
 		openAPIResolveReferences, c.IsMinified, maxResolverDepth)
 	if err != nil {
 		reason := s.parseFailureReason(filename, *content)
@@ -127,9 +127,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if documents.Kind == model.KindTerraform {
 		// Checkout placeholders carry only the target path. File directives,
 		// like line detection, must use the resolved Terraform source.
-		fileCommands = fileParser.CommentsCommandsFromString(ctx, filename, documents.Content)
+		fileCommands = s.Parser.CommentsCommandsFromString(ctx, filename, documents.Content)
 	} else {
-		fileCommands = fileParser.CommentsCommands(ctx, filename, *content)
+		fileCommands = s.Parser.CommentsCommands(ctx, filename, *content)
 	}
 
 	linesResolved := 0
@@ -150,7 +150,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	var sharedDocs []model.Document
 
 	for docIdx := range documents.Docs {
-		if doc := s.sinkDocument(ctx, fileParser, filename, scanID, &documents, docIdx, shareable,
+		if doc := s.sinkDocument(ctx, filename, scanID, &documents, docIdx, shareable,
 			c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content, fileCommands); doc != nil {
 			sharedDocs = append(sharedDocs, doc)
 		}
@@ -158,7 +158,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	if shareable && len(sharedDocs) == len(documents.Docs) {
 		// Every document sanitized cleanly: cache the sanitized trees for later
 		// files with identical content (top-level copies, children shared).
-		s.storeSharedParse(s.internContentBytes(*content), &documents, sharedDocs)
+		s.storeSharedParse(contract, s.internContentBytes(*content), &documents, sharedDocs)
 	}
 	s.Tracker.TrackFileParse(filename)
 	if documents.TerraformPlan {
@@ -176,7 +176,6 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 // cache (nil when the document was skipped or the parse is not shareable).
 func (s *Service) sinkDocument(
 	ctx context.Context,
-	fileParser *iacparser.Parser,
 	filename, scanID string,
 	documents *iacparser.ParsedDocument,
 	docIdx int,
@@ -219,7 +218,6 @@ func (s *Service) sinkDocument(
 	key := s.documentKey(filename, documents.Kind, docIdx)
 	file := model.FileMetadata{
 		SourceDocumentIndex: docIdx,
-		ParseIdentity:       fileParser.Identity(),
 
 		DocumentKey:   key,
 		ID:            key.ID(),
@@ -235,12 +233,12 @@ func (s *Service) sinkDocument(
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
-		fileParser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
 	file.SetLineInfoOptional()
 	if documents.Kind == model.KindTerraformPlan {
 		file.SetLineInfoRetention(s.planLineInfoRetention())
 		if !s.LineInfoPayload {
-			file.SetLineInfoSectionLoader(newLineInfoSectionLoader(fileParser, filename))
+			file.SetLineInfoSectionLoader(newLineInfoSectionLoader(s.Parser, filename))
 		}
 	}
 	// Lazy lines, as in sinkContent.
@@ -257,7 +255,6 @@ func (s *Service) sinkDocument(
 // top-level copies, per-file id and loader, cached tracker counts.
 func (s *Service) sinkSharedParse(
 	ctx context.Context,
-	fileParser *iacparser.Parser,
 	filename, scanID, key string,
 	shared *sharedParse,
 	fileCommands model.CommentsCommands,
@@ -269,7 +266,6 @@ func (s *Service) sinkSharedParse(
 		docKey := s.documentKey(filename, shared.kind, docIdx)
 		file := model.FileMetadata{
 			SourceDocumentIndex: docIdx,
-			ParseIdentity:       fileParser.Identity(),
 
 			DocumentKey:  docKey,
 			ID:           docKey.ID(),
@@ -284,7 +280,7 @@ func (s *Service) sinkSharedParse(
 			Platform:     s.classifyPlatform(ctx, shared.kind, filename, content),
 		}
 		file.SetLineInfoLoader(newLineInfoLoader(
-			fileParser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
+			s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))
 		file.SetLineInfoOptional()
 		file.SetLazyLines()
 		s.saveToFile(ctx, &file)

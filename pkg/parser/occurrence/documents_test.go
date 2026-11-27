@@ -387,7 +387,7 @@ func TestGitLabDeclaredJobOccurrences(t *testing.T) {
 			require.NoError(t, err)
 			var files model.FileMetadatas
 			for _, doc := range docs {
-				files = append(files, &model.FileMetadata{ID: "doc", FilePath: ".gitlab-ci.yml", OriginalData: tt.source, Platform: platforms.CICD, ParseIdentity: model.ParseIdentity{Provider: "gitlab"}, Document: doc})
+				files = append(files, &model.FileMetadata{ID: "doc", FilePath: ".gitlab-ci.yml", OriginalData: tt.source, Platform: platforms.CICD, Document: doc})
 			}
 			rows := collectDocumentResources(files)
 			var spans []lineRange
@@ -413,8 +413,8 @@ func TestGitLabDeclaredJobOccurrences(t *testing.T) {
 	require.NoError(t, err)
 	var files model.FileMetadatas
 	for _, doc := range docs {
-		files = append(files, &model.FileMetadata{ID: "doc", FilePath: "renamed.yml",
-			OriginalData: content, Platform: platforms.CICD, ParseIdentity: model.ParseIdentity{Provider: "gitlab"}, Document: doc})
+		files = append(files, &model.FileMetadata{ID: "doc", FilePath: ".gitlab-ci.yml",
+			OriginalData: content, Platform: platforms.CICD, Document: doc})
 	}
 	rows := collectDocumentResources(files)
 	require.Len(t, rows, 10)
@@ -422,7 +422,7 @@ func TestGitLabDeclaredJobOccurrences(t *testing.T) {
 		"file": 10, "_dd_lines": 11, "_parsed_run": 12, "build.api[0]": 13, "next": 18}
 	for _, row := range rows {
 		require.Equal(t, "gitlab_ci_job", row.ResourceType)
-		require.Equal(t, "renamed.yml", row.File)
+		require.Equal(t, ".gitlab-ci.yml", row.File)
 		require.Equal(t, wantLines[row.ResourceName], row.Source.Start.Line, row.ResourceName)
 		require.Equal(t, row.Source.Start.Line, row.Source.End.Line)
 		require.Equal(t, row.ResourceName, row.ResourcePath)
@@ -431,7 +431,7 @@ func TestGitLabDeclaredJobOccurrences(t *testing.T) {
 	for _, global := range []string{"default", "include", "stages", "variables", "workflow", "spec",
 		"image", "services", "cache", "before_script", "after_script", "types"} {
 		source := global + ": {}\njob: {}\n"
-		f := &model.FileMetadata{FilePath: ".gitlab-ci.yaml", OriginalData: source, Platform: platforms.CICD, ParseIdentity: model.ParseIdentity{Provider: "gitlab"}, Document: model.Document{"job": map[string]interface{}{}}}
+		f := &model.FileMetadata{FilePath: ".gitlab-ci.yaml", OriginalData: source, Platform: platforms.CICD, Document: model.Document{"job": map[string]interface{}{}}}
 		got := collectDocumentResources(model.FileMetadatas{f})
 		require.Len(t, got, 1, global)
 		require.Equal(t, "job", got[0].ResourceName)

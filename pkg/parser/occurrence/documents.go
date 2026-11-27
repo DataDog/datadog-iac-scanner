@@ -86,7 +86,7 @@ func (e *documentEnumerator) documentOccurrences(f *model.FileMetadata, index in
 		return e.cloudFormationOccurrences(f, index)
 	case f.Platform == platforms.DockerCompose:
 		return e.keyedOccurrences(f, index, "services", lineInfoKey, composeServiceOccurrence)
-	case f.Platform == platforms.CICD && f.ParseIdentity.Provider == provider.GitLab:
+	case f.Platform == platforms.CICD && provider.Detect(f.FilePath) == provider.GitLab:
 		return e.gitLabJobOccurrences(f, index)
 	case f.Platform == platforms.CICD:
 		return e.keyedOccurrences(f, index, "jobs", workflowParserKey, workflowJobOccurrence)

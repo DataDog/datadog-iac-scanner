@@ -229,7 +229,7 @@ func TestLookupSharedParseDoesNotIntern(t *testing.T) {
 	require.Empty(t, s.contentInterner)
 
 	key := s.internContentBytes(content)
-	s.storeSharedParse(key, &parser.ParsedDocument{Kind: model.KindJSON}, []model.Document{{"a": 1.0}})
+	s.storeSharedParse("", key, &parser.ParsedDocument{Kind: model.KindJSON}, []model.Document{{"a": 1.0}})
 	shared := s.lookupSharedParse("", content)
 	require.NotNil(t, shared)
 	require.Equal(t, string(content), shared.content)

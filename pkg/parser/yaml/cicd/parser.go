@@ -96,6 +96,14 @@ type ASTNode struct {
 	Children []ASTNode `json:"children,omitempty"` // Child nodes
 }
 
+// ParseContract separates declaration-only GitLab parses from legacy enrichment.
+func (p *Parser) ParseContract(path string) string {
+	if provider.Detect(path) == provider.GitLab {
+		return provider.GitLabDeclarations
+	}
+	return provider.LegacyEnriched
+}
+
 // Parse parses yaml/yml file and returns it as a Document
 func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	resolveReferences bool, maxResolverDepth int) (
@@ -104,32 +112,9 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	return p.SelectFile(filePath, fileContent).Parse(ctx, fileContent, filePath, resolveReferences, maxResolverDepth)
-}
-
-// selectedParser retains provider selection through parsing and lazy reparses.
-type selectedParser struct {
-	*Parser
-	identity model.ParseIdentity
-}
-
-// SelectFile binds the existing CI parse behavior to one provider identity.
-func (p *Parser) SelectFile(path string, _ []byte) parser.KindParser {
-	identity := model.ParseIdentity{Provider: provider.Detect(path), Contract: provider.LegacyEnriched}
-	if identity.Provider == provider.GitLab {
-		identity.Contract = provider.GitLabDeclarations
-	}
-	return &selectedParser{Parser: p, identity: identity}
-}
-
-func (p *selectedParser) ParseIdentity() model.ParseIdentity { return p.identity }
-
-func (p *selectedParser) Parse(ctx context.Context, fileContent []byte, filePath string,
-	resolveReferences bool, maxResolverDepth int) (
-	resolved []byte, documents []model.Document, ignoreLines []int,
-	resolvedFiles map[string]model.ResolvedFile, err error,
-) {
-	if p.identity.Contract == provider.GitLabDeclarations {
+	if provider.Detect(filePath) == provider.GitLab {
+		// Declaration-only parsing: do not inline YAML-valued scalars or apply
+		// GitHub expression/run enrichment to a GitLab job named jobs or runs.
 		documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(ctx, fileContent, filePath, nil)
 		return fileContent, documents, ignoreLines, nil, err
 	}

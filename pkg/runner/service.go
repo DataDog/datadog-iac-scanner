@@ -242,7 +242,7 @@ func (s *Service) lookupSharedParse(contract string, content []byte) *sharedPars
 // storeSharedParse caches a sanitized parse result for later files with the
 // same content and contract. docs are the sanitized top-level maps; each is shallow-copied
 // so Combine's per-file id/file insertion cannot touch the cached entries.
-func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument, docs []model.Document) {
+func (s *Service) storeSharedParse(contract, key string, documents *parser.ParsedDocument, docs []model.Document) {
 	cached := make([]model.Document, len(docs))
 	for i, d := range docs {
 		cached[i] = cloneDocumentTopLevel(d)
@@ -251,7 +251,7 @@ func (s *Service) storeSharedParse(key string, documents *parser.ParsedDocument,
 	if s.parsedShares == nil {
 		s.parsedShares = make(map[parseCacheKey]*sharedParse)
 	}
-	s.parsedShares[parseCacheKey{contract: documents.Identity.Contract, content: key}] = &sharedParse{
+	s.parsedShares[parseCacheKey{contract: contract, content: key}] = &sharedParse{
 		content:     key,
 		docs:        cached,
 		kind:        documents.Kind,

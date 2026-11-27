@@ -14,8 +14,6 @@ import (
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -515,32 +513,6 @@ func TestParser_CertificateFilesystem(t *testing.T) {
 				require.Equal(t, cert, info["file"])
 				require.Contains(t, info, "expiration_date")
 			}
-		})
-	}
-}
-
-func TestParser_FileSelection(t *testing.T) {
-	ctx := context.Background()
-	parsers, err := parser.NewBuilder(ctx).Add(&Parser{}).Build([]string{"kubernetes"}, nil)
-	require.NoError(t, err)
-	p := parsers[0]
-	content := []byte("build: {script: echo build}\n")
-	for _, tc := range []struct{ path, provider string }{
-		{"chart/templates/ci/.gitlab-ci.yml", provider.GitLab},
-		{"chart/templates/ci/.gitlab-ci.yaml", provider.GitLab},
-		{"chart/templates/.github/workflows/.gitlab-ci.yml", provider.GitHub},
-		{"chart/templates/pod.yaml", provider.Unknown},
-	} {
-		t.Run(tc.path, func(t *testing.T) {
-			t.Parallel()
-			selected := p.ForFile(tc.path, content)
-			identity := model.ParseIdentity{Provider: tc.provider}
-			require.Equal(t, identity, selected.Identity())
-			parsed, err := selected.Parse(ctx, tc.path, content, false, false, 15)
-			require.NoError(t, err)
-			require.Equal(t, identity, parsed.Identity)
-			require.Contains(t, parsed.Docs[0], "build")
-			require.Equal(t, model.ParseIdentity{}, p.Identity(), "selection must not mutate the shared parser")
 		})
 	}
 }

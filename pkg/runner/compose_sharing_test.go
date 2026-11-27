@@ -128,21 +128,20 @@ func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 		require.Equal(t, map[string]int{provider.LegacyEnriched: 1, provider.GitLabDeclarations: 1}, counted.calls,
 			"duplicates must skip parsing, including GitLab declarations")
 		for _, f := range svc.files {
-			identity := f.ParseIdentity
-			require.Equal(t, provider.Detect(f.FilePath), identity.Provider)
+			contract := svc.Parser.Contract(f.FilePath)
 			encoded, err := json.Marshal(f.Document)
 			require.NoError(t, err)
-			if identity.Provider == provider.GitLab {
+			if provider.Detect(f.FilePath) == provider.GitLab {
 				require.NotContains(t, string(encoded), "_parsed_run")
 			} else {
 				require.Contains(t, string(encoded), "_parsed_run")
 			}
 			require.Equal(t, f.FilePath, f.Document["_path"], "cache hits retain the receiving file's path")
 			pointer := reflect.ValueOf(f.Document["jobs"]).Pointer()
-			if previous, ok := pointers[identity.Contract]; ok {
+			if previous, ok := pointers[contract]; ok {
 				require.Equal(t, previous, pointer, "cached nested documents must be shared")
 			}
-			pointers[identity.Contract] = pointer
+			pointers[contract] = pointer
 			require.NoError(t, f.UseLineInfoDocument(ctx, func(doc map[string]interface{}) error {
 				require.Equal(t, f.FilePath, doc["_path"])
 				return nil
@@ -150,7 +149,7 @@ func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 		}
 		var rows []model.ResourceOccurrence
 		occurrence.Documents(ctx, svc.files, func(f *model.FileMetadata, r *model.ResourceOccurrence) {
-			if f.ParseIdentity.Provider == provider.GitLab {
+			if provider.Detect(f.FilePath) == provider.GitLab {
 				require.Equal(t, "gitlab_ci_job", r.ResourceType)
 				require.Equal(t, "jobs", r.ResourceName)
 			} else {
@@ -163,28 +162,15 @@ func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 	}
 }
 
-// These wrappers count actual parse invocations without changing the selected
-// parser's behavior or identity. Lazy line-info reparses happen after assertions.
+// Count actual parses without changing behavior. Lazy line-info reparses happen
+// after the cache assertions.
 type countingCIParser struct {
 	*cicd.Parser
 	calls map[string]int
 }
 
-func (p *countingCIParser) SelectFile(path string, content []byte) parser.KindParser {
-	selected := p.Parser.SelectFile(path, content)
-	identity := selected.(interface{ ParseIdentity() model.ParseIdentity }).ParseIdentity()
-	return &countedCIFileParser{KindParser: selected, identity: identity, calls: p.calls}
-}
-
-type countedCIFileParser struct {
-	parser.KindParser
-	identity model.ParseIdentity
-	calls    map[string]int
-}
-
-func (p *countedCIFileParser) ParseIdentity() model.ParseIdentity { return p.identity }
-func (p *countedCIFileParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
+func (p *countingCIParser) Parse(ctx context.Context, content []byte, path string, resolve bool, depth int) (
 	[]byte, []model.Document, []int, map[string]model.ResolvedFile, error) {
-	p.calls[p.identity.Contract]++
-	return p.KindParser.Parse(ctx, content, path, resolve, depth)
+	p.calls[p.ParseContract(path)]++
+	return p.Parser.Parse(ctx, content, path, resolve, depth)
 }
