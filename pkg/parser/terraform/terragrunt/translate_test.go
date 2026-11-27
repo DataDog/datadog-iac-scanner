@@ -58,12 +58,7 @@ func repo(t *testing.T, files map[string]string) string {
 
 func translate(t *testing.T, root, unit string) *model.TerragruntTranslation {
 	t.Helper()
-	path := filepath.Join(root, filepath.FromSlash(unit), "terragrunt.hcl")
-	src, err := os.ReadFile(path)
-	require.NoError(t, err)
-	tr, err := Translate(context.Background(), vfs.DiskFS{}, root, path, src, nil)
-	require.NoError(t, err)
-	return tr
+	return evaluateUnit(t, root, unit).Translation
 }
 
 func TestTranslateLiterals(t *testing.T) {

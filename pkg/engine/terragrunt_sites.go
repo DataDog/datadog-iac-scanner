@@ -15,12 +15,29 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // isTerraformSource reports whether f is a file the module evaluation roots
 // or strips: Terraform configuration, or a Terragrunt unit with a translation.
 func isTerraformSource(f *model.FileMetadata) bool {
 	return f != nil && (tfpath.IsConfig(f.FilePath) || f.TerragruntTranslation != nil)
+}
+
+// unitInputsByDir maps the directory of each Terragrunt unit to its inputs,
+// which Terraform takes as TF_VAR_* there. It is nil without such a unit.
+func unitInputsByDir(files model.FileMetadatas, repoPath string) map[string]map[string]cty.Value {
+	var out map[string]map[string]cty.Value
+	for _, f := range files {
+		if f == nil || len(f.TerragruntInputs) == 0 {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]map[string]cty.Value)
+		}
+		out[filepath.Dir(absPath(f.FilePath, repoPath))] = f.TerragruntInputs
+	}
+	return out
 }
 
 // unitSite is a translation served as a virtual file, and the unit it stands for.

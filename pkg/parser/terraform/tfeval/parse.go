@@ -464,7 +464,8 @@ func resolveLocalDir(callerDir, source string) string {
 // root-module inputs, reading through the evaluator's filesystem. Later files
 // override earlier ones. When an effective resource or data override needs
 // evaluator-rendered values, explicitly selected inputs take precedence.
-// Files that fail to read or parse are silently skipped.
+// Files that fail to read or parse are silently skipped. The inputs of a
+// Terragrunt unit (SetUnitInputs) sit below these files.
 // Only files listed in dir are read: MemFS records ReadFile misses as
 // escalation signals, so absent files must not be probed.
 func (e *Evaluator) LoadRootVars(dir string) map[string]cty.Value {
@@ -483,6 +484,8 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 	}
 
 	out := map[string]cty.Value{}
+	unit := e.unitInputs[filepath.Clean(dir)]
+	maps.Copy(out, unit)
 	emptyCtx := &hcl.EvalContext{}
 	for _, name := range tfpath.AutoloadedVarFiles(names) {
 		p := filepath.Clean(filepath.Join(dir, name))
@@ -497,7 +500,8 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 			}
 		}
 	}
-	if len(e.explicitRootVars) != 0 && len(e.ResourceOverrides(ctx, dir)) != 0 {
+	// Explicit variables beat unit inputs.
+	if len(e.explicitRootVars) != 0 && (len(unit) != 0 || len(e.ResourceOverrides(ctx, dir)) != 0) {
 		maps.Copy(out, e.explicitRootVars)
 	}
 	return out

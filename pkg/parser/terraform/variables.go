@@ -522,9 +522,12 @@ func sanitizeCtyMap(in map[string]cty.Value) map[string]cty.Value {
 	return out
 }
 
+// getInputVariables builds the variable and locals maps of a directory. The
+// inputs of its Terragrunt unit (unit, may be nil) sit above defaults and
+// below tfvars files.
 func getInputVariables(
 	ctx context.Context, fsys vfs.FS, currentPath, fileContent, terraformVarsPath string,
-	allow map[string]struct{}, keep string,
+	allow map[string]struct{}, keep string, unit converter.VariableMap,
 ) converter.VariableMap {
 	contextLogger := logger.FromContext(ctx)
 	variablesMap := make(converter.VariableMap)
@@ -560,6 +563,8 @@ func getInputVariables(
 	if parsedFiles != nil {
 		mergeStandaloneValues(tfFiles, parsedFiles, merge.baseCounts, variablesMap, localsMap)
 	}
+
+	mergeMaps(variablesMap, unit)
 
 	for _, tfVarsFile := range autoloadedVarFiles(ctx, fsys, currentPath) {
 		vars, errInput := getInputVariablesFromFile(ctx, fsys, tfVarsFile)

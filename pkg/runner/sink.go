@@ -232,6 +232,7 @@ func (s *Service) sinkDocument(
 		Platform:      s.classifyPlatform(ctx, documents.Kind, filename, content),
 
 		TerragruntTranslation: documents.TerragruntTranslation,
+		TerragruntInputs:      documents.TerragruntInputs,
 	}
 	file.SetLineInfoLoader(newLineInfoLoader(
 		s.Parser, filename, docIdx, openAPIResolveReferences, isMinified, maxResolverDepth, s.LineInfoPayload))

@@ -19,6 +19,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Constants to describe what kind of file refers
@@ -352,6 +353,9 @@ type FileMetadata struct {
 	// TerragruntTranslation is the Terraform a Terragrunt unit means (nil for
 	// other files). The engine does not read it yet.
 	TerragruntTranslation *TerragruntTranslation
+	// TerragruntInputs holds the inputs of a Terragrunt unit,
+	// which the engine passes to the unit directory's root evaluation.
+	TerragruntInputs map[string]cty.Value
 	// ModuleCallChain: synthetic rows for instantiated local modules; used in SARIF fingerprint (Terraform only).
 	ModuleCallChain string
 	// ModuleAttributions maps resourceType.resourceName to attribution when a synthetic
@@ -1433,6 +1437,8 @@ type ParseOutput struct {
 	TerraformPlan bool
 	// TerragruntTranslation is set for a Terragrunt unit that has one.
 	TerragruntTranslation *TerragruntTranslation
+	// TerragruntInputs is set for a Terragrunt unit with known inputs.
+	TerragruntInputs map[string]cty.Value
 }
 
 type SarifResourceLocation struct {

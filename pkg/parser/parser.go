@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // contentKindParser is an optional parser capability to refine the file kind
@@ -190,6 +191,8 @@ type ParsedDocument struct {
 	// TerragruntTranslation is the Terraform a Terragrunt unit means; nil for
 	// other files.
 	TerragruntTranslation *model.TerragruntTranslation
+	// TerragruntInputs is set for a unit with known inputs.
+	TerragruntInputs map[string]cty.Value
 }
 
 // CommentsCommands gets commands on comments in the file beginning, before the code starts
@@ -296,6 +299,7 @@ func (c *Parser) parseContent(
 		DirectoryDependent: directoryDependent,
 
 		TerragruntTranslation: out.TerragruntTranslation,
+		TerragruntInputs:      out.TerragruntInputs,
 	}, nil
 }
 

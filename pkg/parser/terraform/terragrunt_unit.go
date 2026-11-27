@@ -7,7 +7,9 @@ package terraform
 
 import (
 	"context"
+	"io/fs"
 	"path/filepath"
+	"slices"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -52,15 +54,17 @@ func (p *Parser) ParseUnit(ctx context.Context, fileContent []byte, path string)
 		return model.ParseOutput{}, true, err
 	}
 
-	translation, err := terragrunt.Translate(ctx, p.fsys, p.sciInfo.RepositoryDir, path, resolved, p.fetchedModules)
+	unit, err := terragrunt.Evaluate(ctx, p.fsys, p.sciInfo.RepositoryDir, path, resolved, p.fetchedModules)
 	if err != nil {
 		return model.ParseOutput{}, true, errors.Wrap(err, "failed terragrunt parse")
 	}
+	translation := unit.Translation
 
 	out := model.ParseOutput{
 		Resolved:              resolved,
 		Documents:             []model.Document{{}},
 		TerragruntTranslation: translation,
+		TerragruntInputs:      unit.Inputs,
 	}
 	if !model.IsLineInfoOnly(ctx) {
 		out.IgnoreLines = fileIgnoreLines(ctx, resolved, path)
@@ -129,4 +133,39 @@ func fileIgnoreLines(ctx context.Context, content []byte, path string) []int {
 		contextLogger.Err(err).Msg("failed to parse comments")
 	}
 	return comment.GetIgnoreLines(ignore, body)
+}
+
+// unitInputs returns the inputs of the directory's terragrunt.hcl: its .tf
+// files take them as TF_VAR_*. It is nil with the flag off, without a unit,
+// or when the unit is skipped.
+func (p *Parser) unitInputs(ctx context.Context, dir string) converter.VariableMap {
+	if !p.terragrunt {
+		return nil
+	}
+	key := filepath.Clean(dir)
+	if v, ok := p.unitInputsCache.Load(key); ok {
+		return v.(converter.VariableMap)
+	}
+	inputs := p.readUnitInputs(ctx, dir)
+	p.unitInputsCache.Store(key, inputs)
+	return inputs
+}
+
+func (p *Parser) readUnitInputs(ctx context.Context, dir string) converter.VariableMap {
+	entries, err := p.fsys.ReadDir(dir)
+	if err != nil || !slices.ContainsFunc(entries, func(e fs.DirEntry) bool {
+		return !e.IsDir() && e.Name() == tfpath.TerragruntUnit
+	}) {
+		return nil
+	}
+	path := filepath.Join(dir, tfpath.TerragruntUnit)
+	src, err := tfmodules.ReadConfigFile(ctx, p.fsys, path, "")
+	if err != nil {
+		return nil
+	}
+	unit, err := terragrunt.Evaluate(ctx, p.fsys, p.sciInfo.RepositoryDir, path, src, nil)
+	if err != nil || len(unit.Inputs) == 0 {
+		return nil
+	}
+	return converter.VariableMap(unit.Inputs)
 }
