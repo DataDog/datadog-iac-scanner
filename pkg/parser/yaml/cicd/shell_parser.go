@@ -8,8 +8,8 @@ package cicd
 import (
 	"fmt"
 	"path"
-	"regexp"
 	"slices"
+	"sort"
 	"strings"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -17,7 +17,6 @@ import (
 )
 
 var (
-	re                = regexp.MustCompile(`(\$|"|'|` + "`" + `)`)
 	redirectOperators = []string{">>", ">", "<", "&>", "&>>", "<>"}
 )
 
@@ -35,6 +34,8 @@ const (
 	expansion            = "expansion"
 	redirected_statement = "redirected_statement"
 	pipeline             = "pipeline"
+	shellList            = "list"
+	shellComment         = "comment"
 	command_name         = "command_name"
 	simple_expansion     = "simple_expansion"
 	command_substitution = "command_substitution"
@@ -103,7 +104,7 @@ func parseShellSource(runScript, shell string, source []byte) *ParsedRun {
 	defer tree.Close()
 
 	// Walk the AST and extract commands
-	result.Commands = extractCommands(tree.RootNode(), []byte(runScript))
+	result.Commands = extractCommands(tree.RootNode(), runScript)
 	// The legacy flag gates all command facts in existing security rules.
 	// Recovery must not hide valid commands preceding an error: Bash may
 	// already have executed those commands before it reads the broken tail.
@@ -116,106 +117,229 @@ func parseShellSource(runScript, shell string, source []byte) *ParsedRun {
 }
 
 // extractCommands walks the tree and finds all commands
-func extractCommands(node *sitter.Node, source []byte) []ParsedCommand {
+func extractCommands(node *sitter.Node, source string) []ParsedCommand {
 	commands := []ParsedCommand{}
-	collectShellCommands(node, source, &commands, nil, nil)
+	collectShellCommands(node, newShellSource(source), &commands, nil, shellRedirects{})
 	return commands
 }
 
-// Visit each syntax node once. A connected pipeline owns one flat member list;
-// member facts never contain another pipeline. Thus both traversal and retained
-// command entries grow linearly, including alternating pipes and redirections.
-func collectShellCommands(node *sitter.Node, source []byte, commands *[]ParsedCommand,
-	group *ParsedCommand, redirect *shellRedirection) {
+// A pipeline retains flat executable members and their top-level positions.
+// Sink projections can carry known input content without changing the actual
+// executable command's argv. Compound stages keep their output unknown.
+type shellStage struct {
+	command           ParsedCommand
+	position          int
+	stdout, inputFile bool
+}
+
+type shellPipeline struct {
+	stages []shellStage
+	simple bool
+}
+
+type shellRedirects struct {
+	stdout, stderr *ParsedRedirect
+	inputFile      bool
+}
+
+// Visit each node once. Redirection scope is separate from pipeline membership.
+func collectShellCommands(node *sitter.Node, source shellSource, commands *[]ParsedCommand,
+	group *shellPipeline, redirects shellRedirects) {
 	kind := node.Kind()
-	newGroup := false
 	switch kind {
 	case command:
 		cmd := *parseCommand(node, source)
-		if redirect != nil {
-			cmd.Type, cmd.Redirect = redirected_statement, redirect.value
+		if redirects.stdout != nil {
+			cmd.Type, cmd.Redirect = redirected_statement, redirects.stdout
+		} else if redirects.stderr != nil {
+			cmd.Type, cmd.Redirect = redirected_statement, redirects.stderr
 		}
+		position := len(*commands)
 		*commands = append(*commands, cmd)
 		if group != nil {
-			group.Pipeline = append(group.Pipeline, cmd)
+			group.stages = append(group.stages, shellStage{
+				command: cmd, position: position, stdout: redirects.stdout != nil, inputFile: redirects.inputFile,
+			})
 		}
-		// Executable substitutions in arguments are separate commands, not
-		// members of the containing command's pipeline or output redirection.
-		group, redirect = nil, nil
+		if redirects.stdout != nil && redirects.stderr != nil && redirects.stdout != redirects.stderr {
+			// An additional sink fact shares argv; it is not another executable.
+			*commands = append(*commands, ParsedCommand{Type: redirected_statement, Args: cmd.Args, Redirect: redirects.stderr})
+		}
+		group, redirects = nil, shellRedirects{}
 	case redirected_statement:
-		redirect = collectShellRedirection(node, source, commands, redirect)
+		collectRedirectedShell(node, source, commands, group, redirects)
+		return
 	case pipeline:
 		if group == nil {
-			group = &ParsedCommand{Type: pipeline, Pipeline: []ParsedCommand{}}
-			newGroup = true
+			group = &shellPipeline{simple: true}
+			collectShellChildren(node, source, commands, group, redirects)
+			projectShellPipeline(commands, group)
+			members := make([]ParsedCommand, 0, len(group.stages))
+			for _, stage := range group.stages {
+				members = append(members, stage.command)
+			}
+			*commands = append(*commands, ParsedCommand{Type: pipeline, Pipeline: members})
+			return
 		}
 	case command_substitution, file_redirect:
-		group, redirect = nil, nil
+		group, redirects = nil, shellRedirects{}
+	default:
+		if group != nil && kind != shellComment {
+			group.simple = false
+		}
 	}
+	collectShellChildren(node, source, commands, group, redirects)
+}
+
+func collectShellChildren(node *sitter.Node, source shellSource, commands *[]ParsedCommand,
+	group *shellPipeline, redirects shellRedirects) {
 	last := lastShellStage(node)
 	for i := uint(0); i < node.NamedChildCount(); i++ {
-		childRedirect := redirect
-		if kind == pipeline && int(i) != last {
-			// Only the last pipeline stage inherits the pipeline's output.
-			childRedirect = nil
+		childRedirects := redirects
+		if node.Kind() == pipeline && int(i) != last {
+			childRedirects.stdout = nil
+			childRedirects.inputFile = false
 		}
-		collectShellCommands(node.NamedChild(i), source, commands, group, childRedirect)
-	}
-	if newGroup {
-		*commands = append(*commands, *group)
+		collectShellCommands(node.NamedChild(i), source, commands, group, childRedirects)
 	}
 }
 
-// Stream context is internal; the legacy rule projection still has one
-// redirect per command. Keep an opaque inherited-redirection fact when another
-// stream is redirected locally, as the original grouped representation did.
-type shellRedirection struct {
-	value  *ParsedRedirect
-	stream string
-}
-
-func collectShellRedirection(node *sitter.Node, source []byte, commands *[]ParsedCommand,
-	inherited *shellRedirection) *shellRedirection {
-	selected := inherited
-	overridden := false
+func collectRedirectedShell(node *sitter.Node, source shellSource, commands *[]ParsedCommand,
+	group *shellPipeline, inherited shellRedirects) {
+	local := inherited
 	for i := uint(0); i < node.NamedChildCount(); i++ {
 		child := node.NamedChild(i)
 		if child.Kind() != file_redirect {
 			continue
 		}
 		value := parseRedirect(child, source)
-		stream := "1"
-		if strings.HasPrefix(value.Operator, "<") {
-			stream = "0"
+		descriptor := child.ChildByFieldName("descriptor")
+		switch {
+		case strings.HasPrefix(value.Operator, "&"):
+			local.stdout, local.stderr = value, value
+		case strings.HasPrefix(value.Operator, "<"):
+			// Input redirection is not an output sink. In a pipeline it also
+			// invalidates any known input content.
+			local.inputFile = true
+		case descriptor == nil || shellText(descriptor, source) == "1":
+			local.stdout = value
+		case shellText(descriptor, source) == "2":
+			local.stderr = value
 		}
-		if descriptor := child.ChildByFieldName("descriptor"); descriptor != nil {
-			stream = descriptor.Utf8Text(source)
-		}
-		if strings.HasPrefix(value.Operator, "&") {
-			stream = "&"
-		}
-		if inherited != nil && (stream == inherited.stream || stream == "&") {
-			overridden = true
-		}
-		selected = &shellRedirection{value: value, stream: stream}
 	}
-	if inherited != nil && selected != inherited && !overridden {
-		*commands = append(*commands, ParsedCommand{Type: redirected_statement, Args: []ParsedArg{}, Redirect: inherited.value})
+	for i := uint(0); i < node.NamedChildCount(); i++ {
+		child := node.NamedChild(i)
+		if child.Kind() == shellList {
+			// In `a && b >f`, tree-sitter attaches >f to the list. Only b
+			// receives this local redirect; a still receives enclosing redirects.
+			collectShellList(child, source, commands, group, inherited, local)
+		} else {
+			collectShellCommands(child, source, commands, group, local)
+		}
 	}
-	return selected
+}
+
+func collectShellList(node *sitter.Node, source shellSource, commands *[]ParsedCommand,
+	group *shellPipeline, inherited, local shellRedirects) {
+	if group != nil {
+		group.simple = false
+	}
+	last := lastShellStage(node)
+	for i := uint(0); i < node.NamedChildCount(); i++ {
+		child := node.NamedChild(i)
+		selected := inherited
+		if int(i) == last {
+			if child.Kind() == shellList {
+				collectShellList(child, source, commands, group, inherited, local)
+				continue
+			}
+			selected = local
+		}
+		collectShellCommands(child, source, commands, group, selected)
+	}
+}
+
+// Propagate only known producer output through argument-free cat/sort stages.
+// Other commands, file operands, compound stages and redirected input stay
+// unknown. This is deliberately not a shell dataflow interpreter.
+func projectShellPipeline(commands *[]ParsedCommand, group *shellPipeline) {
+	if !group.simple {
+		return
+	}
+	var content []ParsedArg
+	for _, stage := range group.stages {
+		cmd := stage.command
+		if stage.inputFile {
+			content = nil
+		}
+		switch {
+		case cmd.Command == "echo" || cmd.Command == "printf":
+			content = cmd.Args
+			if len(content) == 0 {
+				content = []ParsedArg{{Type: literal, Value: ""}}
+			}
+		case (cmd.Command == "cat" || cmd.Command == "sort") && len(cmd.Args) == 0:
+			if stage.stdout && content != nil {
+				actual := &(*commands)[stage.position]
+				actual.Type, actual.Redirect = command, nil
+				*commands = append(*commands, ParsedCommand{Type: redirected_statement, Args: content, Redirect: cmd.Redirect})
+			}
+		default:
+			content = nil
+		}
+		if stage.stdout {
+			content = []ParsedArg{{Type: literal, Value: ""}}
+		}
+	}
 }
 
 // Trailing comments are syntax extras, not the pipeline's output stage.
 func lastShellStage(node *sitter.Node) int {
 	last := int(node.NamedChildCount()) - 1
-	for last >= 0 && node.NamedChild(uint(last)).Kind() == "comment" {
+	for last >= 0 && node.NamedChild(uint(last)).Kind() == shellComment {
 		last--
 	}
 	return last
 }
 
+// Source text and its legacy quote/$-stripped form are each retained once.
+// Nested arguments overlap; their strings must be views, not repeated copies.
+type shellSource struct {
+	raw, stripped string
+	removed       []int
+}
+
+func newShellSource(raw string) shellSource {
+	source := shellSource{raw: raw}
+	var plain strings.Builder
+	plain.Grow(len(raw))
+	for i := 0; i < len(raw); i++ {
+		switch raw[i] {
+		case '$', '"', '\'', '`':
+			source.removed = append(source.removed, i)
+		default:
+			plain.WriteByte(raw[i])
+		}
+	}
+	source.stripped = plain.String()
+	return source
+}
+
+func (source shellSource) strippedText(node *sitter.Node) string {
+	start, end := int(node.StartByte()), int(node.EndByte())
+	left := sort.SearchInts(source.removed, start)
+	right := sort.SearchInts(source.removed, end)
+	return source.stripped[start-left : end-right]
+}
+
+// Node text is a view into the one original source string. Nested substitutions
+// overlap, so converting each byte range to string would retain quadratic copies.
+func shellText(node *sitter.Node, source shellSource) string {
+	return source.raw[node.StartByte():node.EndByte()]
+}
+
 // parseCommand extracts a command with its arguments
-func parseCommand(node *sitter.Node, source []byte) *ParsedCommand {
+func parseCommand(node *sitter.Node, source shellSource) *ParsedCommand {
 	cmd := &ParsedCommand{
 		Type: command,
 		Args: []ParsedArg{},
@@ -230,7 +354,7 @@ func parseCommand(node *sitter.Node, source []byte) *ParsedCommand {
 
 		switch child.Kind() {
 		case command_name:
-			cmd.Command = child.Utf8Text(source)
+			cmd.Command = shellText(child, source)
 		case word, string_kind, raw_string, expansion, simple_expansion,
 			command_substitution, concatenation:
 			arg := parseArg(child, source)
@@ -242,7 +366,7 @@ func parseCommand(node *sitter.Node, source []byte) *ParsedCommand {
 }
 
 // parseRedirect extracts file redirection information
-func parseRedirect(node *sitter.Node, source []byte) *ParsedRedirect {
+func parseRedirect(node *sitter.Node, source shellSource) *ParsedRedirect {
 	redirect := &ParsedRedirect{}
 
 	// Use all children (not just named) to capture operator tokens like ">>" and ">"
@@ -257,7 +381,7 @@ func parseRedirect(node *sitter.Node, source []byte) *ParsedRedirect {
 
 		// Operators are typically single-character or double-character tokens
 		if slices.Contains(redirectOperators, childKind) {
-			redirect.Operator = child.Utf8Text(source)
+			redirect.Operator = shellText(child, source)
 		} else if child.IsNamed() {
 			// Named nodes are the target (file path/variable)
 			redirect.Target = parseArg(child, source)
@@ -268,10 +392,10 @@ func parseRedirect(node *sitter.Node, source []byte) *ParsedRedirect {
 }
 
 // parseArg classifies and extracts argument information
-func parseArg(node *sitter.Node, source []byte) ParsedArg {
+func parseArg(node *sitter.Node, source shellSource) ParsedArg {
 	arg := ParsedArg{
 		Type:  node.Kind(),
-		Value: node.Utf8Text(source),
+		Value: shellText(node, source),
 	}
 
 	// For expansions, extract the variable name
@@ -282,7 +406,7 @@ func parseArg(node *sitter.Node, source []byte) ParsedArg {
 		for i := uint(0); i < childCount; i++ {
 			child := node.NamedChild(i)
 			if child != nil && child.Kind() == variable_name {
-				arg.Var = child.Utf8Text(source)
+				arg.Var = shellText(child, source)
 				break
 			}
 		}
@@ -291,7 +415,8 @@ func parseArg(node *sitter.Node, source []byte) ParsedArg {
 		// Check if string contains expansions
 		if hasExpansion(node) {
 			arg.Type = string_with_expansion
-			arg.Var = re.ReplaceAllString(node.Utf8Text(source), "")
+			// Preserve the legacy stripped value as a shared source view too.
+			arg.Var = source.strippedText(node)
 		} else {
 			arg.Type = literal
 		}

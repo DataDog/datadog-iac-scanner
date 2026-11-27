@@ -7,6 +7,7 @@ package cicd
 
 import (
 	"context"
+	"encoding/json"
 	"reflect"
 	"strings"
 
@@ -48,6 +49,65 @@ type ParsedRun struct {
 	Commands []ParsedCommand `json:"commands"`        // All commands found
 	ParseOK  bool            `json:"parse_ok"`        // Whether parser facts are available (Error may report recovery)
 	Error    error           `json:"error,omitempty"` // Parse error if any
+}
+
+// CanonicalDocumentValue avoids expanding overlapping argument strings through
+// JSON serialization during scan normalization. Field values match JSON exactly;
+// the optional diagnostic alone uses JSON to preserve arbitrary error marshalers.
+func (run *ParsedRun) CanonicalDocumentValue() (interface{}, error) {
+	if run == nil {
+		return nil, nil
+	}
+	out := map[string]interface{}{"shell": run.Shell, "commands": canonicalShellCommands(run.Commands), "parse_ok": run.ParseOK}
+	if run.Error != nil {
+		encoded, err := json.Marshal(run.Error)
+		if err != nil {
+			return nil, err
+		}
+		var diagnostic interface{}
+		if err := json.Unmarshal(encoded, &diagnostic); err != nil {
+			return nil, err
+		}
+		out["error"] = diagnostic
+	}
+	return out, nil
+}
+
+func canonicalShellCommands(commands []ParsedCommand) interface{} {
+	if commands == nil {
+		return nil
+	}
+	out := make([]interface{}, 0, len(commands))
+	for _, cmd := range commands {
+		value := map[string]interface{}{"type": cmd.Type, "command": cmd.Command, "args": canonicalShellArgs(cmd.Args)}
+		if cmd.Redirect != nil {
+			value["redirect"] = map[string]interface{}{"operator": cmd.Redirect.Operator, "target": canonicalShellArg(cmd.Redirect.Target)}
+		}
+		if len(cmd.Pipeline) > 0 {
+			value["pipeline"] = canonicalShellCommands(cmd.Pipeline)
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+func canonicalShellArgs(args []ParsedArg) interface{} {
+	if args == nil {
+		return nil
+	}
+	out := make([]interface{}, 0, len(args))
+	for _, arg := range args {
+		out = append(out, canonicalShellArg(arg))
+	}
+	return out
+}
+
+func canonicalShellArg(arg ParsedArg) map[string]interface{} {
+	out := map[string]interface{}{"type": arg.Type, "value": arg.Value}
+	if arg.Var != "" {
+		out["var"] = arg.Var
+	}
+	return out
 }
 
 // Span represents a text span

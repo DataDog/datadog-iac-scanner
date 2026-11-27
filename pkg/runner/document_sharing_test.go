@@ -8,14 +8,18 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	"github.com/stretchr/testify/require"
 )
 
@@ -263,4 +267,27 @@ func TestCloneSharedParseDocumentRefreshesPath(t *testing.T) {
 	require.Equal(t, "second.yaml", clone["_path"])
 	require.Equal(t, "first.yaml", cached["_path"])
 	require.Equal(t, reflect.ValueOf(child).Pointer(), reflect.ValueOf(clone["metadata"]).Pointer())
+}
+
+// The normalization boundary must retain source views instead of serializing
+// all overlapping arguments into a quadratic JSON buffer and copying them back.
+func TestNormalizeDocumentValueShellSourceSharing(t *testing.T) {
+	script := strings.Repeat("echo $(", 1000) + "npm publish" + strings.Repeat(")", 1000)
+	_, docs, _, _, err := (&cicd.Parser{}).Parse(t.Context(), []byte(fmt.Sprintf("on: push\njobs: {build: {steps: [{run: %q, shell: bash}]}}", script)), "ci.yml", false, 15)
+	require.NoError(t, err)
+	step := docs[0]["jobs"].(map[string]interface{})["build"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+	parsed := step["_parsed_run"].(*cicd.ParsedRun)
+	got, changed := normalizeDocumentValue(parsed)
+	require.True(t, changed)
+	commands := got.(map[string]interface{})["commands"].([]interface{})
+	require.Len(t, commands, len(parsed.Commands))
+	for i, raw := range commands {
+		cmd := raw.(map[string]interface{})
+		args := cmd["args"].([]interface{})
+		for j, arg := range args {
+			value := arg.(map[string]interface{})["value"].(string)
+			require.Equal(t, parsed.Commands[i].Args[j].Value, value)
+			require.True(t, unsafe.StringData(parsed.Commands[i].Args[j].Value) == unsafe.StringData(value))
+		}
+	}
 }

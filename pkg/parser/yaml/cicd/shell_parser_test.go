@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -246,8 +247,11 @@ func TestShellParser_GitHubTemplates(t *testing.T) {
 func TestShellParser_RedirectedPipeline(t *testing.T) {
 	parsed := parseRunBlock(`printf %s "$PAYLOAD" | cat >> "$GITHUB_ENV"`, "bash")
 	require.True(t, parsed.ParseOK)
-	cat := shellFact(t, parsed.Commands, redirected_statement, "cat")
-	require.Equal(t, "GITHUB_ENV", cat.Redirect.Target.Var)
+	cat := shellFact(t, parsed.Commands, command, "cat")
+	require.Empty(t, cat.Args)
+	sink := shellFact(t, parsed.Commands, redirected_statement, "")
+	require.Equal(t, "GITHUB_ENV", sink.Redirect.Target.Var)
+	require.Equal(t, `"$PAYLOAD"`, sink.Args[1].Value)
 	printf := shellFact(t, parsed.Commands, command, "printf")
 	require.Nil(t, printf.Redirect)
 	group := shellFact(t, parsed.Commands, pipeline, "")
@@ -409,4 +413,116 @@ func TestShellParser_DifferentRedirectStreams(t *testing.T) {
 			require.Equal(t, tc.inherited, found)
 		})
 	}
+}
+
+// Check both sides of the existing rule contract: literal output must stay
+// literal, and dynamic or unknown output must remain visible at the sink.
+func TestShellParser_EnvironmentWriteSemantics(t *testing.T) {
+	for _, tc := range []struct {
+		script string
+		unsafe bool
+	}{
+		{`./build.sh && echo "BUILT=1" >> "$GITHUB_ENV"`, false},
+		{`./check.sh || echo "FAILED=true" >> "$GITHUB_ENV"`, false},
+		{`[ -n "$X" ] && echo "A=$X" >> "$GITHUB_ENV"`, true},
+		{`./check.sh || echo "$X" >> "$GITHUB_ENV"`, true},
+		{`./a && ./b || echo "A=1" >> "$GITHUB_ENV"`, false},
+		{`./a && ./b || echo "$X" >> "$GITHUB_ENV"`, true},
+		{`{ ./a && echo "A=1" > /dev/null; } >> "$GITHUB_ENV"`, true},
+		{`{ echo "A=1" && echo "B=2"; } >> "$GITHUB_ENV"`, false},
+		{`{ ./build.sh && echo "BUILT=1"; } >> "$GITHUB_ENV"`, true},
+		{`{ echo "A=1" 2>/dev/null; } >> "$GITHUB_ENV"`, false},
+		{`{ echo "$X" 2>/dev/null; } >> "$GITHUB_ENV"`, true},
+		{`{ echo "$X" > /dev/null; } >> "$GITHUB_ENV"`, false},
+		{`echo "A=1" | sort >> "$GITHUB_ENV"`, false},
+		{`echo "$X" | sort >> "$GITHUB_ENV"`, true},
+		{`echo "A=1" | cat | sort >> "$GITHUB_ENV"`, false},
+		{`echo "$X" | cat | sort >> "$GITHUB_ENV"`, true},
+		{`echo "$X" 2>/dev/null | sort >> "$GITHUB_ENV"`, true},
+		{`echo "A=1" 2>/dev/null | sort >> "$GITHUB_ENV"`, false},
+		{`./source.sh | sort >> "$GITHUB_ENV"`, true},
+		{`cat file | sort >> "$GITHUB_ENV"`, true},
+		{`echo "$X" > /dev/null | sort >> "$GITHUB_ENV"`, false},
+		{`echo "A=1" | sort < "$INPUT" >> "$GITHUB_ENV"`, true},
+		{`echo "A=1" >> "$GITHUB_ENV"`, false},
+		{`echo "$X" >> "$GITHUB_ENV"`, true},
+		{`echo "A=1" 1>> "$GITHUB_ENV" 2>/dev/null`, false},
+		{`echo "$X" 1>> "$GITHUB_ENV" 2>/dev/null`, true},
+		{`echo "A=1" > /dev/null 2>> "$GITHUB_ENV"`, false},
+		{`echo "$X" > /dev/null 2>> "$GITHUB_ENV"`, true},
+		{`echo "A=1" | sort >> "$GITHUB_ENV" # tail comment`, false},
+		{`echo "$X" | sort >> "$GITHUB_ENV" # tail comment`, true},
+		{`echo "$(printf %s "$X")" | sort >> "$GITHUB_ENV"`, true},
+	} {
+		t.Run(tc.script, func(t *testing.T) {
+			parsed := parseGitHubRunBlock(tc.script, "bash")
+			require.True(t, parsed.ParseOK)
+			require.NoError(t, parsed.Error)
+			unsafe := false
+			for _, cmd := range parsed.Commands {
+				if cmd.Redirect == nil || cmd.Redirect.Target.Var != "GITHUB_ENV" {
+					continue
+				}
+				if len(cmd.Args) == 0 {
+					unsafe = true
+				}
+				for _, arg := range cmd.Args {
+					if arg.Type != literal {
+						unsafe = true
+					}
+				}
+			}
+			require.Equal(t, tc.unsafe, unsafe)
+		})
+	}
+}
+
+func BenchmarkShellParser_NestedSubstitution(b *testing.B) {
+	for _, shape := range []struct{ name, open, close string }{
+		{"pipeline", "a | b $(", ")"}, {"plain", "echo $(", ")"}, {"quoted", `echo "$(`, `)"`},
+	} {
+		for _, depth := range []int{1000, 2000, 4000} {
+			b.Run(fmt.Sprintf("%s/%d", shape.name, depth), func(b *testing.B) {
+				script := strings.Repeat(shape.open, depth) + "c" + strings.Repeat(shape.close, depth)
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					if !parseRunBlock(script, "bash").ParseOK {
+						b.Fatal("parse failed")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestShellParser_NestedSubstitutionSourceSharing(t *testing.T) {
+	for _, shape := range []string{"echo $(", "a | b $(", `echo "$(`} {
+		for _, depth := range []int{8, 64, 4000} {
+			t.Run(fmt.Sprintf("%s/%d", shape, depth), func(t *testing.T) {
+				close := ")"
+				if strings.Contains(shape, `"`) {
+					close = `)"`
+				}
+				script := strings.Repeat(shape, depth) + "npm publish" + strings.Repeat(close, depth)
+				parsed := parseRunBlock(script, "bash")
+				require.True(t, parsed.ParseOK)
+				require.NoError(t, parsed.Error)
+				publish := shellFact(t, parsed.Commands, command, "npm")
+				require.Equal(t, "publish", publish.Args[0].Value)
+				for _, cmd := range parsed.Commands {
+					for _, arg := range cmd.Args {
+						if arg.Value != "" {
+							require.True(t, stringSharesSource(script, arg.Value), "argument text must share the original source")
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+func stringSharesSource(source, value string) bool {
+	start := uintptr(unsafe.Pointer(unsafe.StringData(source)))
+	address := uintptr(unsafe.Pointer(unsafe.StringData(value)))
+	return address >= start && address+uintptr(len(value)) <= start+uintptr(len(source))
 }
