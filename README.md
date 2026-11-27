@@ -85,7 +85,9 @@ then container or recognized runner labels. PowerShell remains unsupported by th
 shell parser, whether selected explicitly or by a Windows runner; existing rules
 may use their text fallbacks. Unresolved runners retain a Bash analysis candidate,
 which does not establish their actual OS or shell. Composite run steps require an
-explicit shell. Expressions are never executed.
+explicit shell. Expressions are never executed. Pipelines writing GitHub
+environment/path files are analyzed conservatively and may be reported even
+when their arguments appear literal.
 
 
 ### GitLab CI declaration inventory

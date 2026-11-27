@@ -998,7 +998,7 @@ func TestParser_TemplateTerminationIsConsistent(t *testing.T) {
 }
 
 func TestParser_ParsedRunCanonicalValue(t *testing.T) {
-	for _, parsed := range []*ParsedRun{nil, {}, parseRunBlock("echo hello", "bash"), parseRunBlock(`echo "$X" | cat >> "$GITHUB_ENV"`, "bash"), parseRunBlock(`echo "unterminated`, "bash"), parseRunBlock("x", "pwsh")} {
+	for _, parsed := range []*ParsedRun{nil, {}, parseRunBlock("echo hello", "bash"), parseRunBlock(`bash < script.sh`, "bash"), parseRunBlock(`exec 3>> "$GITHUB_ENV"`, "bash"), parseRunBlock(`echo "$X" | cat >> "$GITHUB_ENV"`, "bash"), parseRunBlock(`echo "unterminated`, "bash"), parseRunBlock("x", "pwsh")} {
 		encoded, err := json.Marshal(parsed)
 		require.NoError(t, err)
 		var expected interface{}
