@@ -298,6 +298,9 @@ resources:
 						},
 						"_dd__default": {
 						  "_dd_line": 9
+						},
+						"_dd_group": {
+						  "_dd_line": 4
 						}
 					  }
 					],
@@ -307,8 +310,14 @@ resources:
 				"perm": [
 					{
 						"_dd_lines": {
+						  "_dd_<<": {
+						    "_dd_line": 9
+						  },
 							"_dd__default": {
 								"_dd_line": 9
+							},
+							"_dd_group": {
+							  "_dd_line": 4
 							}
 						},
 						"group": {

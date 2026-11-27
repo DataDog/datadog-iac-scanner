@@ -943,3 +943,20 @@ func TestLineInfoSectionsDistinguishesAnchorsFromSections(t *testing.T) {
 	require.Equal(t, []string{"data"}, LineInfoSections(model.KindTerraformPlan, "data.test[prod].permissions.actions[1]"))
 	require.Equal(t, []string{"resource_changes"}, LineInfoSections(model.KindTerraformPlan, "resource_changes[0].permissions.actions[1]"))
 }
+
+func TestYAMLAliasFindingLines(t *testing.T) {
+	const source = "jobs:\n  first: &job\n    steps: &steps\n      - &step\n        run: echo unsafe\n" +
+		"  second: *job\n  third: {steps: *steps}\n  fourth: {steps: [*step]}\n"
+	ctx := context.Background()
+	var root yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(source), &root))
+	var doc model.Document
+	require.NoError(t, doc.UnmarshalYAML(ctx, root.Content[0], nil))
+	file := &model.FileMetadata{
+		FilePath: "ci.yaml", Kind: model.KindYAML, OriginalData: source, LineInfoDocument: doc,
+	}
+	for _, job := range []string{"first", "second", "third", "fourth"} {
+		result := NewDetectLine(3).DetectLine(ctx, file, "jobs."+job+".steps.0.run")
+		require.Equal(t, 5, result.Line, job+" must point to the written run declaration")
+	}
+}

@@ -272,3 +272,45 @@ DatadogPolicy contains result if {
 		})
 	}
 }
+
+// The same rule consumes inline and aliased declarations. Neither a mapping,
+// list, list item nor scalar alias may hide an unsafe step or taint a safe one.
+func Test_E2ECIYAMLAliasEquivalence(t *testing.T) {
+	const query = `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+    some doc in input.document
+    some name, job in doc.jobs
+    some index, step in job.steps
+    some expression in step._parsed_expressions_run
+    expression.parse_ok == true
+    expression.has_secrets_expansion == true
+    result := {"documentId": doc.id, "resourceType": "github_action",
+        "resourceName": name, "searchKey": sprintf("jobs.%s.steps.%d.run", [name, index])}
+}`
+	for _, script := range []string{"echo safe", "echo ${{ toJSON(secrets) }}"} {
+		for _, reuse := range []string{
+			"  second: *job\n",
+			"  second: {runs-on: ubuntu-latest, steps: *steps}\n",
+			"  second: {runs-on: ubuntu-latest, steps: [*step]}\n",
+			"  second: {runs-on: ubuntu-latest, steps: [{run: *script}]}\n",
+			fmt.Sprintf("  second: {runs-on: ubuntu-latest, steps: [{run: %q}]}\n", script),
+		} {
+			t.Run(script+reuse, func(t *testing.T) {
+				content := fmt.Sprintf("on: push\njobs:\n  first: &job\n    runs-on: ubuntu-latest\n"+
+					"    steps: &steps\n      - &step\n        run: &script %q\n%s", script, reuse)
+				path := filepath.Join(t.TempDir(), "ci.yaml")
+				require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+				metadata := scanWithOfflineBundle(t, path, "CICD", "cicd", &datadog.Rule{
+					ID: "ci-alias-secret-expansion", Name: "Alias secret expansion", ShortDescription: "Alias secret expansion",
+					Platform: "CICD", Type: "rego", RegoQuery: []byte(query), Severity: "LOW", IsPublished: true,
+				})
+				want := 0
+				if strings.Contains(script, "toJSON") {
+					want = 2
+				}
+				require.Equal(t, want, metadata.Stats.Violations)
+			})
+		}
+	}
+}
