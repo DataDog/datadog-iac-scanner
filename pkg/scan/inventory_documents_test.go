@@ -308,7 +308,7 @@ func TestInventoryKeyedRows(t *testing.T) {
 
 func TestInventoryGitLabDeclaredJobs(t *testing.T) {
 	root := writeRepo(t, map[string]string{
-		".gitlab-ci.yml":          "include: missing.yml\n.base: {script: echo base}\nbuild: {extends: .base}\nid: {script: echo id}\nfile: {script: echo file}\n_dd_lines: {}\n",
+		".gitlab-ci.yml":          "{}\n---\ninclude: missing.yml\n.base: {script: echo base}\nbuild: {extends: .base}\nid: {script: echo id}\nfile: {script: echo file}\n_dd_lines: {}\n",
 		"ci/.gitlab-ci.yaml":      "deploy: {trigger: other/project}\n",
 		".gitlab/ci/fragment.yml": "fragment: {script: echo fragment}\n",
 		"pipeline.yml":            "custom: {script: echo custom}\n",

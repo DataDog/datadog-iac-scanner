@@ -43,6 +43,10 @@ metadata:
 `
 	require.Equal(t, []lineRange{{2, 5}, {9, 14}, {18, 21}}, parseYAMLFile(content).ranges)
 	require.Empty(t, parseYAMLFile("# only a comment\n").ranges)
+	require.Equal(t, []lineRange{{3, 3}, {7, 7}, {9, 9}},
+		parseYAMLFile("{}\n---\nfirst: {}\n---\n{}\n---\n[]\n---\nlast: {}\n").ranges,
+		"runtime lazy parsing drops empty mappings but retains empty sequences")
+
 	require.Equal(t, []lineRange{{1, 1}}, parseYAMLFile("a: b\n---\nc: [\n").ranges, "documents before a syntax error are kept, as the parser keeps them")
 	require.Equal(t, []lineRange{{1, 1}, {5, 5}}, parseYAMLFile("a: 1\n---\njust a string\n---\nb: 2\n").ranges,
 		"a scalar document is skipped, as the parser skips it")
@@ -335,6 +339,31 @@ func collectDocumentResources(files model.FileMetadatas) []model.ResourceOccurre
 }
 
 func TestGitLabDeclaredJobOccurrences(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		spans        []lineRange
+	}{
+		{"empty mapping before jobs", "{}\n---\nbuild: {script: echo ok}\n", []lineRange{{3, 3}}},
+		{"empty mapping between jobs", "build: {}\n---\n{}\n---\nbuild: {}\n", []lineRange{{1, 1}, {5, 5}}},
+		{"repeated declaration ranges", "build:\n  script: echo first\n\n# another declaration\nbuild:\n  script: echo second\n", []lineRange{{1, 2}, {5, 6}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, docs, _, _, err := (&yamlparser.Parser{}).Parse(model.WithLazyLineInfo(context.Background()), []byte(tt.source), ".gitlab-ci.yml", false, 0)
+			require.NoError(t, err)
+			var files model.FileMetadatas
+			for _, doc := range docs {
+				files = append(files, &model.FileMetadata{ID: "doc", FilePath: ".gitlab-ci.yml", OriginalData: tt.source, Platform: platforms.CICD, Document: doc})
+			}
+			rows := collectDocumentResources(files)
+			var spans []lineRange
+			for _, row := range rows {
+				require.Equal(t, "build", row.ResourceName)
+				spans = append(spans, lineRange{row.Source.Start.Line, row.Source.End.Line})
+			}
+			require.Equal(t, tt.spans, spans)
+		})
+	}
+
 	content := "# pipeline\ninclude: missing.yml\ndefault: {image: alpine}\n" +
 		".base: &base {script: echo template}\n" +
 		"build: {extends: .base}\n" +

@@ -366,6 +366,11 @@ func parseYAMLFile(content string) *yamlFile {
 		if yamlparser.IsEmptyDocument(&node) || node.Content[0].Kind == yaml.ScalarNode {
 			continue
 		}
+		// Runtime scans use lazy line info: an empty mapping has no payload
+		// and appendDocument drops it. Keep source indexes aligned with that list.
+		if node.Content[0].Kind == yaml.MappingNode && len(node.Content[0].Content) == 0 {
+			continue
+		}
 		nodes = append(nodes, node.Content[0])
 		starts = append(starts, node.Content[0].Line)
 	}

@@ -477,7 +477,7 @@ func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index i
 	if !found || root.Kind != yaml.MappingNode {
 		return nil
 	}
-	spans := childSpans(root, doc.end, e.yamlFile(f).lines)
+	lines := e.yamlFile(f).lines
 	var rows []model.ResourceOccurrence
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, value := root.Content[i], root.Content[i+1]
@@ -490,8 +490,13 @@ func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index i
 		if value == nil || value.Kind != yaml.MappingNode {
 			continue
 		}
-		span := spans[key.Value]
-		source := lineSource(span.start, span.end)
+		// A name may be declared repeatedly. Its source range belongs to
+		// this occurrence, rather than the last entry in a name-keyed map.
+		next := doc.end + 1
+		if i+3 < len(root.Content) {
+			next = root.Content[i+2].Line
+		}
+		source := lineSource(key.Line, trimEnd(key.Line, next-1, lines))
 		rows = append(rows, model.ResourceOccurrence{
 			File: f.FilePath, Platform: platforms.CICD,
 			ResourceType: "gitlab_ci_job", ResourceName: key.Value, ResourcePath: key.Value,
@@ -499,7 +504,7 @@ func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index i
 			Source:         source, LegacySource: source,
 		})
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].ResourceName < rows[j].ResourceName })
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].ResourceName < rows[j].ResourceName })
 	return rows
 }
 
