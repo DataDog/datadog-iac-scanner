@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/engine/contractlibs"
 	"github.com/open-policy-agent/opa/v1/ast"
 )
 
@@ -251,7 +252,7 @@ func isIdentChar(ch byte) bool {
 // definitions indexes every name the libraries export against the package that defines
 // it, so a call to an unimported library can name the exact import to add. Built from
 // whatever libraries were loaded, so it covers every platform without a hardcoded list.
-func (l regoLibraries) definitions() map[string]string {
+func (l regoLibraries) definitions(includeV2 bool) map[string]string {
 	index := make(map[string]string)
 	for _, code := range []string{l.common, l.platform} {
 		module, err := ast.ParseModuleWithOpts("library.rego", code, ast.ParserOptions{
@@ -260,14 +261,28 @@ func (l regoLibraries) definitions() map[string]string {
 		if err != nil {
 			continue // a broken library is not the author's problem to fix
 		}
-		path := module.Package.Path.String()
-		for _, rule := range module.Rules {
-			if name := exportedRuleName(rule); name != "" {
-				index[name] = path
+		indexModuleDefinitions(module, index)
+	}
+	if includeV2 {
+		if v2Libs, err := contractlibs.Modules(); err == nil {
+			for _, mod := range v2Libs {
+				indexModuleDefinitions(mod, index)
 			}
 		}
 	}
 	return index
+}
+
+func indexModuleDefinitions(module *ast.Module, index map[string]string) {
+	if module == nil {
+		return
+	}
+	path := module.Package.Path.String()
+	for _, rule := range module.Rules {
+		if name := exportedRuleName(rule); name != "" && !strings.HasPrefix(name, "_") {
+			index[name] = path
+		}
+	}
 }
 
 func exportedRuleName(rule *ast.Rule) string {

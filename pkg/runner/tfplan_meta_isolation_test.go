@@ -14,10 +14,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
 	"github.com/DataDog/datadog-iac-scanner/pkg/featureflags"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	jsonParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/json"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -113,8 +113,20 @@ func TestInspect_TFPlanMetaNotExposedAsFakeResource(t *testing.T) {
 	require.Contains(t, prepared, "_dd_tfplan_meta",
 		"sanity check: the document must actually carry _dd_tfplan_meta for this test to be meaningful")
 
+	parsers, err := parser.NewBuilder(ctx).
+		Add(&jsonParser.Parser{}).
+		Build([]string{""}, []string{""})
+	require.NoError(t, err)
+	require.Len(t, parsers, 1)
+	key := model.DocumentKey{
+		Path:          model.DocumentPath("tfplan.json", "", nil),
+		Kind:          kind,
+		Platform:      parsers[0].DocumentPlatform(),
+		DocumentIndex: 0,
+	}
 	doc := model.FileMetadata{
-		ID:                uuid.NewString(),
+		DocumentKey:       key,
+		ID:                key.ID(),
 		ScanID:            "test",
 		Document:          prepared,
 		LineInfoDocument:  prepared,

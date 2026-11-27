@@ -5,6 +5,7 @@ import (
 )
 
 type ScanMetadata struct {
+	ContractV2 *ContractV2Metadata `json:"contract_v2,omitempty"`
 	// StartTime contains the instant in which the analysis started.
 	StartTime time.Time
 	// EndTime contains the instant in which the analysis ended.
@@ -60,12 +61,36 @@ type ScanStats struct {
 }
 
 type RuleStats struct {
+	// FailedToCompile contains rule IDs whose Rego failed to compile.
+	FailedToCompile []string `json:"failed_to_compile,omitempty"`
+	// FailedToEvaluate contains rule IDs that failed at runtime or while decoding findings.
+	FailedToEvaluate []string `json:"failed_to_evaluate,omitempty"`
+	// DefaultRuleCompileFailed reports compile errors in the default rule source.
+	DefaultRuleCompileFailed bool `json:"default_rule_compile_failed,omitempty"`
 	// TimedOut contains a list of rules that timed out.
 	TimedOut []string
 	// MostExpensiveRule contains the rule that spent the most time executing during the analysis.
 	MostExpensiveRule RuleTiming
 	// SlowestRule contains the rule that spent the most time executing per file.
 	SlowestRule RuleTiming
+}
+
+// ContractV2Metadata contains additive counters for Contract v2 Terraform evaluation.
+type ContractV2Metadata struct {
+	RootsFailed          int `json:"roots_failed"`
+	PlansFailed          int `json:"plans_failed"`
+	RootsScopeIncomplete int `json:"roots_scope_incomplete"`
+}
+
+// SetContractV2Counters records runner counters in scan metadata. The runner
+// owns the counter values; this setter keeps their public metadata contract in
+// the scan package.
+func (m *ScanMetadata) SetContractV2Counters(rootsFailed, plansFailed, rootsScopeIncomplete int) {
+	m.ContractV2 = &ContractV2Metadata{
+		RootsFailed:          rootsFailed,
+		PlansFailed:          plansFailed,
+		RootsScopeIncomplete: rootsScopeIncomplete,
+	}
 }
 
 type RuleTiming struct {

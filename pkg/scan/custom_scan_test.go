@@ -7,7 +7,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 
+	"github.com/open-policy-agent/regal/pkg/linter"
+	"github.com/open-policy-agent/regal/pkg/report"
+	"github.com/open-policy-agent/regal/pkg/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -30,6 +34,7 @@ func (s *stubLibSource) GetQueryLibrary(_ context.Context, platform string) (sou
 			LibraryCode: `package generic.terraform
 import rego.v1
 resolve_s3_bucket_name(resource, name) := name
+nested(block, name) := []
 `,
 			LibraryInputData: "{}",
 		}, nil
@@ -117,6 +122,39 @@ func validate(t *testing.T, platform, rego string) []RegoValidationError {
 	errs, err := ValidateCustomRegoQuery(context.Background(), platform, rego, testLibSource())
 	require.NoError(t, err)
 	return errs
+}
+
+func validateWithSchemaIndex(t *testing.T, rego, schemaIndex string) []RegoValidationError {
+	t.Helper()
+	result := lintWithSchemaIndex(t, rego, schemaIndex)
+	diagnostics := make([]RegoValidationError, 0, len(result.Violations))
+	for i := range result.Violations {
+		if result.Violations[i].Level == "notice" {
+			continue
+		}
+		diagnostics = append(diagnostics, regoValidationErrorFromViolation(&result.Violations[i]))
+	}
+	return finalizeDiagnostics(diagnostics)
+}
+
+func lintWithSchemaIndex(t *testing.T, rego, schemaIndex string) report.Report {
+	t.Helper()
+	linterInstance, err := linter.NewLinter().
+		WithCustomRulesFromFS(regalRulesFS, "regalrules").
+		WithCustomRulesFromFS(fstest.MapFS{
+			"schema_index.rego": &fstest.MapFile{Data: []byte(schemaIndex)},
+		}, ".").
+		WithDisableAll(true).
+		WithEnabledCategories(enabledRegalCategories...).
+		WithEnabledRules(enabledRegalBugRules...).
+		WithDisabledRules(regalIgnoredRules...).
+		Prepare(context.Background())
+	require.NoError(t, err)
+	input, err := rules.InputFromText(customRuleFileName, rego)
+	require.NoError(t, err)
+	result, err := linterInstance.WithInputModules(&input).Lint(context.Background())
+	require.NoError(t, err)
+	return result
 }
 
 func errorCodes(errs []RegoValidationError) map[string]bool {
@@ -759,5 +797,574 @@ func TestValidate_ConcurrentUseIsSafe(t *testing.T) {
 	// Same input must always yield the same verdict, whichever goroutine ran it.
 	for i := range results {
 		assert.Equal(t, results[i%len(inputs)], results[i], "result %d diverged for the same input", i)
+	}
+}
+
+func TestValidate_ContractV2RulesAndAuthoringGuardrails(t *testing.T) {
+	validV2 := `package datadog
+
+import rego.v1
+
+import data.datadog.iac
+import data.datadog.output as dd_output
+
+results contains result if {
+	some bucket in input.resources.aws_s3_bucket
+	iac.is_empty(bucket, ["versioning"])
+	iac.no_related(bucket, "aws_s3_bucket_versioning", "bucket")
+	result := dd_output.format(bucket, {"path": []})
+}
+`
+	assert.Empty(t, allCodes(validate(t, "terraform", validV2)), "valid Contract v2 rule must pass validation")
+
+	// Contract v2 rule with decoupled optional remediate(resource, finding) validates cleanly.
+	validWithRemediate := `package datadog
+
+import rego.v1
+
+import data.datadog.iac
+import data.datadog.output as dd_output
+
+results contains result if {
+	some b in input.resources.aws_s3_bucket
+	iac.equals(b, ["acl"], "public-read")
+	result := dd_output.format(b, {"path": ["acl"]})
+}
+
+remediate(b, _) := {
+	"remediation": sprintf("restrict %s", [iac.get(b, ["bucket"])]),
+	"remediationType": "replacement",
+}
+`
+	assert.Empty(t, allCodes(validate(t, "terraform", validWithRemediate)))
+
+	badReservedName := `package datadog
+
+import rego.v1
+
+output := true
+results contains result if {
+	some r in input.resources.aws_s3_bucket
+	result := {"_dd_id": r.id, "path": []}
+}
+`
+	reservedErr, ok := firstWithCode(validate(t, "terraform", badReservedName), "contract/reserved-name")
+	require.True(t, ok)
+	assert.Contains(t, reservedErr.Message, "output")
+
+	badInlineObject := `package datadog
+
+import rego.v1
+
+results contains {"_dd_id": r.id} if {
+	some r in input.resources.aws_s3_bucket
+}
+`
+	assert.Contains(t, allCodes(validate(t, "terraform", badInlineObject)), "contract/bound-finding")
+
+	badInternalField := `package datadog
+
+import rego.v1
+
+import data.datadog.output as dd_output
+
+results contains result if {
+	some r in input.resources.aws_s3_bucket
+	r.attributes.x["$unknown"]
+	result := dd_output.format(r, {})
+}
+`
+	assert.Contains(t, allCodes(validate(t, "terraform", badInternalField)), "contract/no-internal-fields")
+
+	badNonSetResults := `package datadog
+
+import rego.v1
+
+import data.datadog.output as dd_output
+
+results := dd_output.format(input.resources.aws_s3_bucket[0], {})
+`
+	assert.Contains(t, allCodes(validate(t, "terraform", badNonSetResults)), codeMissingRule)
+
+	assert.Contains(t, allCodes(validate(t, "k8s", validV2)), "contract/unsupported-platform")
+
+	badLegacyInput := `package datadog
+
+import rego.v1
+
+import data.datadog.output as dd_output
+
+results contains result if {
+	some doc in input.document
+	result := dd_output.format(doc, {})
+}
+`
+	assert.Contains(t, allCodes(validate(t, "terraform", badLegacyInput)), "contract/no-legacy-document")
+
+	badMixedEntry := `package datadog
+
+import rego.v1
+
+import data.datadog.output as dd_output
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	result := {"documentId": doc.id, "resourceType": "t", "resourceName": "n", "searchKey": "k"}
+}
+
+results contains result if {
+	some r in input.resources.aws_s3_bucket
+	result := dd_output.format(r, {})
+}
+`
+	assert.Contains(t, allCodes(validate(t, "terraform", badMixedEntry)), codeMissingRule)
+
+	// Legacy rule importing Contract v2 libraries must fail validation (mirrors scan-time compilation).
+	badLegacyUsingV2Lib := `package datadog
+
+import rego.v1
+
+import data.datadog.iac
+
+DatadogPolicy contains result if {
+	some doc in input.document
+	iac.is_true(doc, ["x"])
+	result := {"documentId": doc.id, "resourceType": "t", "resourceName": "n", "searchKey": "k"}
+}
+`
+	assert.NotEmpty(t, validate(t, "terraform", badLegacyUsingV2Lib))
+
+	badImportLegacyDoc := `package datadog
+
+import rego.v1
+
+import data.datadog.output as dd_output
+import input.document
+
+results contains result if {
+	some d in document
+	result := dd_output.format(d, {})
+}
+`
+	assert.Contains(t, allCodes(validate(t, "terraform", badImportLegacyDoc)), "contract/no-legacy-document")
+
+	// Legitimate tag literal starting with _dd_ must be allowed.
+	validTagLiteral := `package datadog
+
+import rego.v1
+
+import data.datadog.iac
+import data.datadog.output as dd_output
+
+results contains result if {
+	some b in input.resources.aws_s3_bucket
+	iac.equals(b, ["tags", "_dd_managed"], "true")
+	result := dd_output.format(b, {})
+}
+`
+	assert.Empty(t, validate(t, "terraform", validTagLiteral))
+}
+
+func TestValidate_ContractV2SchemaPath(t *testing.T) {
+	const schema = `package custom.regal.rules.contract.schemadata
+index := {
+	"aws_s3_bucket": {
+		"acl": true,
+		"logging": {"target_bucket": true, "enabled": true},
+		"tags": {"*": true},
+	},
+	"data.aws_ami": {"id": true},
+	"aws_iam_policy": {"policy": true},
+	"aws_s3_bucket_versioning": {"bucket": true},
+}
+`
+	makeRule := func(body string) string {
+		return `package datadog
+
+import rego.v1
+import data.datadog.iac
+import data.datadog.output as dd_output
+import data.datadog.terraform as tf
+
+results contains result if {
+	some bucket in input.resources.aws_s3_bucket
+` + body + `
+	result := dd_output.format(bucket, {"path": []})
+}
+`
+	}
+	for _, tc := range []struct {
+		name      string
+		body      string
+		wantCode  string
+		wantNoErr bool
+		wantCount int
+	}{
+		{
+			name:     "unknown resource type",
+			body:     "some unknown in input.resources.aws_s3_buket\nresult := dd_output.format(unknown, {})",
+			wantCode: "contract/schema-path",
+		},
+		{
+			name:     "unknown attribute",
+			body:     `iac.equals(bucket, ["logging", "target_buket"], "logs")`,
+			wantCode: "contract/schema-path",
+		},
+		{
+			name:     "unknown string path",
+			body:     `iac.equals(bucket, "target_buket", "logs")`,
+			wantCode: "contract/schema-path",
+		},
+		{
+			name: "multiple unknown paths",
+			body: `iac.equals(bucket, ["not_a_field_one"], "x")
+iac.equals(bucket, ["not_a_field_two"], "y")`,
+			wantCode:  "contract/schema-path",
+			wantCount: 2,
+		},
+		{
+			name: "multiple unknown data source types",
+			body: `some first in input.resources.data.aws_unknown_data_source_one
+some second in input.resources.data.aws_unknown_data_source_two`,
+			wantCode:  "contract/schema-path",
+			wantCount: 2,
+		},
+		{
+			name:      "valid string path",
+			body:      `iac.equals(bucket, "acl", "private")`,
+			wantNoErr: true,
+		},
+		{
+			name:      "nested attribute",
+			body:      `iac.equals(bucket, ["logging", "target_bucket"], "logs")`,
+			wantNoErr: true,
+		},
+		{
+			name:      "map element wildcard",
+			body:      `iac.equals(bucket, ["tags", "Environment"], "prod")`,
+			wantNoErr: true,
+		},
+		{
+			name:      "dynamic step leaves later steps unchecked",
+			body:      `iac.equals(bucket, ["logging", input.dynamic_step, "target_buket"], "logs")`,
+			wantNoErr: true,
+		},
+		{
+			name: "block view extends the prefix",
+			body: `some view in iac.blocks(bucket, "logging")
+ iac.is_true(view, ["enabled"])`,
+			wantNoErr: true,
+		},
+		{
+			name: "value view extends the prefix",
+			body: `view := tf.value_view(bucket, ["logging"])
+iac.is_true(view, ["enabled"])`,
+			wantNoErr: true,
+		},
+		{
+			name:      "related path checks the related type",
+			body:      `iac.related(bucket, "aws_iam_policy", "policy")`,
+			wantNoErr: true,
+		},
+		{
+			name:      "no_related path checks the related type",
+			body:      `iac.no_related(bucket, "aws_s3_bucket_versioning", "bucket")`,
+			wantNoErr: true,
+		},
+		{
+			name:     "no_related misspelled related path",
+			body:     `iac.no_related(bucket, "aws_s3_bucket_versioning", "buket")`,
+			wantCode: "contract/schema-path",
+		},
+		{
+			name:      "related_complete path checks the related type",
+			body:      `iac.related_complete(bucket, "aws_s3_bucket_versioning", "bucket")`,
+			wantNoErr: true,
+		},
+		{
+			name:     "related_complete misspelled related path",
+			body:     `iac.related_complete(bucket, "aws_s3_bucket_versioning", "buket")`,
+			wantCode: "contract/schema-path",
+		},
+		{
+			name:     "unknown related type",
+			body:     `iac.related(bucket, "aws_iam_policty", "policy")`,
+			wantCode: "contract/schema-path",
+		},
+		{
+			name:     "no_related unknown related type",
+			body:     `iac.no_related(bucket, "aws_s3_bucket_versioning_typo", "bucket")`,
+			wantCode: "contract/schema-path",
+		},
+		{
+			name:     "related_complete unknown related type",
+			body:     `iac.related_complete(bucket, "aws_s3_bucket_versioning_typo", "bucket")`,
+			wantCode: "contract/schema-path",
+		},
+		{
+			name: "data source type is indexed separately",
+			body: `some ami in input.resources.data.aws_ami
+iac.equals(bucket, ["acl"], "private")`,
+			wantNoErr: true,
+		},
+		{
+			name: "bad path is suppressed with a reason",
+			body: `# regal ignore:schema-path # reason: provider-version compatibility
+ iac.equals(bucket, ["logging", "old_name"], "logs")`,
+			wantNoErr: true,
+		},
+		{
+			name: "suppression requires a reason",
+			body: `# regal ignore:schema-path
+ iac.equals(bucket, ["logging", "old_name"], "logs")`,
+			wantCode: "contract/schema-path",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			diagnostics := validateWithSchemaIndex(t, makeRule(tc.body), schema)
+			codes := allCodes(diagnostics)
+			if tc.wantNoErr {
+				assert.NotContains(t, codes, "contract/schema-path", "%v", diagnostics)
+				return
+			}
+			if tc.wantCount > 0 {
+				assert.Equal(t, []string{"contract/schema-path", "contract/schema-path"}, codes, "%v", diagnostics)
+				return
+			}
+			assert.Contains(t, codes, tc.wantCode, "%v", diagnostics)
+		})
+	}
+
+	twoUnknownTypes := validateWithSchemaIndex(t, makeRule(`some first in input.resources.aws_not_a_type
+some second in input.resources.aws_not_a_type2`), schema)
+	assert.Equal(t, []string{"contract/schema-path", "contract/schema-path"}, allCodes(twoUnknownTypes), "%v", twoUnknownTypes)
+
+	noIndex := validate(t, "terraform", makeRule(`iac.equals(bucket, ["logging", "typo"], "x")`))
+	assert.NotContains(t, allCodes(noIndex), "contract/schema-path", "schema-path must be a no-op without generated schema data")
+
+	legacyRule := func(path string) string {
+		return `package datadog
+
+import rego.v1
+import data.datadog.iac
+
+DatadogPolicy contains result if {
+	some resource in input.resources.aws_s3_bucket
+	iac.equals(resource, ` + path + `, "value")
+	result := {"resourceType": "aws_s3_bucket"}
+}
+`
+	}
+	legacyValid := validateWithSchemaIndex(t, legacyRule(`["logging", "target_bucket"]`), schema)
+	assert.NotContains(t, allCodes(legacyValid), "contract/schema-path", "%v", legacyValid)
+	legacyInvalid := validateWithSchemaIndex(t, legacyRule(`["logging", "missing"]`), schema)
+	assert.Contains(t, allCodes(legacyInvalid), "contract/schema-path", "%v", legacyInvalid)
+}
+
+func TestSchemaPathReportsCheckedAndUncheckedCoverage(t *testing.T) {
+	const schema = `package custom.regal.rules.contract.schemadata
+index := {"aws_s3_bucket": {"acl": true, "logging": {"target_bucket": true}}}
+`
+	body := `iac.equals(bucket, ["acl"], "private")
+iac.equals(bucket, ["logging", input.dynamic_step, "target_bucket"], "logs")
+iac.equals(input.uninferred_resource, ["acl"], "private")`
+	result := lintWithSchemaIndex(t, `package datadog
+import rego.v1
+import data.datadog.iac
+results contains result if {
+    some bucket in input.resources.aws_s3_bucket
+`+body+`
+    result := {"resourceType": "aws_s3_bucket"}
+}
+`, schema)
+	coverage := []report.Violation{}
+	for _, violation := range result.Violations {
+		if violation.Title == "schema-path-coverage" {
+			coverage = append(coverage, violation)
+		}
+	}
+	require.Len(t, coverage, 1)
+	assert.Equal(t, "notice", coverage[0].Level)
+	assert.Contains(t, coverage[0].Description, "checked=1 unchecked=2 unchecked_percent=67")
+}
+
+func TestValidate_ContractV2DoesNotReuseCompactedNestedIndices(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		legacy  bool
+		wantBad bool
+	}{
+		{
+			name: "path index",
+			body: `some i, spec in iac.blocks(resource, "spec")
+path := ["spec", i, "enabled"]
+iac.is_true(resource, path)
+result := dd_output.format(resource, {"path": path})`,
+			wantBad: true,
+		},
+		{
+			name: "helper argument",
+			body: `some i, spec in iac.blocks(resource, "spec")
+iac.is_true(resource, ["spec", i, "enabled"])
+result := dd_output.format(resource, {"path": iac.path_of(spec, ["enabled"])})`,
+			wantBad: true,
+		},
+		{
+			name: "single alias of compacted blocks",
+			body: `blocks := iac.blocks(resource, "spec")
+some i, spec in blocks
+iac.is_true(resource, ["spec", i, "enabled"])
+result := dd_output.format(resource, {"path": iac.path_of(spec, ["enabled"])})`,
+			wantBad: true,
+		},
+		{
+			name: "reindex another view through generic Terraform alias",
+			body: `some i, spec in iac.blocks(resource, "spec")
+computed := tf.nested(resource, "spec")[i]
+result := dd_output.format(resource, {"path": iac.path_of(computed, [])})`,
+			wantBad: true,
+		},
+		{
+			name: "unused index and returned block path",
+			body: `some i, spec in iac.blocks(resource, "spec")
+iac.is_true(spec, ["enabled"])
+result := dd_output.format(resource, {"path": iac.path_of(spec, ["enabled"])})`,
+		},
+		{
+			name: "index reused inside its comprehension",
+			body: `paths := [p | some i, spec in iac.blocks(resource, "spec"); p := ["spec", i, "enabled"]]
+some path in paths
+result := dd_output.format(resource, {"path": path})`,
+			wantBad: true,
+		},
+		{
+			name: "index reused in comprehension head",
+			body: `paths := [["spec", i, "enabled"] | some i, spec in iac.blocks(resource, "spec")]
+some path in paths
+result := dd_output.format(resource, {"path": path})`,
+			wantBad: true,
+		},
+		{
+			name: "outer index reused in nested comprehension",
+			body: `some i, spec in iac.blocks(resource, "spec")
+paths := [p | some k in ["enabled"]; p := ["spec", i, k]]
+result := dd_output.format(resource, {"path": iac.path_of(spec, ["enabled"]), "paths": paths})`,
+			wantBad: true,
+		},
+		{
+			name: "outer index reused in every body",
+			body: `some i, spec in iac.blocks(resource, "spec")
+every k in ["enabled"] { iac.is_true(resource, ["spec", i, k]) }
+result := dd_output.format(resource, {"path": iac.path_of(spec, ["enabled"])})`,
+			wantBad: true,
+		},
+		{
+			name: "independent comprehensions with the same index name",
+			body: `a := [b | some i, b in iac.blocks(resource, "a")]
+c := [b | some i, b in iac.blocks(resource, "c")]
+count(a) > count(c)
+result := dd_output.format(resource, {})`,
+		},
+		{
+			name: "comprehension index and unrelated outer index",
+			body: `a := [b | some i, b in iac.blocks(resource, "a")]
+some i, x in input.resources.example_resource
+x == resource
+count(a) > i
+result := dd_output.format(resource, {})`,
+		},
+		{
+			name: "nested comprehension shadows compacted index",
+			body: `some i, spec in iac.blocks(resource, "spec")
+names := [n | some i, n in ["x", "y"]; i > 0]
+iac.is_true(spec, ["enabled"])
+result := dd_output.format(resource, {"path": iac.path_of(spec, ["enabled"]), "names": names})`,
+		},
+		{
+			name: "every shadows compacted index",
+			body: `some i, spec in iac.blocks(resource, "spec")
+every i, n in ["x", "y"] { i < count(n) }
+result := dd_output.format(resource, {"path": iac.path_of(spec, ["enabled"])})`,
+		},
+		{
+			name: "outer alias reused in comprehension",
+			body: `blocks := iac.blocks(resource, "spec")
+paths := [["spec", i, "enabled"] | some i, spec in blocks]
+some path in paths
+result := dd_output.format(resource, {"path": path})`,
+			wantBad: true,
+		},
+		{
+			name: "comprehension alias reused in comprehension",
+			body: `paths := [["spec", i, "enabled"] | blocks := iac.blocks(resource, "spec"); some i, spec in blocks]
+some path in paths
+result := dd_output.format(resource, {"path": path})`,
+			wantBad: true,
+		},
+		{
+			name: "comprehension alias name reused for another collection in a sibling comprehension",
+			body: `a := [x | blocks := iac.blocks(resource, "a"); some x in blocks]
+c := [y | blocks := input.resources.example_resource; some i, y in blocks; count(a) > i]
+result := dd_output.format(resource, {"c": c})`,
+		},
+		{
+			name: "comprehension alias name reused for another collection outside",
+			body: `a := [x | blocks := iac.blocks(resource, "a"); some x in blocks]
+blocks := input.resources.example_resource
+some i, other in blocks
+count(a) > i
+result := dd_output.format(other, {})`,
+		},
+		{
+			name: "comprehension shadows outer alias name",
+			body: `blocks := iac.blocks(resource, "a")
+c := [y | blocks := input.resources.example_resource; some i, y in blocks; i > 0]
+result := dd_output.format(resource, {"c": c, "n": count(blocks)})`,
+		},
+		{
+			name:   "legacy rule is outside the Contract v2 guard",
+			legacy: true,
+			body: `DatadogPolicy contains result if {
+	some doc in input.document
+	some i, spec in tf.nested(doc.resource.example_resource, "spec")
+	result := {"documentId": doc.id, "resourceType": "example_resource", "resourceName": "example", "searchKey": i}
+}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var rego string
+			if tc.legacy {
+				rego = `package datadog
+
+import rego.v1
+
+import data.generic.terraform as tf
+
+` + tc.body + `
+`
+			} else {
+				rego = `package datadog
+
+import rego.v1
+
+import data.datadog.iac
+import data.datadog.output as dd_output
+import data.generic.terraform as tf
+
+results contains result if {
+	resource := input.resources.example_resource[0]
+	` + strings.ReplaceAll(tc.body, "\n", "\n\t") + `
+}
+`
+			}
+
+			errs := validate(t, "terraform", rego)
+			if tc.wantBad {
+				assert.Contains(t, allCodes(errs), "contract/no-compacted-index-reuse")
+			} else {
+				assert.NotContains(t, allCodes(errs), "contract/no-compacted-index-reuse")
+			}
+		})
 	}
 }

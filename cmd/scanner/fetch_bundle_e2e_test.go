@@ -90,7 +90,19 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 			_, err = w.Write(body)
 			require.NoError(t, err)
 		case "/api/v2/static-analysis/iac/rulesets/custom-ruleset":
-			http.NotFound(w, r)
+			ruleset := datadog.Ruleset{
+				ID:   datadog.CustomRulesetName,
+				Name: datadog.CustomRulesetName,
+				Rules: []*datadog.Rule{{
+					ID: "custom-broken-rule", Name: "custom-broken-rule", Platform: "Terraform",
+					RegoQuery: []byte("package datadog\\nthis is not valid Rego"), IsPublished: true,
+				}},
+			}
+			body, err := jsonapi.Marshal(ruleset)
+			require.NoError(t, err)
+			w.Header().Add("content-type", "application/json")
+			_, err = w.Write(body)
+			require.NoError(t, err)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL)
 			http.NotFound(w, r)
@@ -113,6 +125,25 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	for _, f := range []string{"config.yaml", "rules.json", "libraries.json", "manifest.json"} {
 		require.FileExists(t, filepath.Join(bundleDir, f))
 	}
+	mergedBytes, err := os.ReadFile(filepath.Join(bundleDir, "rules.json"))
+	require.NoError(t, err)
+	var olderReaderShape struct {
+		Rules []struct {
+			ID string `json:"id"`
+		} `json:"rules"`
+	}
+	require.NoError(t, json.Unmarshal(mergedBytes, &olderReaderShape))
+	require.Len(t, olderReaderShape.Rules, 2, "origin markers keep the merged rules file readable by older scanners")
+	bundleRules, err := datadog.NewLocalFileClient(filepath.Join(bundleDir, "rules.json"), filepath.Join(bundleDir, "libraries.json"))
+	require.NoError(t, err)
+	defaultRules, err := bundleRules.GetDefaultRuleset(t.Context())
+	require.NoError(t, err)
+	customRules, err := bundleRules.GetCustomRuleset(t.Context())
+	require.NoError(t, err)
+	require.Len(t, defaultRules.Rules, 1)
+	require.Equal(t, datadog.RuleOriginDefault, defaultRules.Rules[0].Origin)
+	require.Len(t, customRules.Rules, 1)
+	require.Equal(t, datadog.RuleOriginCustom, customRules.Rules[0].Origin)
 
 	outputDir := t.TempDir()
 	metadataPath := filepath.Join(outputDir, "metadata.json")
@@ -140,6 +171,8 @@ func Test_E2EFetchBundleThenOfflineScan(t *testing.T) {
 	require.Equal(t, 1, metadata.Stats.Files, "the fixture file should have been scanned")
 	require.Equal(t, 1, metadata.Stats.Violations, "the offline bundle's rule should have fired exactly once")
 	require.Contains(t, metadata.Stats.ViolationBreakdowns["HIGH"], "terraform-s3-bucket-versioning-disabled")
+	require.Contains(t, metadata.RuleStats.FailedToCompile, "custom-broken-rule")
+	require.False(t, metadata.RuleStats.DefaultRuleCompileFailed, "a custom bundle rule compile failure is warning-only")
 
 	// An inventory path that is another output of the scan never replaces it.
 	sarifPath := filepath.Join(outputDir, "datadog-iac-scanner-result.sarif")

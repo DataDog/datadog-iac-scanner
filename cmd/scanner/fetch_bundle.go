@@ -87,6 +87,8 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 	if err != nil {
 		return errorWithExitCode(fmt.Errorf("error fetching the custom ruleset: %w", err), constants.EngineErrorCode)
 	}
+	markRuleOrigin(defaultRuleset, datadog.RuleOriginDefault)
+	markRuleOrigin(customRuleset, datadog.RuleOriginCustom)
 	ruleset := datadog.MergeRulesets(defaultRuleset, customRuleset)
 	rulesetBytes, err := json.Marshal(ruleset)
 	if err != nil {
@@ -123,6 +125,17 @@ func fetchBundle(ctx context.Context, c *cli.Command) error {
 
 	fmt.Printf("Wrote offline bundle (%d rules, %d libraries) to %s\n", len(ruleset.Rules), len(libraries), outputDir)
 	return nil
+}
+
+func markRuleOrigin(ruleset *datadog.Ruleset, origin datadog.RuleOrigin) {
+	if ruleset == nil {
+		return
+	}
+	for _, rule := range ruleset.Rules {
+		if rule != nil {
+			rule.Origin = origin
+		}
+	}
 }
 
 // configurationReadError classifies a config.ReadConfiguration failure the

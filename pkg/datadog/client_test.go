@@ -54,6 +54,18 @@ func TestGetCustomRuleset(t *testing.T) {
 	assert.Equal(t, customRules, ruleset.Rules)
 }
 
+func TestRuleJSONAPIRoundTrip(t *testing.T) {
+	want := &Rule{ID: "rule", Origin: RuleOriginDefault}
+
+	body, err := jsonapi.Marshal(want)
+	require.NoError(t, err)
+
+	var got Rule
+	require.NoError(t, jsonapi.Unmarshal(body, &got))
+	assert.Equal(t, want.ID, got.ID)
+	assert.Empty(t, got.Origin, "bundle-only fields are not part of the JSON:API representation")
+}
+
 func TestMergeRulesets(t *testing.T) {
 	defaultRule := &Rule{ID: "default-rule", Name: "default-rule", IsPublished: true}
 	customRule := &Rule{ID: "custom-rule", Name: "custom-rule", IsPublished: true}

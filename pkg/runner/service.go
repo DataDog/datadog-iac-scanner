@@ -102,6 +102,10 @@ type Service struct {
 	// LineInfoPayload exports line-info documents whole as the scan payload
 	// (see model.FileMetadatas.Combine).
 	LineInfoPayload bool
+	// SkipLegacyTerraformDocumentParsing bypasses legacy HCL-to-Document
+	// conversion during prepare_sources when all loaded rules for this service
+	// use Contract v2 (and no payload export needs legacy documents).
+	SkipLegacyTerraformDocumentParsing bool
 	// planLineInfo keeps the line-info trees of the scan's Terraform plans
 	// loaded across decode passes (see model.LineInfoRetention).
 	planLineInfoOnce sync.Once

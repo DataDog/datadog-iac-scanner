@@ -26,7 +26,7 @@ var regalRulesFS embed.FS
 // category mixes definite failures with advisory checks (constant-condition,
 // unused-output-variable, …) that would reject working rules, so only a curated subset
 // of bug rules is enabled individually below.
-var enabledRegalCategories = []string{"datadog"}
+var enabledRegalCategories = []string{"datadog", "contract"}
 
 // enabledRegalBugRules are Regal built-ins whose violations mean the rule cannot run
 // correctly. Advisory bug rules stay off so patterns like `1 == 1` or an unused output
@@ -89,6 +89,10 @@ func lintWithRegal(ctx context.Context, regoContent string) ([]RegoValidationErr
 
 	errs := make([]RegoValidationError, 0, len(result.Violations))
 	for i := range result.Violations {
+		// Coverage is diagnostic-only and must not become a custom-rule validation error.
+		if result.Violations[i].Level == "notice" {
+			continue
+		}
 		errs = append(errs, regoValidationErrorFromViolation(&result.Violations[i]))
 	}
 	return errs, nil

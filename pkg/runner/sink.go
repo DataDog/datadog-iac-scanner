@@ -17,9 +17,14 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/comment"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/hclcache"
+	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
@@ -84,6 +89,7 @@ func (s *Service) parseFailureReason(filename string, content []byte) string {
 }
 
 // sinkContent parses already-read file content; used when one read feeds several parsers.
+// nolint:gocyclo
 func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	c *Content, getErr error,
 	openAPIResolveReferences bool,
@@ -99,6 +105,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 
 	if err != nil {
 		return errors.Wrapf(err, "failed to get file content: %s", filename)
+	}
+	if s.SkipLegacyTerraformDocumentParsing && tfpath.IsConfig(filename) {
+		return s.sinkTerraformContractOnly(ctx, filename, scanID, *content, c.CountLines)
 	}
 	// Use the same path-derived contract for cache lookup and insertion.
 	contract := s.Parser.Contract(filename)
@@ -339,4 +348,77 @@ func resolveJSONFilter(jsonFilter string) string {
 	}
 
 	return string(parsedByte)
+}
+
+// sinkTerraformContractOnly registers a Terraform config file's metadata,
+// source text, and ignore comments without running legacy HCL-to-Document
+// conversion, used when every loaded rule targets Contract v2.
+func (s *Service) sinkTerraformContractOnly(
+	ctx context.Context, filename, scanID string, raw []byte, countLines int,
+) error {
+	resolved, err := tfmodules.ResolveConfigContent(ctx, s.Parser.FS(), filename, "", raw)
+	if errors.Is(err, tfmodules.ErrSkippedLinkPlaceholder) {
+		return nil
+	}
+	if err == nil && len(resolved) > 0 {
+		raw = resolved
+	}
+	var ignoreLines []int
+	if tfpath.IsJSONConfig(filename) {
+		if !json.Valid(raw) {
+			reason := s.parseFailureReason(filename, raw)
+			s.logParseFailure(ctx, filename, reason, errors.New("invalid JSON syntax"))
+			s.Tracker.TrackFileFailed(filename, reason)
+			return nil
+		}
+	} else {
+		f, diags := hclcache.ParseConfig(ctx, raw, filename)
+		if diags.HasErrors() || f == nil {
+			reason := s.parseFailureReason(filename, raw)
+			s.logParseFailure(ctx, filename, reason, diags)
+			s.Tracker.TrackFileFailed(filename, reason)
+			return nil
+		}
+		if body, ok := f.Body.(*hclsyntax.Body); ok {
+			if comments, cErr := comment.ParseComments(raw, filename); cErr == nil {
+				ignoreLines = comment.GetIgnoreLines(comments, body)
+			}
+		}
+	}
+	if len(ignoreLines) > 0 {
+		sort.Ints(ignoreLines)
+	}
+	fileCommands := s.Parser.CommentsCommands(ctx, filename, raw)
+	originalData := s.internContentBytes(raw)
+	key := s.documentKey(filename, model.KindTerraform, 0)
+	fm := model.FileMetadata{
+		DocumentKey:  key,
+		ID:           key.ID(),
+		ScanID:       scanID,
+		Document:     model.Document{},
+		OriginalData: originalData,
+		Kind:         model.KindTerraform,
+		FilePath:     filename,
+		Commands:     fileCommands,
+		LinesIgnore:  ignoreLines,
+		Platform:     "terraform",
+	}
+	// Enable synchronized lazy line splitting so concurrent Contract v2
+	// workers calling fm.Lines() are data-race free.
+	fm.SetLazyLines()
+	if err := s.Storage.SaveFile(ctx, &fm); err != nil {
+		return err
+	}
+	s.filesMu.Lock()
+	s.files = append(s.files, &fm)
+	s.filesMu.Unlock()
+	// Contract-only parsing does not resolve referenced files, so it has no
+	// additional found lines to report (the legacy parser reports zero too).
+	linesResolved := 0
+	s.Tracker.TrackFileFoundCountLines(linesResolved)
+	s.Tracker.TrackFileParse(filename)
+	parsedLines := max(countLines-len(ignoreLines), 0)
+	s.Tracker.TrackFileParseCountLines(parsedLines)
+	s.Tracker.TrackFileIgnoreCountLines(len(ignoreLines))
+	return nil
 }

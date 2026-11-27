@@ -304,9 +304,20 @@ type Ruleset struct {
 	Rules            []*Rule `jsonapi:"attribute" json:"rules"`
 }
 
+// RuleOrigin identifies a rule's source in an offline bundle.
+type RuleOrigin string
+
+const (
+	RuleOriginDefault RuleOrigin = "default"
+	RuleOriginCustom  RuleOrigin = "custom"
+)
+
 // Rule defines the structure of a rule that's stored in Datadog.
 type Rule struct {
 	ID string `jsonapi:"primary,iac_rule" json:"id"`
+	// Origin identifies whether a rule in an offline bundle came from the default
+	// or custom ruleset. API clients do not set this bundle-only field.
+	Origin RuleOrigin `json:"origin,omitempty"`
 	// DefaultRuleID identifies the canonical CSPM concept implemented by this
 	// IaC rule. It is separate from ID, which remains the scanner rule identity.
 	DefaultRuleID     string         `jsonapi:"attribute" json:"default_rule_id,omitempty"`

@@ -697,6 +697,9 @@ func saveMetadata(metadataPath string, metadata *scan.ScanMetadata) error {
 
 //nolint:mnd
 func getExitCode(metadata *scan.ScanMetadata) error {
+	if metadata.RuleStats.DefaultRuleCompileFailed {
+		return exitCode(constants.EngineErrorCode)
+	}
 	if _, ok := metadata.Stats.ViolationBreakdowns["CRITICAL"]; ok {
 		return exitCode(60)
 	} else if _, ok = metadata.Stats.ViolationBreakdowns["HIGH"]; ok {
