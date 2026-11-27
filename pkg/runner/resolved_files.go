@@ -112,6 +112,7 @@ func (s *Service) storeResolvedFiles(
 			key.DocumentIndex = docIdx
 			file := model.FileMetadata{
 				DocumentKey:       key,
+				ParseIdentity:     documents.Identity,
 				ID:                key.ID(),
 				ScanID:            scanID,
 				Document:          preparedDocument,
