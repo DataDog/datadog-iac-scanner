@@ -834,6 +834,35 @@ Resources:
 	require.Equal(t, "OwnerParameter", m["Ref"])
 }
 
+func TestReplaceForEachVars(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		bindings map[string]string
+		want     string
+	}{
+		{
+			name:     "value contains its own placeholder",
+			template: "${A}",
+			bindings: map[string]string{"A": "prefix&{A}"},
+			want:     "prefix&{A}",
+		},
+		{
+			name:     "value contains another binding's placeholder",
+			template: "${A}-&{A}-${AB}-&{AB}-${UNKNOWN}",
+			bindings: map[string]string{"A": "${AB}", "AB": "value"},
+			want:     "${AB}-${AB}-value-value-${UNKNOWN}",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for range 100 {
+				require.Equal(t, tt.want, replaceForEachVars(tt.template, tt.bindings))
+			}
+		})
+	}
+}
+
 func TestDocument_UnmarshalYAML_CloudFormationForEachExpansion(t *testing.T) {
 	ctx := context.Background()
 
