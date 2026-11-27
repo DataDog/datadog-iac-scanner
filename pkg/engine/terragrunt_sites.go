@@ -6,8 +6,10 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -36,6 +38,58 @@ func unitInputsByDir(files model.FileMetadatas, repoPath string) map[string]map[
 			out = make(map[string]map[string]cty.Value)
 		}
 		out[filepath.Dir(absPath(f.FilePath, repoPath))] = f.TerragruntInputs
+	}
+	return out
+}
+
+// unitModuleFiles maps the directory of each Terragrunt unit with a translation
+// to the absolute paths of its files that join the unit's module. It is nil
+// without such a file.
+func unitModuleFiles(files model.FileMetadatas, repoPath string) map[string]tfeval.UnitModule {
+	var out map[string]tfeval.UnitModule
+	for _, f := range files {
+		if f == nil || f.TerragruntTranslation == nil ||
+			len(f.TerragruntTranslation.ModuleFiles) == 0 && !f.TerragruntTranslation.CopiesFiles {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]tfeval.UnitModule)
+		}
+		dir := filepath.Dir(absPath(f.FilePath, repoPath))
+		t := f.TerragruntTranslation
+		m := tfeval.UnitModule{IncludeInCopy: t.IncludeInCopy, ExcludeFromCopy: t.ExcludeFromCopy}
+		for _, p := range t.ModuleFiles {
+			m.Files = append(m.Files, filepath.Join(dir, filepath.Base(p)))
+		}
+		out[dir] = m
+	}
+	return out
+}
+
+// unitOverrides returns the overrides the unit files that join a module make
+// to its blocks, which the module's own directory does not show.
+func unitOverrides(
+	ctx context.Context, evaluator *tfeval.Evaluator, files model.FileMetadatas, repoPath string, sites *unitSites,
+) []unitOverride {
+	var out []unitOverride
+	for _, f := range files {
+		if f == nil || f.TerragruntTranslation == nil ||
+			!slices.ContainsFunc(f.TerragruntTranslation.ModuleFiles, tfpath.IsOverrideFile) {
+			continue
+		}
+		t := f.TerragruntTranslation
+		unitDir := filepath.Dir(absPath(f.FilePath, repoPath))
+		for virtual, site := range sites.byFile {
+			if site.unit == absPath(f.FilePath, repoPath) {
+				rel, err := filepath.Rel(repoPath, site.unit)
+				if err != nil {
+					rel = site.unit
+				}
+				for _, config := range evaluator.UnitResourceOverrides(ctx, unitDir, t.Source, t.Version, virtual) {
+					out = append(out, unitOverride{chain: filepath.ToSlash(rel), config: config})
+				}
+			}
+		}
 	}
 	return out
 }

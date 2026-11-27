@@ -292,7 +292,7 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 		t.Fatal(err)
 	}
 
-	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, repo)
+	byAbsPath, filesByDir, _ := indexTerraformFiles(context.Background(), files, repo, nil)
 	evaluator := tfeval.New()
 	moduleCalls := newModuleCallIndex(filesByDir, func(path string) bool {
 		return pathWithinRoot(path, filepath.Join(repo, "modules"))

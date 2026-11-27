@@ -48,18 +48,34 @@ type overrideProjection struct {
 	document map[string]interface{}
 }
 
+// unitOverride is an override a Terragrunt unit's files make to a module's
+// block. It holds for the calls whose call chain starts with chain.
+type unitOverride struct {
+	chain  string
+	config tfeval.ResourceOverride
+}
+
 type terraformOverrides struct {
-	repoPath    string
-	byPath      map[string]*model.FileMetadata
+	repoPath string
+	byPath   map[string]*model.FileMetadata
+	// unitSources are the override sources that only hold for the calls of a
+	// unit, by call chain prefix, declaration file ID and block.
+	unitSources map[string]map[string]map[model.TerraformBlock]*model.TerraformOverrideSource
 	definitions map[overrideDefinition]*overrideProjection
 	fragments   instantiatedIndex
 }
 
 func scanTerraformOverrides(
 	ctx context.Context, evaluator *tfeval.Evaluator, byPath map[string]*model.FileMetadata,
-	filesByDir map[string][]*model.FileMetadata, repoPath string,
+	filesByDir map[string][]*model.FileMetadata, repoPath string, unitConfigs []unitOverride,
 ) *terraformOverrides {
 	var overrides *terraformOverrides
+	for _, u := range unitConfigs {
+		if overrides == nil {
+			overrides = newTerraformOverrides(repoPath, byPath)
+		}
+		overrides.addUnit(u)
+	}
 	for dir, files := range filesByDir {
 		for _, f := range files {
 			if !tfpath.IsOverrideFile(f.FilePath) {
@@ -67,8 +83,7 @@ func scanTerraformOverrides(
 			}
 			for _, config := range evaluator.ResourceOverrides(ctx, dir) {
 				if overrides == nil {
-					overrides = &terraformOverrides{repoPath: repoPath, byPath: byPath,
-						definitions: make(map[overrideDefinition]*overrideProjection), fragments: make(instantiatedIndex)}
+					overrides = newTerraformOverrides(repoPath, byPath)
 				}
 				overrides.add(config)
 			}
@@ -76,6 +91,60 @@ func scanTerraformOverrides(
 		}
 	}
 	return overrides
+}
+
+func newTerraformOverrides(repoPath string, byPath map[string]*model.FileMetadata) *terraformOverrides {
+	return &terraformOverrides{repoPath: repoPath, byPath: byPath,
+		definitions: make(map[overrideDefinition]*overrideProjection), fragments: make(instantiatedIndex)}
+}
+
+// addUnit records the override of a unit: its other fragments are no longer
+// scanned where they are written, and its sources apply to the unit's call only.
+func (o *terraformOverrides) addUnit(u unitOverride) {
+	decl := u.config.Declaration
+	file := o.byPath[absPath(decl.TypeRange.Filename, o.repoPath)]
+	if file == nil {
+		return
+	}
+	for _, fragment := range u.config.Contributions {
+		if f := o.byPath[absPath(fragment.TypeRange.Filename, o.repoPath)]; f != nil {
+			kind := fragment.Labels[0]
+			if fragment.Type == dataRoot {
+				kind = dataTypePrefix + kind
+			}
+			o.fragments.add(f.ID, kind, fragment.Labels[1])
+		}
+	}
+	key, source := o.overrideSource(file, model.TerraformBlock{Kind: decl.Type, Type: decl.Labels[0], Name: decl.Labels[1]}, &u.config)
+	if o.unitSources == nil {
+		o.unitSources = make(map[string]map[string]map[model.TerraformBlock]*model.TerraformOverrideSource)
+	}
+	if o.unitSources[u.chain] == nil {
+		o.unitSources[u.chain] = make(map[string]map[model.TerraformBlock]*model.TerraformOverrideSource)
+	}
+	if o.unitSources[u.chain][file.ID] == nil {
+		o.unitSources[u.chain][file.ID] = make(map[model.TerraformBlock]*model.TerraformOverrideSource)
+	}
+	o.unitSources[u.chain][file.ID][key] = source
+}
+
+// unitSourcesFor returns the sources of base with those of the unit that owns
+// callChain on top.
+func (o *terraformOverrides) unitSourcesFor(
+	fileID, callChain string, base map[model.TerraformBlock]*model.TerraformOverrideSource,
+) map[model.TerraformBlock]*model.TerraformOverrideSource {
+	for chain, byFile := range o.unitSources {
+		if !strings.HasPrefix(callChain, chain+"|") || byFile[fileID] == nil {
+			continue
+		}
+		merged := maps.Clone(base)
+		if merged == nil {
+			merged = make(map[model.TerraformBlock]*model.TerraformOverrideSource)
+		}
+		maps.Copy(merged, byFile[fileID])
+		return merged
+	}
+	return base
 }
 
 func (o *terraformOverrides) add(config tfeval.ResourceOverride) {
@@ -172,7 +241,8 @@ func (o *terraformOverrides) apply(files model.FileMetadatas, docs []model.Docum
 	}
 	for i, synthetic := range syntheticFiles {
 		if file := o.byPath[absPath(synthetic.FilePath, o.repoPath)]; file != nil {
-			synthetic.TerraformOverrides = withUnqualifiedDataOverrides(file.TerraformOverrides, docs[i])
+			sources := o.unitSourcesFor(file.ID, synthetic.ModuleCallChain, file.TerraformOverrides)
+			synthetic.TerraformOverrides = withUnqualifiedDataOverrides(sources, docs[i])
 		}
 	}
 	for _, file := range files {
@@ -226,6 +296,16 @@ func setTerraformBlock(file *model.FileMetadata, key model.TerraformBlock, docum
 func (o *terraformOverrides) setSource(
 	file *model.FileMetadata, key model.TerraformBlock, config *tfeval.ResourceOverride,
 ) {
+	_, source := o.overrideSource(file, key, config)
+	if file.TerraformOverrides == nil {
+		file.TerraformOverrides = make(map[model.TerraformBlock]*model.TerraformOverrideSource)
+	}
+	file.TerraformOverrides[key] = source
+}
+
+func (o *terraformOverrides) overrideSource(
+	file *model.FileMetadata, key model.TerraformBlock, config *tfeval.ResourceOverride,
+) (model.TerraformBlock, *model.TerraformOverrideSource) {
 	decl := config.Declaration
 	line := decl.TypeRange.Start.Line
 	source := &model.TerraformOverrideSource{
@@ -233,10 +313,7 @@ func (o *terraformOverrides) setSource(
 		Fields:           make(map[string]string),
 	}
 	o.sourceFields(file.ID, config.Effective.Body, "", source.Fields)
-	if file.TerraformOverrides == nil {
-		file.TerraformOverrides = make(map[model.TerraformBlock]*model.TerraformOverrideSource)
-	}
-	file.TerraformOverrides[key] = source
+	return key, source
 }
 
 func (o *terraformOverrides) sourceFields(
