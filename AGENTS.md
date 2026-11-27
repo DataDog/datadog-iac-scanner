@@ -25,7 +25,13 @@ messages or pull request descriptions.
     `pkg/parser/terraform/modules/`.
   - `pkg/resolver/`: renders Helm charts and resolves files.
   - `pkg/engine/`: evaluates Rego; query sources are in `pkg/engine/source/`.
+  - `pkg/terraform/contract/` and `pkg/terraform/refs/`: Terraform Contract v2
+    model, adapters, and reference handling.
+  - `pkg/policy/`: Contract v2 finding and path validation.
+  - `pkg/ruletest/`: shared rule-test harness and mutation checks.
   - `pkg/report/`: SARIF and the other output formats.
+- `docs/rule-contract-v2.md` documents the Terraform-only Contract v2 rule
+  API, completeness semantics, and failure behavior.
 - `pkg/config/` reads `code-security.datadog.yaml` from the root of the scanned
   repository (see `README.md`). The decoder is strict: an unknown key makes the
   file invalid.
