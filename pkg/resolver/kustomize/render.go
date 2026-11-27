@@ -117,14 +117,15 @@ type Result struct {
 // Renderer renders the kustomizations of one scan. Its methods are safe for
 // concurrent use; renders run one at a time.
 type Renderer struct {
-	fsys     vfs.FS
-	confine  string
-	cache    *sourceCache
-	mu       sync.Mutex
-	dead     bool
-	deadline time.Time
-	docs     map[string][]sourceDoc
-	timeout  time.Duration
+	fsys             vfs.FS
+	confine          string
+	cache            *sourceCache
+	mu               sync.Mutex
+	dead             bool
+	safetyNetTripped bool
+	deadline         time.Time
+	docs             map[string][]sourceDoc
+	timeout          time.Duration
 }
 
 // NewRenderer returns a renderer reading through fsys, never outside confine.
@@ -211,6 +212,22 @@ func (r *Renderer) Release() {
 	r.mu.Unlock()
 }
 
+// SafetyNetTripped reports whether any render exceeded its root or phase
+// deadline. Caller cancellation, ordinary render errors, and a render rejected
+// because another renderer's abandoned lock owner held the process-wide lock
+// do not trip it. It remains true for the lifetime of the renderer once tripped.
+func (r *Renderer) SafetyNetTripped() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.safetyNetTripped
+}
+
+func (r *Renderer) tripSafetyNet() {
+	r.mu.Lock()
+	r.safetyNetTripped = true
+	r.mu.Unlock()
+}
+
 type runOutcome struct {
 	m   resmap.ResMap
 	a   *adapter
@@ -246,33 +263,55 @@ func (r *Renderer) prepareAndRun(ctx context.Context, a *adapter, root string, d
 // phase deadline gets only what is left of it, and scan cancellation aborts
 // the render.
 func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
-	if err := ctx.Err(); err != nil {
+	if ctx.Err() != nil {
 		return nil, &RenderError{Reason: ReasonTimeout}
 	}
-	r.mu.Lock()
-	dead := r.dead || time.Now().After(r.deadline)
-	r.mu.Unlock()
-	if dead {
-		return nil, &RenderError{Reason: ReasonTimeout}
-	}
-	r.mu.Lock()
-	phase := r.deadline
-	r.mu.Unlock()
-	owner := runLock.acquire(ctx, phase)
+	owner, phase := r.acquireRenderLock(ctx)
 	if owner == nil {
 		return nil, &RenderError{Reason: ReasonTimeout}
 	}
 	// One absolute deadline covers preparation, execution and mapping, from
 	// when the render holds the lock: a root started near the phase deadline
 	// gets only what is left of it.
-	r.mu.Lock()
-	budget := time.Until(r.deadline)
-	r.mu.Unlock()
+	budget := time.Until(phase)
 	if budget > r.timeout {
 		budget = r.timeout
 	}
 	deadline := time.Now().Add(budget)
 	a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
+	out, err := r.runUntilDeadline(ctx, owner, a, root, deadline)
+	if err != nil {
+		return nil, err
+	}
+	return r.completeRender(ctx, a, &out, deadline)
+}
+
+func (r *Renderer) acquireRenderLock(ctx context.Context) (*lockOwner, time.Time) {
+	r.mu.Lock()
+	phase := r.deadline
+	phaseExpired := time.Now().After(phase)
+	dead := r.dead || phaseExpired
+	if phaseExpired && ctx.Err() == nil {
+		r.safetyNetTripped = true
+	}
+	r.mu.Unlock()
+	if dead {
+		return nil, phase
+	}
+	owner := runLock.acquire(ctx, phase)
+	if owner == nil && ctx.Err() == nil && time.Now().After(phase) {
+		r.tripSafetyNet()
+	}
+	return owner, phase
+}
+
+func (r *Renderer) runUntilDeadline(
+	ctx context.Context,
+	owner *lockOwner,
+	a *adapter,
+	root string,
+	deadline time.Time,
+) (runOutcome, error) {
 	done := make(chan runOutcome, 1)
 	go func() {
 		out := r.prepareAndRun(ctx, a, root, deadline)
@@ -282,42 +321,60 @@ func (r *Renderer) Render(ctx context.Context, root string) (*Result, error) {
 	// The absolute root deadline bounds preparation and execution alike.
 	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
-	var out runOutcome
 	select {
-	case out = <-done:
+	case out := <-done:
+		return out, nil
 	case <-timer.C:
 		runLock.abandon(owner)
+		// Cancellation takes precedence when both select signals are ready.
+		r.recordDeadlineTimeout(ctx, &RenderError{Reason: ReasonTimeout})
 		r.kill()
-		return nil, &RenderError{Reason: ReasonTimeout}
 	case <-ctx.Done():
 		runLock.abandon(owner)
 		r.kill()
-		return nil, &RenderError{Reason: ReasonTimeout}
 	}
+	return runOutcome{}, &RenderError{Reason: ReasonTimeout}
+}
+
+func (r *Renderer) completeRender(ctx context.Context, a *adapter, out *runOutcome, deadline time.Time) (*Result, error) {
 	if out.prepErr != nil {
+		r.recordDeadlineTimeout(ctx, out.prepErr)
 		return nil, out.prepErr
 	}
-	abs, kustFile := out.root, out.kustFile
 	if out.err != nil {
 		reason := a.reason
 		if reason == "" {
 			reason = ReasonRenderError
 		}
+		if reason == ReasonTimeout {
+			r.recordDeadlineTimeout(ctx, &RenderError{Reason: reason})
+		}
 		return nil, &RenderError{Reason: reason}
 	}
-	res := &Result{Root: abs, Reads: sortedKeys(a.reads), RunNs: out.runNs}
+	res := &Result{Root: out.root, Reads: sortedKeys(a.reads), RunNs: out.runNs}
 	mapStart := time.Now()
-	if err := r.mapResources(res, out.m, kustFile, deadline); err != nil {
+	if err := r.mapResources(res, out.m, out.kustFile, deadline); err != nil {
 		// Abandon the result so its files fall back to the raw scan; past the
 		// phase deadline, stop rendering.
-		var re *RenderError
-		if errors.As(err, &re) && re.Reason == ReasonTimeout {
+		if isTimeout(err) {
+			r.recordDeadlineTimeout(ctx, err)
 			r.kill()
 		}
 		return nil, err
 	}
 	res.MapNs = time.Since(mapStart)
 	return res, nil
+}
+
+func (r *Renderer) recordDeadlineTimeout(ctx context.Context, err error) {
+	if ctx.Err() == nil && isTimeout(err) {
+		r.tripSafetyNet()
+	}
+}
+
+func isTimeout(err error) bool {
+	var re *RenderError
+	return errors.As(err, &re) && re.Reason == ReasonTimeout
 }
 
 // resolveRoot confines root and checks Kustomize reads it as a directory.

@@ -403,6 +403,9 @@ func TestRenderRemainingBudgetDeadline(t *testing.T) {
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
 	}
+	if !r.SafetyNetTripped() {
+		t.Fatal("expired phase deadline did not trip the safety net")
+	}
 }
 
 // TestRenderPreparationDeadline abandons a root whose preparation starts past
@@ -436,8 +439,15 @@ func TestRenderMappingRootDeadline(t *testing.T) {
 	if err := rm.Append(rs); err != nil {
 		t.Fatal(err)
 	}
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(-time.Second)) == nil {
-		t.Fatal("mapping past the root deadline must fail the root")
+	a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
+	deadline := time.Now().Add(-time.Second)
+	_, err = r.completeRender(context.Background(), a, &runOutcome{m: rm}, deadline)
+	var re *RenderError
+	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+		t.Fatalf("got %v", err)
+	}
+	if !r.dead || !r.SafetyNetTripped() {
+		t.Fatalf("mapping timeout did not kill the renderer and trip the safety net: dead=%t tripped=%t", r.dead, r.SafetyNetTripped())
 	}
 }
 
@@ -473,6 +483,97 @@ func TestRenderContextCanceled(t *testing.T) {
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
 	}
+	if r.SafetyNetTripped() {
+		t.Fatal("canceled render tripped the wall-clock safety net")
+	}
+
+	reached, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce, reachedOnce sync.Once
+	closeRelease := func() { releaseOnce.Do(func() { close(release) }) }
+	defer closeRelease()
+	runFS := hookFS{onStat: func(p string) {
+		if filepath.Base(p) == "kustomization.yaml" {
+			reachedOnce.Do(func() { close(reached); <-release })
+		}
+	}}
+	runRenderer := NewRenderer(runFS, dir, 5<<20)
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	t.Cleanup(waitRunLock)
+	runDone := make(chan error, 1)
+	go func() {
+		_, err := runRenderer.Render(runCtx, filepath.Join(dir, "overlays/dev"))
+		runDone <- err
+	}()
+	<-reached
+	cancelRun()
+	err = <-runDone
+	closeRelease()
+	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+		t.Fatalf("canceled in-flight render got %v", err)
+	}
+	if runRenderer.SafetyNetTripped() {
+		t.Fatal("render canceled while running tripped the wall-clock safety net")
+	}
+
+	waitRunLock()
+	for _, tc := range []struct {
+		name    string
+		context func() (context.Context, context.CancelFunc)
+	}{
+		{"canceled", func() (context.Context, context.CancelFunc) {
+			return context.WithCancel(context.Background())
+		}},
+		{"deadline exceeded", func() (context.Context, context.CancelFunc) {
+			return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		}},
+	} {
+		t.Run("expired phase deadline/"+tc.name, func(t *testing.T) {
+			r := NewRenderer(vfs.Default(), dir, 5<<20)
+			r.deadline = time.Now().Add(-time.Second)
+			ctx, cancel := tc.context()
+			cancel()
+			// Enter after Render's initial context check, as if cancellation
+			// and phase expiry occurred while waiting for the renderer mutex.
+			owner, _ := r.acquireRenderLock(ctx)
+			if owner != nil {
+				runLock.release(owner)
+				t.Fatal("ended context and expired phase deadline acquired the lock")
+			}
+			if r.SafetyNetTripped() {
+				t.Fatal("ended context and expired phase deadline tripped the safety net")
+			}
+		})
+		t.Run("expired root deadline/"+tc.name, func(t *testing.T) {
+			// Enter the watchdog directly to model cancellation after Render's
+			// initial context check. Both select signals are already ready;
+			// repeat so either selected branch must preserve the contract.
+			for range 64 {
+				r := NewRenderer(vfs.Default(), dir, 5<<20)
+				ctx, cancel := tc.context()
+				cancel()
+				owner := runLock.acquire(context.Background(), time.Now().Add(time.Minute))
+				if owner == nil {
+					t.Fatal("could not acquire the process-wide render lock")
+				}
+				a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
+				deadline := time.Now().Add(-time.Second)
+				out, err := r.runUntilDeadline(ctx, owner, a, dir, deadline)
+				waitRunLock()
+				// The worker may finish before either watchdog signal is selected.
+				// Process its outcome just as Render does in that case.
+				if err == nil {
+					_, err = r.completeRender(ctx, a, &out, deadline)
+				}
+				if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+					t.Fatalf("ended context and expired root deadline got %v", err)
+				}
+				if r.SafetyNetTripped() {
+					t.Fatal("ended context and expired root deadline tripped the safety net")
+				}
+			}
+		})
+	}
 }
 
 // TestRenderMappingDeadline abandons a root whose mapping runs past the phase
@@ -491,9 +592,53 @@ func TestRenderMappingDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.deadline = time.Now().Add(-time.Second)
-	if r.mapResources(&Result{}, rm, "", time.Now().Add(time.Hour)) == nil {
-		t.Fatal("mapping past the phase deadline must fail the root")
+	a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
+	_, err = r.completeRender(context.Background(), a, &runOutcome{m: rm}, time.Now().Add(time.Hour))
+	var re *RenderError
+	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+		t.Fatalf("got %v", err)
 	}
+	if !r.dead || !r.SafetyNetTripped() {
+		t.Fatalf("phase-deadline mapping timeout did not kill the renderer and trip the safety net: dead=%t tripped=%t", r.dead, r.SafetyNetTripped())
+	}
+
+	t.Run("prep timeout", func(t *testing.T) {
+		prepRenderer := NewRenderer(vfs.Default(), t.TempDir(), 5<<20)
+		prepAdapter := &adapter{fsys: prepRenderer.fsys, root: prepRenderer.confine, cache: prepRenderer.cache, reads: map[string]struct{}{}}
+		_, err := prepRenderer.completeRender(context.Background(), prepAdapter, &runOutcome{prepErr: &RenderError{Reason: ReasonTimeout}}, time.Now().Add(-time.Second))
+		if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+			t.Fatalf("got %v", err)
+		}
+		if !prepRenderer.SafetyNetTripped() {
+			t.Fatal("prep timeout did not trip the safety net")
+		}
+	})
+
+	t.Run("canceled context prep timeout", func(t *testing.T) {
+		prepRenderer := NewRenderer(vfs.Default(), t.TempDir(), 5<<20)
+		prepAdapter := &adapter{fsys: prepRenderer.fsys, root: prepRenderer.confine, cache: prepRenderer.cache, reads: map[string]struct{}{}}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := prepRenderer.completeRender(ctx, prepAdapter, &runOutcome{prepErr: &RenderError{Reason: ReasonTimeout}}, time.Now().Add(-time.Second))
+		if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+			t.Fatalf("got %v", err)
+		}
+		if prepRenderer.SafetyNetTripped() {
+			t.Fatal("canceled-context prep timeout tripped the safety net")
+		}
+	})
+
+	t.Run("non-timeout prep error after deadline", func(t *testing.T) {
+		prepRenderer := NewRenderer(vfs.Default(), t.TempDir(), 5<<20)
+		prepAdapter := &adapter{fsys: prepRenderer.fsys, root: prepRenderer.confine, cache: prepRenderer.cache, reads: map[string]struct{}{}}
+		_, err := prepRenderer.completeRender(context.Background(), prepAdapter, &runOutcome{prepErr: &RenderError{Reason: ReasonValidation}}, time.Now().Add(-time.Second))
+		if !errors.As(err, &re) || re.Reason != ReasonValidation {
+			t.Fatalf("got %v", err)
+		}
+		if prepRenderer.SafetyNetTripped() {
+			t.Fatal("non-timeout prep error tripped the safety net")
+		}
+	})
 }
 
 func TestRenderConcurrent(t *testing.T) {
@@ -664,6 +809,9 @@ func TestRenderWatchdogRemainingBudget(t *testing.T) {
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
 	}
+	if !r.SafetyNetTripped() {
+		t.Fatal("root deadline did not trip the safety net")
+	}
 	if elapsed := time.Since(start); elapsed > 3*time.Second {
 		t.Fatalf("watchdog fired after %v, past the 2s root budget", elapsed)
 	}
@@ -688,6 +836,9 @@ func TestRenderWatchdogBoundsPreparation(t *testing.T) {
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 		t.Fatalf("got %v", err)
+	}
+	if !r.SafetyNetTripped() {
+		t.Fatal("root deadline during preparation did not trip the safety net")
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("returned after %v, past the 200ms root budget", elapsed)
@@ -773,6 +924,9 @@ func TestRenderSerializationFailureFailsRoot(t *testing.T) {
 	var re *RenderError
 	if res != nil || !errors.As(err, &re) || re.Reason != ReasonRenderError {
 		t.Fatalf("got a result: %t, error %v", res != nil, err)
+	}
+	if r.SafetyNetTripped() {
+		t.Fatal("ordinary render error tripped the wall-clock safety net")
 	}
 	// Not a timeout: the next root still renders.
 	if _, err := r.Render(context.Background(), filepath.Join(dir, "b")); err != nil {
@@ -880,12 +1034,16 @@ func TestRenderAbandonedLockFailsFast(t *testing.T) {
 	dir := writeTree(t, baseTree())
 	r := NewRenderer(vfs.Default(), dir, 5<<20)
 	o := runLock.acquire(context.Background(), time.Now().Add(time.Hour))
+	t.Cleanup(func() { runLock.release(o) })
 	runLock.abandon(o)
 	start := time.Now()
 	_, err := r.Render(context.Background(), filepath.Join(dir, "base"))
 	var re *RenderError
 	if !errors.As(err, &re) || re.Reason != ReasonTimeout || time.Since(start) > rootTimeout/2 {
 		t.Fatalf("got %v after %v", err, time.Since(start))
+	}
+	if r.SafetyNetTripped() {
+		t.Fatal("a foreign abandoned lock owner tripped this renderer's safety net")
 	}
 	runLock.release(o)
 	live := runLock.acquire(context.Background(), time.Now().Add(time.Hour))
@@ -943,6 +1101,23 @@ func TestRenderLockEndedWait(t *testing.T) {
 	}
 	if l.acquire(context.Background(), time.Now().Add(time.Hour)) == nil {
 		t.Fatal("the lock is not usable after the canceled waiter")
+	}
+
+	dir := t.TempDir()
+	r := NewRenderer(vfs.Default(), dir, 5<<20)
+	r.deadline = time.Now().Add(time.Second)
+	liveOwner := runLock.acquire(context.Background(), time.Now().Add(time.Hour))
+	if liveOwner == nil {
+		t.Fatal("could not acquire the process-wide render lock")
+	}
+	defer runLock.release(liveOwner)
+	_, err := r.Render(context.Background(), filepath.Join(dir, "root"))
+	var re *RenderError
+	if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+		t.Fatalf("live-owner wait got %v", err)
+	}
+	if !r.SafetyNetTripped() {
+		t.Fatal("lock wait that reached the phase deadline did not trip the safety net")
 	}
 }
 
