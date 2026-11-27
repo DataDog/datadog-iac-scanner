@@ -15,14 +15,10 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
-	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
 // Parser defines a parser type
-type Parser struct {
-	// FS is retained for parser-builder compatibility. CI parsing never reads sibling files.
-	FS vfs.FS
-}
+type Parser struct{}
 
 // ParsedCommand represents a parsed shell command
 type ParsedCommand struct {
@@ -62,6 +58,7 @@ type Span struct {
 
 // ExpressionMatch represents a found expression in text
 type ExpressionMatch struct {
+	Terminated bool   // Set by lexical extraction, or by the implicit-condition context.
 	Full       string `json:"full"`       // Full match including ${{ }}
 	Expression string `json:"expression"` // Just the expression inside
 	FullSpan   Span   `json:"full_span"`  // Span of full match
@@ -98,7 +95,7 @@ type ASTNode struct {
 
 // ParseContract separates declaration-only GitLab parses from legacy enrichment.
 func (p *Parser) ParseContract(path string) string {
-	if provider.Detect(path) == provider.GitLab {
+	if provider.Entrypoint(path) == provider.GitLab {
 		return provider.GitLabDeclarations
 	}
 	return provider.LegacyEnriched
@@ -119,7 +116,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		return nil, nil, nil, nil, err
 	}
 	resolved = fileContent
-	if provider.Detect(filePath) == provider.GitLab {
+	if provider.Entrypoint(filePath) == provider.GitLab {
 		return resolved, documents, ignoreLines, nil, nil
 	}
 
@@ -130,11 +127,11 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 		return resolved, documents, ignoreLines, resolvedFiles, nil
 	}
 
-	// Enhance documents with parsed run blocks
-	p.enhanceWithParsedRuns(ctx, documents)
-
-	// Enhance documents with parsed expressions
+	// Keep generic expression extraction separate from provider declarations.
 	p.enhanceWithParsedExpressions(ctx, documents)
+	for _, doc := range documents {
+		enhanceGitHub(ctx, doc)
+	}
 
 	// UnmarshalYAML already adds line tracking, so we can use documents directly
 	return resolved, documents, ignoreLines, resolvedFiles, nil
@@ -167,44 +164,16 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 	return string(content), nil
 }
 
-// enhanceWithParsedRuns walks through documents and parses run blocks with tree-sitter.
-// It supports both reusable/regular workflow files (jobs[*].steps) and composite GitHub
-// Action files such as action.yml (runs.steps), so that step-level rules can analyze
-// both shapes uniformly.
-func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Document) {
-	contextLogger := logger.FromContext(ctx)
-	for _, doc := range documents {
-		for group := range githubStepGroups(doc) {
-			for _, value := range group.steps {
-				step, ok := value.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				script, ok := step["run"].(string)
-				if !ok {
-					continue
-				}
-				parsed := parseGitHubRunBlock(script, githubShell(doc, group.job, step))
-				if parsed.Error != nil {
-					contextLogger.Debug().Err(parsed.Error).Msg("Incomplete CI shell analysis")
-				}
-				step["_parsed_run"] = parsed
-			}
-		}
-	}
-}
-
 // enhanceWithParsedExpressions walks through documents and parses GitHub Actions expressions
 func (p *Parser) enhanceWithParsedExpressions(ctx context.Context, documents []model.Document) {
 	for _, doc := range documents {
 		p.parseExpressionsInValue(ctx, doc, make(map[uintptr]bool))
-		enhanceGitHubConditions(ctx, doc)
 	}
 }
 
 // parseExpressionsInValue recursively walks a value and parses any expressions found.
-// seen holds the maps already walked: the content of a resolved file reference
-// is shared by every reference to it, and is walked once.
+// seen prevents revisiting maps during enrichment. CI source values remain
+// literal; this walk never resolves or reads sibling files.
 func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{}, seen map[uintptr]bool) {
 	contextLogger := logger.FromContext(ctx)
 	switch v := value.(type) {
@@ -233,7 +202,11 @@ func (p *Parser) parseExpressionsInValue(ctx context.Context, value interface{},
 				for _, expr := range allExpressions {
 					parsed := parseExpression(ctx, expr)
 					if parsed.Error != nil {
-						contextLogger.Err(parsed.Error).Msg("Failed to parse ghaction expression")
+						event := contextLogger.Debug()
+						if !expr.Terminated {
+							event = contextLogger.Error()
+						}
+						event.Err(parsed.Error).Msg("Incomplete GitHub expression analysis")
 					}
 					parsedExprs = append(parsedExprs, *parsed)
 				}

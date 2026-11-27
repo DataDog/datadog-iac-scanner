@@ -383,3 +383,32 @@ func TestInventoryGitLabDeclaredJobsInHelmChart(t *testing.T) {
 		})
 	}
 }
+
+func TestInventoryActionNamesPreservePlatforms(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		"k8s/action.yaml":                  "apiVersion: v1\nkind: Pod\nmetadata: {name: action}\nspec: {containers: []}\n",
+		"k8s/pod.yaml":                     "apiVersion: v1\nkind: Pod\nmetadata: {name: pod}\nspec: {containers: []}\n",
+		"roles/web/tasks/action.yml":       "- name: deploy\n  debug: {msg: hello}\n",
+		"charts/app/Chart.yaml":            "apiVersion: v2\nname: app\nversion: 0.1.0\n",
+		"charts/app/values.yaml":           "replicas: 2\n",
+		"charts/app/templates/action.yaml": "apiVersion: apps/v1\nkind: Deployment\nmetadata: {name: chart-app}\nspec: {replicas: {{ .Values.replicas }}}\n",
+	})
+	for _, enabled := range [][]string{{"Kubernetes", "Ansible"}, {"Kubernetes", "Ansible", "CICD"}, {""}} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			params := documentParams(root)
+			params.Platform = enabled
+			inv := scanInventory(t, params)
+			require.Equal(t, inventory.StatusComplete, inv.Status)
+			var files []string
+			for _, row := range inv.Resources {
+				files = append(files, row.File)
+				if row.File == "roles/web/tasks/action.yml" {
+					require.Equal(t, "ansible", row.Platform)
+				} else {
+					require.Equal(t, "kubernetes", row.Platform)
+				}
+			}
+			require.ElementsMatch(t, []string{"k8s/action.yaml", "k8s/pod.yaml", "roles/web/tasks/action.yml", "charts/app/templates/action.yaml"}, files)
+		})
+	}
+}

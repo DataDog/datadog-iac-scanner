@@ -72,29 +72,21 @@ Run `datadog-iac-scanner scan --help` to see all available flags.
 
 ### CI/CD source parsing
 
-Canonical GitHub workflow files under `.github/workflows/`, action manifests
-(`action.yml` and `action.yaml`), and GitLab entrypoints are routed to CI/CD
-regardless of their contents, honoring platform exclusions. Content-based
-workflow discovery also accepts quoted keys and whitespace before colons.
-CI/CD scalar values remain literal: naming a sibling YAML file does not inline
-its contents. Provider composition is separate from generic YAML references.
+Canonical GitHub workflow files under `.github/workflows/` and GitLab entrypoints
+are routed to CI/CD, honoring platform exclusions. Action manifests are detected
+by their content: naming a Kubernetes, Ansible or Helm file `action.yml` or
+`action.yaml` does not change its platform. Content-based workflow discovery also
+accepts quoted keys and whitespace before colons. CI scalar values remain literal;
+naming a sibling YAML file does not inline its contents.
 
-GitHub enrichment preserves the existing rule input: `_parsed_expressions_*`
-and `_parsed_run` remain alongside the declared values. Job and step conditions
-support implicit expressions; template extraction handles multiline values and
-quoted delimiters. Shell selection follows step, job and workflow defaults,
-then container or recognizable runner labels. Unresolved runners retain the
-legacy Bash analysis candidate to preserve existing rule coverage; this does
-not establish the runner's actual OS or shell. Explicitly unsupported shells
-keep `parse_ok: false`. The command list includes executable commands inside
-pipelines and compound statements, alongside existing pipeline grouping entries.
-For compatibility, `parse_ok` gates availability of parser facts, not complete
-syntax validity: recovered command and expression facts remain available with
-an error recorded separately. The expression grammar can recover on valid GitHub syntax such as
-bracket wildcard filters; recovery does not establish constant reducibility.
-A shell syntax error can occur after earlier commands have executed.
-GitHub templates are treated as opaque substitutions during shell parsing;
-original argument text is retained and expressions are never executed.
+GitHub job and step conditions support implicit expressions, multiline values
+and quoted delimiters. Shell settings follow step, job and workflow defaults,
+then container or recognized runner labels. PowerShell remains unsupported by the
+shell parser, whether selected explicitly or by a Windows runner; existing rules
+may use their text fallbacks. Unresolved runners retain a Bash analysis candidate,
+which does not establish their actual OS or shell. Composite run steps require an
+explicit shell. Expressions are never executed.
+
 
 ### GitLab CI declaration inventory
 

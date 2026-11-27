@@ -6,6 +6,8 @@
 package cicd
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,9 +72,7 @@ func TestShellParser_parseRunBlock_Pipeline(t *testing.T) {
 	result := parseRunBlock(script, "bash")
 
 	require.True(t, result.ParseOK)
-	require.Len(t, result.Commands, 3)
-
-	cmd := result.Commands[0]
+	cmd := shellFact(t, result.Commands, pipeline, "")
 	assert.Equal(t, "pipeline", cmd.Type)
 	require.Len(t, cmd.Pipeline, 2)
 
@@ -246,12 +246,14 @@ func TestShellParser_GitHubTemplates(t *testing.T) {
 func TestShellParser_RedirectedPipeline(t *testing.T) {
 	parsed := parseRunBlock(`printf %s "$PAYLOAD" | cat >> "$GITHUB_ENV"`, "bash")
 	require.True(t, parsed.ParseOK)
-	require.Len(t, parsed.Commands, 4)
-	cmd := parsed.Commands[0]
-	require.Equal(t, "GITHUB_ENV", cmd.Redirect.Target.Var)
-	require.Len(t, cmd.Pipeline, 2)
-	require.Equal(t, "printf", cmd.Pipeline[0].Command)
-	require.Equal(t, "cat", cmd.Pipeline[1].Command)
+	cat := shellFact(t, parsed.Commands, redirected_statement, "cat")
+	require.Equal(t, "GITHUB_ENV", cat.Redirect.Target.Var)
+	printf := shellFact(t, parsed.Commands, command, "printf")
+	require.Nil(t, printf.Redirect)
+	group := shellFact(t, parsed.Commands, pipeline, "")
+	require.Len(t, group.Pipeline, 2)
+	require.Equal(t, "printf", group.Pipeline[0].Command)
+	require.Equal(t, "cat", group.Pipeline[1].Command)
 }
 
 // Commands must remain visible to existing rules regardless of shell grouping.
@@ -290,4 +292,121 @@ func TestShellParser_RecoveryPreservesExecutablePrefix(t *testing.T) {
 	require.NotEmpty(t, parsed.Commands)
 	require.Equal(t, "echo", parsed.Commands[0].Command)
 	require.Equal(t, "GITHUB_ENV", parsed.Commands[0].Redirect.Target.Var)
+}
+
+func shellFact(t *testing.T, facts []ParsedCommand, kind, name string) ParsedCommand {
+	t.Helper()
+	var matches []ParsedCommand
+	for _, fact := range facts {
+		if fact.Type == kind && fact.Command == name {
+			matches = append(matches, fact)
+		}
+	}
+	require.Len(t, matches, 1, "%s %s", kind, name)
+	return matches[0]
+}
+
+func redirectedChain(size int) string {
+	var script strings.Builder
+	script.WriteString("a")
+	for i := 0; i < size; i++ {
+		fmt.Fprintf(&script, " | c%d > f%d", i, i)
+	}
+	return script.String()
+}
+
+func TestShellParser_RedirectedPipelineLinearFacts(t *testing.T) {
+	for _, size := range []int{16, 128, 800, 1600} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			parsed := parseRunBlock(redirectedChain(size), "bash")
+			require.True(t, parsed.ParseOK)
+			require.NoError(t, parsed.Error)
+			var names []string
+			entries := len(parsed.Commands)
+			for _, fact := range parsed.Commands {
+				if fact.Type == pipeline {
+					entries += len(fact.Pipeline)
+					for _, member := range fact.Pipeline {
+						require.Empty(t, member.Pipeline)
+					}
+				} else {
+					names = append(names, fact.Command)
+				}
+			}
+			require.Len(t, names, size+1, "every executable command is emitted once")
+			require.Equal(t, "a", names[0])
+			for i := 0; i < size; i++ {
+				require.Equal(t, fmt.Sprint("c", i), names[i+1])
+			}
+			require.LessOrEqual(t, entries, 2*(size+1)+1, "group members must not copy nested subtrees")
+		})
+	}
+}
+
+func BenchmarkShellParser_RedirectedPipeline(b *testing.B) {
+	for _, size := range []int{200, 400, 800, 1600} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			script := redirectedChain(size)
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if !parseRunBlock(script, "bash").ParseOK {
+					b.Fatal("parse failed")
+				}
+			}
+		})
+	}
+}
+
+func TestShellParser_UnterminatedTemplateStatus(t *testing.T) {
+	for _, script := range []string{"echo ${{ toJSON(secrets)", "echo ${{ toJSON(secrets) && 'unfinished }}"} {
+		parsed := parseGitHubRunBlock(script, "bash")
+		require.False(t, parsed.ParseOK)
+		require.Error(t, parsed.Error)
+	}
+}
+
+func TestShellParser_RedirectionScope(t *testing.T) {
+	for _, tc := range []struct{ script, target string }{
+		{`{ echo "$PAYLOAD"; } >> "$GITHUB_ENV"`, "GITHUB_ENV"},
+		{`{ echo "$PAYLOAD" > "$SAFE_FILE"; } >> "$GITHUB_ENV"`, "SAFE_FILE"},
+		{`echo "$(printf %s "$PAYLOAD")" >> "$GITHUB_ENV"`, "GITHUB_ENV"},
+		{`echo "$PAYLOAD" >> "$GITHUB_ENV" > "$SAFE_FILE"`, "SAFE_FILE"},
+	} {
+		t.Run(tc.script, func(t *testing.T) {
+			parsed := parseRunBlock(tc.script, "bash")
+			require.NoError(t, parsed.Error)
+			cmd := shellFact(t, parsed.Commands, redirected_statement, "echo")
+			require.Equal(t, tc.target, cmd.Redirect.Target.Var)
+			for _, fact := range parsed.Commands {
+				if fact.Command == "printf" {
+					require.Nil(t, fact.Redirect)
+				}
+			}
+		})
+	}
+}
+
+func TestShellParser_DifferentRedirectStreams(t *testing.T) {
+	for _, tc := range []struct {
+		script    string
+		inherited bool
+	}{
+		{`{ echo "$PAYLOAD" 2> "$SAFE_FILE"; } >> "$GITHUB_ENV"`, true},
+		{`{ echo "$PAYLOAD" < "$SAFE_FILE"; } >> "$GITHUB_ENV"`, true},
+		{`{ echo "$PAYLOAD" > "$SAFE_FILE"; } >> "$GITHUB_ENV"`, false},
+		{`{ echo "$PAYLOAD" 2> "$SAFE_FILE" > "$OTHER_FILE"; } >> "$GITHUB_ENV"`, false},
+	} {
+		t.Run(tc.script, func(t *testing.T) {
+			parsed := parseRunBlock(tc.script, "bash")
+			require.NoError(t, parsed.Error)
+			found := false
+			for _, cmd := range parsed.Commands {
+				if cmd.Redirect != nil && cmd.Redirect.Target.Var == "GITHUB_ENV" {
+					require.NotNil(t, cmd.Args, "rule-facing argument lists must serialize as arrays")
+					found = true
+				}
+			}
+			require.Equal(t, tc.inherited, found)
+		})
+	}
 }

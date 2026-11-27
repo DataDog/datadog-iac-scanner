@@ -63,7 +63,11 @@ func parseExpression(ctx context.Context, expr ExpressionMatch) *ParsedExpressio
 	}
 
 	// Tree-sitter-ghactions requires the ${{ }} wrapper to parse correctly
-	exprBytes := []byte(expr.Full)
+	full := expr.Full
+	if full == "" {
+		full = "${{ " + expr.Expression + " }}"
+	} // Grammar adapter for implicit conditions.
+	exprBytes := []byte(full)
 	tree := parser.Parse(exprBytes, nil)
 	if tree == nil {
 		result.Error = fmt.Errorf("failed to parse expression '%s': invalid syntax", expr.Expression)
@@ -77,8 +81,8 @@ func parseExpression(ctx context.Context, expr ExpressionMatch) *ParsedExpressio
 	// The pinned grammar is not a GitHub validator (e.g. it recovers on [*]).
 	// Existing rules gate all facts on ParseOK, so retain recovered facts and
 	// report the grammar diagnostic separately, as for shell parsing.
-	result.ParseOK = strings.HasPrefix(expr.Full, "${{") && expressionEnd(expr.Full, len("${{")) == len(expr.Full)-len("}}")
-	if rootNode.HasError() || strings.TrimSpace(expr.Expression) == "" {
+	result.ParseOK = expr.Terminated
+	if rootNode.HasError() || !expr.Terminated || strings.TrimSpace(expr.Expression) == "" {
 		result.Error = fmt.Errorf("GitHub expression parser recovered from unsupported or invalid syntax")
 	}
 
@@ -130,7 +134,7 @@ func extractExpressionsFromString(input string) []ExpressionMatch {
 		trimmed := strings.TrimSpace(body)
 		exprStart := start + 3 + len(body) - len(strings.TrimLeftFunc(body, unicode.IsSpace))
 		results = append(results, ExpressionMatch{
-			Full: input[start:fullEnd], Expression: trimmed,
+			Full: input[start:fullEnd], Expression: trimmed, Terminated: end >= 0,
 			FullSpan: Span{Start: start, End: fullEnd},
 			ExprSpan: Span{Start: exprStart, End: exprStart + len(trimmed)},
 		})

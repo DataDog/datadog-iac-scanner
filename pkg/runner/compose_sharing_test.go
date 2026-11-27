@@ -115,7 +115,7 @@ func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 	orders := [][]string{paths, {paths[3], paths[2], paths[4], paths[5], paths[1], paths[0]}}
 	for _, order := range orders {
 		ctx := context.Background()
-		counted := &countingCIParser{Parser: &cicd.Parser{FS: fsys}, calls: make(map[string]int)}
+		counted := &countingCIParser{Parser: &cicd.Parser{}, calls: make(map[string]int)}
 		parsers, err := parser.NewBuilder(ctx).WithFS(fsys).Add(counted).Build([]string{"cicd"}, []string{""})
 		require.NoError(t, err)
 		svc := &Service{Parser: parsers[0], Tracker: noopTracker{}, Storage: nopLineInfoStorage{}, Platforms: []string{"cicd"}}
@@ -132,7 +132,7 @@ func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 			contract := svc.Parser.Contract(f.FilePath)
 			encoded, err := json.Marshal(f.Document)
 			require.NoError(t, err)
-			if provider.Detect(f.FilePath) == provider.GitLab {
+			if provider.Entrypoint(f.FilePath) == provider.GitLab {
 				require.NotContains(t, string(encoded), "_parsed_run")
 			} else {
 				require.Contains(t, string(encoded), "_parsed_run")
@@ -152,7 +152,7 @@ func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 		}
 		var rows []model.ResourceOccurrence
 		occurrence.Documents(ctx, svc.files, func(f *model.FileMetadata, r *model.ResourceOccurrence) {
-			if provider.Detect(f.FilePath) == provider.GitLab {
+			if provider.Entrypoint(f.FilePath) == provider.GitLab {
 				require.Equal(t, "gitlab_ci_job", r.ResourceType)
 				require.Equal(t, "jobs", r.ResourceName)
 			} else {

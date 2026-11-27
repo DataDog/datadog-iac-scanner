@@ -64,25 +64,25 @@ func TestExpressionParser_ParseSecretsExpansion(t *testing.T) {
 	}{
 		{
 			name:                 "toJSON(secrets)",
-			expression:           ExpressionMatch{Expression: "toJSON(secrets)", Full: "${{ toJSON(secrets) }}"},
+			expression:           ExpressionMatch{Terminated: true, Expression: "toJSON(secrets)", Full: "${{ toJSON(secrets) }}"},
 			wantSecretsExpansion: true,
 			wantDynamicSecret:    false,
 		},
 		{
 			name:                 "secrets with literal key",
-			expression:           ExpressionMatch{Expression: "secrets['MY_SECRET']", Full: "${{ secrets['MY_SECRET'] }}"},
+			expression:           ExpressionMatch{Terminated: true, Expression: "secrets['MY_SECRET']", Full: "${{ secrets['MY_SECRET'] }}"},
 			wantSecretsExpansion: false,
 			wantDynamicSecret:    false,
 		},
 		{
 			name:                 "secrets with dynamic key",
-			expression:           ExpressionMatch{Expression: "secrets[matrix.env]", Full: "${{ secrets[matrix.env] }}"},
+			expression:           ExpressionMatch{Terminated: true, Expression: "secrets[matrix.env]", Full: "${{ secrets[matrix.env] }}"},
 			wantSecretsExpansion: false,
 			wantDynamicSecret:    true,
 		},
 		{
 			name:                 "secrets with format",
-			expression:           ExpressionMatch{Expression: "secrets[format('PAT_{0}', matrix.env)]", Full: "${{ secrets[format('PAT_{0}', matrix.env)] }}"},
+			expression:           ExpressionMatch{Terminated: true, Expression: "secrets[format('PAT_{0}', matrix.env)]", Full: "${{ secrets[format('PAT_{0}', matrix.env)] }}"},
 			wantSecretsExpansion: false,
 			wantDynamicSecret:    true,
 		},
@@ -108,19 +108,19 @@ func TestExpressionParser_ConstantReducible(t *testing.T) {
 	}{
 		{
 			name:             "string literal",
-			expression:       ExpressionMatch{Expression: "'foo'", Full: "${{ 'foo' }}"},
+			expression:       ExpressionMatch{Terminated: true, Expression: "'foo'", Full: "${{ 'foo' }}"},
 			wantConstant:     true,
 			wantConstantSubs: false,
 		},
 		{
 			name:             "variable reference",
-			expression:       ExpressionMatch{Expression: "github.ref", Full: "${{ github.ref }}"},
+			expression:       ExpressionMatch{Terminated: true, Expression: "github.ref", Full: "${{ github.ref }}"},
 			wantConstant:     false,
 			wantConstantSubs: false,
 		},
 		{
 			name:             "mixed expression",
-			expression:       ExpressionMatch{Expression: "github.ref == 'main' && (1 > 0)", Full: "${{ github.ref == 'main' && (1 > 0) }}"},
+			expression:       ExpressionMatch{Terminated: true, Expression: "github.ref == 'main' && (1 > 0)", Full: "${{ github.ref == 'main' && (1 > 0) }}"},
 			wantConstant:     false,
 			wantConstantSubs: true,
 		},
@@ -140,7 +140,7 @@ func TestExpressionParser_ConstantReducible(t *testing.T) {
 
 func TestExpressionParser_InvalidSyntax(t *testing.T) {
 	for _, expression := range []string{"github.event.", "contains('a',)", "github.ref =="} {
-		expr := ExpressionMatch{Expression: expression, Full: "${{ " + expression + " }}"}
+		expr := ExpressionMatch{Terminated: true, Expression: expression, Full: "${{ " + expression + " }}"}
 		parsed := parseExpression(t.Context(), expr)
 		assert.True(t, parsed.ParseOK, "recovery retains the legacy fact gate")
 		assert.Error(t, parsed.Error, expression)
@@ -166,7 +166,7 @@ func TestExpressionParser_RecoveryFacts(t *testing.T) {
 		{"constant secret index", "format('{0}{1}', secrets['TOKEN'], join(github.event.commits[*].message, ','))", false, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			parsed := parseExpression(t.Context(), ExpressionMatch{Expression: tc.expression, Full: "${{ " + tc.expression + " }}"})
+			parsed := parseExpression(t.Context(), ExpressionMatch{Terminated: true, Expression: tc.expression, Full: "${{ " + tc.expression + " }}"})
 			assert.True(t, parsed.ParseOK, "legacy rules must retain recovered facts")
 			assert.Equal(t, tc.secrets, parsed.HasSecretsExpansion)
 			assert.Equal(t, tc.dynamic, parsed.HasDynamicSecretKey)

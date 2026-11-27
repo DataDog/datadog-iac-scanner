@@ -12,87 +12,102 @@ import (
 	"iter"
 	"strings"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 )
 
 // githubStepGroup retains the declaration context needed to interpret a step.
 // It is internal: rules keep reading their existing provider-native documents.
 type githubStepGroup struct {
-	job   map[string]interface{}
-	steps []interface{}
+	job          map[string]interface{}
+	steps        []interface{}
+	defaultShell string
 }
 
 func githubStepGroups(doc model.Document) iter.Seq[githubStepGroup] {
 	return func(yield func(githubStepGroup) bool) {
+		workflowShell, workflowDefault := githubDefaultShell(doc)
 		jobs, _ := doc["jobs"].(map[string]interface{})
-		for _, value := range jobs {
-			job, _ := value.(map[string]interface{})
-			if steps, ok := job["steps"].([]interface{}); ok {
-				if !yield(githubStepGroup{job: job, steps: steps}) {
-					return
+		for id, value := range jobs {
+			job, ok := value.(map[string]interface{})
+			if !ok || id == "_dd_lines" {
+				continue
+			}
+			steps, _ := job["steps"].([]interface{})
+			shell, hasDefault := githubDefaultShell(job)
+			if !hasDefault {
+				switch {
+				case workflowDefault:
+					shell = workflowShell
+				case job["container"] != nil:
+					shell = sh
+				default:
+					shell = githubRunnerShell(job["runs-on"])
 				}
+			}
+			if !yield(githubStepGroup{job: job, steps: steps, defaultShell: shell}) {
+				return
 			}
 		}
 		runs, _ := doc["runs"].(map[string]interface{})
 		if runs["using"] == "composite" {
-			if steps, ok := runs["steps"].([]interface{}); ok {
-				yield(githubStepGroup{steps: steps})
+			steps, _ := runs["steps"].([]interface{})
+			// Composite run steps require their own explicit shell.
+			yield(githubStepGroup{steps: steps, defaultShell: ""})
+		}
+	}
+}
+
+// Handle provider-specific declaration context once, including reusable jobs
+// without steps. Generic expressions have already been extracted from the source.
+func enhanceGitHub(ctx context.Context, doc model.Document) {
+	contextLogger := logger.FromContext(ctx)
+	for group := range githubStepGroups(doc) {
+		enhanceGitHubCondition(ctx, group.job)
+		for _, value := range group.steps {
+			step, ok := value.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			enhanceGitHubCondition(ctx, step)
+			if script, ok := step["run"].(string); ok {
+				shell := group.defaultShell
+				if declared, present := step["shell"]; present {
+					shell, _ = declared.(string)
+				}
+				parsed := parseGitHubRunBlock(script, shell)
+				if parsed.Error != nil {
+					contextLogger.Debug().Err(parsed.Error).Msg("Incomplete CI shell analysis")
+				}
+				step["_parsed_run"] = parsed
 			}
 		}
 	}
 }
 
-// Only conditions on jobs and steps allow implicit expression syntax. An env
-// or input named "if" remains an ordinary string, as does every GitLab field.
-func enhanceGitHubConditions(ctx context.Context, doc model.Document) {
-	jobs, _ := doc["jobs"].(map[string]interface{})
-	for _, value := range jobs {
-		job, _ := value.(map[string]interface{})
-		enhanceGitHubCondition(ctx, job)
-	}
-	for group := range githubStepGroups(doc) {
-		for _, value := range group.steps {
-			step, _ := value.(map[string]interface{})
-			enhanceGitHubCondition(ctx, step)
-		}
-	}
-}
-
+// Only job and step conditions allow implicit expression syntax. An env or
+// input named "if" remains an ordinary string, as does every GitLab field.
 func enhanceGitHubCondition(ctx context.Context, declaration map[string]interface{}) {
 	condition, ok := declaration["if"].(string)
 	if !ok || strings.TrimSpace(condition) == "" || strings.Contains(condition, "${{") {
 		return
 	}
-	expr := ExpressionMatch{Expression: condition, Full: "${{ " + condition + " }}"}
+	expr := ExpressionMatch{Expression: condition, Terminated: true}
 	declaration[parsedExpressionsKeyPrefix+"if"] = []ParsedExpression{*parseExpression(ctx, expr)}
 }
 
-// Shell selection belongs to the provider, not the shell parser. Unresolved
-// runners retain the legacy Bash candidate: existing rules have no general
-// Bash fallback, so disabling that candidate would lose security findings.
-func githubShell(doc model.Document, job, step map[string]interface{}) string {
-	if shell, present := step["shell"]; present {
-		value, _ := shell.(string)
-		return value
-	}
-	// Composite run steps require an explicit shell.
-	if job == nil {
-		return ""
-	}
-	for _, declaration := range []map[string]interface{}{job, doc} {
-		defaults, _ := declaration["defaults"].(map[string]interface{})
-		run, _ := defaults["run"].(map[string]interface{})
-		if shell, present := run["shell"]; present {
-			value, _ := shell.(string)
-			return value
-		}
-	}
-	if job["container"] != nil {
-		return sh
-	}
-	return githubRunnerShell(job["runs-on"])
+// Defaults are selected once per declaration group. An explicitly empty or
+// invalid default remains empty rather than silently choosing another shell.
+func githubDefaultShell(declaration map[string]interface{}) (string, bool) {
+	defaults, _ := declaration["defaults"].(map[string]interface{})
+	run, _ := defaults["run"].(map[string]interface{})
+	shell, present := run["shell"]
+	value, _ := shell.(string)
+	return value, present
 }
 
+// Unresolved runners retain the legacy Bash candidate because current rules
+// have no general Bash fallback. This does not establish the actual runner OS.
 func githubRunnerShell(runner interface{}) string {
 	if config, ok := runner.(map[string]interface{}); ok {
 		runner = config["labels"]
@@ -144,7 +159,7 @@ func parseGitHubRunBlock(script, shell string) *ParsedRun {
 	parsed := parseShellSource(script, shell, source)
 	markGitHubScriptExpressions(parsed.Commands)
 	for _, expression := range expressions {
-		if !strings.HasSuffix(expression.Full, "}}") {
+		if !expression.Terminated {
 			parsed.ParseOK = false
 			parsed.Error = fmt.Errorf("unterminated GitHub Actions expression in script")
 		}

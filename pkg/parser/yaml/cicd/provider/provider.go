@@ -22,19 +22,6 @@ const (
 	GitLabDeclarations = "cicd/gitlab-declarations-v1"
 )
 
-// Detect identifies only existing CI entrypoint conventions. It does not
-// discover new files or inspect/compile their configuration.
-func Detect(filename string) string {
-	if detected := Entrypoint(filename); detected != Unknown {
-		return detected
-	}
-	dir := path.Dir(strings.ReplaceAll(filename, `\`, "/"))
-	if strings.Contains("/"+dir+"/", "/.github/") {
-		return GitHub
-	}
-	return Unknown
-}
-
 // Entrypoint identifies canonical CI files independently of their contents.
 // Other files may still be discovered by content, but must not inherit a
 // provider merely because an unrelated YAML file lives in the same directory.
@@ -47,9 +34,6 @@ func Entrypoint(filename string) string {
 	}
 	if base == ".gitlab-ci.yml" || base == ".gitlab-ci.yaml" {
 		return GitLab
-	}
-	if base == "action.yml" || base == "action.yaml" {
-		return GitHub
 	}
 	return Unknown
 }

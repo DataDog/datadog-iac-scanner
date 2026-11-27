@@ -250,3 +250,25 @@ DatadogPolicy contains result if {
 		})
 	}
 }
+
+func Test_E2EActionFilenamePreservesKubernetesFindings(t *testing.T) {
+	const query = `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+    some doc in input.document
+    doc.spec.containers[0].securityContext.privileged == true
+    result := {"documentId": doc.id, "resourceType": "Pod", "resourceName": doc.metadata.name,
+        "searchKey": "spec.containers.0.securityContext.privileged"}
+}`
+	for _, filename := range []string{"pod.yaml", "action.yaml", "action.yml"} {
+		t.Run(filename, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), filename)
+			require.NoError(t, os.WriteFile(path, []byte("apiVersion: v1\nkind: Pod\nmetadata: {name: app}\nspec:\n  containers:\n    - name: app\n      image: app\n      securityContext: {privileged: true}\n"), 0o600))
+			metadata := scanWithOfflineBundle(t, path, "Kubernetes", "k8s", &datadog.Rule{
+				ID: "k8s-privileged", Name: "Privileged container", ShortDescription: "Privileged container",
+				Platform: "Kubernetes", Type: "rego", RegoQuery: []byte(query), Severity: "HIGH", IsPublished: true,
+			})
+			require.Equal(t, 1, metadata.Stats.Violations)
+		})
+	}
+}
