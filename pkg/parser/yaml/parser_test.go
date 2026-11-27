@@ -624,12 +624,16 @@ func TestNoDocumentsError(t *testing.T) {
 	for _, prefix := range []string{"", "valid: true\n---\n"} {
 		content := []byte(prefix + "a: [\n")
 		_, docs, _, _, parseErr := ParseWithNodeTransform(ctx, nil, content, "broken.yaml", false, 15, nil)
+		if prefix == "" {
+			require.Error(t, parseErr)
+			require.NotErrorIs(t, parseErr, ErrNoDocuments)
+		} else {
+			require.NoError(t, parseErr, "legacy YAML consumers retain completed documents")
+			require.Len(t, docs, 1)
+		}
+		docs, _, parseErr = ParseStrictNoResolve(ctx, content, "broken.yaml")
 		require.Error(t, parseErr)
-		require.NotErrorIs(t, parseErr, ErrNoDocuments, "invalid YAML is not an empty file")
-		require.Empty(t, docs, "a malformed tail invalidates the file")
-		docs, _, parseErr = ParseWithNodeTransformNoResolve(ctx, content, "broken.yaml", nil)
-		require.Error(t, parseErr)
-		require.Empty(t, docs)
+		require.Empty(t, docs, "strict CI source parsing is atomic")
 	}
 
 	// Resolved documents that all convert to nothing.

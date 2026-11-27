@@ -70,7 +70,7 @@ func TestShellParser_parseRunBlock_Pipeline(t *testing.T) {
 	result := parseRunBlock(script, "bash")
 
 	require.True(t, result.ParseOK)
-	require.Len(t, result.Commands, 1)
+	require.Len(t, result.Commands, 3)
 
 	cmd := result.Commands[0]
 	assert.Equal(t, "pipeline", cmd.Type)
@@ -219,7 +219,7 @@ func TestNormalizeShell(t *testing.T) {
 func TestShellParser_SyntaxStatus(t *testing.T) {
 	for _, script := range []string{`echo "unterminated`, "if true; then echo ok", "echo $("} {
 		parsed := parseRunBlock(script, "bash")
-		require.False(t, parsed.ParseOK, script)
+		require.True(t, parsed.ParseOK, "legacy rules must retain recovered facts")
 		require.Error(t, parsed.Error, script)
 	}
 }
@@ -246,10 +246,48 @@ func TestShellParser_GitHubTemplates(t *testing.T) {
 func TestShellParser_RedirectedPipeline(t *testing.T) {
 	parsed := parseRunBlock(`printf %s "$PAYLOAD" | cat >> "$GITHUB_ENV"`, "bash")
 	require.True(t, parsed.ParseOK)
-	require.Len(t, parsed.Commands, 1)
+	require.Len(t, parsed.Commands, 4)
 	cmd := parsed.Commands[0]
 	require.Equal(t, "GITHUB_ENV", cmd.Redirect.Target.Var)
 	require.Len(t, cmd.Pipeline, 2)
 	require.Equal(t, "printf", cmd.Pipeline[0].Command)
 	require.Equal(t, "cat", cmd.Pipeline[1].Command)
+}
+
+// Commands must remain visible to existing rules regardless of shell grouping.
+func TestShellParser_ExecutableCommandVisibility(t *testing.T) {
+	for _, script := range []string{
+		"npm publish", "npm publish | tee publish.log", "{ npm publish; } >publish.log",
+		"(npm publish) >publish.log", "if true; then npm publish; fi >publish.log",
+		"echo $(npm publish) >publish.log", "npm publish >publish.log | cat",
+	} {
+		t.Run(script, func(t *testing.T) {
+			parsed := parseRunBlock(script, "bash")
+			require.True(t, parsed.ParseOK, "%v", parsed.Error)
+			count := 0
+			for _, cmd := range parsed.Commands {
+				if cmd.Command == "npm" {
+					count++
+					require.Equal(t, "publish", cmd.Args[0].Value)
+				}
+			}
+			require.Equal(t, 1, count, "each executable command appears once")
+		})
+	}
+	for _, script := range []string{`echo 'npm publish'`, "# npm publish", `echo "npm publish"`} {
+		parsed := parseRunBlock(script, "bash")
+		require.True(t, parsed.ParseOK)
+		for _, cmd := range parsed.Commands {
+			require.NotEqual(t, "npm", cmd.Command)
+		}
+	}
+}
+
+func TestShellParser_RecoveryPreservesExecutablePrefix(t *testing.T) {
+	parsed := parseRunBlock("echo \"$PAYLOAD\" >> \"$GITHUB_ENV\"\nprintf \"unterminated", "bash")
+	require.True(t, parsed.ParseOK)
+	require.Error(t, parsed.Error)
+	require.NotEmpty(t, parsed.Commands)
+	require.Equal(t, "echo", parsed.Commands[0].Command)
+	require.Equal(t, "GITHUB_ENV", parsed.Commands[0].Redirect.Target.Var)
 }

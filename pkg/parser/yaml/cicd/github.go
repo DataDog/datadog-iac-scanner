@@ -67,8 +67,9 @@ func enhanceGitHubCondition(ctx context.Context, declaration map[string]interfac
 	declaration[parsedExpressionsKeyPrefix+"if"] = []ParsedExpression{*parseExpression(ctx, expr)}
 }
 
-// Shell selection belongs to the provider, not the shell parser. Unknown runner
-// contexts remain unsupported, so rules can use their existing fallback paths.
+// Shell selection belongs to the provider, not the shell parser. Unresolved
+// runners retain the legacy Bash candidate: existing rules have no general
+// Bash fallback, so disabling that candidate would lose security findings.
 func githubShell(doc model.Document, job, step map[string]interface{}) string {
 	if shell, present := step["shell"]; present {
 		value, _ := shell.(string)
@@ -108,17 +109,20 @@ func githubRunnerShell(runner interface{}) string {
 		}
 		candidate := ""
 		switch {
-		case name == "windows" || strings.HasPrefix(name, "windows-"):
+		case name == "windows", name == "windows-latest", name == "windows-2022", name == "windows-2025":
 			candidate = pwsh
 		case name == "linux", name == "macOS", strings.HasPrefix(name, "ubuntu-"), strings.HasPrefix(name, "macos-"):
 			candidate = bash_shell
 		}
 		if candidate != "" {
 			if shell != "" && candidate != shell {
-				return ""
+				return bash_shell
 			}
 			shell = candidate
 		}
+	}
+	if shell == "" {
+		return bash_shell
 	}
 	return shell
 }

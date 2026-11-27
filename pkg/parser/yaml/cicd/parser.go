@@ -50,7 +50,7 @@ type ParsedRedirect struct {
 type ParsedRun struct {
 	Shell    string          `json:"shell"`           // "bash", "pwsh", etc.
 	Commands []ParsedCommand `json:"commands"`        // All commands found
-	ParseOK  bool            `json:"parse_ok"`        // Whether parsing succeeded
+	ParseOK  bool            `json:"parse_ok"`        // Whether parser facts are available (Error may report recovery)
 	Error    error           `json:"error,omitempty"` // Parse error if any
 }
 
@@ -114,7 +114,7 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	err error) {
 	// CI providers own file composition. A scalar naming YAML is a literal,
 	// never a generic reference to inline into the rule document.
-	documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(ctx, fileContent, filePath, nil)
+	documents, ignoreLines, err = yamlParser.ParseStrictNoResolve(ctx, fileContent, filePath)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

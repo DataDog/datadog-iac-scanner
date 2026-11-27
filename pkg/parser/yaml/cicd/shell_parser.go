@@ -104,8 +104,11 @@ func parseShellSource(runScript, shell string, source []byte) *ParsedRun {
 
 	// Walk the AST and extract commands
 	result.Commands = extractCommands(tree.RootNode(), []byte(runScript))
-	result.ParseOK = !tree.RootNode().HasError()
-	if !result.ParseOK {
+	// The legacy flag gates all command facts in existing security rules.
+	// Recovery must not hide valid commands preceding an error: Bash may
+	// already have executed those commands before it reads the broken tail.
+	result.ParseOK = true
+	if tree.RootNode().HasError() {
 		result.Error = fmt.Errorf("invalid shell syntax")
 	}
 
@@ -119,25 +122,22 @@ func extractCommands(node *sitter.Node, source []byte) []ParsedCommand {
 	cursor := node.Walk()
 	defer cursor.Close()
 
-	walkNode(cursor, source, &commands)
+	walkNode(cursor, source, &commands, "")
 
 	return commands
 }
 
 // walkNode recursively walks the AST node by node
-func walkNode(cursor *sitter.TreeCursor, source []byte, commands *[]ParsedCommand) {
+func walkNode(cursor *sitter.TreeCursor, source []byte, commands *[]ParsedCommand, parentKind string) {
 	node := cursor.Node()
-
-	// Track if we've fully processed this node
-	fullyProcessed := false
 
 	switch node.Kind() {
 	case command:
-		// Only process standalone commands, not those inside redirected_statement or pipeline
-		// We'll let those be processed by their parent
-		cmd := parseCommand(node, source)
-		if cmd != nil {
-			*commands = append(*commands, *cmd)
+		// A directly redirected command is already represented by its parent.
+		// Other executable commands remain visible at the top level, including
+		// pipeline members, compound bodies and command substitutions.
+		if parentKind != redirected_statement {
+			*commands = append(*commands, *parseCommand(node, source))
 		}
 
 	case redirected_statement:
@@ -146,8 +146,6 @@ func walkNode(cursor *sitter.TreeCursor, source []byte, commands *[]ParsedComman
 		if cmd != nil {
 			*commands = append(*commands, *cmd)
 		}
-		// Don't recurse - we've already manually parsed the children
-		fullyProcessed = true
 
 	case pipeline:
 		// Parse the full pipeline including all its commands
@@ -155,14 +153,13 @@ func walkNode(cursor *sitter.TreeCursor, source []byte, commands *[]ParsedComman
 		if cmd != nil {
 			*commands = append(*commands, *cmd)
 		}
-		// Don't recurse - we've already manually parsed the children
-		fullyProcessed = true
 	}
 
-	// Only recurse to children if we haven't already fully processed this node
-	if !fullyProcessed && cursor.GotoFirstChild() {
+	// Group entries preserve existing rule inputs; traversal also records the
+	// executable commands they contain rather than hiding nested execution.
+	if cursor.GotoFirstChild() {
 		for {
-			walkNode(cursor, source, commands)
+			walkNode(cursor, source, commands, node.Kind())
 			if !cursor.GotoNextSibling() {
 				break
 			}

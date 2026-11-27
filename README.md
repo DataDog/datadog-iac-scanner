@@ -83,11 +83,16 @@ GitHub enrichment preserves the existing rule input: `_parsed_expressions_*`
 and `_parsed_run` remain alongside the declared values. Job and step conditions
 support implicit expressions; template extraction handles multiline values and
 quoted delimiters. Shell selection follows step, job and workflow defaults,
-then container or recognizable runner labels. Unknown runner contexts and
-unsupported shells keep `parse_ok: false`, allowing existing rule fallbacks.
+then container or recognizable runner labels. Unresolved runners retain the
+legacy Bash analysis candidate to preserve existing rule coverage; this does
+not establish the runner's actual OS or shell. Explicitly unsupported shells
+keep `parse_ok: false`. The command list includes executable commands inside
+pipelines and compound statements, alongside existing pipeline grouping entries.
+For compatibility, `parse_ok` gates availability of parser facts, not complete
+syntax validity: recovered command facts remain available with an error recorded
+separately. A shell syntax error can occur after earlier commands have executed.
 GitHub templates are treated as opaque substitutions during shell parsing;
 original argument text is retained and expressions are never executed.
-
 
 ### GitLab CI declaration inventory
 

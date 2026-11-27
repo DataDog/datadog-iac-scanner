@@ -170,3 +170,45 @@ func writeJSON(t *testing.T, path string, v any) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, b, 0o600))
 }
+
+// Exercise the legacy rule input across equivalent executable shell forms.
+// The fixture rule consumes facts, not shell text or scanner-private types.
+func Test_E2ECIExecutableCommands(t *testing.T) {
+	const query = `package datadog
+import rego.v1
+DatadogPolicy contains result if {
+    some doc in input.document
+    some job in doc.jobs
+    some step_index, step in job.steps
+    step._parsed_run.parse_ok == true
+    some cmd in step._parsed_run.commands
+    cmd.command == "audit_cmd"
+    result := {"documentId": doc.id, "resourceType": "github_action",
+        "resourceName": "build", "searchKey": sprintf("jobs.build.steps.%d.run", [step_index])}
+}`
+	for _, runner := range []string{"ubuntu-latest", "self-hosted", "${{ matrix.os }}"} {
+		for _, tc := range []struct {
+			script string
+			want   int
+		}{
+			{`audit_cmd "$PAYLOAD" >> "$GITHUB_ENV"`, 1},
+			{`audit_cmd | tee log`, 1},
+			{`{ audit_cmd; } >log`, 1},
+			{`echo $(audit_cmd) >log`, 1},
+			{`echo "audit_cmd"`, 0},
+			{`# audit_cmd`, 0},
+			{"audit_cmd\nprintf \"unterminated", 1},
+		} {
+			t.Run(runner+"/"+tc.script, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "ci.yaml")
+				content := fmt.Sprintf("on: push\njobs:\n  build:\n    runs-on: '%s'\n    steps:\n      - run: %q\n", runner, tc.script)
+				require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+				metadata := scanWithOfflineBundle(t, path, "CICD", "cicd", &datadog.Rule{
+					ID: "ci-executable-command", Name: "Executable command", ShortDescription: "Executable command",
+					Platform: "CICD", Type: "rego", RegoQuery: []byte(query), Severity: "LOW", IsPublished: true,
+				})
+				require.Equal(t, tc.want, metadata.Stats.Violations)
+			})
+		}
+	}
+}

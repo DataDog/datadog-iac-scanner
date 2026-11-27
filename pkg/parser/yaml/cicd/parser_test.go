@@ -904,8 +904,11 @@ func TestParser_GitHubShellContext(t *testing.T) {
 		{"workflow default", "defaults: {run: {shell: pwsh}}", "runs-on: ubuntu-latest", "", "pwsh", false},
 		{"job default", "defaults: {run: {shell: pwsh}}", "defaults: {run: {shell: sh}}", "", "sh", true},
 		{"step override", "defaults: {run: {shell: pwsh}}", "defaults: {run: {shell: sh}}", "shell: bash", "bash", true},
-		{"dynamic runner", "", "runs-on: '${{ matrix.os }}'", "", "", false},
-		{"custom runner", "", "runs-on: private-runner", "", "", false},
+		{"dynamic runner", "", "runs-on: '${{ matrix.os }}'", "", "bash", true},
+		{"self-hosted runner", "", "runs-on: self-hosted", "", "bash", true},
+		{"custom Windows-like label", "", "runs-on: windows-builders", "", "bash", true},
+		{"conflicting labels", "", "runs-on: [self-hosted, windows, linux]", "", "bash", true},
+		{"custom runner", "", "runs-on: private-runner", "", "bash", true},
 		{"empty override", "", "runs-on: ubuntu-latest", "shell: ''", "", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
