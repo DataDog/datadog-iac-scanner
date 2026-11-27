@@ -8,16 +8,13 @@ package cicd
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	ghactions "github.com/rmuir/tree-sitter-ghactions/bindings/go"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
-
-// Regular expression to find GitHub Actions expressions: ${{ ... }}
-var exprRegex = regexp.MustCompile(`\$\{\{\s*(.*?)\s*\}\}`)
 
 const (
 	// Node kinds
@@ -38,8 +35,6 @@ const (
 	secrets_expansion    = "secrets_expansion" //nolint:gosec
 	dynamic_secret_index = "dynamic_secret_index"
 	computed_index       = "computed_index"
-
-	fullMatchLen = 4
 )
 
 var ghactionsLang = sitter.NewLanguage(ghactions.Language())
@@ -79,6 +74,10 @@ func parseExpression(ctx context.Context, expr ExpressionMatch) *ParsedExpressio
 	// Walk the AST and extract information
 	rootNode := tree.RootNode()
 	result.AST = buildAST(rootNode, exprBytes)
+	if rootNode.HasError() {
+		result.Error = fmt.Errorf("invalid GitHub Actions expression syntax")
+		return result
+	}
 	result.ParseOK = true
 
 	// Analyze the AST for patterns
@@ -104,37 +103,50 @@ func parseExpression(ctx context.Context, expr ExpressionMatch) *ParsedExpressio
 	return result
 }
 
-// ExtractExpressionsFromString finds all ${{ ... }} expressions in a string
+// extractExpressionsFromString locates expressions without interpreting them.
+// GitHub strings use single quotes, with doubled quotes for an embedded quote.
+// Delimiters in strings and newlines must not terminate or hide an expression.
 func extractExpressionsFromString(input string) []ExpressionMatch {
-	matches := exprRegex.FindAllStringSubmatchIndex(input, -1)
-	results := make([]ExpressionMatch, 0, len(matches))
-
-	for _, match := range matches {
-		// match[0], match[1] are the full match (${{ ... }})
-		// match[2], match[3] are the captured group (the expression inside)
-		if len(match) < fullMatchLen {
-			continue
+	results := make([]ExpressionMatch, 0)
+	for offset := 0; offset < len(input); {
+		relative := strings.Index(input[offset:], "${{")
+		if relative < 0 {
+			break
 		}
-		fullStart := match[0]
-		fullEnd := match[1]
-		exprStart := match[2]
-		exprEnd := match[3]
-
+		start := offset + relative
+		end := expressionEnd(input, start+3)
+		bodyEnd, fullEnd := len(input), len(input)
+		if end >= 0 {
+			bodyEnd, fullEnd = end, end+2
+		}
+		body := input[start+3 : bodyEnd]
+		trimmed := strings.TrimSpace(body)
+		exprStart := start + 3 + len(body) - len(strings.TrimLeftFunc(body, unicode.IsSpace))
 		results = append(results, ExpressionMatch{
-			Full:       input[fullStart:fullEnd],
-			Expression: input[exprStart:exprEnd],
-			FullSpan: Span{
-				Start: fullStart,
-				End:   fullEnd,
-			},
-			ExprSpan: Span{
-				Start: exprStart,
-				End:   exprEnd,
-			},
+			Full: input[start:fullEnd], Expression: trimmed,
+			FullSpan: Span{Start: start, End: fullEnd},
+			ExprSpan: Span{Start: exprStart, End: exprStart + len(trimmed)},
 		})
+		offset = fullEnd
 	}
-
 	return results
+}
+
+func expressionEnd(input string, offset int) int {
+	quoted := false
+	for i := offset; i < len(input); i++ {
+		if input[i] == '\'' {
+			if quoted && i+1 < len(input) && input[i+1] == '\'' {
+				i++
+				continue
+			}
+			quoted = !quoted
+		}
+		if !quoted && input[i] == '}' && i+1 < len(input) && input[i+1] == '}' {
+			return i
+		}
+	}
+	return -1
 }
 
 // buildAST recursively builds a simplified AST representation

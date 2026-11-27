@@ -863,3 +863,30 @@ func TestParser_CILiteralReferences(t *testing.T) {
 		})
 	}
 }
+
+func TestParser_GitHubImplicitConditions(t *testing.T) {
+	condition := "contains('main', github.ref)"
+	for _, wrapped := range []bool{false, true} {
+		value := condition
+		if wrapped {
+			value = "${{ " + value + " }}"
+		}
+		for _, content := range []string{
+			fmt.Sprintf("on: push\njobs: {build: {if: %q, env: {if: %q}, steps: [{if: %q, run: echo ok}]}}", value, condition, value),
+			fmt.Sprintf("runs: {using: composite, steps: [{if: %q, run: echo ok, shell: bash}]}", value),
+		} {
+			doc := parseWorkflowDocument(t, content)
+			for group := range githubStepGroups(doc) {
+				if group.job != nil {
+					require.Equal(t, []string{condition}, parsedExpressionRaws(t, group.job, "_parsed_expressions_if"))
+					require.NotContains(t, group.job["env"], "_parsed_expressions_if")
+				}
+				step := group.steps[0].(map[string]interface{})
+				require.Equal(t, []string{condition}, parsedExpressionRaws(t, step, "_parsed_expressions_if"))
+			}
+		}
+	}
+	_, docs, _, _, err := (&Parser{}).Parse(t.Context(), []byte("jobs: {if: github.ref, script: echo ok}"), ".gitlab-ci.yml", false, 15)
+	require.NoError(t, err)
+	require.NotContains(t, docs[0]["jobs"], "_parsed_expressions_if")
+}

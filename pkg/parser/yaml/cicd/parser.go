@@ -227,6 +227,7 @@ func parseRunBlocksInSteps(ctx context.Context, steps []interface{}) {
 func (p *Parser) enhanceWithParsedExpressions(ctx context.Context, documents []model.Document) {
 	for _, doc := range documents {
 		p.parseExpressionsInValue(ctx, doc, make(map[uintptr]bool))
+		enhanceGitHubConditions(ctx, doc)
 	}
 }
 

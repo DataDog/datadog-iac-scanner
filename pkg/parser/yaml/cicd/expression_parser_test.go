@@ -23,6 +23,10 @@ func TestExpressionParser_ExtractExpressions(t *testing.T) {
 			input:    "${{ github.ref }} and ${{ secrets.TOKEN }}",
 			expected: 2,
 		},
+		{name: "multiline", input: "${{ contains('main',\n github.ref) }}", expected: 1},
+		{name: "quoted delimiter", input: "${{ format('}}{0}', secrets.TOKEN) }}", expected: 1},
+		{name: "escaped quote", input: "${{ format('it''s }}{0}', secrets.TOKEN) }}", expected: 1},
+		{name: "unterminated expression is retained", input: "${{ github.ref", expected: 1},
 		{
 			name:     "no expressions",
 			input:    "just plain text",
@@ -34,6 +38,12 @@ func TestExpressionParser_ExtractExpressions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			matches := extractExpressionsFromString(tt.input)
 			assert.Len(t, matches, tt.expected)
+			for _, match := range matches {
+				assert.Equal(t, match.Full, tt.input[match.FullSpan.Start:match.FullSpan.End])
+				assert.Equal(t, match.Expression, tt.input[match.ExprSpan.Start:match.ExprSpan.End])
+				result := parseExpression(t.Context(), match)
+				assert.Equal(t, tt.name != "unterminated expression is retained", result.ParseOK)
+			}
 		})
 	}
 }
@@ -104,7 +114,7 @@ func TestExpressionParser_ConstantReducible(t *testing.T) {
 		},
 		{
 			name:             "mixed expression",
-			expression:       ExpressionMatch{Expression: "github.ref == 'main' && 1 + 2 > 0", Full: "${{ github.ref == 'main' && 1 + 2 > 0 }}"},
+			expression:       ExpressionMatch{Expression: "github.ref == 'main' && (1 > 0)", Full: "${{ github.ref == 'main' && (1 > 0) }}"},
 			wantConstant:     false,
 			wantConstantSubs: true,
 		},
@@ -119,5 +129,14 @@ func TestExpressionParser_ConstantReducible(t *testing.T) {
 				assert.NotEmpty(t, result.ConstantSubexprs)
 			}
 		})
+	}
+}
+
+func TestExpressionParser_InvalidSyntax(t *testing.T) {
+	for _, expression := range []string{"github.event.", "contains('a',)", "github.ref =="} {
+		expr := ExpressionMatch{Expression: expression, Full: "${{ " + expression + " }}"}
+		parsed := parseExpression(t.Context(), expr)
+		assert.False(t, parsed.ParseOK, expression)
+		assert.Error(t, parsed.Error, expression)
 	}
 }
