@@ -541,8 +541,14 @@ func TestRenderContextCanceled(t *testing.T) {
 					t.Fatal("could not acquire the process-wide render lock")
 				}
 				a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
-				_, err := r.runUntilDeadline(ctx, owner, a, dir, time.Now().Add(-time.Second))
+				deadline := time.Now().Add(-time.Second)
+				out, err := r.runUntilDeadline(ctx, owner, a, dir, deadline)
 				waitRunLock()
+				// The worker may finish before either watchdog signal is selected.
+				// Process its outcome just as Render does in that case.
+				if err == nil {
+					_, err = r.completeRender(ctx, a, &out, deadline)
+				}
 				if !errors.As(err, &re) || re.Reason != ReasonTimeout {
 					t.Fatalf("ended context and expired root deadline got %v", err)
 				}
