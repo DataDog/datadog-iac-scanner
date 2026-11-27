@@ -36,7 +36,10 @@ const (
 	blockTypeLocalReference = "local"
 )
 
-var terraformVarsPathRegex = regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
+var (
+	terraformVarsPathDirectiveBytes = []byte(terraformVarsPathDirective)
+	terraformVarsPathRegex          = regexp.MustCompile(`(?m)^\s*// ` + terraformVarsPathDirective + `: ([\w/\\.:-]+)\r?\n`)
+)
 
 func mergeMaps(baseMap, newItems converter.VariableMap) {
 	for key, value := range newItems {
@@ -620,6 +623,9 @@ func fileVariablePath(dir, content string) string {
 // ReadFileVariables loads the variable definitions selected by a file's
 // kics_terraform_vars directive. An explicit scan input supersedes it.
 func ReadFileVariables(ctx context.Context, fsys vfs.FS, filename string, source []byte) converter.VariableMap {
+	if !bytes.Contains(source, terraformVarsPathDirectiveBytes) {
+		return nil
+	}
 	return ReadExplicitVariables(ctx, fsys, fileVariablePath(filepath.Dir(filename), string(source)))
 }
 

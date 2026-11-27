@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"math/big"
 	"slices"
 	"strconv"
 	"strings"
@@ -82,27 +83,38 @@ type documentRenderer struct {
 	managedRoots map[string]bool
 }
 
+func (s *ModuleScope) presentation() (*hcl.EvalContext, map[string]bool, partial.Source) {
+	s.presentationOnce.Do(func() {
+		// Evaluation uses concrete sibling values, but legacy rules also join
+		// resources through their reference text. Keep those namespaces unknown
+		// only in the presentation context; never feed rendered references back
+		// into count/for_each, conditions, or native evaluation.
+		presentation := *s.evalCtx
+		var managedRoots map[string]bool
+		if s.static != nil && s.static.resources != nil && s.static.resources.resources > 0 {
+			graph := s.static.resources
+			presentation.Variables = maps.Clone(s.evalCtx.Variables)
+			managedRoots = make(map[string]bool, graph.resources)
+			for _, block := range graph.blocks[:graph.resources] {
+				presentation.Variables[block.Labels[0]] = cty.DynamicVal
+				managedRoots[block.Labels[0]] = true
+			}
+		}
+		s.presentationCtx = &presentation
+		s.managedRoots = managedRoots
+		s.fileSources = partial.FileSources(s.sources)
+	})
+	return s.presentationCtx, s.managedRoots, s.fileSources
+}
+
 func newRenderer(scanCtx context.Context, r *ResolvedResource) *documentRenderer {
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
 		return &documentRenderer{Renderer: &partial.Renderer{}}
 	}
 	references := documentReferences(scanCtx, r.Scope)
-	// Evaluation uses concrete sibling values, but legacy rules also join
-	// resources through their reference text. Keep those namespaces unknown
-	// only in the presentation context; never feed rendered references back
-	// into count/for_each, conditions, or native evaluation.
-	presentation := *r.Scope.evalCtx
-	presentation.Variables = maps.Clone(r.Scope.evalCtx.Variables)
-	managedRoots := make(map[string]bool)
-	if r.Scope.static != nil {
-		graph := r.Scope.static.resources
-		for _, block := range graph.blocks[:graph.resources] {
-			presentation.Variables[block.Labels[0]] = cty.DynamicVal
-			managedRoots[block.Labels[0]] = true
-		}
-	}
+	presentationCtx, managedRoots, fileSources := r.Scope.presentation()
 	rd := &partial.Renderer{
-		Ctx: &presentation, Source: partial.FileSources(r.Scope.sources), Reference: references.forFile(nil),
+		Ctx: presentationCtx, Source: fileSources, Reference: references.forFile(nil),
 	}
 	return &documentRenderer{Renderer: rd.WithBindings(documentIteration(r)), references: references, managedRoots: managedRoots}
 }
@@ -579,7 +591,16 @@ func ctyValueToDocument(v cty.Value, src *attrSource, rd *documentRenderer) inte
 		return v.True()
 	case cty.Number:
 		// json.Number avoids float64 precision loss for large integers.
-		return json.Number(v.AsBigFloat().Text('f', -1))
+		bf := v.AsBigFloat()
+		if bf.IsInt() {
+			if i, acc := bf.Int64(); acc == big.Exact {
+				return json.Number(strconv.FormatInt(i, 10))
+			}
+			if u, acc := bf.Uint64(); acc == big.Exact {
+				return json.Number(strconv.FormatUint(u, 10))
+			}
+		}
+		return json.Number(bf.Text('f', -1))
 	}
 
 	switch {
@@ -597,18 +618,29 @@ func (rd *documentRenderer) renderValue(v cty.Value, src *attrSource) (interface
 	if rd == nil {
 		return nil, nil, false
 	}
-	rd = rd.withSource(src)
+	whollyKnown := v.IsWhollyKnown()
+	if whollyKnown && len(rd.managedRoots) == 0 {
+		return nil, nil, false
+	}
 	canRender := src.expr != nil && !readsIterator(src.expr, src.iterators)
-	if canRender {
+	if canRender && len(rd.managedRoots) > 0 && mayBeManagedReferenceExpr(src.expr) {
+		rd = rd.withSource(src)
 		if text, ok := managedReferenceText(src.expr, rd.Ctx, rd.managedRoots); ok {
 			return text, nil, true
 		}
-	}
-	if v.IsWhollyKnown() {
-		if !v.CanIterateElements() {
-			rd = nil
+		if whollyKnown {
+			if !v.CanIterateElements() {
+				rd = nil
+			}
+			return nil, rd, false
 		}
-		return nil, rd, false
+	} else if whollyKnown {
+		if !v.CanIterateElements() {
+			return nil, nil, false
+		}
+		return nil, rd.withSource(src), false
+	} else {
+		rd = rd.withSource(src)
 	}
 	if canRender {
 		if rendered, ok := rd.RenderUnresolved(src.expr); ok {
@@ -618,11 +650,35 @@ func (rd *documentRenderer) renderValue(v cty.Value, src *attrSource) (interface
 	return nil, rd, false
 }
 
+// mayBeManagedReferenceExpr filters out expressions that partial.ReferenceTraversal
+// can never match, avoiding expensive traversal construction on literals and templates.
+func mayBeManagedReferenceExpr(expr hclsyntax.Expression) bool {
+	if wrap, ok := expr.(*hclsyntax.TemplateWrapExpr); ok {
+		expr = wrap.Wrapped
+	}
+	switch expr.(type) {
+	case *hclsyntax.ScopeTraversalExpr,
+		*hclsyntax.RelativeTraversalExpr,
+		*hclsyntax.IndexExpr,
+		*hclsyntax.FunctionCallExpr,
+		*hclsyntax.ParenthesesExpr:
+		return true
+	default:
+		return false
+	}
+}
+
 // managedReferenceText preserves exact resource links in the legacy payload,
 // including selectors bound by a resource or dynamic-block instance.
 func managedReferenceText(expr hclsyntax.Expression, ctx *hcl.EvalContext, managedRoots map[string]bool) (string, bool) {
 	if wrap, ok := expr.(*hclsyntax.TemplateWrapExpr); ok {
 		expr = wrap.Wrapped
+	}
+	if scope, ok := expr.(*hclsyntax.ScopeTraversalExpr); ok {
+		if !managedRoots[scope.Traversal.RootName()] {
+			return "", false
+		}
+		return (&partial.Renderer{}).Text(scope)
 	}
 	traversal, ok := partial.ReferenceTraversal(expr, ctx)
 	if !ok || !managedRoots[traversal.RootName()] {

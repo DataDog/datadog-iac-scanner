@@ -56,20 +56,27 @@ func newBlockGraph(dp *dirParse) *blockGraph {
 	for i, b := range g.blocks {
 		reads := dependencyReads{
 			byName: byName, byRoot: byRoot, graph: dp.locals, units: localReads,
-			deps: map[int]bool{}, locals: map[int]bool{},
+			trackLocals: true,
 		}
 		for _, t := range terraform.BodyTraversals(b.Body) {
 			reads.add(t)
 		}
-		deps, locals := reads.deps, reads.locals
-		for v := range deps {
-			g.edges[i] = append(g.edges[i], v)
+		if len(reads.deps) > 0 {
+			edges := make([]int, 0, len(reads.deps))
+			for v := range reads.deps {
+				edges = append(edges, v)
+			}
+			slices.Sort(edges)
+			g.edges[i] = edges
 		}
-		slices.Sort(g.edges[i])
-		for v := range locals {
-			g.locals[i] = append(g.locals[i], v)
+		if len(reads.locals) > 0 {
+			locals := make([]int, 0, len(reads.locals))
+			for v := range reads.locals {
+				locals = append(locals, v)
+			}
+			slices.SortFunc(locals, func(a, b int) int { return dp.locals.rank[a] - dp.locals.rank[b] })
+			g.locals[i] = locals
 		}
-		slices.SortFunc(g.locals[i], func(a, b int) int { return dp.locals.rank[a] - dp.locals.rank[b] })
 	}
 	g.components = stronglyConnected(g.edges)
 	for _, c := range g.components {
@@ -83,6 +90,7 @@ type dependencyReads struct {
 	byName, byRoot map[string][]int
 	graph          *localGraph
 	deps, locals   map[int]bool
+	trackLocals    bool
 	units          *localUnitReads
 }
 
@@ -115,10 +123,16 @@ func (l *localUnitReads) of(v int) []int {
 	return units
 }
 func (r *dependencyReads) local(v int) {
-	if r.locals != nil {
+	if r.trackLocals {
+		if r.locals == nil {
+			r.locals = make(map[int]bool)
+		}
 		r.locals[v] = true
 	}
 	for _, unit := range r.units.of(v) {
+		if r.deps == nil {
+			r.deps = make(map[int]bool)
+		}
 		r.deps[unit] = true
 	}
 }
@@ -156,6 +170,9 @@ func (r *dependencyReads) add(t hcl.Traversal) {
 		units = r.byName[root+"."+name]
 	}
 	for _, v := range units {
+		if r.deps == nil {
+			r.deps = make(map[int]bool)
+		}
 		r.deps[v] = true
 	}
 }
@@ -172,6 +189,8 @@ type resourceSchedule struct {
 	scope              *ModuleScope
 	base               *hcl.EvalContext
 	globals            map[string]cty.Value
+	staticCtx          *hcl.EvalContext
+	staticLocalCount   int
 	data               *moduleData
 	addr               string
 	chain              *callChain
@@ -183,7 +202,7 @@ type resourceSchedule struct {
 
 func (e *Evaluator) scheduleResources(
 	ctx context.Context, blocks []*hclsyntax.Block, scope *ModuleScope, evalCtx *hcl.EvalContext,
-	data *moduleData, addr string, chain *callChain,
+	data *moduleData, addr string, chain *callChain, hasOutputs bool,
 ) []ResolvedResource {
 	g := scope.static.resources
 	s := &resourceSchedule{
@@ -206,9 +225,22 @@ func (e *Evaluator) scheduleResources(
 			s.localValues[name] = v
 		}
 	}
+	staticVars := maps.Clone(s.globals)
+	staticVars[blockTypeData] = cty.EmptyObjectVal
+	staticVars[rootLocal] = objectOrEmpty(s.localValues)
+	s.staticCtx = &hcl.EvalContext{Variables: staticVars, Functions: evalCtx.Functions}
+	s.staticLocalCount = len(s.localValues)
+
+	var needed []bool
+	if addr == "" && e.rootResourceFilter != nil && !hasOutputs {
+		needed = neededScheduleUnits(g, scope.fileInputs, e.rootResourceFilter)
+	}
 	for i, c := range g.components {
 		if ctx.Err() != nil {
 			break
+		}
+		if len(needed) > 0 && !needed[c[0]] {
+			continue
 		}
 		if g.cyclic[i] {
 			s.cycle(c)
@@ -217,13 +249,49 @@ func (e *Evaluator) scheduleResources(
 		s.evaluate(c[0])
 	}
 	if ctx.Err() == nil {
-		s.finish()
+		s.finish(hasOutputs, needed)
 	}
 	var resources []ResolvedResource
 	for i := range g.resources {
 		resources = append(resources, s.resources[i]...)
 	}
 	return resources
+}
+
+func neededScheduleUnits(g *blockGraph, inputs *fileInputs, filter func(string) bool) []bool {
+	needed := make([]bool, len(g.blocks))
+	queue := make([]int, 0, len(g.blocks))
+	mark := func(u int) {
+		if !needed[u] {
+			needed[u] = true
+			queue = append(queue, u)
+		}
+	}
+	for i, b := range g.blocks {
+		if filter(b.Labels[0]) || inputs.forBody(b.Body) != nil {
+			mark(i)
+		}
+	}
+	// Map each unit to its SCC so marking any member of a cycle marks the whole cycle.
+	compOf := make([]int, len(g.blocks))
+	for ci, comp := range g.components {
+		for _, u := range comp {
+			compOf[u] = ci
+		}
+	}
+	for len(queue) > 0 {
+		u := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		for _, dep := range g.edges[u] {
+			mark(dep)
+		}
+		if comp := g.components[compOf[u]]; len(comp) > 1 {
+			for _, member := range comp {
+				mark(member)
+			}
+		}
+	}
+	return needed
 }
 
 func (s *resourceSchedule) reference(unit int) cty.Value {
@@ -268,35 +336,69 @@ func (s *resourceSchedule) reference(unit int) cty.Value {
 	return v
 }
 
-func (s *resourceSchedule) context(units, locals []int) *hcl.EvalContext {
-	ctx := &hcl.EvalContext{Variables: maps.Clone(s.globals), Functions: s.base.Functions}
-	resources, data := map[string]map[string]cty.Value{}, map[string]map[string]cty.Value{}
+func (s *resourceSchedule) canUseStaticContext(units, locals []int) bool {
+	if len(units) != 0 || s.staticCtx == nil || len(s.localValues) != s.staticLocalCount {
+		return false
+	}
+	for _, v := range locals {
+		if _, ok := s.localValues[s.scope.localGraph.names[v]]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *resourceSchedule) populateContextUnits(ctx *hcl.EvalContext, units []int) {
+	if len(units) == 0 {
+		ctx.Variables[blockTypeData] = cty.EmptyObjectVal
+		return
+	}
+	var resources, data map[string]map[string]cty.Value
 	for _, unit := range units {
 		b := s.graph.blocks[unit]
-		values := resources
-		if b.Type == blockTypeData {
-			values = data
-		}
 		value := s.reference(unit)
 		if value == cty.NilVal {
 			continue
 		}
 		typ, name := b.Labels[0], b.Labels[1]
-		if values[typ] == nil {
-			values[typ] = map[string]cty.Value{}
+		target := &resources
+		if b.Type == blockTypeData {
+			target = &data
 		}
-		if _, exists := values[typ][name]; !exists {
-			values[typ][name] = value
+		if *target == nil {
+			*target = map[string]map[string]cty.Value{}
+		}
+		if (*target)[typ] == nil {
+			(*target)[typ] = map[string]cty.Value{}
+		}
+		if _, exists := (*target)[typ][name]; !exists {
+			(*target)[typ][name] = value
 		}
 	}
 	for typ, values := range resources {
 		ctx.Variables[typ] = objectOrEmpty(values)
+	}
+	if len(data) == 0 {
+		ctx.Variables[blockTypeData] = cty.EmptyObjectVal
+		return
 	}
 	dtypes := make(map[string]cty.Value, len(data))
 	for typ, values := range data {
 		dtypes[typ] = objectOrEmpty(values)
 	}
 	ctx.Variables[blockTypeData] = objectOrEmpty(dtypes)
+}
+
+func (s *resourceSchedule) context(units, locals []int) *hcl.EvalContext {
+	if s.canUseStaticContext(units, locals) {
+		return s.staticCtx
+	}
+	ctx := &hcl.EvalContext{Variables: maps.Clone(s.globals), Functions: s.base.Functions}
+	s.populateContextUnits(ctx, units)
+	if len(locals) == 0 {
+		ctx.Variables[rootLocal] = cty.EmptyObjectVal
+		return ctx
+	}
 	values := make(map[string]cty.Value, len(locals))
 	for _, v := range locals {
 		s.local(v, ctx)
@@ -391,10 +493,31 @@ func (s *resourceSchedule) cycle(component []int) {
 	}
 }
 
-func (s *resourceSchedule) finish() {
-	units := make([]int, len(s.graph.blocks))
-	for i := range units {
-		units[i] = i
+func (s *resourceSchedule) finish(hasOutputs bool, needed []bool) {
+	needManagedRefs := hasOutputs
+	if !needManagedRefs {
+		for _, v := range s.scope.localGraph.order {
+			if _, done := s.localValues[s.scope.localGraph.names[v]]; !done && s.scope.localGraph.deps[v].resources {
+				needManagedRefs = true
+				break
+			}
+		}
+	}
+	var units []int
+	if needManagedRefs {
+		units = make([]int, 0, len(s.graph.blocks))
+		for i := range s.graph.blocks {
+			if len(needed) == 0 || needed[i] {
+				units = append(units, i)
+			}
+		}
+	} else if s.graph.data > 0 {
+		units = make([]int, 0, s.graph.data)
+		for i := s.graph.resources; i < len(s.graph.blocks); i++ {
+			if len(needed) == 0 || needed[i] {
+				units = append(units, i)
+			}
+		}
 	}
 	ctx := s.context(units, s.scope.localGraph.order)
 	s.base.Variables = ctx.Variables

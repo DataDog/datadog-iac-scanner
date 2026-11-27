@@ -136,6 +136,12 @@ type ModuleScope struct {
 	localGraph *localGraph
 	localCache map[string]cty.Value
 	static     *dirStatic
+
+	// Cached read-only presentation state built lazily on first document render.
+	presentationOnce sync.Once
+	presentationCtx  *hcl.EvalContext
+	managedRoots     map[string]bool
+	fileSources      partial.Source
 }
 
 // ModuleInstance is one evaluated call of a module directory, whether or not
@@ -211,6 +217,10 @@ type Evaluator struct {
 	// skipRootResources avoids evaluating root-level resources and outputs when
 	// the caller only consumes child-module resources (non-inventory scans).
 	skipRootResources bool
+
+	// rootResourceFilter, when set, restricts root-level block evaluation to
+	// resource/data types matching the filter and their transitive dependencies.
+	rootResourceFilter func(string) bool
 }
 
 // dirParse is a parsed module directory: its files, the blocks evaluation
@@ -286,11 +296,15 @@ func (e *Evaluator) parseDirForChain(ctx context.Context, dir, packageRoot, addr
 		}
 		return e.parseRootDirForModules(ctx, dir, packageRoot)
 	}
-	return e.parseDir(ctx, dir, packageRoot)
+	return e.parseDirWithFilter(ctx, dir, packageRoot, addr == "" && e.rootResourceFilter != nil)
 }
 
 // parseDir returns the parsed module directory, shared by all evaluator forks.
 func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirParse {
+	return e.parseDirWithFilter(ctx, dir, packageRoot, false)
+}
+
+func (e *Evaluator) parseDirWithFilter(ctx context.Context, dir, packageRoot string, skipNonEval bool) dirParse {
 	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 
 	e.parseMu.Lock()
@@ -300,7 +314,7 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	}
 	e.parseMu.Unlock()
 
-	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	bodies, sources, err := parseDirFiltered(ctx, dir, packageRoot, e.mergeAllow, e.fsys, skipNonEval)
 	dp := dirParse{bodies: bodies, sources: sources, err: err}
 	if err == nil {
 		dp.bodies, dp.overrides = resolveResourceOverrides(ctx, bodies, sources)
@@ -328,18 +342,19 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 // and skipped directories are its own.
 func (e *Evaluator) Fork() *Evaluator {
 	return &Evaluator{
-		funcs:             e.funcs,
-		fsys:              e.fsys,
-		explicitRootVars:  e.explicitRootVars,
-		cache:             make(map[evalCacheKey]*evalCacheEntry),
-		remoteResolver:    e.remoteResolver,
-		notEvaluatedDirs:  make(map[string]bool),
-		parseMu:           e.parseMu,
-		dirCache:          e.dirCache,
-		funcFS:            e.funcFS,
-		mergeAllow:        e.mergeAllow,
-		trackInstances:    e.trackInstances,
-		skipRootResources: e.skipRootResources,
+		funcs:              e.funcs,
+		fsys:               e.fsys,
+		explicitRootVars:   e.explicitRootVars,
+		cache:              make(map[evalCacheKey]*evalCacheEntry),
+		remoteResolver:     e.remoteResolver,
+		notEvaluatedDirs:   make(map[string]bool),
+		parseMu:            e.parseMu,
+		dirCache:           e.dirCache,
+		funcFS:             e.funcFS,
+		mergeAllow:         e.mergeAllow,
+		trackInstances:     e.trackInstances,
+		skipRootResources:  e.skipRootResources,
+		rootResourceFilter: e.rootResourceFilter,
 	}
 }
 
@@ -360,6 +375,10 @@ func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
 // locals, or data blocks are still pre-injected before child evaluation.
 func (e *Evaluator) SetSkipRootResources(skip bool) { e.skipRootResources = skip }
 
+// SetRootResourceFilter limits root-level resource/data evaluation to blocks
+// whose type matches fn (plus their transitive dependencies). Forks inherit it.
+func (e *Evaluator) SetRootResourceFilter(fn func(string) bool) { e.rootResourceFilter = fn }
+
 // SetTrackModuleInstances makes evaluations record the module calls they
 // evaluate, for TakeModuleInstances. Forks inherit the setting.
 func (e *Evaluator) SetTrackModuleInstances(track bool) { e.trackInstances = track }
@@ -370,7 +389,16 @@ func (e *Evaluator) SetTrackModuleInstances(track bool) { e.trackInstances = tra
 // by the parser contribute no declarations. Call before ForgetRootParse.
 func (e *Evaluator) ResourceDeclarations(ctx context.Context, dir string) []*hclsyntax.Block {
 	parsed := e.parseDir(ctx, dir, "")
-	return append(slices.Clone(parsed.resources), collectDataBlocks(parsed.bodies)...)
+	var dataBlocks []*hclsyntax.Block
+	if parsed.locals != nil {
+		dataBlocks = parsed.locals.dataBlocks
+	} else {
+		dataBlocks = collectDataBlocks(parsed.bodies)
+	}
+	out := make([]*hclsyntax.Block, 0, len(parsed.resources)+len(dataBlocks))
+	out = append(out, parsed.resources...)
+	out = append(out, dataBlocks...)
+	return out
 }
 
 // DataBlockEvaluations reports how many data block expansions ran, counting
@@ -660,8 +688,9 @@ func (e *Evaluator) finalizeChainEvaluation(
 ) (*resourceTree, map[string]cty.Value, error) {
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 
+	evalOutputs := len(parsed.outputs) > 0 && (addr != "" || e.rootResourceFilter == nil)
 	rootResources := e.scheduleResources(
-		ctx, resourceBlocks, scope, evalCtx, data, addr, chain,
+		ctx, resourceBlocks, scope, evalCtx, data, addr, chain, evalOutputs,
 	)
 
 	scope.Local = evalCtx.Variables["local"]
@@ -672,9 +701,12 @@ func (e *Evaluator) finalizeChainEvaluation(
 	attachDeclarationBodies(rootResources, parsed.declarations)
 	resources := moduleResourceTree(rootResources, childResources)
 
-	outputs := make(map[string]cty.Value, len(parsed.outputs))
-	for name, expr := range parsed.outputs {
-		outputs[name] = e.evalExpr(expr, evalCtx)
+	var outputs map[string]cty.Value
+	if evalOutputs {
+		outputs = make(map[string]cty.Value, len(parsed.outputs))
+		for name, expr := range parsed.outputs {
+			outputs[name] = e.evalExpr(expr, evalCtx)
+		}
 	}
 
 	// A canceled or timed-out scan may have stopped mid-expansion. Do not
@@ -1115,7 +1147,14 @@ func (e *Evaluator) expandBlock(
 	typeName, resName := rb.Labels[0], rb.Labels[1]
 
 	// Attributes that ignore each/count evaluate identically in every instance.
-	memo := newInvariantMemo()
+	// Single-instance root resources are only evaluated once, so they skip both
+	// per-block and cross-call memoization.
+	hasExpansion := rb.Body.Attributes[metaArgCount] != nil || rb.Body.Attributes[metaArgForEach] != nil
+	var memo *invariantMemo
+	if hasExpansion || addr != "" {
+		memo = newInvariantMemo()
+	}
+	shareCrossCall := addr != ""
 	views := e.fileViews(ctx, evalCtx, rb.Body, inputs)
 
 	makeOne := func(name string, child *hcl.EvalContext) ResolvedResource {
@@ -1125,7 +1164,7 @@ func (e *Evaluator) expandBlock(
 		if child != evalCtx && (addr != "" || data) {
 			iteration = child.Variables
 		}
-		state := &bodyState{memo: memo, dynamic: &dynamicRecorder{}}
+		state := &bodyState{memo: memo, shareCrossCall: shareCrossCall, dynamic: &dynamicRecorder{}}
 		state.setFileInputs(views)
 		attrs := e.evalBodyWith(ctx, rb.Body, child, nil, state)
 		return ResolvedResource{
@@ -1503,10 +1542,11 @@ func (e *Evaluator) evalBody(
 // blocks: the memo of expressions that ignore the iteration, and how many
 // blocks each dynamic block generated.
 type bodyState struct {
-	document *documentScope
-	memo     *invariantMemo
-	dynamic  *dynamicRecorder
-	files    *fileViews
+	document       *documentScope
+	memo           *invariantMemo
+	shareCrossCall bool
+	dynamic        *dynamicRecorder
+	files          *fileViews
 	// iterators are the iterator names of the dynamic blocks enclosing the body
 	// being evaluated; expressions reading one of them vary between blocks.
 	iterators []string
@@ -1673,7 +1713,11 @@ func (e *Evaluator) evalExprMemo(expr hclsyntax.Expression, ctx *hcl.EvalContext
 	// Preserve the object-length fast path before memo keys walk the inputs.
 	v, ok := evalLength(expr, ctx)
 	if !ok {
-		v = e.memoizedValue(expr, ctx, e.evalExpr)
+		if st.shareCrossCall {
+			v = e.memoizedValue(expr, ctx, e.evalExpr)
+		} else {
+			v = e.evalExpr(expr, ctx)
+		}
 	}
 	st.memo.values[expr] = v
 	return v

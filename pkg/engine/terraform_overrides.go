@@ -98,6 +98,10 @@ func (o *terraformOverrides) add(config tfeval.ResourceOverride) {
 	}
 }
 
+func (o *terraformOverrides) hasDefinitions() bool {
+	return o != nil && len(o.definitions) > 0
+}
+
 func (o *terraformOverrides) record(
 	ctx context.Context, evaluator *tfeval.Evaluator, resources []tfeval.ResolvedResource,
 ) {

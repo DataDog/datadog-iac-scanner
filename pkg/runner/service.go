@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"math"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -28,6 +29,8 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/pkg/errors"
+	"github.com/zclconf/go-cty/cty"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 const (
@@ -779,23 +782,8 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 	if normalized, handled := normalizeScalarDocumentValue(v); handled {
 		return normalized, true
 	}
-	switch t := v.(type) {
-	case []string:
-		out := make([]interface{}, len(t))
-		for i, e := range t {
-			out[i] = e
-		}
-		return out, true
-	case map[string]string:
-		out := make(map[string]interface{}, len(t))
-		for k, e := range t {
-			out[k] = e
-		}
-		return out, true
-	case map[interface{}]interface{}:
-		// yaml.v3 produces these only for non-string keys; string keys convert
-		// exactly as the JSON round-trip did (values included).
-		return normalizeInterfaceKeyedMap(t), true
+	if normalized, handled := normalizeKnownContainerValue(v); handled {
+		return normalized, true
 	}
 
 	// Reflect fallback for the remaining container shapes seen in parsed
@@ -814,6 +802,107 @@ func normalizeDocumentValue(v interface{}) (interface{}, bool) {
 		return normalizeViaJSON(v)
 	}
 	return v, false
+}
+
+func normalizeKnownContainerValue(v interface{}) (interface{}, bool) {
+	switch t := v.(type) {
+	case model.Document:
+		out := make(map[string]interface{}, len(t))
+		for k, e := range t {
+			if normalized, changed := normalizeDocumentValue(e); changed {
+				out[k] = normalized
+			} else {
+				out[k] = e
+			}
+		}
+		return out, true
+	case ctyjson.SimpleJSONValue:
+		if normalized, ok := normalizeCtySimpleJSON(t.Value); ok {
+			return normalized, true
+		}
+		return normalizeViaJSON(v)
+	case *ctyjson.SimpleJSONValue:
+		if t == nil {
+			return nil, true
+		}
+		if normalized, ok := normalizeCtySimpleJSON(t.Value); ok {
+			return normalized, true
+		}
+		return normalizeViaJSON(v)
+	case []string:
+		out := make([]interface{}, len(t))
+		for i, e := range t {
+			out[i] = e
+		}
+		return out, true
+	case map[string]string:
+		out := make(map[string]interface{}, len(t))
+		for k, e := range t {
+			out[k] = e
+		}
+		return out, true
+	case map[interface{}]interface{}:
+		// yaml.v3 produces these only for non-string keys; string keys convert
+		// exactly as the JSON round-trip did (values included).
+		return normalizeInterfaceKeyedMap(t), true
+	default:
+		return nil, false
+	}
+}
+
+func normalizeCtySimpleJSON(v cty.Value) (interface{}, bool) {
+	if v == cty.NilVal || !v.IsKnown() || v.IsMarked() {
+		return nil, false
+	}
+	if v.IsNull() {
+		return nil, true
+	}
+	ty := v.Type()
+	switch ty {
+	case cty.String:
+		return v.AsString(), true
+	case cty.Bool:
+		return v.True(), true
+	case cty.Number:
+		f, _ := v.AsBigFloat().Float64()
+		if math.IsInf(f, 0) || math.IsNaN(f) {
+			return nil, false
+		}
+		return f, true
+	}
+	return normalizeCtyCollectionJSON(v, ty)
+}
+
+func normalizeCtyCollectionJSON(v cty.Value, ty cty.Type) (interface{}, bool) {
+	switch {
+	case ty.IsTupleType(), ty.IsListType(), ty.IsSetType():
+		out := make([]interface{}, 0, v.LengthInt())
+		for it := v.ElementIterator(); it.Next(); {
+			_, ev := it.Element()
+			elem, ok := normalizeCtySimpleJSON(ev)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, elem)
+		}
+		return out, true
+	case ty.IsObjectType(), ty.IsMapType():
+		out := make(map[string]interface{}, v.LengthInt())
+		for it := v.ElementIterator(); it.Next(); {
+			kv, ev := it.Element()
+			if kv.Type() != cty.String || !kv.IsKnown() || kv.IsNull() || kv.IsMarked() {
+				return nil, false
+			}
+			elem, ok := normalizeCtySimpleJSON(ev)
+			if !ok {
+				return nil, false
+			}
+			out[kv.AsString()] = elem
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func normalizeViaJSON(v interface{}) (interface{}, bool) {

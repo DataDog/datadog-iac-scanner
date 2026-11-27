@@ -96,7 +96,7 @@ func (e *Evaluator) memoizedValue(
 // that construct a collection still benefit from sharing their evaluated value.
 func reusesInputValue(expr hclsyntax.Expression) bool {
 	switch expr := expr.(type) {
-	case *hclsyntax.ScopeTraversalExpr:
+	case *hclsyntax.LiteralValueExpr, *hclsyntax.ScopeTraversalExpr:
 		return true
 	case *hclsyntax.IndexExpr:
 		return reusesInputValue(expr.Collection)

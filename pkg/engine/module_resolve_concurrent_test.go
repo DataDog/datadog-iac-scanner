@@ -53,7 +53,7 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	var docs []model.Document
 	var synthetic []*model.FileMetadata
 	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
-		byAbsPath, seen, extras, instantiated, rootResources, out.Successful, out.Unresolved, out.Called,
+		byAbsPath, seen, extras, instantiated, rootResources, nil, out.Successful, out.Unresolved, out.Called,
 		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls, nil, nil)
 
 	encode := func(v any) string {
