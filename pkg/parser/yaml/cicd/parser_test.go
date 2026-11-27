@@ -783,3 +783,26 @@ jobs:
 	require.False(t, parsedRun.ParseOK)
 	require.Error(t, parsedRun.Error)
 }
+
+func TestParser_GitLabDeclarationsOnly(t *testing.T) {
+	content := []byte("include: missing.yml\n.template: &base {script: echo base}\n" +
+		"build: {extends: .template, variables: {FILE: missing.yml}}\n" +
+		"jobs: {steps: [{run: echo literal}]}\nruns: {steps: [{run: echo literal}]}\n" +
+		"ref: !reference [.template]\n")
+	for _, path := range []string{".gitlab-ci.yml", ".gitlab-ci.yaml"} {
+		resolved, docs, _, files, err := (&Parser{}).Parse(context.Background(), content, path, true, 15)
+		require.NoError(t, err)
+		require.Equal(t, content, resolved)
+		require.Empty(t, files)
+		require.Len(t, docs, 1)
+		build := docs[0]["build"].(map[string]interface{})
+		require.Equal(t, ".template", build["extends"])
+		require.NotContains(t, build, "script")
+		for _, key := range []string{"jobs", "runs"} {
+			step := docs[0][key].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+			require.NotContains(t, step, "_parsed_run")
+		}
+	}
+	_, _, _, _, err := (&Parser{}).Parse(context.Background(), []byte("build: [\n"), ".gitlab-ci.yml", false, 15)
+	require.Error(t, err)
+}

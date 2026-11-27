@@ -8,6 +8,7 @@ package occurrence
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
@@ -43,9 +44,47 @@ metadata:
 `
 	require.Equal(t, []lineRange{{2, 5}, {9, 14}, {18, 21}}, parseYAMLFile(content).ranges)
 	require.Empty(t, parseYAMLFile("# only a comment\n").ranges)
+	require.Equal(t, []lineRange{{3, 3}, {7, 7}, {9, 9}},
+		parseYAMLFile("{}\n---\nfirst: {}\n---\n{}\n---\n[]\n---\nlast: {}\n").ranges,
+		"runtime lazy parsing drops empty mappings but retains empty sequences")
+
 	require.Equal(t, []lineRange{{1, 1}}, parseYAMLFile("a: b\n---\nc: [\n").ranges, "documents before a syntax error are kept, as the parser keeps them")
 	require.Equal(t, []lineRange{{1, 1}, {5, 5}}, parseYAMLFile("a: 1\n---\njust a string\n---\nb: 2\n").ranges,
 		"a scalar document is skipped, as the parser skips it")
+	for _, tt := range []struct {
+		platform, first, second, name1, name2 string
+	}{
+		{platforms.Kubernetes, "apiVersion: v1\nkind: ConfigMap\nmetadata: {name: first}\n", "apiVersion: v1\nkind: Service\nmetadata: {name: second}\n", "first", "second"},
+		{platforms.DockerCompose, "services: {first: {image: nginx}}\n", "services: {second: {image: nginx}}\n", "first", "second"},
+		{platforms.CloudFormation, "Resources: {First: {Type: AWS::S3::Bucket}}\n", "Resources: {Second: {Type: AWS::SQS::Queue}}\n", "First", "Second"},
+		{platforms.CICD, "on: push\njobs: {first: {runs-on: ubuntu-latest}}\n", "on: push\njobs: {second: {runs-on: ubuntu-latest}}\n", "first", "second"},
+	} {
+		t.Run(tt.platform, func(t *testing.T) {
+			source := "{}\n---\n" + tt.first + "---\n{}\n---\n[]\n---\n" + tt.second
+			_, docs, _, _, err := (&yamlparser.Parser{}).Parse(model.WithLazyLineInfo(context.Background()), []byte(source), "inventory.yml", false, 0)
+			require.NoError(t, err)
+			require.Len(t, docs, 3, "empty sequences remain in the runtime document list")
+			var files model.FileMetadatas
+			for _, doc := range docs {
+				files = append(files, &model.FileMetadata{ID: "doc", FilePath: "inventory.yml", OriginalData: source, Platform: tt.platform, Document: doc})
+			}
+			rows := collectDocumentResources(files)
+			require.Len(t, rows, 2)
+			require.Equal(t, tt.name1, rows[0].ResourceName)
+			require.Equal(t, tt.name2, rows[1].ResourceName)
+			require.Equal(t, 0, rows[0].DocumentIndex)
+			require.Equal(t, 2, rows[1].DocumentIndex)
+			secondStart := strings.Count("{}\n---\n"+tt.first+"---\n{}\n---\n[]\n---\n", "\n") + 1
+			offset := 0
+			if tt.platform == platforms.CICD {
+				offset = 1 // jobs follow the workflow's on key
+			}
+			require.Equal(t, lineRange{3 + offset, 2 + strings.Count(tt.first, "\n")},
+				lineRange{rows[0].Source.Start.Line, rows[0].Source.End.Line})
+			require.Equal(t, lineRange{secondStart + offset, secondStart + strings.Count(tt.second, "\n") - 1},
+				lineRange{rows[1].Source.Start.Line, rows[1].Source.End.Line})
+		})
+	}
 }
 
 func TestSplitChartPath(t *testing.T) {
@@ -332,4 +371,69 @@ func collectDocumentResources(files model.FileMetadatas) []model.ResourceOccurre
 	var rows []model.ResourceOccurrence
 	Documents(context.Background(), files, func(_ *model.FileMetadata, r *model.ResourceOccurrence) { rows = append(rows, *r) })
 	return rows
+}
+
+func TestGitLabDeclaredJobOccurrences(t *testing.T) {
+	for _, tt := range []struct {
+		name, source string
+		spans        []lineRange
+	}{
+		{"empty mapping before jobs", "{}\n---\nbuild: {script: echo ok}\n", []lineRange{{3, 3}}},
+		{"empty mapping between jobs", "build: {}\n---\n{}\n---\nbuild: {}\n", []lineRange{{1, 1}, {5, 5}}},
+		{"repeated declaration ranges", "build:\n  script: echo first\n\n# another declaration\nbuild:\n  script: echo second\n", []lineRange{{1, 2}, {5, 6}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, docs, _, _, err := (&yamlparser.Parser{}).Parse(model.WithLazyLineInfo(context.Background()), []byte(tt.source), ".gitlab-ci.yml", false, 0)
+			require.NoError(t, err)
+			var files model.FileMetadatas
+			for _, doc := range docs {
+				files = append(files, &model.FileMetadata{ID: "doc", FilePath: ".gitlab-ci.yml", OriginalData: tt.source, Platform: platforms.CICD, Document: doc})
+			}
+			rows := collectDocumentResources(files)
+			var spans []lineRange
+			for _, row := range rows {
+				require.Equal(t, "build", row.ResourceName)
+				spans = append(spans, lineRange{row.Source.Start.Line, row.Source.End.Line})
+			}
+			require.Equal(t, tt.spans, spans)
+		})
+	}
+
+	content := "# pipeline\ninclude: missing.yml\ndefault: {image: alpine}\n" +
+		".base: &base {script: echo template}\n" +
+		"build: {extends: .base}\n" +
+		"release: {trigger: other/project}\n" +
+		"artifacts: {}\nhooks: *base\n" +
+		"id: {script: echo id}\nfile: {script: echo file}\n" +
+		"_dd_lines: {script: echo lines}\n_parsed_run: {script: echo parsed}\n" +
+		"'build.api[0]': {rules: [{when: never}]}\n" +
+		"scalar: nope\nsequence: []\n" +
+		"---\n# second document\nnext: {script: echo next}\n"
+	_, docs, _, _, err := (&yamlparser.Parser{}).Parse(context.Background(), []byte(content), ".gitlab-ci.yml", false, 0)
+	require.NoError(t, err)
+	var files model.FileMetadatas
+	for _, doc := range docs {
+		files = append(files, &model.FileMetadata{ID: "doc", FilePath: ".gitlab-ci.yml",
+			OriginalData: content, Platform: platforms.CICD, Document: doc})
+	}
+	rows := collectDocumentResources(files)
+	require.Len(t, rows, 10)
+	wantLines := map[string]int{"build": 5, "release": 6, "artifacts": 7, "hooks": 8, "id": 9,
+		"file": 10, "_dd_lines": 11, "_parsed_run": 12, "build.api[0]": 13, "next": 18}
+	for _, row := range rows {
+		require.Equal(t, "gitlab_ci_job", row.ResourceType)
+		require.Equal(t, ".gitlab-ci.yml", row.File)
+		require.Equal(t, wantLines[row.ResourceName], row.Source.Start.Line, row.ResourceName)
+		require.Equal(t, row.Source.Start.Line, row.Source.End.Line)
+		require.Equal(t, row.ResourceName, row.ResourcePath)
+		require.Equal(t, model.SourcePath{{Key: row.ResourceName}}, row.StructuralPath)
+	}
+	for _, global := range []string{"default", "include", "stages", "variables", "workflow", "spec",
+		"image", "services", "cache", "before_script", "after_script", "types"} {
+		source := global + ": {}\njob: {}\n"
+		f := &model.FileMetadata{FilePath: ".gitlab-ci.yaml", OriginalData: source, Platform: platforms.CICD, Document: model.Document{"job": map[string]interface{}{}}}
+		got := collectDocumentResources(model.FileMetadatas{f})
+		require.Len(t, got, 1, global)
+		require.Equal(t, "job", got[0].ResourceName)
+	}
 }

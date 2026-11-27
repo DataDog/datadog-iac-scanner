@@ -14,6 +14,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
 
@@ -103,6 +104,12 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
+	if names.IsGitLabFile(filePath) {
+		// Declaration-only parsing: do not inline YAML-valued scalars or apply
+		// GitHub expression/run enrichment to a GitLab job named jobs or runs.
+		documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(ctx, fileContent, filePath, nil)
+		return fileContent, documents, ignoreLines, nil, err
+	}
 	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(
 		ctx, p.FS, fileContent, filePath, resolveReferences, maxResolverDepth)
 

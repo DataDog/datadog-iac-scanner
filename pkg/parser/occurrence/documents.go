@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	cicdnames "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"gopkg.in/yaml.v3"
 )
@@ -85,6 +86,8 @@ func (e *documentEnumerator) documentOccurrences(f *model.FileMetadata, index in
 		return e.cloudFormationOccurrences(f, index)
 	case f.Platform == platforms.DockerCompose:
 		return e.keyedOccurrences(f, index, "services", lineInfoKey, composeServiceOccurrence)
+	case f.Platform == platforms.CICD && cicdnames.IsGitLabFile(f.FilePath):
+		return e.gitLabJobOccurrences(f, index)
 	case f.Platform == platforms.CICD:
 		return e.keyedOccurrences(f, index, "jobs", workflowParserKey, workflowJobOccurrence)
 	case f.Platform == platforms.Ansible:
@@ -361,6 +364,11 @@ func parseYAMLFile(content string) *yamlFile {
 		}
 		// The parser keeps a mapping or a sequence and skips the rest.
 		if yamlparser.IsEmptyDocument(&node) || node.Content[0].Kind == yaml.ScalarNode {
+			continue
+		}
+		// Runtime scans use lazy line info: an empty mapping has no payload
+		// and appendDocument drops it. Keep source indexes aligned with that list.
+		if node.Content[0].Kind == yaml.MappingNode && len(node.Content[0].Content) == 0 {
 			continue
 		}
 		nodes = append(nodes, node.Content[0])

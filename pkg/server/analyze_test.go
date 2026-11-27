@@ -1464,3 +1464,26 @@ func TestAnalyze_ReferenceFilesystemIsolation(t *testing.T) {
 		})
 	}
 }
+
+func TestAnalyze_GitLabDeclarationDiscovery(t *testing.T) {
+	rule := syntheticRule()
+	rule.Platform = "CICD"
+	rule.RegoQuery = []byte(`package datadog
+import rego.v1
+DatadogPolicy contains result if {
+ doc := input.document[_]
+ doc.build.extends == ".base"
+ result := {"documentId":doc.id,"resourceType":"test","resourceName":"build","searchKey":"build.extends"}
+}`)
+	for _, path := range []string{".gitlab-ci.yml", "ci/.gitlab-ci.yaml", "/repo/.gitlab-ci.yml"} {
+		out, _ := postAnalyze(t, newTestServer(t), analyzeRequest{
+			Files:    []analyzeFile{{Path: path, Content: "include: missing.yml\n.base: {script: echo base}\nbuild: {extends: .base}\n"}},
+			Platform: []string{"CICD"}, Ruleset: ruleset(rule),
+			Libraries: append(testLibraries(true), datadog.Library{ID: "cicd", RegoCode: "package generic.cicd"}),
+		})
+		require.Empty(t, out.FailedQueries)
+		require.Empty(t, out.MissingFiles, "declaration parsing must not resolve includes")
+		require.Len(t, out.Findings, 1)
+		require.Equal(t, path, out.Findings[0].FileName)
+	}
+}

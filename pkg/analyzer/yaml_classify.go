@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	cicdnames "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
@@ -368,4 +369,21 @@ func ansibleFromYAMLNode(root *yamlParser.Node) bool {
 		}
 	}
 	return false
+}
+
+// gitLabDeclarationPlatform routes canonical paths even when their contents
+// are malformed or template-only, while honoring explicit platform exclusion.
+func gitLabDeclarationPlatform(path string, enabled []string) (string, bool) {
+	if !cicdnames.IsGitLabFile(path) {
+		return "", false
+	}
+	if len(enabled) == 0 || enabled[0] == "" {
+		return cicd, true
+	}
+	for _, platform := range enabled {
+		if platform == cicd {
+			return cicd, true
+		}
+	}
+	return "", true
 }

@@ -771,6 +771,9 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
 func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []byte, ext string,
 	typesFlag []string, hc *sync.Map, scanFiles map[string]struct{}) string {
+	if platform, matched := gitLabDeclarationPlatform(path, typesFlag); matched {
+		return platform
+	}
 	returnType := ""
 
 	// Sort map so that CloudFormation (type that as less requireds) goes last

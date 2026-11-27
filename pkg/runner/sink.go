@@ -18,6 +18,7 @@ import (
 	iacparser "github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/jsonfilter/parser"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	cicdnames "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/pkg/errors"
@@ -102,7 +103,9 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 	}
 	// Fast path: duplicate content already parsed and sanitized — reuse the shared
 	// trees with a per-file top-level map and skip parsing.
-	if shared := s.lookupSharedParse(*c.Content); shared != nil {
+	// GitLab entrypoints use declaration-only parsing; the content-only cache
+	// may hold a GitHub-enriched parse of identical bytes.
+	if shared := s.lookupFileParse(filename, *c.Content); shared != nil {
 		fileCommands := s.Parser.CommentsCommands(ctx, filename, *content)
 		return s.sinkSharedParse(ctx, filename, scanID, shared.content, shared,
 			fileCommands, c.IsMinified, openAPIResolveReferences, maxResolverDepth, *content)
@@ -146,7 +149,7 @@ func (s *Service) sinkContent(ctx context.Context, filename, scanID string,
 		sort.Ints(documents.IgnoreLines)
 	}
 
-	shareable := len(*content) > 0 && shareableParse(&documents)
+	shareable := shareableFileParse(filename, &documents)
 	var sharedDocs []model.Document
 
 	for docIdx := range documents.Docs {
@@ -339,4 +342,17 @@ func resolveJSONFilter(jsonFilter string) string {
 	}
 
 	return string(parsedByte)
+}
+
+// A canonical GitLab file uses a different parse contract than a GitHub file
+// containing identical bytes. Keep it out of the content-only parse cache.
+func (s *Service) lookupFileParse(filename string, content []byte) *sharedParse {
+	if cicdnames.IsGitLabFile(filename) {
+		return nil
+	}
+	return s.lookupSharedParse(content)
+}
+
+func shareableFileParse(filename string, documents *iacparser.ParsedDocument) bool {
+	return !cicdnames.IsGitLabFile(filename) && shareableParse(documents)
 }
