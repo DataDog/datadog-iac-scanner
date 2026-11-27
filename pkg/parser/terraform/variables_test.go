@@ -714,6 +714,15 @@ func TestGetInputVariables_OverrideFilesMergeVariableArguments(t *testing.T) {
 			want: cty.NumberIntVal(60),
 		},
 		{
+			name: "ambiguous base, override provides the default",
+			files: map[string]string{
+				"zmain.tf":      `variable "days" { default = 0 }`,
+				"other.tf":      `variable "days" { default = 30 }`,
+				"a_override.tf": `variable "days" { default = 90 }`,
+			},
+			want: cty.NumberIntVal(90),
+		},
+		{
 			name: "variable definitions file still wins",
 			files: map[string]string{
 				"main.tf":          `variable "days" { default = 0 }`,

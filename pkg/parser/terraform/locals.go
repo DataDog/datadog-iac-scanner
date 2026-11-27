@@ -122,7 +122,7 @@ func resolveRootLocals(
 			// A whole read sees the locals evaluated before this one only.
 			variables[blockTypeLocalReference] = readableLocals(assignments, reads[v], whole[v], values)
 			values[item.name] = cty.DynamicVal
-			if !readsOnlyKnownValues(item.expr, variables) {
+			if !readsOnlyKnownValues(inputs[v].traversals, variables) {
 				continue
 			}
 			val, diags := item.expr.Value(&hcl.EvalContext{Variables: variables, Functions: funcs})
@@ -165,6 +165,9 @@ type localInputs struct {
 	// when it reads local as a whole.
 	locals []int
 	whole  bool
+	// traversals are the references the expression reads, collected once
+	// here for readsOnlyKnownValues.
+	traversals []hcl.Traversal
 	// evaluable is set when it reads nothing but declared locals and the
 	// namespaces of scope, and calls only functions the scanner implements
 	// other than templatestring and templatefile. A whole read under try or
@@ -178,7 +181,8 @@ func localInputsOf(
 ) localInputs {
 	var in localInputs
 	in.evaluable = callsOnlyImplemented(expr, funcs)
-	for _, traversal := range expr.Variables() {
+	in.traversals = expr.Variables()
+	for _, traversal := range in.traversals {
 		root := traversal.RootName()
 		if _, ok := scope[root]; ok {
 			continue
@@ -206,13 +210,15 @@ func localInputsOf(
 }
 
 // refreshableLocals keeps the assignments refreshLocals can evaluate against
-// scope and the declared locals of current, under the rules of localInputsOf.
+// scope and the declared locals, under the rules of localInputsOf. The result
+// depends only on the declared names and the roots of scope, so the caller
+// can compute it once for a directory instead of on every refresh.
 func refreshableLocals(
-	assignments []localAssignment, current converter.VariableMap, scope map[string]cty.Value, funcs map[string]function.Function,
+	assignments, declared []localAssignment, scope map[string]cty.Value, funcs map[string]function.Function,
 ) []localAssignment {
-	index := make(map[string]int, len(current))
-	for name := range current {
-		index[name] = len(index)
+	index := make(map[string]int, len(declared))
+	for _, item := range declared {
+		index[item.name] = len(index)
 	}
 	kept := make([]localAssignment, 0, len(assignments))
 	for _, item := range assignments {
@@ -223,16 +229,16 @@ func refreshableLocals(
 	return kept
 }
 
-// readsOnlyKnownValues reports whether every value expr reads from
-// variables, the namespaces it is evaluated against, exists and is wholly
+// readsOnlyKnownValues reports whether every value the traversals read from
+// variables, the namespaces they are evaluated against, exists and is wholly
 // known: the variable, path attribute or local each traversal names, the
 // rendered data document (data.<type>.<name>), or the whole namespace for a
 // traversal that names none statically. An unknown read is never evaluated,
 // even where it would not decide the result: go-cty skips a function called
 // with an unknown argument and folds unknown values into known results, such
 // as length([unknown]), hiding a failure or a type Terraform would give.
-func readsOnlyKnownValues(expr hcl.Expression, variables map[string]cty.Value) bool {
-	for _, traversal := range expr.Variables() {
+func readsOnlyKnownValues(traversals []hcl.Traversal, variables map[string]cty.Value) bool {
+	for _, traversal := range traversals {
 		root, ok := variables[traversal.RootName()]
 		if !ok {
 			return false

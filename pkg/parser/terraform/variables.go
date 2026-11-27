@@ -379,14 +379,15 @@ func LocalTraversalName(traversal hcl.Traversal) (string, bool) {
 
 // refreshLocals re-evaluates locals against vars (including data) so try /
 // coalesce fallbacks that succeeded early can pick up chained data sources.
-// They are evaluated with the functions and path of evalCtx, under the rules
-// of the other locals: a local reading anything but var, path, data and
-// declared locals, calling a function the scanner does not evaluate locals
-// with, or reading a value that is not wholly known (an unrendered data
-// document included) keeps its value, so try and can do not fall back past
-// what the scanner cannot read. The locals of declared that vars does not
-// hold are unknown while they are evaluated, and only resolved values are
-// written back to vars.
+// assignments are the data-dependent locals the directory's refresh can
+// evaluate, already filtered against its declared locals and the var, data
+// and path roots (see refreshableLocals, which the caller runs once). They
+// are evaluated with the functions and path of evalCtx: a local reading a
+// value that is not wholly known (an unrendered data document included)
+// keeps its value, so try and can do not fall back past what the scanner
+// cannot read. The locals of declared that vars does not hold are unknown
+// while they are evaluated, and only resolved values are written back to
+// vars.
 func refreshLocals(
 	vars converter.VariableMap, declared, assignments []localAssignment, evalCtx localEvalContext,
 ) bool {
@@ -399,7 +400,12 @@ func refreshLocals(
 	if evalCtx.path != cty.NilVal {
 		scope[pathReference] = evalCtx.path
 	}
-	assignments = refreshableLocals(assignments, current, scope, evalCtx.funcs)
+	// The traversals each local reads, collected once: every pass checks
+	// them against the variables of that pass.
+	traversals := make([][]hcl.Traversal, len(assignments))
+	for i, item := range assignments {
+		traversals[i] = item.expr.Variables()
+	}
 	changed := false
 	for pass := 0; pass < len(assignments)+1; pass++ {
 		passChanged := false
@@ -409,8 +415,8 @@ func refreshLocals(
 		}
 		evalVars[blockTypeLocalReference] = cty.ObjectVal(current)
 		hclCtx := &hcl.EvalContext{Variables: evalVars, Functions: evalCtx.funcs}
-		for _, item := range assignments {
-			if !readsOnlyKnownValues(item.expr, evalVars) {
+		for i, item := range assignments {
+			if !readsOnlyKnownValues(traversals[i], evalVars) {
 				continue
 			}
 			val, diags := item.expr.Value(hclCtx)
@@ -521,12 +527,17 @@ func getInputVariables(
 
 	// Final sanitized maps
 	cleanVars := sanitizeCtyMap(variablesMap)
-	evalCtx := newLocalEvalContext(fsys, currentPath)
 	// Every variable value is now known, so each local is evaluated once, from
 	// its declaration in the order Terraform applies files, as a direct var.x
 	// in a resource already is. A local that does not resolve is missing, as
-	// before (see resolveRootLocals).
-	localsMap := resolveRootLocals(lastLocalAssignments(locals.all()), evalCtx.scope(cty.ObjectVal(cleanVars)), evalCtx.funcs)
+	// before (see resolveRootLocals). The evaluation context is built only when
+	// the directory declares a local: resolving none touches neither its
+	// functions nor its path.
+	var localsMap converter.VariableMap
+	if assignments := lastLocalAssignments(locals.all()); len(assignments) > 0 {
+		evalCtx := newLocalEvalContext(fsys, currentPath)
+		localsMap = resolveRootLocals(assignments, evalCtx.scope(cty.ObjectVal(cleanVars)), evalCtx.funcs)
+	}
 	cleanLocals := sanitizeCtyMap(localsMap)
 
 	result := make(converter.VariableMap)
@@ -621,10 +632,11 @@ func (d *variableDeclarations) add(file string, decls []variableDeclaration) {
 
 // effective returns the declaration of each variable: its last ordinary
 // block, with the arguments each override block sets replaced in turn. An
-// override without a default keeps the inherited one. A variable declared in
-// several ordinary files has no unique base: Terraform rejects such a
-// directory, and like module evaluation it reads unknown here, unless an
-// override file provides the value.
+// override without a default keeps the inherited one. A variable declared
+// in several ordinary files has no unique base: Terraform rejects such a
+// directory, and this root-module fallback conservatively reads it as
+// unknown. Module evaluation (tfeval) reads the last declaration instead,
+// so the two agree only when an override file provides the value.
 func (d *variableDeclarations) effective() map[string]variableDeclaration {
 	out := make(map[string]variableDeclaration, len(d.ordinary))
 	bases := make(map[string]int, len(d.ordinary))

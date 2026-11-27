@@ -97,7 +97,22 @@ func getDataSourcePolicy(
 	// Locals that read data only resolve after a data pass, so keep their
 	// expressions and refresh them when data grows.
 	assignments := dataDependentLocals(locals)
-	evalCtx := newLocalEvalContext(fsys, currentPath)
+	// The refresh keeps only the locals reading nothing but var, data, path
+	// and declared locals, and that set depends only on the directory, so it
+	// is filtered once here instead of on every pass. The scope values are
+	// never read by the filter, only their names.
+	var (
+		evalCtx     localEvalContext
+		refreshable []localAssignment
+	)
+	if len(assignments) > 0 {
+		evalCtx = newLocalEvalContext(fsys, currentPath)
+		scope := map[string]cty.Value{varReference: cty.DynamicVal, terraformDataIdentifier: cty.DynamicVal}
+		if evalCtx.path != cty.NilVal {
+			scope[pathReference] = evalCtx.path
+		}
+		refreshable = refreshableLocals(assignments, locals, scope, evalCtx.funcs)
+	}
 	var rendered map[string]map[string]map[string]string
 	// Each pass exposes one more link of a dependency chain through data or
 	// locals, so a chain can be at most as long as the blocks plus locals.
@@ -109,7 +124,10 @@ func getDataSourcePolicy(
 			return inputVariables
 		}
 		inputVariables["data"] = data
-		localsChanged := refreshLocals(inputVariables, locals, assignments, evalCtx)
+		localsChanged := false
+		if len(refreshable) > 0 {
+			localsChanged = refreshLocals(inputVariables, locals, refreshable, evalCtx)
+		}
 		if rendered != nil && reflect.DeepEqual(rendered, next) && !localsChanged {
 			break
 		}
