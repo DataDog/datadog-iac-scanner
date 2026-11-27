@@ -7,6 +7,7 @@
 package scan
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -302,5 +303,31 @@ func TestInventoryKeyedRows(t *testing.T) {
 		if r.Platform == platforms.CloudFormation {
 			require.Equal(t, "aws", r.Provider)
 		}
+	}
+}
+
+func TestInventoryGitLabDeclaredJobs(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		".gitlab-ci.yml":          "include: missing.yml\n.base: {script: echo base}\nbuild: {extends: .base}\nid: {script: echo id}\nfile: {script: echo file}\n_dd_lines: {}\n",
+		"ci/.gitlab-ci.yaml":      "deploy: {trigger: other/project}\n",
+		".gitlab/ci/fragment.yml": "fragment: {script: echo fragment}\n",
+		"pipeline.yml":            "custom: {script: echo custom}\n",
+	})
+	for _, explicit := range []bool{false, true} {
+		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
+			params := documentParams(root)
+			params.Platform = []string{"CICD"}
+			if explicit {
+				params.Path = []string{filepath.Join(root, ".gitlab-ci.yml"), filepath.Join(root, "ci/.gitlab-ci.yaml")}
+			}
+			inv := scanInventory(t, params)
+			require.Len(t, inv.Resources, 5)
+			for _, row := range inv.Resources {
+				require.Equal(t, "gitlab_ci_job", row.ResourceType)
+				require.Equal(t, "cicd", row.Platform)
+				require.Greater(t, row.LineStart, 0)
+				require.Equal(t, row.LineStart, row.LineEnd)
+			}
+		})
 	}
 }

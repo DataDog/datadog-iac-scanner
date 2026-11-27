@@ -70,6 +70,20 @@ datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR1 -q QUERYDIR2
 
 Run `datadog-iac-scanner scan --help` to see all available flags.
 
+### GitLab CI declaration inventory
+
+The CI/CD platform discovers canonical `.gitlab-ci.yml` and
+`.gitlab-ci.yaml` files and inventories their directly declared, non-hidden
+mapping entries as `gitlab_ci_job` resources with source ranges. Reserved
+pipeline sections and hidden templates are excluded. Inventory describes
+declarations in each file, not the jobs GitLab will execute or their validity.
+
+This support uses the existing YAML parser. It does not compile includes,
+`extends`, `!reference`, inputs or defaults, evaluate job conditions, add shell
+analysis, or introduce GitLab security rules. Custom entrypoints and fragments
+are not discovered as GitLab CI. GitHub workflow paths retain their existing
+behavior.
+
 ### Configuring the scan
 
 Create a file named `code-security.datadog.yaml` at the root of your repository to customize scanner behavior. Use this file to choose which rules run, restrict scanning to specific paths, or filter findings by severity and category.

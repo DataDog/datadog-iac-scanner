@@ -333,3 +333,43 @@ func collectDocumentResources(files model.FileMetadatas) []model.ResourceOccurre
 	Documents(context.Background(), files, func(_ *model.FileMetadata, r *model.ResourceOccurrence) { rows = append(rows, *r) })
 	return rows
 }
+
+func TestGitLabDeclaredJobOccurrences(t *testing.T) {
+	content := "# pipeline\ninclude: missing.yml\ndefault: {image: alpine}\n" +
+		".base: &base {script: echo template}\n" +
+		"build: {extends: .base}\n" +
+		"release: {trigger: other/project}\n" +
+		"artifacts: {}\nhooks: *base\n" +
+		"id: {script: echo id}\nfile: {script: echo file}\n" +
+		"_dd_lines: {script: echo lines}\n_parsed_run: {script: echo parsed}\n" +
+		"'build.api[0]': {rules: [{when: never}]}\n" +
+		"scalar: nope\nsequence: []\n" +
+		"---\n# second document\nnext: {script: echo next}\n"
+	_, docs, _, _, err := (&yamlparser.Parser{}).Parse(context.Background(), []byte(content), ".gitlab-ci.yml", false, 0)
+	require.NoError(t, err)
+	var files model.FileMetadatas
+	for _, doc := range docs {
+		files = append(files, &model.FileMetadata{ID: "doc", FilePath: ".gitlab-ci.yml",
+			OriginalData: content, Platform: platforms.CICD, Document: doc})
+	}
+	rows := collectDocumentResources(files)
+	require.Len(t, rows, 10)
+	wantLines := map[string]int{"build": 5, "release": 6, "artifacts": 7, "hooks": 8, "id": 9,
+		"file": 10, "_dd_lines": 11, "_parsed_run": 12, "build.api[0]": 13, "next": 18}
+	for _, row := range rows {
+		require.Equal(t, "gitlab_ci_job", row.ResourceType)
+		require.Equal(t, ".gitlab-ci.yml", row.File)
+		require.Equal(t, wantLines[row.ResourceName], row.Source.Start.Line, row.ResourceName)
+		require.Equal(t, row.Source.Start.Line, row.Source.End.Line)
+		require.Equal(t, row.ResourceName, row.ResourcePath)
+		require.Equal(t, model.SourcePath{{Key: row.ResourceName}}, row.StructuralPath)
+	}
+	for _, global := range []string{"default", "include", "stages", "variables", "workflow", "spec",
+		"image", "services", "cache", "before_script", "after_script", "types"} {
+		source := global + ": {}\njob: {}\n"
+		f := &model.FileMetadata{FilePath: ".gitlab-ci.yaml", OriginalData: source, Platform: platforms.CICD, Document: model.Document{"job": map[string]interface{}{}}}
+		got := collectDocumentResources(model.FileMetadatas{f})
+		require.Len(t, got, 1, global)
+		require.Equal(t, "job", got[0].ResourceName)
+	}
+}

@@ -1155,3 +1155,28 @@ func TestAnalyze_DockerfileVariants(t *testing.T) {
 	require.Equal(t, "", ClassifyFile(ctx, mem, "Dockerfile.txt", nil, platforms.Supported))
 	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "app.debian", nil, platforms.Supported))
 }
+
+func TestClassifyFile_GitLabDeclarations(t *testing.T) {
+	for _, path := range []string{".gitlab-ci.yml", "ci/.gitlab-ci.yaml"} {
+		for _, content := range []string{
+			"build: {script: echo ok}\n",
+			".template: {image: alpine}\n",
+			"version: {script: echo version}\nupdates: {script: echo updates}\n",
+			"apiVersion: {script: echo api}\nkind: {script: echo kind}\n",
+			"build: [\n", "scalar\n", "# empty\n",
+		} {
+			t.Run(path+"/"+content, func(t *testing.T) {
+				for _, enabled := range [][]string{nil, {""}, {"CICD"}} {
+					require.Equal(t, "cicd", ClassifyFile(context.Background(), vfs.NewMemFS(map[string][]byte{path: []byte(content)}), path, []byte(content), enabled))
+				}
+				require.Empty(t, ClassifyFile(context.Background(), vfs.NewMemFS(map[string][]byte{path: []byte(content)}), path, []byte(content), []string{"Terraform"}))
+			})
+		}
+	}
+	for _, path := range []string{"pipeline.yml", "custom.gitlab-ci.yml", ".gitlab/ci/build.yml", ".gitlab-ci.YML"} {
+		require.Empty(t, ClassifyFile(context.Background(), vfs.NewMemFS(map[string][]byte{path: []byte("build: {script: echo ok}\n")}), path, []byte("build: {script: echo ok}\n"), nil))
+	}
+	path := filepath.Join(".github", "workflows", ".gitlab-ci.yml")
+	content := []byte("on: push\njobs: {build: {runs-on: ubuntu-latest}}\n")
+	require.Equal(t, "cicd", ClassifyFile(context.Background(), vfs.NewMemFS(map[string][]byte{path: content}), path, content, nil))
+}

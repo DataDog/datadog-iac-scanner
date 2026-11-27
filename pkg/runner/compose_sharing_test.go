@@ -12,6 +12,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd"
 	dockerComposeParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/dockercompose"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
@@ -96,4 +97,32 @@ func (nopLineInfoStorage) SaveVulnerabilities(context.Context, []model.Vulnerabi
 }
 func (nopLineInfoStorage) GetVulnerabilities(context.Context, string) ([]model.Vulnerability, error) {
 	return nil, nil
+}
+
+func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
+	content := []byte("on: push\njobs: {build: {steps: [{run: echo literal}]}}\n")
+	for _, order := range [][]string{
+		{".github/workflows/ci.yml", ".gitlab-ci.yml"},
+		{".gitlab-ci.yml", ".github/workflows/ci.yml"},
+	} {
+		ctx := context.Background()
+		parsers, err := parser.NewBuilder(ctx).Add(&cicd.Parser{}).Build([]string{"cicd"}, []string{""})
+		require.NoError(t, err)
+		svc := &Service{Parser: parsers[0], Tracker: noopTracker{}, Storage: nopLineInfoStorage{}, Platforms: []string{"cicd"}}
+		for _, path := range order {
+			data := append([]byte(nil), content...)
+			require.NoError(t, svc.sinkContent(ctx, path, "scan", &Content{Content: &data}, nil, false, 1))
+		}
+		require.Len(t, svc.files, 2)
+		for _, f := range svc.files {
+			encoded, err := json.Marshal(f.Document)
+			require.NoError(t, err)
+			// A GitLab declaration named jobs must never acquire GitHub annotations.
+			if f.FilePath == ".gitlab-ci.yml" {
+				require.NotContains(t, string(encoded), "_parsed_run")
+			} else {
+				require.Contains(t, string(encoded), "_parsed_run")
+			}
+		}
+	}
 }

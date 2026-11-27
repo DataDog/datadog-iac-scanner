@@ -468,3 +468,48 @@ func firstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+// gitLabJobOccurrences inventories written, non-hidden mapping declarations,
+// not effective jobs. Source nodes avoid collisions with parser/scanner metadata;
+// includes, extends and references are never compiled for inventory.
+func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index int) []model.ResourceOccurrence {
+	root, doc, found := e.documentNode(f, index)
+	if !found || root.Kind != yaml.MappingNode {
+		return nil
+	}
+	spans := childSpans(root, doc.end, e.yamlFile(f).lines)
+	var rows []model.ResourceOccurrence
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		key, value := root.Content[i], root.Content[i+1]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || strings.HasPrefix(key.Value, ".") || gitLabGlobalKeyword(key.Value) {
+			continue
+		}
+		if value.Kind == yaml.AliasNode {
+			value = value.Alias
+		}
+		if value == nil || value.Kind != yaml.MappingNode {
+			continue
+		}
+		span := spans[key.Value]
+		source := lineSource(span.start, span.end)
+		rows = append(rows, model.ResourceOccurrence{
+			File: f.FilePath, Platform: platforms.CICD,
+			ResourceType: "gitlab_ci_job", ResourceName: key.Value, ResourcePath: key.Value,
+			StructuralPath: model.SourcePath{{Key: key.Value}},
+			Source:         source, LegacySource: source,
+		})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ResourceName < rows[j].ResourceName })
+	return rows
+}
+
+// GitLab global/header keywords, including deprecated global job defaults.
+// Job-level keywords such as release, artifacts and hooks remain valid names.
+func gitLabGlobalKeyword(key string) bool {
+	switch key {
+	case "default", "include", "stages", "variables", "workflow", "spec",
+		"image", "services", "cache", "before_script", "after_script", "types":
+		return true
+	}
+	return false
+}

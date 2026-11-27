@@ -18,6 +18,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/helmmarker"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	yamlparser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml"
+	cicdnames "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/names"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"gopkg.in/yaml.v3"
 )
@@ -85,6 +86,8 @@ func (e *documentEnumerator) documentOccurrences(f *model.FileMetadata, index in
 		return e.cloudFormationOccurrences(f, index)
 	case f.Platform == platforms.DockerCompose:
 		return e.keyedOccurrences(f, index, "services", lineInfoKey, composeServiceOccurrence)
+	case f.Platform == platforms.CICD && cicdnames.IsGitLabFile(f.FilePath):
+		return e.gitLabJobOccurrences(f, index)
 	case f.Platform == platforms.CICD:
 		return e.keyedOccurrences(f, index, "jobs", workflowParserKey, workflowJobOccurrence)
 	case f.Platform == platforms.Ansible:
