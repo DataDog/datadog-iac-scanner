@@ -215,3 +215,41 @@ func TestNormalizeShell(t *testing.T) {
 		})
 	}
 }
+
+func TestShellParser_SyntaxStatus(t *testing.T) {
+	for _, script := range []string{`echo "unterminated`, "if true; then echo ok", "echo $("} {
+		parsed := parseRunBlock(script, "bash")
+		require.False(t, parsed.ParseOK, script)
+		require.Error(t, parsed.Error, script)
+	}
+}
+
+func TestShellParser_GitHubTemplates(t *testing.T) {
+	for _, argument := range []string{
+		`${{ github.event.issue.title }}`, `"${{ inputs.title }}"`, `'${{ format('}}{0}', inputs.title) }}'`,
+		"${{ contains('main',\n github.ref) }}",
+	} {
+		t.Run(argument, func(t *testing.T) {
+			parsed := parseGitHubRunBlock("echo "+argument+" >> \"$GITHUB_ENV\"", "bash")
+			require.True(t, parsed.ParseOK, "%v", parsed.Error)
+			require.Len(t, parsed.Commands, 1)
+			cmd := parsed.Commands[0]
+			require.Len(t, cmd.Args, 1)
+			require.Equal(t, argument, cmd.Args[0].Value)
+			require.Equal(t, string_with_expansion, cmd.Args[0].Type)
+			require.Empty(t, cmd.Args[0].Var)
+			require.Equal(t, "GITHUB_ENV", cmd.Redirect.Target.Var)
+		})
+	}
+}
+
+func TestShellParser_RedirectedPipeline(t *testing.T) {
+	parsed := parseRunBlock(`printf %s "$PAYLOAD" | cat >> "$GITHUB_ENV"`, "bash")
+	require.True(t, parsed.ParseOK)
+	require.Len(t, parsed.Commands, 1)
+	cmd := parsed.Commands[0]
+	require.Equal(t, "GITHUB_ENV", cmd.Redirect.Target.Var)
+	require.Len(t, cmd.Pipeline, 2)
+	require.Equal(t, "printf", cmd.Pipeline[0].Command)
+	require.Equal(t, "cat", cmd.Pipeline[1].Command)
+}

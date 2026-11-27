@@ -53,6 +53,12 @@ var lang = sitter.NewLanguage(bash.Language())
 
 // parseRunBlock parses a shell script and returns structured command information
 func parseRunBlock(runScript, shell string) *ParsedRun {
+	return parseShellSource(runScript, shell, []byte(runScript))
+}
+
+// source is the same length as runScript; provider preprocessing may replace
+// template syntax, but extracted values always come from the original script.
+func parseShellSource(runScript, shell string, source []byte) *ParsedRun {
 	result := &ParsedRun{
 		Shell:    shell,
 		Commands: []ParsedCommand{},
@@ -88,8 +94,7 @@ func parseRunBlock(runScript, shell string) *ParsedRun {
 	}
 
 	// Parse the script
-	scriptBytes := []byte(runScript)
-	tree := parser.Parse(scriptBytes, nil)
+	tree := parser.Parse(source, nil)
 	if tree == nil {
 		result.ParseOK = false
 		result.Error = fmt.Errorf("failed to parse script")
@@ -98,8 +103,11 @@ func parseRunBlock(runScript, shell string) *ParsedRun {
 	defer tree.Close()
 
 	// Walk the AST and extract commands
-	result.Commands = extractCommands(tree.RootNode(), scriptBytes)
-	result.ParseOK = true
+	result.Commands = extractCommands(tree.RootNode(), []byte(runScript))
+	result.ParseOK = !tree.RootNode().HasError()
+	if !result.ParseOK {
+		result.Error = fmt.Errorf("invalid shell syntax")
+	}
 
 	return result
 }
@@ -211,6 +219,9 @@ func parseRedirectedStatement(node *sitter.Node, source []byte) *ParsedCommand {
 				cmd.Args = innerCmd.Args
 			}
 
+		case pipeline:
+			cmd.Pipeline = parsePipeline(child, source).Pipeline
+
 		case file_redirect:
 			cmd.Redirect = parseRedirect(child, source)
 		}
@@ -259,11 +270,11 @@ func parsePipeline(node *sitter.Node, source []byte) *ParsedCommand {
 			continue
 		}
 
-		if child.Kind() == command {
-			innerCmd := parseCommand(child, source)
-			if innerCmd != nil {
-				cmd.Pipeline = append(cmd.Pipeline, *innerCmd)
-			}
+		switch child.Kind() {
+		case command:
+			cmd.Pipeline = append(cmd.Pipeline, *parseCommand(child, source))
+		case redirected_statement:
+			cmd.Pipeline = append(cmd.Pipeline, *parseRedirectedStatement(child, source))
 		}
 	}
 

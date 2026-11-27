@@ -8,6 +8,7 @@ package cicd
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"strings"
 
@@ -64,4 +65,105 @@ func enhanceGitHubCondition(ctx context.Context, declaration map[string]interfac
 	}
 	expr := ExpressionMatch{Expression: condition, Full: "${{ " + condition + " }}"}
 	declaration[parsedExpressionsKeyPrefix+"if"] = []ParsedExpression{*parseExpression(ctx, expr)}
+}
+
+// Shell selection belongs to the provider, not the shell parser. Unknown runner
+// contexts remain unsupported, so rules can use their existing fallback paths.
+func githubShell(doc model.Document, job, step map[string]interface{}) string {
+	if shell, present := step["shell"]; present {
+		value, _ := shell.(string)
+		return value
+	}
+	// Composite run steps require an explicit shell.
+	if job == nil {
+		return ""
+	}
+	for _, declaration := range []map[string]interface{}{job, doc} {
+		defaults, _ := declaration["defaults"].(map[string]interface{})
+		run, _ := defaults["run"].(map[string]interface{})
+		if shell, present := run["shell"]; present {
+			value, _ := shell.(string)
+			return value
+		}
+	}
+	if job["container"] != nil {
+		return sh
+	}
+	return githubRunnerShell(job["runs-on"])
+}
+
+func githubRunnerShell(runner interface{}) string {
+	if config, ok := runner.(map[string]interface{}); ok {
+		runner = config["labels"]
+	}
+	labels, ok := runner.([]interface{})
+	if !ok {
+		labels = []interface{}{runner}
+	}
+	shell := ""
+	for _, label := range labels {
+		name, _ := label.(string)
+		if strings.Contains(name, "${{") {
+			continue
+		}
+		candidate := ""
+		switch {
+		case name == "windows" || strings.HasPrefix(name, "windows-"):
+			candidate = pwsh
+		case name == "linux", name == "macOS", strings.HasPrefix(name, "ubuntu-"), strings.HasPrefix(name, "macos-"):
+			candidate = bash_shell
+		}
+		if candidate != "" {
+			if shell != "" && candidate != shell {
+				return ""
+			}
+			shell = candidate
+		}
+	}
+	return shell
+}
+
+// Expressions are substituted by GitHub before shell execution. Mask them for
+// syntactic parsing without evaluating them, retaining byte offsets so command
+// arguments still contain the original text seen by security rules.
+func parseGitHubRunBlock(script, shell string) *ParsedRun {
+	expressions := extractExpressionsFromString(script)
+	if len(expressions) == 0 {
+		return parseRunBlock(script, shell)
+	}
+	source := []byte(script)
+	for _, expression := range expressions {
+		for i := expression.FullSpan.Start; i < expression.FullSpan.End; i++ {
+			source[i] = '_'
+		}
+	}
+	parsed := parseShellSource(script, shell, source)
+	markGitHubScriptExpressions(parsed.Commands)
+	for _, expression := range expressions {
+		if !strings.HasSuffix(expression.Full, "}}") {
+			parsed.ParseOK = false
+			parsed.Error = fmt.Errorf("unterminated GitHub Actions expression in script")
+		}
+	}
+	return parsed
+}
+
+func markGitHubScriptExpressions(commands []ParsedCommand) {
+	for i := range commands {
+		cmd := &commands[i]
+		for j := range cmd.Args {
+			markGitHubScriptArg(&cmd.Args[j])
+		}
+		if cmd.Redirect != nil {
+			markGitHubScriptArg(&cmd.Redirect.Target)
+		}
+		markGitHubScriptExpressions(cmd.Pipeline)
+	}
+}
+
+func markGitHubScriptArg(arg *ParsedArg) {
+	if strings.Contains(arg.Value, "${{") {
+		arg.Type = string_with_expansion
+		arg.Var = "" // A template is not a shell variable.
+	}
 }

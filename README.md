@@ -79,6 +79,16 @@ workflow discovery also accepts quoted keys and whitespace before colons.
 CI/CD scalar values remain literal: naming a sibling YAML file does not inline
 its contents. Provider composition is separate from generic YAML references.
 
+GitHub enrichment preserves the existing rule input: `_parsed_expressions_*`
+and `_parsed_run` remain alongside the declared values. Job and step conditions
+support implicit expressions; template extraction handles multiline values and
+quoted delimiters. Shell selection follows step, job and workflow defaults,
+then container or recognizable runner labels. Unknown runner contexts and
+unsupported shells keep `parse_ok: false`, allowing existing rule fallbacks.
+GitHub templates are treated as opaque substitutions during shell parsing;
+original argument text is retained and expressions are never executed.
+
+
 ### GitLab CI declaration inventory
 
 The CI/CD platform discovers canonical `.gitlab-ci.yml` and

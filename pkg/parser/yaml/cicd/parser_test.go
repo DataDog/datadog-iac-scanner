@@ -890,3 +890,33 @@ func TestParser_GitHubImplicitConditions(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, docs[0]["jobs"], "_parsed_expressions_if")
 }
+
+func TestParser_GitHubShellContext(t *testing.T) {
+	for _, tt := range []struct {
+		name, workflow, job, step, shell string
+		supported                        bool
+	}{
+		{"linux", "", "runs-on: ubuntu-latest", "", "bash", true},
+		{"windows", "", "runs-on: windows-latest", "", "pwsh", false},
+		{"runner labels", "", "runs-on: [self-hosted, windows]", "", "pwsh", false},
+		{"runner group", "", "runs-on: {group: builders, labels: macos-latest}", "", "bash", true},
+		{"container", "", "container: alpine", "", "sh", true},
+		{"workflow default", "defaults: {run: {shell: pwsh}}", "runs-on: ubuntu-latest", "", "pwsh", false},
+		{"job default", "defaults: {run: {shell: pwsh}}", "defaults: {run: {shell: sh}}", "", "sh", true},
+		{"step override", "defaults: {run: {shell: pwsh}}", "defaults: {run: {shell: sh}}", "shell: bash", "bash", true},
+		{"dynamic runner", "", "runs-on: '${{ matrix.os }}'", "", "", false},
+		{"custom runner", "", "runs-on: private-runner", "", "", false},
+		{"empty override", "", "runs-on: ubuntu-latest", "shell: ''", "", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			content := fmt.Sprintf("%s\non: push\njobs:\n  build:\n    %s\n    steps:\n      - run: echo ok\n        %s\n", tt.workflow, tt.job, tt.step)
+			doc := parseWorkflowDocument(t, content)
+			for group := range githubStepGroups(doc) {
+				step := group.steps[0].(map[string]interface{})
+				parsed := step["_parsed_run"].(*ParsedRun)
+				require.Equal(t, tt.shell, parsed.Shell)
+				require.Equal(t, tt.supported, parsed.ParseOK)
+			}
+		})
+	}
+}

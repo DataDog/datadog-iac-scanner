@@ -172,54 +172,25 @@ func (p *Parser) StringifyContent(content []byte) (string, error) {
 // Action files such as action.yml (runs.steps), so that step-level rules can analyze
 // both shapes uniformly.
 func (p *Parser) enhanceWithParsedRuns(ctx context.Context, documents []model.Document) {
-	for _, doc := range documents {
-		if jobs, ok := doc["jobs"].(map[string]interface{}); ok {
-			for _, j := range jobs {
-				job, ok := j.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				steps, ok := job["steps"].([]interface{})
-				if !ok {
-					continue
-				}
-				parseRunBlocksInSteps(ctx, steps)
-			}
-		}
-
-		if runs, ok := doc["runs"].(map[string]interface{}); ok {
-			if steps, ok := runs["steps"].([]interface{}); ok {
-				parseRunBlocksInSteps(ctx, steps)
-			}
-		}
-	}
-}
-
-// parseRunBlocksInSteps annotates each step that has a run block with its parsed shell AST.
-func parseRunBlocksInSteps(ctx context.Context, steps []interface{}) {
 	contextLogger := logger.FromContext(ctx)
-	for _, s := range steps {
-		step, ok := s.(map[string]interface{})
-		if !ok {
-			continue
+	for _, doc := range documents {
+		for group := range githubStepGroups(doc) {
+			for _, value := range group.steps {
+				step, ok := value.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				script, ok := step["run"].(string)
+				if !ok {
+					continue
+				}
+				parsed := parseGitHubRunBlock(script, githubShell(doc, group.job, step))
+				if parsed.Error != nil {
+					contextLogger.Debug().Err(parsed.Error).Msg("Incomplete CI shell analysis")
+				}
+				step["_parsed_run"] = parsed
+			}
 		}
-
-		runScript, ok := step["run"].(string)
-		if !ok {
-			continue
-		}
-
-		shell := "bash"
-		if shellVal, ok := step["shell"].(string); ok {
-			shell = shellVal
-		}
-
-		parsed := parseRunBlock(runScript, shell)
-		if parsed.Error != nil {
-			contextLogger.Err(parsed.Error).Msg("Failed to parse shell expressions in run block")
-		}
-
-		step["_parsed_run"] = parsed
 	}
 }
 
