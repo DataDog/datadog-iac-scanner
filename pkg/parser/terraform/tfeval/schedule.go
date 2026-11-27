@@ -324,7 +324,7 @@ func (s *resourceSchedule) local(v int, ctx *hcl.EvalContext) {
 
 func (s *resourceSchedule) evaluate(unit int) {
 	b := s.graph.blocks[unit]
-	overrides := s.scope.overrideInputs.forBody(b.Body)
+	overrides := s.scope.fileInputs.forBody(b.Body)
 	dependencies := s.graph.edges[unit]
 	if overrides != nil {
 		// A file selection can re-evaluate a local data source and needs the

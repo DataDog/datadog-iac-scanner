@@ -107,9 +107,9 @@ resource "aws_s3_bucket_logging" "this" {
 	if got := doc["bucket"]; got != "${aws_s3_bucket.target.id}" {
 		t.Errorf("bucket = %#v, want ${aws_s3_bucket.target.id}", got)
 	}
-	// A reference that does resolve keeps its resolved value.
-	if got := doc["target_bucket"]; got != "logs" {
-		t.Errorf("target_bucket = %#v, want logs", got)
+	// Even known resource references retain the identity legacy rules join on.
+	if got := doc["target_bucket"]; got != "${aws_s3_bucket.logs.bucket}" {
+		t.Errorf("target_bucket = %#v, want ${aws_s3_bucket.logs.bucket}", got)
 	}
 	// A list is unknown as a whole once one element is, so the resolvable
 	// elements have to survive alongside the recovered reference.

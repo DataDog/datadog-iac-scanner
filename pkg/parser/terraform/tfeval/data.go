@@ -43,13 +43,13 @@ func collectDataBlocks(bodies []*hclsyntax.Body) []*hclsyntax.Block {
 // attributes localdata computes for data sources whose result follows from
 // their configuration alone.
 type moduleData struct {
-	e              *Evaluator
-	blocks         []*hclsyntax.Block
-	sources        map[string][]byte
-	locals         *localGraph
-	addr           string
-	chain          *callChain
-	overrideInputs *overrideInputs
+	e          *Evaluator
+	blocks     []*hclsyntax.Block
+	sources    map[string][]byte
+	locals     *localGraph
+	addr       string
+	chain      *callChain
+	fileInputs *fileInputs
 
 	// dataLocals are the locals reading data.*, directly or through other locals.
 	dataLocals  map[string]bool
@@ -87,7 +87,7 @@ func newModuleData(
 	parsed *dirParse,
 	addr string,
 	chain *callChain,
-	inputs *overrideInputs,
+	inputs *fileInputs,
 ) *moduleData {
 	locals, static := parsed.locals, parsed.static
 	blocks := locals.dataBlocks
@@ -95,7 +95,7 @@ func newModuleData(
 		return nil
 	}
 	d := &moduleData{
-		e: e, blocks: blocks, sources: parsed.sources, locals: locals, addr: addr, chain: chain, overrideInputs: inputs,
+		e: e, blocks: blocks, sources: parsed.sources, locals: locals, addr: addr, chain: chain, fileInputs: inputs,
 		dataLocals: locals.dataLocals, cyclic: locals.cyclicData,
 		readsData:          static.dataReadsData,
 		readsLocals:        static.dataReadsLocals,
@@ -266,7 +266,7 @@ func (d *moduleData) evaluateBlock(ctx context.Context, b *hclsyntax.Block, eval
 	inputs := blockEvalInputs(b, evalCtx)
 	// A selected local can read a dependency hidden by the same local's
 	// default branch. Its default value alone cannot validate a cache hit.
-	if d.overrideInputs == nil || !d.overrideInputs.directedData[b.Body] {
+	if d.fileInputs == nil || !d.fileInputs.directedData[b.Body] {
 		if cached, ok := d.evalCache[b]; ok && sameCtyValues(cached.inputs, inputs) {
 			return cached
 		}
@@ -305,7 +305,7 @@ func (d *moduleData) evalBlock(
 ) blockEvalCache {
 	cached := blockEvalCache{inputs: inputs}
 	d.e.dataBlockEvals++
-	fileInputs := d.overrideInputs.forBody(b.Body)
+	fileInputs := d.fileInputs.forBody(b.Body)
 	expanded := d.e.expandBlock(ctx, b, evalCtx, d.addr, d.chain, true, fileInputs)
 	for i := range expanded {
 		inst := &expanded[i]
@@ -546,7 +546,7 @@ func (d *moduleData) resolved(scope *ModuleScope) []ResolvedResource {
 			metadata := documentDataSource{
 				source: source, body: body, iteration: inst.Iteration, json: json, filename: block.TypeRange.Filename,
 			}
-			metadata.directed = d.overrideInputs != nil && d.overrideInputs.directedData[block.Body]
+			metadata.directed = d.fileInputs != nil && d.fileInputs.directedData[block.Body]
 			if inst.documentScope != nil {
 				metadata.files = inst.documentScope.files
 			}

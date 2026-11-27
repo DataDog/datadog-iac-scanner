@@ -48,11 +48,12 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
 	instantiated := make(instantiatedIndex)
+	rootResources := make(rootResourceProjection)
 	out := rootEvaluationOutcome{Successful: map[string]bool{}, Unresolved: map[string]bool{}, Called: map[string]bool{}}
 	var docs []model.Document
 	var synthetic []*model.FileMetadata
 	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
-		byAbsPath, seen, extras, instantiated, out.Successful, out.Unresolved, out.Called,
+		byAbsPath, seen, extras, instantiated, rootResources, out.Successful, out.Unresolved, out.Called,
 		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls, nil, nil)
 
 	encode := func(v any) string {

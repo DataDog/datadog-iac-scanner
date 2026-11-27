@@ -9,14 +9,19 @@ package tfeval
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -41,13 +46,40 @@ func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 // AttributesToDocumentWithContext is AttributesToDocument with cancellation for
 // any data-source expansion needed to render unresolved document references.
 func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) map[string]interface{} {
-	return attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, r.documentScope, newRenderer(ctx, r))
+	doc := attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, r.documentScope, newRenderer(ctx, r))
+	// Keep the legacy certificate representation for every evaluated resource,
+	// including effective override bodies. Use the expression's own file when
+	// fields come from different configuration files.
+	if !r.Data && r.Body != nil && r.Scope != nil && r.Scope.fsys != nil {
+		if attr := r.Body.Attributes["certificate_body"]; attr != nil {
+			terraform.EnrichResourceCertificate(ctx, r.Scope.fsys, doc, attr.SrcRange.Filename,
+				writtenCertificate(attr, r.Scope.sources))
+		}
+	}
+	return doc
+}
+
+// The JSON-to-HCL conversion can change expression offsets. Use the original
+// attribute range to recover the written certificate expression.
+func writtenCertificate(attr *hclsyntax.Attribute, sources map[string][]byte) string {
+	if attr == nil || !tfpath.IsJSONConfig(attr.SrcRange.Filename) {
+		return ""
+	}
+	src := sources[attr.SrcRange.Filename]
+	start, end := attr.NameRange.End.Byte, attr.SrcRange.End.Byte
+	if start < 0 || end > len(src) || start >= end {
+		return ""
+	}
+	_, raw, _ := strings.Cut(string(src[start:end]), ":")
+	written, _ := strconv.Unquote(strings.TrimSpace(raw))
+	return written
 }
 
 // newRenderer renders r's attributes in the context they were evaluated in.
 type documentRenderer struct {
 	*partial.Renderer
-	references *documentReferenceRenderer
+	references   *documentReferenceRenderer
+	managedRoots map[string]bool
 }
 
 func newRenderer(scanCtx context.Context, r *ResolvedResource) *documentRenderer {
@@ -55,10 +87,24 @@ func newRenderer(scanCtx context.Context, r *ResolvedResource) *documentRenderer
 		return &documentRenderer{Renderer: &partial.Renderer{}}
 	}
 	references := documentReferences(scanCtx, r.Scope)
-	rd := &partial.Renderer{
-		Ctx: r.Scope.evalCtx, Source: partial.FileSources(r.Scope.sources), Reference: references.forFile(nil),
+	// Evaluation uses concrete sibling values, but legacy rules also join
+	// resources through their reference text. Keep those namespaces unknown
+	// only in the presentation context; never feed rendered references back
+	// into count/for_each, conditions, or native evaluation.
+	presentation := *r.Scope.evalCtx
+	presentation.Variables = maps.Clone(r.Scope.evalCtx.Variables)
+	managedRoots := make(map[string]bool)
+	if r.Scope.static != nil {
+		graph := r.Scope.static.resources
+		for _, block := range graph.blocks[:graph.resources] {
+			presentation.Variables[block.Labels[0]] = cty.DynamicVal
+			managedRoots[block.Labels[0]] = true
+		}
 	}
-	return &documentRenderer{Renderer: rd.WithBindings(documentIteration(r)), references: references}
+	rd := &partial.Renderer{
+		Ctx: &presentation, Source: partial.FileSources(r.Scope.sources), Reference: references.forFile(nil),
+	}
+	return &documentRenderer{Renderer: rd.WithBindings(documentIteration(r)), references: references, managedRoots: managedRoots}
 }
 
 func (r *documentRenderer) withSource(src *attrSource) *documentRenderer {
@@ -507,21 +553,14 @@ func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
 
 // ctyValueToDocument converts a cty.Value to a JSON-serializable value, using
 // src to recover what an unresolved value looked like in the configuration.
-// rd renders unresolved values; it is nil once v is known to be wholly known,
-// so a resolved subtree is walked once.
+// rd renders unresolved values and retains direct resource references for
+// legacy joins. Known collections retain their source mapping for that purpose.
 func ctyValueToDocument(v cty.Value, src *attrSource, rd *documentRenderer) interface{} {
-	if rd != nil {
-		if v.IsWhollyKnown() {
-			rd = nil
-		} else {
-			rd = rd.withSource(src)
-		}
-		if rd != nil && src.expr != nil && !readsIterator(src.expr, src.iterators) {
-			if rendered, ok := rd.RenderUnresolved(src.expr); ok {
-				return ctyValueToDocument(rendered, &attrSource{}, nil)
-			}
-		}
+	rendered, renderer, ok := rd.renderValue(v, src)
+	if ok {
+		return rendered
 	}
+	rd = renderer
 	if !v.IsKnown() {
 		if rd == nil {
 			return unresolvedToDocument(src.expr, nil)
@@ -550,6 +589,46 @@ func ctyValueToDocument(v cty.Value, src *attrSource, rd *documentRenderer) inte
 		return ctyMapToDocument(v, src, rd)
 	}
 	return UnknownAttributePlaceholder
+}
+
+// renderValue handles source-aware presentation before ordinary cty conversion.
+// Known collections keep their renderer so nested reference identity survives.
+func (rd *documentRenderer) renderValue(v cty.Value, src *attrSource) (interface{}, *documentRenderer, bool) {
+	if rd == nil {
+		return nil, nil, false
+	}
+	rd = rd.withSource(src)
+	canRender := src.expr != nil && !readsIterator(src.expr, src.iterators)
+	if canRender {
+		if text, ok := managedReferenceText(src.expr, rd.Ctx, rd.managedRoots); ok {
+			return text, nil, true
+		}
+	}
+	if v.IsWhollyKnown() {
+		if !v.CanIterateElements() {
+			rd = nil
+		}
+		return nil, rd, false
+	}
+	if canRender {
+		if rendered, ok := rd.RenderUnresolved(src.expr); ok {
+			return ctyValueToDocument(rendered, &attrSource{}, nil), nil, true
+		}
+	}
+	return nil, rd, false
+}
+
+// managedReferenceText preserves exact resource links in the legacy payload,
+// including selectors bound by a resource or dynamic-block instance.
+func managedReferenceText(expr hclsyntax.Expression, ctx *hcl.EvalContext, managedRoots map[string]bool) (string, bool) {
+	if wrap, ok := expr.(*hclsyntax.TemplateWrapExpr); ok {
+		expr = wrap.Wrapped
+	}
+	traversal, ok := partial.ReferenceTraversal(expr, ctx)
+	if !ok || !managedRoots[traversal.RootName()] {
+		return "", false
+	}
+	return (&partial.Renderer{}).Text(&hclsyntax.ScopeTraversalExpr{Traversal: traversal})
 }
 
 // readsIterator reports whether expr reads one of the dynamic block iterators

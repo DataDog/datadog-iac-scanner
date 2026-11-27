@@ -10,18 +10,14 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
-	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	hcljson "github.com/hashicorp/hcl/v2/json"
-	"github.com/zclconf/go-cty/cty"
 )
 
 const (
@@ -37,10 +33,9 @@ const (
 // application order. Effective keeps the declaration's header and body range,
 // and each effective argument and nested block retains its own source range.
 type ResourceOverride struct {
-	Declaration       *hclsyntax.Block
-	Effective         *hclsyntax.Block
-	Contributions     []*hclsyntax.Block
-	certificateSource string
+	Declaration   *hclsyntax.Block
+	Effective     *hclsyntax.Block
+	Contributions []*hclsyntax.Block
 }
 
 func attachDeclarationBodies(resources []ResolvedResource, declarations map[*hclsyntax.Body]*hclsyntax.Body) {
@@ -67,83 +62,16 @@ func (e *Evaluator) StandaloneOverrideScope(ctx context.Context, dir string) *Mo
 	}
 	inputs := e.LoadRootVarsWithContext(ctx, dir)
 	scope := e.newModuleScope(ctx, dir, dir, &parsed, inputs)
-	e.loadOverrideFileInputs(ctx, &parsed, inputs, scope)
+	e.loadRootFileInputs(ctx, &parsed, inputs, scope)
 	e.populateStandaloneData(ctx, &parsed, scope)
 	return scope
 }
 
 func (e *Evaluator) populateStandaloneData(ctx context.Context, parsed *dirParse, scope *ModuleScope) {
-	data := newModuleData(e, parsed, "", nil, scope.overrideInputs)
+	data := newModuleData(e, parsed, "", nil, scope.fileInputs)
 	data.refresh(ctx, scope.evalCtx)
 	data.resolved(scope)
 	scope.Local = scope.evalCtx.Variables["local"]
-}
-
-// An effective block can combine expressions from files with different tfvars
-// selections. Bind each expression using its written file, including meta
-// arguments, rather than letting a selection leak to another file's fields.
-type overrideInputs struct {
-	parsed       *dirParse
-	scope        *ModuleScope
-	files        map[string]cty.Value
-	directedData map[*hclsyntax.Body]bool
-}
-
-func (o *overrideInputs) forBody(body *hclsyntax.Body) *overrideInputs {
-	if o != nil && o.parsed.declarations[body] != nil {
-		return o
-	}
-	return nil
-}
-
-func (e *Evaluator) loadOverrideFileInputs(
-	ctx context.Context, parsed *dirParse, inputs map[string]cty.Value, scope *ModuleScope,
-) {
-	if e.explicitRootVars != nil || len(parsed.overrides) == 0 {
-		return
-	}
-	files := make(map[string]cty.Value)
-	for _, override := range parsed.overrides {
-		files[override.Declaration.TypeRange.Filename] = cty.NilVal
-		for _, fragment := range override.Contributions {
-			files[fragment.TypeRange.Filename] = cty.NilVal
-		}
-	}
-	for filename := range files {
-		selected := terraform.ReadFileVariables(ctx, e.fsys, filename, parsed.sources[filename])
-		if len(selected) == 0 {
-			delete(files, filename)
-			continue
-		}
-		combined := make(map[string]cty.Value, len(inputs)+len(selected))
-		maps.Copy(combined, inputs)
-		maps.Copy(combined, selected)
-		files[filename] = objectOrEmpty(e.resolveVariables(parsed.varDecls, combined))
-	}
-	if len(files) != 0 {
-		scope.overrideInputs = &overrideInputs{
-			parsed: parsed, scope: scope, files: files, directedData: directedDataBodies(parsed.overrides, files),
-		}
-	}
-}
-
-func directedDataBodies(overrides []ResourceOverride, files map[string]cty.Value) map[*hclsyntax.Body]bool {
-	var directed map[*hclsyntax.Body]bool
-	for _, override := range overrides {
-		if override.Effective.Type != blockTypeData {
-			continue
-		}
-		for _, body := range append([]*hclsyntax.Block{override.Declaration}, override.Contributions...) {
-			if _, ok := files[body.TypeRange.Filename]; ok {
-				if directed == nil {
-					directed = make(map[*hclsyntax.Body]bool)
-				}
-				directed[override.Effective.Body] = true
-				break
-			}
-		}
-	}
-	return directed
 }
 
 // OverrideDocument renders an effective declaration at block granularity.
@@ -151,23 +79,19 @@ func directedDataBodies(overrides []ResourceOverride, files map[string]cty.Value
 func (e *Evaluator) OverrideDocument(
 	ctx context.Context, override *ResourceOverride, scope *ModuleScope,
 ) map[string]interface{} {
-	r := ResolvedResource{Body: override.Effective.Body, Scope: scope}
+	r := ResolvedResource{Body: override.Effective.Body, Scope: scope, Data: override.Effective.Type == blockTypeData}
 	evalCtx := &hcl.EvalContext{}
 	if scope != nil {
 		evalCtx = scope.evalCtx
 	}
 	state := &bodyState{dynamic: &dynamicRecorder{}}
 	if scope != nil {
-		state.setFileInputs(e.fileViews(ctx, evalCtx, r.Body, scope.overrideInputs))
+		state.setFileInputs(e.fileViews(ctx, evalCtx, r.Body, scope.fileInputs))
 	}
 	r.Attributes = e.evalBodyWith(ctx, r.Body, evalCtx, nil, state)
 	r.DynamicCounts = state.dynamic.counts
 	r.documentScope = state.document
-	doc := AttributesToDocumentWithContext(ctx, &r)
-	if attr := r.Body.Attributes["certificate_body"]; override.Effective.Type == scheduledResource && attr != nil {
-		terraform.EnrichResourceCertificate(ctx, e.fsys, doc, attr.SrcRange.Filename, override.certificateSource)
-	}
-	return doc
+	return AttributesToDocumentWithContext(ctx, &r)
 }
 
 type overrideBlockKey struct{ kind, typ, name string }
@@ -273,28 +197,7 @@ func resolveResourceOverrides(
 		bodyCopy.Blocks = remaining
 		result[firstOverride+i] = &bodyCopy
 	}
-	for i := range overrides {
-		if overrides[i].Effective.Type == scheduledResource {
-			overrides[i].certificateSource = writtenCertificate(overrides[i].Effective.Body.Attributes["certificate_body"], sources)
-		}
-	}
 	return result, overrides
-}
-
-// The JSON-to-HCL conversion can change expression offsets. Use the original
-// attribute range to recover the written certificate expression.
-func writtenCertificate(attr *hclsyntax.Attribute, sources map[string][]byte) string {
-	if attr == nil || !tfpath.IsJSONConfig(attr.SrcRange.Filename) {
-		return ""
-	}
-	src := sources[attr.SrcRange.Filename]
-	start, end := attr.NameRange.End.Byte, attr.SrcRange.End.Byte
-	if start < 0 || end > len(src) || start >= end {
-		return ""
-	}
-	_, raw, _ := strings.Cut(string(src[start:end]), ":")
-	written, _ := strconv.Unquote(strings.TrimSpace(raw))
-	return written
 }
 
 // overrideJSONBlock resolves the block/attribute ambiguity of JSON where a

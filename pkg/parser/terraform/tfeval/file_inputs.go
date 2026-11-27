@@ -20,6 +20,70 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// fileInputs binds root expressions to their source file's selected tfvars.
+// Effective override bodies may combine several files, so selections apply
+// per expression, including meta-arguments.
+type fileInputs struct {
+	parsed       *dirParse
+	scope        *ModuleScope
+	files        map[string]cty.Value
+	directedData map[*hclsyntax.Body]bool
+}
+
+func (o *fileInputs) forBody(body *hclsyntax.Body) *fileInputs {
+	if o != nil {
+		if _, selected := o.files[body.SrcRange.Filename]; selected || o.parsed.declarations[body] != nil {
+			return o
+		}
+	}
+	return nil
+}
+
+func (e *Evaluator) loadRootFileInputs(
+	ctx context.Context, parsed *dirParse, inputs map[string]cty.Value, scope *ModuleScope,
+) {
+	if e.explicitRootVars != nil {
+		return
+	}
+	files := make(map[string]cty.Value)
+	for filename, source := range parsed.sources {
+		selected := terraform.ReadFileVariables(ctx, e.fsys, filename, source)
+		if len(selected) == 0 {
+			continue
+		}
+		combined := make(map[string]cty.Value, len(inputs)+len(selected))
+		maps.Copy(combined, inputs)
+		maps.Copy(combined, selected)
+		files[filename] = objectOrEmpty(e.resolveVariables(parsed.varDecls, combined))
+	}
+	if len(files) != 0 {
+		scope.fileInputs = &fileInputs{
+			parsed: parsed, scope: scope, files: files, directedData: directedDataBodies(parsed, files),
+		}
+	}
+}
+
+func directedDataBodies(parsed *dirParse, files map[string]cty.Value) map[*hclsyntax.Body]bool {
+	directed := make(map[*hclsyntax.Body]bool)
+	for _, block := range collectDataBlocks(parsed.bodies) {
+		if _, selected := files[block.Body.SrcRange.Filename]; selected {
+			directed[block.Body] = true
+		}
+	}
+	for _, override := range parsed.overrides {
+		if override.Effective.Type != blockTypeData {
+			continue
+		}
+		for _, body := range append([]*hclsyntax.Block{override.Declaration}, override.Contributions...) {
+			if _, ok := files[body.TypeRange.Filename]; ok {
+				directed[override.Effective.Body] = true
+				break
+			}
+		}
+	}
+	return directed
+}
+
 // fileInputView holds the changed bindings and local-data instances of one
 // selection. It is computed from the dependencies visible to the current
 // block, and is read-only after evaluation.
@@ -36,12 +100,12 @@ type fileViews struct {
 	ctx     context.Context
 	e       *Evaluator
 	base    *hcl.EvalContext
-	inputs  *overrideInputs
+	inputs  *fileInputs
 	views   map[string]*fileInputView
 	derived bool
 }
 
-func (e *Evaluator) fileViews(ctx context.Context, base *hcl.EvalContext, body *hclsyntax.Body, inputs *overrideInputs) *fileViews {
+func (e *Evaluator) fileViews(ctx context.Context, base *hcl.EvalContext, body *hclsyntax.Body, inputs *fileInputs) *fileViews {
 	if inputs == nil {
 		return nil
 	}
@@ -78,7 +142,7 @@ func (v *fileViews) context(base *hcl.EvalContext, file string) *hcl.EvalContext
 }
 
 func (e *Evaluator) deriveFileInputs(
-	ctx context.Context, base *hcl.EvalContext, inputs *overrideInputs, view *fileInputView,
+	ctx context.Context, base *hcl.EvalContext, inputs *fileInputs, view *fileInputView,
 ) {
 	g := inputs.scope.static.resources
 	n := len(g.blocks)

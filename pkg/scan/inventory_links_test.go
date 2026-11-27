@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/engine/source"
@@ -281,7 +282,7 @@ func TestTerraformOverrideUsesFileVariableDirective(t *testing.T) {
 	bucket.tags.fixture == "test"
 	typ := "aws_s3_bucket"
 	key := sprintf("aws_s3_bucket.%s.acl", [name])`)
-	for _, scope := range []string{"root", "standalone"} {
+	for _, scope := range []string{"root", "plain root", "standalone"} {
 		for _, tc := range []struct {
 			name, basePrefix, overridePrefix, overrideAttrs, explicitPath, source string
 			rows, line                                                            int
@@ -307,6 +308,23 @@ resource "aws_s3_bucket" "example" {
 ` + count + acl + "}\n"
 				files[prefix+"override.tf"] = tc.overridePrefix + "resource \"aws_s3_bucket\" \"example\" {\n" +
 					tc.overrideAttrs + "  tags = { fixture = \"test\" }\n}\n"
+				if scope == "plain root" {
+					if tc.overridePrefix != "" || tc.overrideAttrs != "" {
+						return // these cases specifically exercise override contributions
+					}
+					delete(files, "override.tf")
+					files["main.tf"] = strings.TrimSuffix(files["main.tf"], "}\n") + "  tags = { fixture = \"test\" }\n}\n"
+					files["other.tf"] = `resource "aws_s3_bucket" "other" {
+  count = var.replicas
+  acl = var.acl
+  tags = { fixture = "test" }
+}`
+					if tc.explicitPath != "" {
+						wantRows += tc.rows // explicit scan inputs also apply to other.tf
+					} else {
+						wantRows++
+					}
+				}
 				files[prefix+"terraform.tfvars"] = "acl = \"private\"\nreplicas = 1\n"
 				files[prefix+"selected.tfvars"] = "acl = \"public-read\"\nreplicas = 2\n"
 				files["explicit.tfvars"] = "acl = \"private\"\nreplicas = 3\n"
@@ -907,7 +925,7 @@ func TestTerraformZeroInstancesWithoutOverrides(t *testing.T) {
 		wantFindings    int
 	}{
 		{"literal count", "count = 0", 0},
-		{"empty for_each", "for_each = {}", 1},
+		{"empty for_each", "for_each = {}", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := writeRepo(t, map[string]string{

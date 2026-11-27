@@ -193,10 +193,45 @@ func terraformBlockOccurrences(occurrences []*model.ResourceOccurrence, block mo
 	if kind == "" {
 		kind = terraformResourceBlock
 	}
+	if index := strings.IndexByte(block.Name, '['); index > 0 && strings.HasSuffix(block.Name, "]") {
+		if instances := terraformInstanceOccurrences(occurrences, kind, block.Type, block.Name[:index], block.Name); len(instances) > 0 {
+			return instances
+		}
+		block.Name = block.Name[:index]
+	}
+	return terraformDeclaredOccurrences(occurrences, kind, block.Type, block.Name)
+}
+
+func terraformInstanceOccurrences(
+	occurrences []*model.ResourceOccurrence, kind, typ, baseName, instanceName string,
+) []*model.ResourceOccurrence {
+	// Root projection keys retain the evaluated suffix while inventory paths use
+	// the written label. Match kind and type before the address to exclude a
+	// same-named data source from a managed-resource result (and vice versa).
+	addressSuffix := typ + "." + instanceName
+	if kind == dataRoot {
+		addressSuffix = "data." + addressSuffix
+	}
+	var instances []*model.ResourceOccurrence
+	for _, occurrence := range occurrences {
+		path := occurrence.StructuralPath
+		if len(path) < 3 || path[0].Key != kind || path[1].Key != typ || path[2].Key != baseName || occurrence.Terraform == nil {
+			continue
+		}
+		if strings.HasSuffix(occurrence.Terraform.Address, addressSuffix) {
+			instances = append(instances, occurrence)
+		}
+	}
+	return instances
+}
+
+func terraformDeclaredOccurrences(
+	occurrences []*model.ResourceOccurrence, kind, typ, name string,
+) []*model.ResourceOccurrence {
 	var matched []*model.ResourceOccurrence
 	for _, o := range occurrences {
 		path := o.StructuralPath
-		if path[0].Key == kind && path[1].Key == block.Type && path[2].Key == block.Name {
+		if len(path) >= 3 && path[0].Key == kind && path[1].Key == typ && path[2].Key == name {
 			matched = append(matched, o)
 		}
 	}

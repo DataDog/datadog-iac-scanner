@@ -118,9 +118,10 @@ type ModuleScope struct {
 	// evalCtx is the context the module's blocks were evaluated in, final once
 	// evaluation completes, and sources the module's files by filename. They
 	// let a value evaluation could not resolve be rendered as its parts.
-	evalCtx        *hcl.EvalContext
-	sources        map[string][]byte
-	overrideInputs *overrideInputs
+	evalCtx    *hcl.EvalContext
+	fsys       vfs.FS
+	sources    map[string][]byte
+	fileInputs *fileInputs
 	// dataSources retains only the source/instance metadata
 	// needed to render partial documents after authoritative evaluation finishes.
 	renderedData *sync.Map
@@ -342,8 +343,7 @@ func (e *Evaluator) Fork() *Evaluator {
 	}
 }
 
-// SetExplicitRootVars supplies the scan's highest-precedence inputs for roots
-// with effective resource or data overrides.
+// SetExplicitRootVars supplies the scan's highest-precedence inputs for roots.
 // A non-nil map disables per-file selections even when it is empty. The map
 // is read-only and shared by evaluator forks.
 func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
@@ -363,6 +363,15 @@ func (e *Evaluator) SetSkipRootResources(skip bool) { e.skipRootResources = skip
 // SetTrackModuleInstances makes evaluations record the module calls they
 // evaluate, for TakeModuleInstances. Forks inherit the setting.
 func (e *Evaluator) SetTrackModuleInstances(track bool) { e.trackInstances = track }
+
+// ResourceDeclarations returns the effective resource and data declarations in
+// dir using the evaluator's parse cache. After successful root evaluation, this
+// also accounts for declarations that expanded to zero instances. Files skipped
+// by the parser contribute no declarations. Call before ForgetRootParse.
+func (e *Evaluator) ResourceDeclarations(ctx context.Context, dir string) []*hclsyntax.Block {
+	parsed := e.parseDir(ctx, dir, "")
+	return append(slices.Clone(parsed.resources), collectDataBlocks(parsed.bodies)...)
+}
 
 // DataBlockEvaluations reports how many data block expansions ran, counting
 // only evaluations the eval cache could not avoid.
@@ -587,10 +596,10 @@ func (e *Evaluator) evaluateChain(
 	moduleBlocks, resourceBlocks := parsed.modules, parsed.resources
 	scope := e.newModuleScope(ctx, dir, rootDir, &parsed, inputs)
 	if addr == "" {
-		e.loadOverrideFileInputs(ctx, &parsed, inputs, scope)
+		e.loadRootFileInputs(ctx, &parsed, inputs, scope)
 	}
 	evalCtx := scope.evalCtx
-	data := newModuleData(e, &parsed, addr, chain, scope.overrideInputs)
+	data := newModuleData(e, &parsed, addr, chain, scope.fileInputs)
 	// Module-call preparation retains its existing data view. Without calls,
 	// resources and data are resolved together by the dependency schedule.
 	if len(moduleBlocks) > 0 {
@@ -786,7 +795,7 @@ func (e *Evaluator) preinjectResourceRefs(
 	if len(resourceBlocks) == 0 || len(moduleBlocks) == 0 || !scope.static.needsResourcePreinject {
 		return
 	}
-	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain, scope.overrideInputs)
+	resources := e.evalResourceBlocks(ctx, resourceBlocks, evalCtx, addr, chain, scope.fileInputs)
 	injected := injectResourceRefs(evalCtx, resources, scope.static.resourceAttrs)
 	evalCtx.Variables["local"] = e.resolveLocalsIncremental(scope, evalCtx, injected, false)
 	if data.readsOwnResources() {
@@ -1079,7 +1088,7 @@ func (e *Evaluator) evalResourceBlocks(
 	evalCtx *hcl.EvalContext,
 	addr string,
 	chain *callChain,
-	inputs *overrideInputs,
+	inputs *fileInputs,
 ) []ResolvedResource {
 	resources := make([]ResolvedResource, 0, len(resourceBlocks))
 	for _, rb := range resourceBlocks {
@@ -1098,7 +1107,7 @@ func (e *Evaluator) expandBlock(
 	addr string,
 	chain *callChain,
 	data bool,
-	inputs *overrideInputs,
+	inputs *fileInputs,
 ) []ResolvedResource {
 	if len(rb.Labels) < 2 {
 		return nil

@@ -58,6 +58,20 @@ func TestTerraformLegacyPath(t *testing.T) {
 	require.Equal(t, "data.local_file[{{example}}].filename", terraformLegacyPath(path))
 }
 
+func TestTerraformBlockOccurrencesSelectsIndexedInstanceAndKind(t *testing.T) {
+	occurrences := []*model.ResourceOccurrence{
+		{StructuralPath: model.SourcePath{{Key: "resource"}, {Key: "aws_example"}, {Key: "same"}}, Terraform: &model.TerraformResourceOccurrence{Address: "aws_example.same[0]"}},
+		{StructuralPath: model.SourcePath{{Key: "resource"}, {Key: "aws_example"}, {Key: "same"}}, Terraform: &model.TerraformResourceOccurrence{Address: "aws_example.same[1]"}},
+		{StructuralPath: model.SourcePath{{Key: "data"}, {Key: "aws_example"}, {Key: "same"}}, Terraform: &model.TerraformResourceOccurrence{Address: "data.aws_example.same[0]"}},
+	}
+	managed := terraformBlockOccurrences(occurrences, model.TerraformBlock{Kind: "resource", Type: "aws_example", Name: "same[0]"})
+	require.Len(t, managed, 1)
+	require.Equal(t, "aws_example.same[0]", managed[0].Terraform.Address)
+	data := terraformBlockOccurrences(occurrences, model.TerraformBlock{Kind: "data", Type: "aws_example", Name: "same[0]"})
+	require.Len(t, data, 1)
+	require.Equal(t, "data.aws_example.same[0]", data[0].Terraform.Address)
+}
+
 // writeFile creates dir/name with content and returns the absolute path.
 func writeFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
@@ -303,13 +317,14 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 	seen := make(map[docContentKey]string)
 	extras := make(map[string][]extraCallerInfo)
 	instantiated := make(instantiatedIndex)
+	rootResources := make(rootResourceProjection)
 	var docs []model.Document
 	var synthetic []*model.FileMetadata
 	var resourceCount int
 	var rootEvalOK bool
 	evaluateRootModules(
 		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
-		byAbsPath, seen, extras, instantiated,
+		byAbsPath, seen, extras, instantiated, rootResources,
 		map[string]bool{}, map[string]bool{}, map[string]bool{},
 		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil, nil,
 	)
@@ -1162,10 +1177,10 @@ module "bucket" {
 	}
 }
 
-func TestResolveModuleDocuments_OrphanModuleNotSuppressed(t *testing.T) {
+func TestResolveModuleDocuments_OrphanModuleEvaluatedAsRoot(t *testing.T) {
 	root := t.TempDir()
-	// A module directory that nothing calls: it should keep being scanned
-	// standalone (not suppressed) and produce no instantiated documents.
+	// An uncalled repository module is evaluated as a standalone root.
+	// Missing inputs retain the legacy expression representation.
 	orphan := filepath.Join(root, "orphan")
 	orphanFile := writeFile(t, orphan, "main.tf", `
 variable "name" { type = string }
@@ -1181,12 +1196,12 @@ resource "aws_s3_bucket" "this" {
 	if !res.ok {
 		t.Fatalf("resolveModuleDocuments ok = false, want true for orphan root")
 	}
-	if len(res.docs) != 0 {
-		t.Fatalf("orphan module should not instantiate resources, got %#v", res.docs)
-	}
-	if len(res.suppressed["orphan-id"]) != 0 {
-		t.Fatalf("orphan module should not be suppressed")
-	}
+	require.Empty(t, res.docs, "root resources overlay their source document instead of adding a synthetic document")
+	projection := res.rootResources["orphan-id"]
+	require.NotNil(t, projection)
+	bucket := docAsMap(projection.resources["aws_s3_bucket"]["this"])
+	require.Equal(t, "${var.name}", bucket["bucket"])
+	require.True(t, res.suppressed["orphan-id"]["aws_s3_bucket"]["this"], "replace the original resource")
 }
 
 func TestResolveModuleDocuments_NestedModules(t *testing.T) {
@@ -1572,4 +1587,22 @@ func TestTerraformFindingPathNormalizesLegacyLabels(t *testing.T) {
 	block, field := overrideFindingPath(path, "")
 	require.Equal(t, "{{literal}}", block.Name, "structured source keys are literal and never use legacy wrapping")
 	require.Equal(t, "acl", field)
+}
+
+func TestResolveModuleDocuments_AmbiguousRootKeepsOriginalInput(t *testing.T) {
+	for _, kind := range []string{"resource", "data"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			first := writeFile(t, root, "first.tf", fmt.Sprintf(`%s "aws_s3_bucket" "b" { acl = "public-read" }`, kind))
+			second := writeFile(t, root, "second.tf", fmt.Sprintf(`%s "aws_s3_bucket" "b" { acl = "private" }`, kind))
+			files := append(parseTerraform(t, first), parseTerraform(t, second)...)
+			ins := newTestInspector(t, inspectorOpts{repoPath: root})
+			docs, synthetic, _, _ := ins.instantiateLocalModules(t.Context(), files, nil, nil)
+			require.Empty(t, docs)
+			require.Empty(t, synthetic)
+			for _, file := range files {
+				require.NotEmpty(t, file.Document[kind], "ambiguous declarations must retain their legacy representation")
+			}
+		})
+	}
 }
