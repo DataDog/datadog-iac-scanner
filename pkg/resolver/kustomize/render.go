@@ -326,7 +326,8 @@ func (r *Renderer) runUntilDeadline(
 		return out, nil
 	case <-timer.C:
 		runLock.abandon(owner)
-		r.tripSafetyNet()
+		// Cancellation takes precedence when both select signals are ready.
+		r.recordDeadlineTimeout(ctx, &RenderError{Reason: ReasonTimeout})
 		r.kill()
 	case <-ctx.Done():
 		runLock.abandon(owner)

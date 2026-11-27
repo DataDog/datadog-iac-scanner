@@ -515,6 +515,43 @@ func TestRenderContextCanceled(t *testing.T) {
 	if runRenderer.SafetyNetTripped() {
 		t.Fatal("render canceled while running tripped the wall-clock safety net")
 	}
+
+	waitRunLock()
+	for _, tc := range []struct {
+		name    string
+		context func() (context.Context, context.CancelFunc)
+	}{
+		{"canceled", func() (context.Context, context.CancelFunc) {
+			return context.WithCancel(context.Background())
+		}},
+		{"deadline exceeded", func() (context.Context, context.CancelFunc) {
+			return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		}},
+	} {
+		t.Run("expired root deadline/"+tc.name, func(t *testing.T) {
+			// Enter the watchdog directly to model cancellation after Render's
+			// initial context check. Both select signals are already ready;
+			// repeat so either selected branch must preserve the contract.
+			for range 64 {
+				r := NewRenderer(vfs.Default(), dir, 5<<20)
+				ctx, cancel := tc.context()
+				cancel()
+				owner := runLock.acquire(context.Background(), time.Now().Add(time.Minute))
+				if owner == nil {
+					t.Fatal("could not acquire the process-wide render lock")
+				}
+				a := &adapter{fsys: r.fsys, root: r.confine, cache: r.cache, reads: map[string]struct{}{}}
+				_, err := r.runUntilDeadline(ctx, owner, a, dir, time.Now().Add(-time.Second))
+				waitRunLock()
+				if !errors.As(err, &re) || re.Reason != ReasonTimeout {
+					t.Fatalf("ended context and expired root deadline got %v", err)
+				}
+				if r.SafetyNetTripped() {
+					t.Fatal("ended context and expired root deadline tripped the safety net")
+				}
+			}
+		})
+	}
 }
 
 // TestRenderMappingDeadline abandons a root whose mapping runs past the phase
