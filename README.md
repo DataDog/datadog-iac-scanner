@@ -70,6 +70,15 @@ datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR1 -q QUERYDIR2
 
 Run `datadog-iac-scanner scan --help` to see all available flags.
 
+### CI/CD source parsing
+
+Canonical GitHub workflow files under `.github/workflows/`, action manifests
+(`action.yml` and `action.yaml`), and GitLab entrypoints are routed to CI/CD
+regardless of their contents, honoring platform exclusions. Content-based
+workflow discovery also accepts quoted keys and whitespace before colons.
+CI/CD scalar values remain literal: naming a sibling YAML file does not inline
+its contents. Provider composition is separate from generic YAML references.
+
 ### GitLab CI declaration inventory
 
 The CI/CD platform discovers canonical `.gitlab-ci.yml` and

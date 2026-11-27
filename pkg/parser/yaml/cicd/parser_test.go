@@ -15,6 +15,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -817,6 +818,8 @@ func TestParser_ParseContract(t *testing.T) {
 	for _, tt := range []struct{ path, provider, contract string }{
 		{".gitlab-ci.yml", provider.GitLab, provider.GitLabDeclarations},
 		{"ci/.gitlab-ci.yaml", provider.GitLab, provider.GitLabDeclarations},
+		{`C:\repo\.gitlab-ci.yml`, provider.GitLab, provider.GitLabDeclarations},
+		{`C:\repo\.github\workflows\ci.yaml`, provider.GitHub, provider.LegacyEnriched},
 		{".github/workflows/.gitlab-ci.yml", provider.GitHub, provider.LegacyEnriched},
 		{".github/dependabot.yml", provider.GitHub, provider.LegacyEnriched},
 		{"action.yml", provider.GitHub, provider.LegacyEnriched},
@@ -838,6 +841,25 @@ func TestParser_ParseContract(t *testing.T) {
 			}
 			_, err = root.ParseContent(parser.WithLineInfoOnly(ctx), tt.path, content, false, false, 1)
 			require.NoError(t, err)
+		})
+	}
+}
+
+// CI files must be pure declarations even when scalar values name real files.
+func TestParser_CILiteralReferences(t *testing.T) {
+	content := []byte("on: push\njobs: {build: {steps: [{run: echo ok, env: {CONFIG: ./config.yaml}}]}}\n")
+	for _, path := range []string{".github/workflows/ci.yml", "action.yaml", ".gitlab-ci.yml", "pipeline.yml"} {
+		t.Run(path, func(t *testing.T) {
+			fsys := vfs.NewMemFS(map[string][]byte{"config.yaml": []byte("injected: true\n"),
+				".github/workflows/config.yaml": []byte("injected: true\n")})
+			for _, resolve := range []bool{false, true} {
+				resolved, docs, _, files, err := (&Parser{FS: fsys}).Parse(t.Context(), content, path, resolve, 15)
+				require.NoError(t, err)
+				require.Equal(t, content, resolved)
+				require.Empty(t, files)
+				step := docs[0]["jobs"].(map[string]interface{})["build"].(map[string]interface{})["steps"].([]interface{})[0].(map[string]interface{})
+				require.Equal(t, "./config.yaml", step["env"].(map[string]interface{})["CONFIG"])
+			}
 		})
 	}
 }

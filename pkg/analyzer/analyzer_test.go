@@ -490,6 +490,14 @@ func TestClassifyFile_CICDNeedsTopLevelOnAndJobs(t *testing.T) {
 			content: "'on':\n  push:\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
 			want:    true,
 		},
+		"workflow with quoted jobs": {
+			content: "on: push\n\"jobs\": {build: {runs-on: ubuntu-latest}}\n",
+			want:    true,
+		},
+		"workflow with padded jobs": {
+			content: "on: push\njobs : {build: {runs-on: ubuntu-latest}}\n",
+			want:    true,
+		},
 		"workflow with an indented root": {
 			content: "  on: push\n  jobs:\n    build:\n      runs-on: ubuntu-latest\n",
 			want:    true,
@@ -1156,8 +1164,8 @@ func TestAnalyze_DockerfileVariants(t *testing.T) {
 	require.Equal(t, "dockerfile", ClassifyFile(ctx, mem, "app.debian", nil, platforms.Supported))
 }
 
-func TestClassifyFile_GitLabDeclarations(t *testing.T) {
-	for _, path := range []string{".gitlab-ci.yml", "ci/.gitlab-ci.yaml"} {
+func TestClassifyFile_CIEntrypoints(t *testing.T) {
+	for _, path := range []string{".gitlab-ci.yml", "ci/.gitlab-ci.yaml", ".github/workflows/ci.yml", "action.yaml"} {
 		for _, content := range []string{
 			"build: {script: echo ok}\n",
 			".template: {image: alpine}\n",

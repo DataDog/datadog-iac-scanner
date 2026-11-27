@@ -103,13 +103,14 @@ func (nopLineInfoStorage) GetVulnerabilities(context.Context, string) ([]model.V
 }
 
 func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
-	content := []byte("on: push\njobs: {build: {steps: [{run: echo literal}]}}\n")
+	content := []byte("on: push\njobs: {build: {steps: [{run: echo literal, env: {CONFIG: ./config.yaml}}]}}\n")
 	paths := []string{".github/workflows/a.yml", ".github/workflows/b.yml",
 		"a/.gitlab-ci.yml", "b/.gitlab-ci.yaml", "pipeline.yml", ".github/workflows/.gitlab-ci.yml"}
 	fsFiles := make(map[string][]byte)
 	for _, path := range paths {
 		fsFiles[path] = content
 	}
+	fsFiles[".github/workflows/config.yaml"] = []byte("injected: true\n")
 	fsys := vfs.NewMemFS(fsFiles)
 	orders := [][]string{paths, {paths[3], paths[2], paths[4], paths[5], paths[1], paths[0]}}
 	for _, order := range orders {
@@ -136,6 +137,8 @@ func TestSinkCICDDeclarationParseIsolation(t *testing.T) {
 			} else {
 				require.Contains(t, string(encoded), "_parsed_run")
 			}
+			require.Contains(t, string(encoded), "./config.yaml")
+			require.NotContains(t, string(encoded), "injected")
 			require.Equal(t, f.FilePath, f.Document["_path"], "cache hits retain the receiving file's path")
 			pointer := reflect.ValueOf(f.Document["jobs"]).Pointer()
 			if previous, ok := pointers[contract]; ok {

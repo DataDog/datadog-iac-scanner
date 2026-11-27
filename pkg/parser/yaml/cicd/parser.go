@@ -20,7 +20,7 @@ import (
 
 // Parser defines a parser type
 type Parser struct {
-	// FS supplies referenced files. Nil uses the real filesystem.
+	// FS is retained for parser-builder compatibility. CI parsing never reads sibling files.
 	FS vfs.FS
 }
 
@@ -112,17 +112,15 @@ func (p *Parser) Parse(ctx context.Context, fileContent []byte, filePath string,
 	ignoreLines []int,
 	resolvedFiles map[string]model.ResolvedFile,
 	err error) {
-	if provider.Detect(filePath) == provider.GitLab {
-		// Declaration-only parsing: do not inline YAML-valued scalars or apply
-		// GitHub expression/run enrichment to a GitLab job named jobs or runs.
-		documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(ctx, fileContent, filePath, nil)
-		return fileContent, documents, ignoreLines, nil, err
-	}
-	resolved, documents, ignoreLines, resolvedFiles, err = yamlParser.Parse(
-		ctx, p.FS, fileContent, filePath, resolveReferences, maxResolverDepth)
-
+	// CI providers own file composition. A scalar naming YAML is a literal,
+	// never a generic reference to inline into the rule document.
+	documents, ignoreLines, err = yamlParser.ParseWithNodeTransformNoResolve(ctx, fileContent, filePath, nil)
 	if err != nil {
 		return nil, nil, nil, nil, err
+	}
+	resolved = fileContent
+	if provider.Detect(filePath) == provider.GitLab {
+		return resolved, documents, ignoreLines, nil, nil
 	}
 
 	// Convert keys to string format

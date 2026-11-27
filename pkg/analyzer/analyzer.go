@@ -76,9 +76,9 @@ var (
 	serverlessServiceRegex                          = regexp.MustCompile(`service\s*:`)
 	serverlessProviderRegex                         = regexp.MustCompile(`(^|\n)provider\s*:`)
 	cicdOnRegex                                     = regexp.MustCompile(`on["']?\s*:`)
-	cicdJobsRegex                                   = regexp.MustCompile(`jobs:`)
-	githubActionManifestRunsRegex                   = regexp.MustCompile(`(^|\n)runs:\s*`)
-	githubActionManifestUsingRegex                  = regexp.MustCompile(`\s*using:\s*['"]?(composite|docker|node\d+)`)
+	cicdJobsRegex                                   = regexp.MustCompile(`jobs["']?\s*:`)
+	githubActionManifestRunsRegex                   = regexp.MustCompile(`(^|\n)["']?runs["']?\s*:`)
+	githubActionManifestUsingRegex                  = regexp.MustCompile(`\s*["']?using["']?\s*:\s*['"]?(composite|docker|node\d+)`)
 	dependabotVersionRegex                          = regexp.MustCompile(`\s*version:\s*`)
 	dependabotUpdatesRegex                          = regexp.MustCompile(`\s*updates:\s*`)
 	dependabotPackageEcosystemRegex                 = regexp.MustCompile(`\s*package-ecosystem:\s*`)
@@ -311,8 +311,8 @@ var contentHints = map[string][][]byte{
 	"blueprint":                {[]byte("targetScope")},
 	"buildah":                  {[]byte("buildah")},
 	"dependabot":               {[]byte("package-ecosystem")},
-	"githubAction":             {[]byte("using:")},
-	"cicd":                     {[]byte("jobs:")},
+	"githubAction":             {[]byte("using")},
+	"cicd":                     {[]byte("jobs")},
 }
 
 // nolint:gocyclo
@@ -774,7 +774,7 @@ func needsOverride(check bool, returnType, key, ext string) bool {
 // typesFlag restricts the candidate platforms; pass nil or [""] to consider all.
 func classifyByContent(ctx context.Context, fsys vfs.FS, path string, content []byte, ext string,
 	typesFlag []string, hc *sync.Map, scanFiles map[string]struct{}) string {
-	if platform, matched := gitLabDeclarationPlatform(path, typesFlag); matched {
+	if platform, matched := ciEntrypointPlatform(path, typesFlag); matched {
 		return platform
 	}
 	returnType := ""
