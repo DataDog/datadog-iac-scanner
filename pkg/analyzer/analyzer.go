@@ -329,7 +329,7 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 		ExpectedLOC: 0,
 	}
 
-	gitDir := filepath.Join(a.RepoPath, ".git")
+	gitPath := filepath.Join(a.RepoPath, ".git")
 
 	var err error
 	var files []string
@@ -371,11 +371,14 @@ func Analyze(ctx context.Context, a *Analyzer) (model.AnalyzedPaths, error) {
 			if err != nil {
 				return err
 			}
-			if path == gitDir {
+			if path == gitPath {
 				norm := filepath.ToSlash(path)
 				a.Exc = append(a.Exc, norm)
 				excMatcher.AddLiteral(norm)
-				return filepath.SkipDir
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 
 			trimmedPath, relErr := filepath.Rel(a.RepoPath, path)
