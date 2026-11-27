@@ -291,7 +291,7 @@ func (r *Renderer) acquireRenderLock(ctx context.Context) (*lockOwner, time.Time
 	phase := r.deadline
 	phaseExpired := time.Now().After(phase)
 	dead := r.dead || phaseExpired
-	if phaseExpired {
+	if phaseExpired && ctx.Err() == nil {
 		r.safetyNetTripped = true
 	}
 	r.mu.Unlock()

@@ -528,6 +528,22 @@ func TestRenderContextCanceled(t *testing.T) {
 			return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 		}},
 	} {
+		t.Run("expired phase deadline/"+tc.name, func(t *testing.T) {
+			r := NewRenderer(vfs.Default(), dir, 5<<20)
+			r.deadline = time.Now().Add(-time.Second)
+			ctx, cancel := tc.context()
+			cancel()
+			// Enter after Render's initial context check, as if cancellation
+			// and phase expiry occurred while waiting for the renderer mutex.
+			owner, _ := r.acquireRenderLock(ctx)
+			if owner != nil {
+				runLock.release(owner)
+				t.Fatal("ended context and expired phase deadline acquired the lock")
+			}
+			if r.SafetyNetTripped() {
+				t.Fatal("ended context and expired phase deadline tripped the safety net")
+			}
+		})
 		t.Run("expired root deadline/"+tc.name, func(t *testing.T) {
 			// Enter the watchdog directly to model cancellation after Render's
 			// initial context check. Both select signals are already ready;
