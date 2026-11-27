@@ -229,12 +229,33 @@ func buildModuleAttribution(
 	leaf := attr.ModulePath[len(attr.ModulePath)-1]
 	attr.ModuleCodeOwned = leaf.SourceType == moduleSourceTypeLocal && pathWithinRoot(filepath.Dir(bodyPath), repoPath)
 	attr.Arguments = cache.resourceArguments(r, attr.ModulePath[0].CodeLocation.Filename)
+	attr.OverrideFiles = foreignOverrideFiles(r, bodyPath, repoPath)
 	if cache != nil && r.Body != nil {
 		// What reads no module input is set by the module; the arguments
 		// cover everything else.
 		attr.ArgumentControl = model.ArgumentControlModule
 	}
 	return attr
+}
+
+// foreignOverrideFiles names the files, other than the module's directory's,
+// that an override took attributes of r from: a Terragrunt unit's.
+func foreignOverrideFiles(r *tfeval.ResolvedResource, bodyPath, repoPath string) map[string]string {
+	if r.DeclarationBody == nil || r.Body == nil {
+		return nil
+	}
+	var out map[string]string
+	walkBodySources(r.Body, "", func(_, file string) {
+		abs := absPath(file, repoPath)
+		if filepath.Dir(abs) == filepath.Dir(bodyPath) {
+			return
+		}
+		if out == nil {
+			out = make(map[string]string)
+		}
+		out[abs] = repoRelativeFile(abs, repoPath)
+	})
+	return out
 }
 
 // callAttribution attributes path, a file or directory of the module the last
@@ -748,7 +769,11 @@ func moduleAttributionForResource(
 	}
 	clone.Arguments = nil
 	if override := v.TerraformOverride; override != nil && override.SourceFileID != "" {
-		clone.ModuleCodeLocation.Filename = pathpkg.Join(pathpkg.Dir(clone.ModuleCodeLocation.Filename), filepath.Base(v.FileName))
+		if name, ok := clone.OverrideFiles[filepath.Clean(v.FileName)]; ok {
+			clone.ModuleCodeLocation.Filename = name
+		} else {
+			clone.ModuleCodeLocation.Filename = pathpkg.Join(pathpkg.Dir(clone.ModuleCodeLocation.Filename), filepath.Base(v.FileName))
+		}
 	}
 	narrowCodeLocation(&clone.ModuleCodeLocation, v)
 	return clone

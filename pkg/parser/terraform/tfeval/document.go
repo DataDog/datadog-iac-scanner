@@ -735,7 +735,7 @@ type RemoteResolver func(
 ) (dir, packageRoot string, ok bool)
 
 func CalledModuleDirs(dir string, resolver RemoteResolver, fsys vfs.FS) []string {
-	bodies, _, err := parseDir(context.Background(), dir, "", nil, fsys)
+	bodies, _, err := parseDir(context.Background(), dir, "", nil, fsys, fileSel{})
 	if err != nil {
 		return nil
 	}

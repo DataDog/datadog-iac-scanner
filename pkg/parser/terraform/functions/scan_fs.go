@@ -49,16 +49,25 @@ func (s *ScanFS) EvalSymlinks(path string) (string, error) {
 }
 
 func evalSymlinks(fsys vfs.FS, path string) (string, error) {
-	if s, ok := fsys.(*ScanFS); ok {
+	if s, ok := fsys.(interface {
+		EvalSymlinks(string) (string, error)
+	}); ok {
 		return s.EvalSymlinks(path)
 	}
 	return filepath.EvalSymlinks(path)
 }
 
 func isMemFS(fsys vfs.FS) bool {
-	if s, ok := fsys.(*ScanFS); ok {
-		fsys = s.FS
+	for {
+		switch f := fsys.(type) {
+		case *ScanFS:
+			fsys = f.FS
+			continue
+		case interface{ Unwrap() vfs.FS }:
+			fsys = f.Unwrap()
+			continue
+		}
+		_, ok := fsys.(*vfs.MemFS)
+		return ok
 	}
-	_, ok := vfs.Unwrap(fsys).(*vfs.MemFS)
-	return ok
 }

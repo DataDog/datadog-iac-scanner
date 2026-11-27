@@ -17,6 +17,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/terragrunt"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -56,6 +57,20 @@ func attachDeclarationBodies(resources []ResolvedResource, declarations map[*hcl
 // directory, including blocks that expand to zero instances.
 func (e *Evaluator) ResourceOverrides(ctx context.Context, dir string) []ResourceOverride {
 	return e.parseDir(ctx, dir, "").overrides
+}
+
+// UnitResourceOverrides returns the overrides of the module a Terragrunt unit's
+// translated call reaches, as merged with the unit's files that join it.
+func (e *Evaluator) UnitResourceOverrides(ctx context.Context, unitDir, source, version, callerFile string) []ResourceOverride {
+	join := e.unitFilesAt(unitDir)
+	if join == nil {
+		return nil
+	}
+	dir, packageRoot, ok := e.resolveModuleDir(ctx, unitDir, "", source, version, callerFile, terragrunt.ModuleName)
+	if !ok {
+		return nil
+	}
+	return e.parseDirWith(ctx, dir, packageRoot, join).overrides
 }
 
 // StandaloneOverrideScope prepares the block-level context of a module for

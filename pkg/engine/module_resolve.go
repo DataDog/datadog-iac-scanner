@@ -14,6 +14,7 @@ import (
 	"maps"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -705,7 +707,8 @@ func resolveModuleDocuments(
 	inv *terraformInventory,
 	rootVars map[string]cty.Value,
 ) moduleResolutionResult {
-	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath)
+	unitFiles := unitModuleFiles(files, repoPath)
+	byAbsPath, filesByDir, dirsWithTf := indexTerraformFiles(ctx, files, repoPath, unitFiles)
 	if len(dirsWithTf) == 0 {
 		return moduleResolutionResult{}
 	}
@@ -714,6 +717,7 @@ func resolveModuleDocuments(
 	unitInputs := unitInputsByDir(files, repoPath)
 	if inv != nil {
 		inv.unitInputs = unitInputs
+		inv.unitFiles = unitFiles
 		inv.files = byAbsPath
 		inv.sites = sites
 	}
@@ -735,12 +739,14 @@ func resolveModuleDocuments(
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetExplicitRootVars(rootVars)
 	evaluator.SetUnitInputs(unitInputs)
+	evaluator.SetUnitModuleFiles(unitFiles)
 	evaluator.SetTrackModuleInstances(moduleCalls != nil)
 	evaluator.SetSkipRootResources(inv == nil)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}
-	overrides := scanTerraformOverrides(ctx, evaluator, byAbsPath, filesByDir, repoPath)
+	overrides := scanTerraformOverrides(
+		ctx, evaluator, byAbsPath, filesByDir, repoPath, unitOverrides(ctx, evaluator, files, repoPath, sites))
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
@@ -966,6 +972,9 @@ type instantiatedResource struct {
 	defLine   int
 	attrs     map[string]interface{}
 	attrsHash uint64
+	// origin tells which files an override took the attributes from, as
+	// callers may override the same block from different files.
+	origin uint64
 }
 
 // docGroup collects every resource one module call resolved in one defining file.
@@ -1055,6 +1064,7 @@ func instantiatedDocs(
 			defLine:   r.DefLine,
 			attrs:     attrs,
 			attrsHash: hashAttributes(attrs),
+			origin:    overrideOrigin(r),
 		}
 
 		slot := cck + "\x00" + fm.ID + "\x00" + kind + "\x00" + base
@@ -1154,8 +1164,39 @@ func groupContentKey(g *docGroup) docContentKey {
 		h.str(e.baseName)
 		h.u64(uint64(e.defLine))
 		h.u64(e.attrsHash)
+		h.u64(e.origin)
 	}
 	return h.key()
+}
+
+// overrideOrigin hashes the files that set the attributes and nested blocks
+// of an overridden block, other than the one declaring it. It is 0 without an
+// override.
+func overrideOrigin(r *tfeval.ResolvedResource) uint64 {
+	if r.DeclarationBody == nil || r.Body == nil {
+		return 0
+	}
+	var files []string
+	walkBodySources(r.Body, "", func(path, file string) {
+		if file != r.DefinedIn {
+			files = append(files, path+"="+file)
+		}
+	})
+	sort.Strings(files)
+	return xxhash.Sum64String(strings.Join(files, "\x00"))
+}
+
+// walkBodySources calls fn with the path and the file of each attribute and
+// nested block of body, recursively.
+func walkBodySources(body *hclsyntax.Body, prefix string, fn func(path, file string)) {
+	for name, attr := range body.Attributes {
+		fn(prefix+name, attr.SrcRange.Filename)
+	}
+	for i, block := range body.Blocks {
+		path := prefix + block.Type + "[" + strconv.Itoa(i) + "]"
+		fn(path, block.TypeRange.Filename)
+		walkBodySources(block.Body, path+".", fn)
+	}
 }
 
 func sortInstantiated(entries []instantiatedResource) {
@@ -1420,7 +1461,12 @@ func resolveModuleTargetDir(
 }
 
 // indexTerraformFiles builds lookup maps from a flat FileMetadatas slice.
-func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPath string) (
+//
+// A unit's files that join its module are indexed by path only: they are no
+// root, and the module's evaluation reads them.
+func indexTerraformFiles(
+	ctx context.Context, files model.FileMetadatas, repoPath string, unitFiles map[string]tfeval.UnitModule,
+) (
 	byAbsPath map[string]*model.FileMetadata,
 	filesByDir map[string][]*model.FileMetadata,
 	dirsWithTf map[string]bool,
@@ -1442,6 +1488,9 @@ func indexTerraformFiles(ctx context.Context, files model.FileMetadatas, repoPat
 			)
 		}
 		byAbsPath[abs] = f
+		if slices.Contains(unitFiles[dir].Files, abs) {
+			continue
+		}
 		filesByDir[dir] = append(filesByDir[dir], f)
 		dirsWithTf[dir] = true
 	}

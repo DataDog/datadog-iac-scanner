@@ -89,4 +89,7 @@ type ModuleAttribution struct {
 	ModuleCodeOwned    bool             `json:"-"`
 	Arguments          []ModuleArgument `json:"-"`
 	ArgumentControl    ArgumentControl  `json:"-"`
+	// OverrideFiles names, by absolute path, the override files outside the
+	// module's directory (a Terragrunt unit's) that set the block.
+	OverrideFiles map[string]string `json:"-"`
 }

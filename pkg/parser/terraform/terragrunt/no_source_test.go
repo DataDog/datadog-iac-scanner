@@ -82,5 +82,5 @@ func TestEvaluateWithSourceAlsoReturnsInputs(t *testing.T) {
 	root := repo(t, map[string]string{"u/terragrunt.hcl": "terraform { source = \"./m\" }\ninputs = { a = 1 }"})
 	u := evaluateUnit(t, root, "u")
 	require.NotNil(t, u.Translation)
-	require.Len(t, u.Inputs, 1)
+	require.Len(t, u.Inputs, 1, "kept for the unit's files when the module cannot be resolved")
 }

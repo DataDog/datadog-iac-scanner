@@ -30,6 +30,7 @@ import (
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules/resolver"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/partial"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/terragrunt"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 
 	"github.com/hashicorp/hcl/v2"
@@ -160,6 +161,8 @@ type Evaluator struct {
 	// unitInputs holds, per root directory, the inputs of its Terragrunt
 	// unit. Read-only and shared by forks.
 	unitInputs map[string]map[string]cty.Value
+	// unitFiles holds, per unit directory, the files that join its module.
+	unitFiles map[string]*unitFiles
 	// cache memoizes completed module evaluations keyed by (dir, packageRoot,
 	// input digest). A single Evaluator is used for an entire scan, so entries
 	// with the same key represent the same module reached with the same resolved
@@ -231,6 +234,8 @@ type dirParse struct {
 	locals        *localGraph
 	static        *dirStatic
 	err           error
+	// join is the unit whose files were read with the directory, if any.
+	join *unitFiles
 }
 
 func New() *Evaluator {
@@ -277,7 +282,7 @@ func (e *Evaluator) NotEvaluatedDirs() []string {
 	return dirs
 }
 
-func (e *Evaluator) parseDirForChain(ctx context.Context, dir, packageRoot, addr string) dirParse {
+func (e *Evaluator) parseDirForChain(ctx context.Context, dir, packageRoot, addr string, join *unitFiles) dirParse {
 	if addr == "" && e.skipRootResources {
 		key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
 		e.parseMu.Lock()
@@ -288,12 +293,19 @@ func (e *Evaluator) parseDirForChain(ctx context.Context, dir, packageRoot, addr
 		}
 		return e.parseRootDirForModules(ctx, dir, packageRoot)
 	}
-	return e.parseDir(ctx, dir, packageRoot)
+	return e.parseDirWith(ctx, dir, packageRoot, join)
 }
 
 // parseDir returns the parsed module directory, shared by all evaluator forks.
 func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirParse {
-	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot)
+	return e.parseDirWith(ctx, dir, packageRoot, nil)
+}
+
+// parseDirWith is parseDir that also reads the files of a Terragrunt unit that
+// join the module, under a cache key of their own.
+func (e *Evaluator) parseDirWith(ctx context.Context, dir, packageRoot string, join *unitFiles) dirParse {
+	sel := fileSel{skip: e.unitFilesAt(dir), join: join}
+	key := filepath.Clean(dir) + "\x00" + filepath.Clean(packageRoot) + sel.key()
 
 	e.parseMu.Lock()
 	if dp, ok := e.dirCache[key]; ok {
@@ -302,8 +314,8 @@ func (e *Evaluator) parseDir(ctx context.Context, dir, packageRoot string) dirPa
 	}
 	e.parseMu.Unlock()
 
-	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
-	dp := dirParse{bodies: bodies, sources: sources, err: err}
+	bodies, sources, err := parseDir(ctx, dir, packageRoot, e.mergeAllow, e.fsys, sel)
+	dp := dirParse{bodies: bodies, sources: sources, err: err, join: join}
 	if err == nil {
 		dp.bodies, dp.overrides = resolveResourceOverrides(ctx, bodies, sources)
 		if len(dp.overrides) > 0 {
@@ -334,6 +346,7 @@ func (e *Evaluator) Fork() *Evaluator {
 		fsys:              e.fsys,
 		explicitRootVars:  e.explicitRootVars,
 		unitInputs:        e.unitInputs,
+		unitFiles:         e.unitFiles,
 		cache:             make(map[evalCacheKey]*evalCacheEntry),
 		remoteResolver:    e.remoteResolver,
 		notEvaluatedDirs:  make(map[string]bool),
@@ -363,6 +376,39 @@ func (e *Evaluator) SetExplicitRootVars(inputs map[string]cty.Value) {
 // unit. They are root inputs below the directory's variable definitions files. The map is read-only and shared by forks.
 func (e *Evaluator) SetUnitInputs(inputs map[string]map[string]cty.Value) {
 	e.unitInputs = inputs
+}
+
+// SetUnitModuleFiles supplies, per Terragrunt unit directory, the Terraform
+// files (absolute paths) that Terragrunt copies next to the unit's module. They
+// are read with the module of the unit's call, and no longer with the directory.
+func (e *Evaluator) SetUnitModuleFiles(units map[string]UnitModule) {
+	e.unitFiles = make(map[string]*unitFiles, len(units))
+	for dir, m := range units {
+		e.unitFiles[filepath.Clean(dir)] = newUnitFiles(dir, m)
+	}
+}
+
+// UnitModule is what a Terragrunt unit copies next to its module: its Terraform
+// files (absolute paths) and the copy globs that also select the other files
+// the module reads.
+type UnitModule struct {
+	Files, IncludeInCopy, ExcludeFromCopy []string
+}
+
+func (e *Evaluator) unitFilesAt(dir string) *unitFiles {
+	if len(e.unitFiles) == 0 {
+		return nil
+	}
+	return e.unitFiles[filepath.Clean(dir)]
+}
+
+// unitModuleFiles returns the files joining the module a unit's translation
+// calls, when addr is that call.
+func (e *Evaluator) unitModuleFiles(rootDir, addr string) *unitFiles {
+	if addr != "module."+terragrunt.ModuleName {
+		return nil
+	}
+	return e.unitFilesAt(rootDir)
 }
 
 // SetSkipRootResources skips evaluating root-level resources and outputs when
@@ -590,7 +636,7 @@ func (e *Evaluator) evaluateChain(
 	subtreeVisited := &directorySet{}
 	defer allVisited.include(subtreeVisited)
 
-	parsed := e.parseDirForChain(ctx, dir, packageRoot, addr)
+	parsed := e.parseDirForChain(ctx, dir, packageRoot, addr, e.unitModuleFiles(rootDir, addr))
 	if parsed.err != nil {
 		return nil, nil, parsed.err
 	}

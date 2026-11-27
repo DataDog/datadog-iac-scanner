@@ -44,8 +44,10 @@ type terraformInventory struct {
 	rootVars map[string]cty.Value
 	// unitInputs are the inputs of Terragrunt units, by directory.
 	unitInputs map[string]map[string]cty.Value
-	files      map[string]*model.FileMetadata
-	documents  documentOccurrenceIndex
+	// unitFiles are the files joining each Terragrunt unit's module, by directory.
+	unitFiles map[string]tfeval.UnitModule
+	files     map[string]*model.FileMetadata
+	documents documentOccurrenceIndex
 	// external reports a fetched module, which is not a root of the
 	// repository even when nothing in the scan calls it.
 	external func(string) bool
@@ -123,6 +125,7 @@ func (inv *terraformInventory) withEvaluator(
 	evaluator.SetMergeAllow(mergeAllow)
 	evaluator.SetExplicitRootVars(inv.rootVars)
 	evaluator.SetUnitInputs(inv.unitInputs)
+	evaluator.SetUnitModuleFiles(inv.unitFiles)
 	if resolver != nil {
 		evaluator.SetRemoteResolver(resolver)
 	}

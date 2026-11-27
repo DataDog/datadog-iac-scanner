@@ -27,8 +27,11 @@ const (
 	mergeNone    = "no_merge"
 
 	keySource = "source"
-	funcMerge = "merge"
-	parentDir = ".."
+
+	keyIncludeInCopy   = "include_in_copy"
+	keyExcludeFromCopy = "exclude_from_copy"
+	funcMerge          = "merge"
+	parentDir          = ".."
 
 	// maxReadDepth caps nested read_terragrunt_config calls.
 	maxReadDepth = 10
@@ -58,7 +61,9 @@ type item struct {
 type config struct {
 	locals map[string]cty.Value
 	source *item
-	inputs map[string]item
+	// includeInCopy and excludeFromCopy are the terraform block's copy globs.
+	includeInCopy, excludeFromCopy []string
+	inputs                         map[string]item
 	// inputsUnknown is set when the keys of an inputs attribute are not known.
 	inputsUnknown bool
 	// excluded is set by an exclude block known to cover plan or apply.
@@ -206,6 +211,8 @@ func (t *translator) evalBody(body *hclsyntax.Body, ctx *hcl.EvalContext) *confi
 		if a, ok := block.Body.Attributes[keySource]; ok && cfg.source == nil {
 			cfg.source = &item{value: t.evalExpr(a.Expr, ctx), rng: toRange(a.SrcRange)}
 		}
+		cfg.includeInCopy = t.globList(block.Body, keyIncludeInCopy, ctx, cfg.includeInCopy)
+		cfg.excludeFromCopy = t.globList(block.Body, keyExcludeFromCopy, ctx, cfg.excludeFromCopy)
 	}
 	for name, a := range body.Attributes {
 		value := t.evalExpr(a.Expr, ctx)
@@ -295,15 +302,24 @@ func mergeIncludes(unit *config, includes []*include) *config {
 // recursively and concatenates lists.
 func mergeConfigs(base, over *config, deep bool) *config {
 	out := &config{
-		locals:        over.locals,
-		source:        base.source,
-		inputsUnknown: base.inputsUnknown || over.inputsUnknown,
-		excluded:      base.excluded || over.excluded,
-		attrs:         map[string]cty.Value{},
-		inputs:        map[string]item{},
+		locals: over.locals,
+		source: base.source,
+
+		includeInCopy:   base.includeInCopy,
+		excludeFromCopy: base.excludeFromCopy,
+		inputsUnknown:   base.inputsUnknown || over.inputsUnknown,
+		excluded:        base.excluded || over.excluded,
+		attrs:           map[string]cty.Value{},
+		inputs:          map[string]item{},
 	}
 	if over.source != nil {
 		out.source = over.source
+	}
+	if over.includeInCopy != nil {
+		out.includeInCopy = over.includeInCopy
+	}
+	if over.excludeFromCopy != nil {
+		out.excludeFromCopy = over.excludeFromCopy
 	}
 	for name, value := range base.attrs {
 		out.attrs[name] = value

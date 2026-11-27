@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"maps"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/address"
 	tfmodules "github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/modules"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/terragrunt"
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -42,41 +44,108 @@ var reservedModuleAttrs = map[string]bool{
 	metaArgDependsOn: true,
 }
 
-// parseDir parses HCL and JSON config in dir (non-recursively) and returns
-// their bodies, with the source of each parsed file by the filename its ranges
-// carry. Files that fail to parse are skipped. Reads go through fsys so
-// content-push scans only ever see pushed files.
-func parseDir(
-	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
-) ([]*hclsyntax.Body, map[string][]byte, error) {
-	if fsys == nil {
-		fsys = vfs.Default()
+// unitFiles are the Terraform files of a Terragrunt unit's directory that
+// Terragrunt copies next to the unit's module, all in dir.
+type unitFiles struct {
+	dir    string
+	paths  []string
+	names  map[string]bool
+	filter terragrunt.CopyFilter
+}
+
+func newUnitFiles(dir string, m UnitModule) *unitFiles {
+	u := &unitFiles{
+		dir: filepath.Clean(dir), names: make(map[string]bool, len(m.Files)),
+		filter: terragrunt.CopyFilter{Include: m.IncludeInCopy, Exclude: m.ExcludeFromCopy},
 	}
+	for _, p := range m.Files {
+		u.paths = append(u.paths, filepath.Clean(p))
+		u.names[filepath.Base(p)] = true
+	}
+	return u
+}
+
+// fileSel adjusts the files of a directory for a Terragrunt unit: skip leaves
+// out the unit's files that belong to its module, join adds them to a module
+// directory, each replacing a file of the same name.
+type fileSel struct{ skip, join *unitFiles }
+
+func (s fileSel) key() string {
+	if s.join == nil {
+		return ""
+	}
+	return "\x00unit:" + s.join.dir
+}
+
+// configFile is a Terraform file to read and the root it is confined to.
+type configFile struct{ path, root string }
+
+// selectConfigFiles lists the configuration files of dir in evaluation order.
+func selectConfigFiles(
+	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS, sel fileSel,
+) ([]configFile, error) {
 	entries, err := fsys.ReadDir(dir)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-
+	if sel.skip != nil && sel.skip.dir == filepath.Clean(dir) {
+		entries = slices.DeleteFunc(slices.Clone(entries), func(e fs.DirEntry) bool { return sel.skip.names[e.Name()] })
+	}
+	fromUnit := map[string]bool{}
+	if sel.join != nil {
+		if unitEntries, uerr := fsys.ReadDir(sel.join.dir); uerr == nil {
+			entries = slices.DeleteFunc(slices.Clone(entries), func(e fs.DirEntry) bool { return sel.join.names[e.Name()] })
+			for _, e := range unitEntries {
+				if sel.join.names[e.Name()] {
+					entries = append(entries, e)
+					fromUnit[e.Name()] = true
+				}
+			}
+		}
+	}
 	selected := tfmodules.SelectConfigEntries(entries, dir, allow, "")
 	sort.Slice(selected, func(i, j int) bool { return selected[i].Name() < selected[j].Name() })
 	// Override files apply last regardless of their name, so locals, variable
 	// defaults and module attributes they set win over the directory's other
 	// files, matching the order module discovery assembles the same directory in.
 	selected = tfpath.OrderOverrideLast(selected, func(entry fs.DirEntry) string { return entry.Name() })
-	bodies := make([]*hclsyntax.Body, 0, len(selected))
-	sources := make(map[string][]byte, len(selected))
+	files := make([]configFile, 0, len(selected))
 	for _, entry := range selected {
-		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
-		if !ok {
-			continue
+		entryDir, root := dir, packageRoot
+		if fromUnit[entry.Name()] {
+			entryDir, root = sel.join.dir, ""
 		}
-		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
+		if path, ok := tfmodules.ConfinedFilePath(ctx, entry, entryDir, root); ok {
+			files = append(files, configFile{path: path, root: root})
+		}
+	}
+	return files, nil
+}
+
+// parseDir parses HCL and JSON config in dir (non-recursively) and returns
+// their bodies, with the source of each parsed file by the filename its ranges
+// carry. Files that fail to parse are skipped. Reads go through fsys so
+// content-push scans only ever see pushed files.
+func parseDir(
+	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS, sel fileSel,
+) ([]*hclsyntax.Body, map[string][]byte, error) {
+	if fsys == nil {
+		fsys = vfs.Default()
+	}
+	files, err := selectConfigFiles(ctx, dir, packageRoot, allow, fsys, sel)
+	if err != nil {
+		return nil, nil, err
+	}
+	bodies := make([]*hclsyntax.Body, 0, len(files))
+	sources := make(map[string][]byte, len(files))
+	for _, f := range files {
+		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, f.path, f.root)
 		if rErr != nil {
 			continue
 		}
-		if body, ok := parseConfigBody(src, path); ok {
+		if body, ok := parseConfigBody(src, f.path); ok {
 			bodies = append(bodies, body)
-			sources[path] = src
+			sources[f.path] = src
 		}
 	}
 	return bodies, sources, nil
@@ -178,37 +247,28 @@ type rootFileSlot struct {
 }
 
 func readRootFileSlots(
-	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
+	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS, sel fileSel,
 ) (slots []rootFileSlot, deferredCount int, err error) {
 	if fsys == nil {
 		fsys = vfs.Default()
 	}
-	entries, err := fsys.ReadDir(dir)
+	files, err := selectConfigFiles(ctx, dir, packageRoot, allow, fsys, sel)
 	if err != nil {
 		return nil, 0, err
 	}
-
-	selected := tfmodules.SelectConfigEntries(entries, dir, allow, "")
-	sort.Slice(selected, func(i, j int) bool { return selected[i].Name() < selected[j].Name() })
-	selected = tfpath.OrderOverrideLast(selected, func(entry fs.DirEntry) string { return entry.Name() })
-
-	slots = make([]rootFileSlot, 0, len(selected))
-	for _, entry := range selected {
-		path, ok := tfmodules.ConfinedFilePath(ctx, entry, dir, packageRoot)
-		if !ok {
-			continue
-		}
-		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
+	slots = make([]rootFileSlot, 0, len(files))
+	for _, f := range files {
+		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, f.path, f.root)
 		if rErr != nil {
 			continue
 		}
-		if !mayAffectRootModules(src, path) {
-			slots = append(slots, rootFileSlot{path: path, src: src, deferred: true})
+		if !mayAffectRootModules(src, f.path) {
+			slots = append(slots, rootFileSlot{path: f.path, src: src, deferred: true})
 			deferredCount++
 			continue
 		}
-		if body, ok := parseConfigBody(src, path); ok {
-			slots = append(slots, rootFileSlot{path: path, src: src, body: body})
+		if body, ok := parseConfigBody(src, f.path); ok {
+			slots = append(slots, rootFileSlot{path: f.path, src: src, body: body})
 		}
 	}
 	return slots, deferredCount, nil
@@ -236,7 +296,7 @@ func assembleRootSlots(slots []rootFileSlot, parseDeferred bool) (bodies []*hcls
 // output / provider blocks are deferred and only parsed if any module, locals,
 // or data block may reference a managed resource.
 func (e *Evaluator) parseRootDirForModules(ctx context.Context, dir, packageRoot string) dirParse {
-	slots, deferredCount, err := readRootFileSlots(ctx, dir, packageRoot, e.mergeAllow, e.fsys)
+	slots, deferredCount, err := readRootFileSlots(ctx, dir, packageRoot, e.mergeAllow, e.fsys, fileSel{skip: e.unitFilesAt(dir)})
 	if err != nil {
 		return dirParse{err: err}
 	}
