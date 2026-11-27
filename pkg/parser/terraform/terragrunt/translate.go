@@ -74,8 +74,8 @@ func Translate(
 type Unit struct {
 	Translation *model.TerragruntTranslation
 	// Inputs is set for a unit that is not skipped, whose inputs are known as a
-	// whole and non-empty: Terraform runs on the unit directory's .tf files
-	// too and takes them as TF_VAR_*. Unknown parts stay cty unknowns, and an
+	// whole and non-empty: its directory's .tf files take them as TF_VAR_*
+	// when they are scanned on their own (no source, or a module not resolved). Unknown parts stay cty unknowns, and an
 	// unknown input is present, so a variable default does not apply.
 	Inputs map[string]cty.Value
 }
@@ -189,7 +189,12 @@ func (t *translator) evaluate(body *hclsyntax.Body) (Unit, error) {
 	for name, a := range t.varFileValues(source, address, version, sourceRange) {
 		args[name] = a
 	}
-	return Unit{Translation: render(address, version, sourceRange, args), Inputs: inputs}, nil
+	translation := render(address, version, sourceRange, args)
+	filter := CopyFilter{Include: cfg.includeInCopy, Exclude: cfg.excludeFromCopy}
+	translation.ModuleFiles = t.copiedModuleFiles(filter)
+	translation.IncludeInCopy, translation.ExcludeFromCopy = filter.Include, filter.Exclude
+	translation.CopiesFiles = t.copiesAnything(filter)
+	return Unit{Translation: translation, Inputs: inputs}, nil
 }
 
 // directInputs returns the unit's inputs as TF_VAR_* values. Values

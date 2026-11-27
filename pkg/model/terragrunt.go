@@ -80,6 +80,15 @@ type TerragruntTranslation struct {
 	// written in Text (Version is empty when the block has none).
 	Source  string
 	Version string
+	// ModuleFiles are the Terraform files (absolute paths) of the unit's
+	// directory that Terragrunt copies next to the module: they are part of it.
+	ModuleFiles []string
+	// IncludeInCopy and ExcludeFromCopy are the unit's copy globs, which also
+	// decide the other files (assets) of the unit directory the module sees.
+	IncludeInCopy, ExcludeFromCopy []string
+	// CopiesFiles is set when the unit directory has a copied entry other than
+	// terragrunt.hcl, a Terraform file or an asset: the module then sees it.
+	CopiesFiles bool
 }
 
 // IncludedFile is what a file read for a unit (such as an included root.hcl)
