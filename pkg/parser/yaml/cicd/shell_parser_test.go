@@ -6,9 +6,15 @@
 package cicd
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
@@ -218,7 +224,7 @@ func TestNormalizeShell(t *testing.T) {
 }
 
 func TestShellParser_SyntaxStatus(t *testing.T) {
-	for _, script := range []string{`echo "unterminated`, "if true; then echo ok", "echo $("} {
+	for _, script := range []string{`echo "unterminated`, "if true; then echo ok", "echo $(", "echo A | cat <<<", "echo A | cat <", "echo A > >(", "echo A >&", "echo A | cat <<EOF"} {
 		parsed := parseRunBlock(script, "bash")
 		require.True(t, parsed.ParseOK, "legacy rules must retain recovered facts")
 		require.Error(t, parsed.Error, script)
@@ -266,6 +272,7 @@ func TestShellParser_ExecutableCommandVisibility(t *testing.T) {
 		"npm publish", "npm publish | tee publish.log", "{ npm publish; } >publish.log",
 		"(npm publish) >publish.log", "if true; then npm publish; fi >publish.log",
 		"echo $(npm publish) >publish.log", "npm publish >publish.log | cat",
+		"echo >(npm publish)", "echo > >(npm publish)", "cat < <(npm publish)",
 	} {
 		t.Run(script, func(t *testing.T) {
 			parsed := parseRunBlock(script, "bash")
@@ -446,6 +453,7 @@ func TestShellParser_EnvironmentWriteSemantics(t *testing.T) {
 		{`echo "A=1" | sort < "$INPUT" >> "$GITHUB_ENV"`, true},
 		{`echo "A=1" >> "$GITHUB_ENV"`, false},
 		{`echo "$X" >> "$GITHUB_ENV"`, true},
+		{`echo A < "$INPUT" |& sort >> "$GITHUB_ENV"`, true},
 		{`echo "A=1" 1>> "$GITHUB_ENV" 2>/dev/null`, false},
 		{`echo "$X" 1>> "$GITHUB_ENV" 2>/dev/null`, true},
 		{`echo "A=1" > /dev/null 2>> "$GITHUB_ENV"`, false},
@@ -458,20 +466,7 @@ func TestShellParser_EnvironmentWriteSemantics(t *testing.T) {
 			parsed := parseGitHubRunBlock(tc.script, "bash")
 			require.True(t, parsed.ParseOK)
 			require.NoError(t, parsed.Error)
-			unsafe := false
-			for _, cmd := range parsed.Commands {
-				if cmd.Redirect == nil || cmd.Redirect.Target.Var != "GITHUB_ENV" {
-					continue
-				}
-				if len(cmd.Args) == 0 {
-					unsafe = true
-				}
-				for _, arg := range cmd.Args {
-					if arg.Type != literal {
-						unsafe = true
-					}
-				}
-			}
+			unsafe := shellHasUnsafeEnvWrite(parsed)
 			require.Equal(t, tc.unsafe, unsafe)
 		})
 	}
@@ -479,7 +474,7 @@ func TestShellParser_EnvironmentWriteSemantics(t *testing.T) {
 
 func BenchmarkShellParser_NestedSubstitution(b *testing.B) {
 	for _, shape := range []struct{ name, open, close string }{
-		{"pipeline", "a | b $(", ")"}, {"plain", "echo $(", ")"}, {"quoted", `echo "$(`, `)"`},
+		{"pipeline", "a | b $(", ")"}, {"plain", "echo $(", ")"}, {"quoted", `echo "$(`, `)"`}, {"process", "echo >(", ")"},
 	} {
 		for _, depth := range []int{1000, 2000, 4000} {
 			b.Run(fmt.Sprintf("%s/%d", shape.name, depth), func(b *testing.B) {
@@ -496,7 +491,7 @@ func BenchmarkShellParser_NestedSubstitution(b *testing.B) {
 }
 
 func TestShellParser_NestedSubstitutionSourceSharing(t *testing.T) {
-	for _, shape := range []string{"echo $(", "a | b $(", `echo "$(`} {
+	for _, shape := range []string{"echo $(", "a | b $(", `echo "$(`, "echo >("} {
 		for _, depth := range []int{8, 64, 4000} {
 			t.Run(fmt.Sprintf("%s/%d", shape, depth), func(t *testing.T) {
 				close := ")"
@@ -525,4 +520,118 @@ func stringSharesSource(source, value string) bool {
 	start := uintptr(unsafe.Pointer(unsafe.StringData(source)))
 	address := uintptr(unsafe.Pointer(unsafe.StringData(value)))
 	return address >= start && address+uintptr(len(value)) <= start+uintptr(len(source))
+}
+
+// This predicate exercises the existing rule-facing write/content contract.
+func shellHasUnsafeEnvWrite(parsed *ParsedRun) bool {
+	for _, cmd := range parsed.Commands {
+		if cmd.Redirect == nil || cmd.Redirect.Target.Var != "GITHUB_ENV" {
+			continue
+		}
+		if cmd.Redirect.Operator != ">" && cmd.Redirect.Operator != ">>" {
+			continue
+		}
+		if len(cmd.Args) == 0 {
+			return true
+		}
+		for _, arg := range cmd.Args {
+			if arg.Type != literal {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Bash is the independent oracle for authored fixture programs only. Production
+// scanning never executes source. Unknown syntax must not justify a safe fact;
+// the proven-safe controls must also stay free of false positives.
+func TestShellParser_BashPipelineContent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash behavior suite runs on Unix")
+	}
+	bashPath, err := exec.LookPath("bash")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name, script     string
+		payload, unknown bool
+	}{
+		{"literal", `echo "A=1" | sort >> "$GITHUB_ENV"`, false, false},
+		{"dynamic", `echo "$PAYLOAD" | sort >> "$GITHUB_ENV"`, true, false},
+		{"single quote", `echo '$PAYLOAD' | sort >> "$GITHUB_ENV"`, false, false},
+		{"here string dynamic", `echo "A=1" | cat <<< "$PAYLOAD" | sort >> "$GITHUB_ENV"`, true, false},
+		{"here string literal", `echo "$PAYLOAD" | cat <<< "A=1" | sort >> "$GITHUB_ENV"`, false, false},
+		{"single quote here string", `echo "$PAYLOAD" | cat <<< '$PAYLOAD' | sort >> "$GITHUB_ENV"`, false, false},
+		{"substitution here string", `echo A | cat <<< "$(printf %s "$PAYLOAD")" | sort >> "$GITHUB_ENV"`, true, false},
+		{"prefix input", `echo "A=1" | < "$INPUT" cat | sort >> "$GITHUB_ENV"`, true, true},
+		{"suffix input", `echo "A=1" | cat < "$INPUT" | sort >> "$GITHUB_ENV"`, true, true},
+		{"prefix safe input", `echo "$PAYLOAD" | < "$SAFE_INPUT" cat | sort >> "$GITHUB_ENV"`, false, true},
+		{"here doc", "echo A | cat <<EOF | sort >> \"$GITHUB_ENV\"\n$PAYLOAD\nEOF\n", true, true},
+		{"quoted here doc", "echo A | cat <<'EOF' | sort >> \"$GITHUB_ENV\"\n$PAYLOAD\nEOF\n", false, true},
+		{"identity descriptor dynamic", `echo "$PAYLOAD" >&1 | sort >> "$GITHUB_ENV"`, true, false},
+		{"identity descriptor literal", `echo "A=1" >&1 | sort >> "$GITHUB_ENV"`, false, false},
+		{"identity after null", `echo "$PAYLOAD" >/dev/null >&1 | sort >> "$GITHUB_ENV"`, false, false},
+		{"fd path dynamic", `echo "$PAYLOAD" >/dev/fd/1 | sort >> "$GITHUB_ENV"`, true, false},
+		{"fd path literal", `echo A >/dev/fd/1 | sort >> "$GITHUB_ENV"`, false, false},
+		{"null after identity", `echo "$PAYLOAD" >&1 >/dev/null | sort >> "$GITHUB_ENV"`, false, false},
+		{"stdout path dynamic", `echo "$PAYLOAD" >/dev/stdout | sort >> "$GITHUB_ENV"`, true, false},
+		{"stdout path literal", `echo "A=1" >/dev/stdout | sort >> "$GITHUB_ENV"`, false, false},
+		{"stdout after null", `echo "$PAYLOAD" >/dev/null >/dev/stdout | sort >> "$GITHUB_ENV"`, false, false},
+		{"dynamic destination", `echo "$PAYLOAD" > "$FORWARD" | sort >> "$GITHUB_ENV"`, true, true},
+		{"dynamic destination literal", `echo A > "$FORWARD" | sort >> "$GITHUB_ENV"`, false, true},
+		{"null literal", `echo "$PAYLOAD" >/dev/null | sort >> "$GITHUB_ENV"`, false, false},
+		{"quoted null", `echo "$PAYLOAD" >"/dev/null" | sort >> "$GITHUB_ENV"`, false, false},
+		{"process forwarding", `echo "$PAYLOAD" > >(cat) | sort >> "$GITHUB_ENV"`, true, true},
+		{"overridden process sink", `echo "$PAYLOAD" > >(cat) >/dev/null | sort >> "$GITHUB_ENV"`, false, true},
+		{"independent process after null", `echo A > >(printf %s "$PAYLOAD") >/dev/null | sort >> "$GITHUB_ENV"`, true, true},
+		{"process forwarding literal", `echo A > >(cat) | sort >> "$GITHUB_ENV"`, false, true},
+		{"additional producer", `echo A >(echo "$PAYLOAD") | sort >> "$GITHUB_ENV"`, true, true},
+		{"literal additional producer", `echo A >(echo B) | sort >> "$GITHUB_ENV"`, false, true},
+		{"additional producer after null", `echo A >(echo "$PAYLOAD") >/dev/null | sort >> "$GITHUB_ENV"`, true, true},
+		{"concatenated producer", `echo A"" >(echo "$PAYLOAD") | sort >> "$GITHUB_ENV"`, true, true},
+		{"input process", `echo A | cat < <(echo "$PAYLOAD") | sort >> "$GITHUB_ENV"`, true, true},
+		{"prefix here string", `echo A | <<< "$PAYLOAD" cat | sort >> "$GITHUB_ENV"`, true, false},
+		{"here string identity stdin", `echo A | cat <<< "$PAYLOAD" 0<&0 | sort >> "$GITHUB_ENV"`, true, false},
+		{"here string discarded stdin", `echo A | cat <<< "$PAYLOAD" </dev/null | sort >> "$GITHUB_ENV"`, false, true},
+		{"here string replacing file", `echo "$PAYLOAD" | < "$INPUT" cat <<< A | sort >> "$GITHUB_ENV"`, false, false},
+		{"merged stderr literal", `echo A 2>&1 | sort >> "$GITHUB_ENV"`, false, false},
+		{"merged stderr dynamic", `echo "$PAYLOAD" 2>&1 | sort >> "$GITHUB_ENV"`, true, false},
+		{"input error as producer", `echo A 2>&1 < "$MISSING_INPUT" | sort >> "$GITHUB_ENV"`, true, true},
+		{"discarded stdout with live stderr", `printf %s "$PAYLOAD" 2>&1 >/dev/null | sort >> "$GITHUB_ENV"`, false, true},
+		{"compound stdin with new producer", `{ cat | printf %s "$PAYLOAD" | sort; } <<< A >> "$GITHUB_ENV"`, true, true},
+		{"compound stdin literal", `{ cat | sort; } <<< A >> "$GITHUB_ENV"`, false, true},
+		{"literal and", `true && echo A >> "$GITHUB_ENV"`, false, false},
+		{"dynamic and", `true && echo "$PAYLOAD" >> "$GITHUB_ENV"`, true, false},
+		{"literal or", `false || echo A >> "$GITHUB_ENV"`, false, false},
+		{"dynamic or", `false || echo "$PAYLOAD" >> "$GITHUB_ENV"`, true, false},
+		{"stderr override literal", `{ echo A 2>/dev/null; } >> "$GITHUB_ENV"`, false, false},
+		{"stderr override dynamic", `{ echo "$PAYLOAD" 2>/dev/null; } >> "$GITHUB_ENV"`, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			result := filepath.Join(dir, "env")
+			input := filepath.Join(dir, "input")
+			safe := filepath.Join(dir, "safe")
+			const marker = "UNTRUSTED_VALUE_5817"
+			require.NoError(t, os.WriteFile(result, nil, 0o600))
+			require.NoError(t, os.WriteFile(input, []byte(marker+"\n"), 0o600))
+			require.NoError(t, os.WriteFile(safe, []byte("A=1\n"), 0o600))
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, bashPath, "--noprofile", "--norc", "-c", tc.script)
+			cmd.Dir = dir
+			cmd.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C", "HOME=" + dir, "GITHUB_ENV=" + result, "PAYLOAD=" + marker, "INPUT=" + input, "SAFE_INPUT=" + safe, "FORWARD=/dev/stdout", "MISSING_INPUT=" + filepath.Join(dir, marker)}
+			output, err := cmd.CombinedOutput()
+			require.NoError(t, err, "%s", output)
+			contents, err := os.ReadFile(result)
+			require.NoError(t, err)
+			require.Equal(t, tc.payload, strings.Contains(string(contents), marker), "Bash oracle: %s", contents)
+			parsed := parseRunBlock(tc.script, "bash")
+			require.True(t, parsed.ParseOK)
+			if !tc.unknown {
+				require.NoError(t, parsed.Error)
+			}
+			require.Equal(t, tc.payload || tc.unknown, shellHasUnsafeEnvWrite(parsed), "scanner must preserve dynamic/unknown content and literal controls")
+		})
+	}
 }
