@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/functions"
+	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
@@ -20,7 +21,7 @@ func (e *Evaluator) newModuleScope(
 	ctx context.Context, dir, rootDir string, parsed *dirParse, inputs map[string]cty.Value,
 ) *ModuleScope {
 	vars := objectOrEmpty(e.resolveVariables(parsed.varDecls, inputs))
-	shared := e.moduleContext(dir, rootDir)
+	shared := e.moduleContext(dir, rootDir, parsed.join)
 	evalCtx := &hcl.EvalContext{Variables: map[string]cty.Value{"var": vars}, Functions: shared.functions}
 	for name, value := range shared.variables {
 		evalCtx.Variables[name] = value
@@ -34,7 +35,7 @@ func (e *Evaluator) newModuleScope(
 	return scope
 }
 
-type moduleContextKey struct{ dir, root string }
+type moduleContextKey struct{ dir, root, unit string }
 
 // moduleContext contains only values fixed by the module and root directories.
 // The maps are read-only; each evaluation keeps its own variable map.
@@ -43,13 +44,18 @@ type moduleContext struct {
 	variables map[string]cty.Value
 }
 
-func (e *Evaluator) moduleContext(dir, root string) moduleContext {
+func (e *Evaluator) moduleContext(dir, root string, join *unitFiles) moduleContext {
 	key := moduleContextKey{dir: dir, root: root}
+	funcFS := vfs.FS(e.funcFS)
+	if join != nil {
+		key.unit = join.dir
+		funcFS = newCopyFS(e.funcFS, dir, join)
+	}
 	if cached, ok := e.contexts[key]; ok {
 		return cached
 	}
 	shared := moduleContext{
-		functions: functions.EvalFuncsWithRoot(dir, root, e.funcFS),
+		functions: functions.EvalFuncsWithRoot(dir, root, funcFS),
 		variables: functions.ContextVariables(dir, root),
 	}
 	if e.contexts == nil {
