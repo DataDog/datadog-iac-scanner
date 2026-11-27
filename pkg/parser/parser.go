@@ -15,6 +15,7 @@ import (
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/logger"
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/provider"
 	"github.com/DataDog/datadog-iac-scanner/pkg/utils"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 )
@@ -166,6 +167,7 @@ type Parser struct {
 	fsys             vfs.FS
 	documentPlatform string
 	selected         bool
+	identity         model.ParseIdentity
 }
 
 // ForFile binds optional provider selection to a file without mutating the
@@ -180,15 +182,23 @@ func (c *Parser) ForFile(path string, content []byte) *Parser {
 		selected.selected = true
 		return &selected
 	}
+	// Helm may use an ordinary YAML parser for CI documents. Retain provider
+	// identity independently of parse behavior, leaving its zero contract intact.
+	if c.Parsers.GetKind() == model.KindYAML {
+		selected := *c
+		selected.identity.Provider = provider.Detect(path)
+		selected.selected = true
+		return &selected
+	}
 	return c
 }
 
-// Identity describes the selected parse behavior; ordinary parsers use zero.
+// Identity describes the selected provider and parse behavior.
 func (c *Parser) Identity() model.ParseIdentity {
 	if identified, ok := c.Parsers.(identifiedParser); ok {
 		return identified.ParseIdentity()
 	}
-	return model.ParseIdentity{}
+	return c.identity
 }
 
 // DocumentPlatform identifies the parser's platform set independently of the

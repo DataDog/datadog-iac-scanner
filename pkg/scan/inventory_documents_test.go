@@ -346,17 +346,36 @@ func TestInventoryGitLabDeclaredJobsInHelmChart(t *testing.T) {
 	root := writeRepo(t, map[string]string{
 		"chart/Chart.yaml":                  "apiVersion: v2\nname: pipeline\nversion: 0.1.0\n",
 		"chart/templates/ci/.gitlab-ci.yml": "build:\n  script: echo build\n",
+		"chart/templates/pod.yaml":          "apiVersion: v1\nkind: Pod\nmetadata:\n  name: worker\n",
 	})
-	params := documentParams(root)
-	params.Platform = []string{"CICD"}
-	inv := scanInventory(t, params)
+	for _, enabled := range [][]string{{"CICD"}, {"CICD", "Kubernetes"}, {"Kubernetes", "CICD"}, {""}} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			params := documentParams(root)
+			params.Platform = enabled
+			inv := scanInventory(t, params)
 
-	require.Equal(t, inventory.StatusComplete, inv.Status)
-	require.Len(t, inv.Resources, 1)
-	row := inv.Resources[0]
-	require.Equal(t, "gitlab_ci_job", row.ResourceType)
-	require.Equal(t, "build", row.ResourceName)
-	require.Equal(t, "build", row.ResourcePath)
-	require.Equal(t, "cicd", row.Platform)
-	require.Equal(t, "chart/templates/ci/.gitlab-ci.yml", row.File)
+			require.Equal(t, inventory.StatusComplete, inv.Status)
+			require.Len(t, inv.Resources, 2)
+			var jobs, pods int
+			for _, row := range inv.Resources {
+				switch row.ResourceType {
+				case "gitlab_ci_job":
+					jobs++
+					require.Equal(t, "build", row.ResourceName)
+					require.Equal(t, "build", row.ResourcePath)
+					require.Equal(t, "cicd", row.Platform)
+					require.Equal(t, "chart/templates/ci/.gitlab-ci.yml", row.File)
+				case "Pod":
+					pods++
+					require.Equal(t, "worker", row.ResourceName)
+					require.Equal(t, "kubernetes", row.Platform)
+					require.Equal(t, "chart/templates/pod.yaml", row.File)
+				default:
+					t.Fatalf("unexpected resource: %+v", row)
+				}
+			}
+			require.Equal(t, 1, jobs)
+			require.Equal(t, 1, pods)
+		})
+	}
 }
