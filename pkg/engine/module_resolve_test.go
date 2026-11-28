@@ -22,6 +22,7 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // docFileID is the prefix of synthetic doc ids: fileID\x00callChain.
@@ -127,6 +128,47 @@ func TestTerraformLegacyPath(t *testing.T) {
 		require.Empty(t, terraformLegacyPath(path[:length]))
 	}
 	require.Equal(t, "data.local_file[{{example}}].filename", terraformLegacyPath(path))
+}
+
+func TestDocumentFactCoverageIsScopedToEmittedSubjects(t *testing.T) {
+	doc := map[string]interface{}{
+		"resource": map[string]interface{}{
+			"aws_s3_bucket": map[string]interface{}{"b[0]": map[string]interface{}{}, "b[1]": map[string]interface{}{}},
+		},
+		"data": map[string]interface{}{
+			"aws_iam_policy": map[string]interface{}{"p": map[string]interface{}{}},
+		},
+	}
+	subject := func(kind, typ, name string) model.TerraformSubjectFacts {
+		return model.TerraformSubjectFacts{Path: model.TerraformFactPath{
+			model.TerraformKeySegment(kind), model.TerraformKeySegment(typ), model.TerraformKeySegment(name),
+		}}
+	}
+
+	coverage, reasons := documentFactCoverage(doc, []model.TerraformSubjectFacts{
+		subject("resource", "aws_s3_bucket", "b[0]"),
+		subject("resource", "aws_s3_bucket", "b[1]"),
+		subject("data", "aws_iam_policy", "p"),
+	})
+	require.Equal(t, model.TerraformCoverageComplete, coverage)
+	require.Empty(t, reasons)
+
+	coverage, reasons = documentFactCoverage(doc, []model.TerraformSubjectFacts{
+		subject("resource", "aws_s3_bucket", "b[0]"),
+	})
+	require.Equal(t, model.TerraformCoverageIncomplete, coverage)
+	require.Equal(t, []string{"document_subject_without_fact"}, reasons)
+
+	coverage, reasons = documentFactCoverage(map[string]interface{}{}, nil)
+	require.Equal(t, model.TerraformCoverageUnproven, coverage)
+	require.Equal(t, []string{"no_subjects_emitted"}, reasons)
+
+	coverage, reasons = documentFactCoverage(doc, []model.TerraformSubjectFacts{
+		subject("resource", "aws_s3_bucket", "b[0]"),
+		subject("resource", "aws_s3_bucket", "b[0]"),
+	})
+	require.Equal(t, model.TerraformCoverageUnproven, coverage)
+	require.Equal(t, []string{"fact_subject_mapping_unproven"}, reasons)
 }
 
 func TestTerraformBlockOccurrencesSelectsIndexedInstanceAndKind(t *testing.T) {
@@ -301,7 +343,8 @@ resource "aws_s3_bucket" "replica" {
 		{Type: "aws_s3_bucket", Name: "replica[1]", DefinedIn: modulePath, ModuleAddress: "module.app"},
 	}
 
-	docs, _, _ := instantiatedDocs(
+	factFiles := make(map[string]*model.FileMetadata)
+	docs, synthetic, _ := instantiatedDocs(
 		context.Background(), resources,
 		map[string]*model.FileMetadata{absPath(modulePath, root): fm},
 		root,
@@ -313,10 +356,18 @@ resource "aws_s3_bucket" "replica" {
 		newModuleAttributionCache(),
 		nil,
 		nil,
+		true,
+		factFiles,
 	)
 
 	if len(docs) != 2 {
 		t.Fatalf("expected one document per expansion layer, got %d", len(docs))
+	}
+	require.Len(t, synthetic, 2)
+	for _, file := range synthetic {
+		require.NotNil(t, file.TerraformFacts)
+		require.Equal(t, model.TerraformCoverageComplete, file.TerraformFacts.Coverage)
+		require.Empty(t, file.TerraformFacts.Reasons)
 	}
 	var shared, replicas int
 	for _, doc := range docs {
@@ -397,7 +448,7 @@ resource "aws_s3_bucket" "a" { bucket = local.derived }
 		context.Background(), evaluator, roots, filesByDir, repo, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated, rootResources,
 		map[string]bool{}, map[string]bool{}, map[string]bool{},
-		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil, nil,
+		&docs, &synthetic, &resourceCount, &rootEvalOK, moduleCalls, nil, nil, false, make(map[string]*model.FileMetadata),
 	)
 
 	if evaluator.LocalMemoSize() != 0 {
@@ -1367,7 +1418,7 @@ module "bucket" {
 	})
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).WithContext(context.Background())
-	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil, nil); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
+	if docs, synthetic, extras, moduleFiles := ins.instantiateLocalModules(ctx, files, nil, nil, false); docs != nil || synthetic != nil || extras != nil || moduleFiles != nil {
 		t.Fatalf("instantiateLocalModules = (%#v, %#v, %#v), want nil when resolve aborts", docs, synthetic, extras)
 	}
 	if _, has := rootFM.Document["module"]; !has {
@@ -1668,7 +1719,7 @@ func TestResolveModuleDocuments_AmbiguousRootKeepsOriginalInput(t *testing.T) {
 			second := writeFile(t, root, "second.tf", fmt.Sprintf(`%s "aws_s3_bucket" "b" { acl = "private" }`, kind))
 			files := append(parseTerraform(t, first), parseTerraform(t, second)...)
 			ins := newTestInspector(t, inspectorOpts{repoPath: root})
-			docs, synthetic, _, _ := ins.instantiateLocalModules(t.Context(), files, nil, nil)
+			docs, synthetic, _, _ := ins.instantiateLocalModules(t.Context(), files, nil, nil, false)
 			require.Empty(t, docs)
 			require.Empty(t, synthetic)
 			for _, file := range files {
@@ -1676,4 +1727,35 @@ func TestResolveModuleDocuments_AmbiguousRootKeepsOriginalInput(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInstantiatedDocs_DeduplicatedContextsDoNotReuseCallerFacts(t *testing.T) {
+	root := t.TempDir()
+	modulePath := writeFile(t, filepath.Join(root, "modules", "app"), "main.tf", `resource "aws_s3_bucket" "bucket" { bucket = "same" }`)
+	fm := fileMeta("module-source", modulePath)
+	resources := []tfeval.ResolvedResource{
+		{
+			Type: "aws_s3_bucket", Name: "bucket", DefinedIn: modulePath, ModuleAddress: "module.app",
+			Attributes: map[string]cty.Value{"bucket": cty.StringVal("same")},
+			CallChain:  []tfeval.CallSite{{ModuleName: "app", CalledFrom: filepath.Join(root, "root-a", "main.tf")}},
+		},
+		{
+			Type: "aws_s3_bucket", Name: "bucket", DefinedIn: modulePath, ModuleAddress: "module.app",
+			Attributes: map[string]cty.Value{"bucket": cty.StringVal("same")},
+			CallChain:  []tfeval.CallSite{{ModuleName: "app", CalledFrom: filepath.Join(root, "root-b", "main.tf")}},
+		},
+	}
+	factFiles := make(map[string]*model.FileMetadata)
+	docs, synthetic, _ := instantiatedDocs(
+		context.Background(), resources,
+		map[string]*model.FileMetadata{absPath(modulePath, root): fm}, root, nil,
+		make(map[docContentKey]string), make(map[string][]extraCallerInfo), make(instantiatedIndex), nil,
+		newModuleAttributionCache(), nil, nil, true, factFiles,
+	)
+	require.Len(t, docs, 1)
+	require.Len(t, synthetic, 1)
+	require.NotNil(t, synthetic[0].TerraformFacts)
+	require.Empty(t, synthetic[0].TerraformFacts.Subjects, "facts tied to one caller must not survive content dedup across caller contexts")
+	require.Equal(t, model.TerraformCoverageUnproven, synthetic[0].TerraformFacts.Coverage)
+	require.Equal(t, []string{"shared_evaluation_context"}, synthetic[0].TerraformFacts.Reasons)
 }

@@ -368,6 +368,9 @@ type FileMetadata struct {
 	// written label and HCL instance suffix.
 	TerraformInstances map[TerraformInstanceKey]TerraformInstance  `json:"-"`
 	TerraformOverrides map[TerraformBlock]*TerraformOverrideSource `json:"-"`
+	// TerraformFacts are additive evaluator facts kept beside, never inside,
+	// the legacy OPA document.
+	TerraformFacts *TerraformDocumentFacts `json:"-"`
 	// Platform is the lowercased platform the file was classified as (e.g.
 	// "ansible", "kubernetes", "terraform"); "" when undetermined. Used by the
 	// engine to evaluate each query only against documents of its own platform.

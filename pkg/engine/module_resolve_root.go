@@ -21,6 +21,7 @@ type rootDocumentResources struct {
 	resources map[string]map[string]interface{}
 	data      map[string]map[string]interface{}
 	instances map[model.TerraformInstanceKey]model.TerraformInstance
+	facts     *model.TerraformDocumentFacts
 }
 
 func overlayRootResources(doc map[string]interface{}, projection *rootDocumentResources) {
@@ -70,6 +71,12 @@ func (m *rootMerge) addRootResources(resources []tfeval.ResolvedResource) int {
 				data:      make(map[string]map[string]interface{}),
 				instances: make(map[model.TerraformInstanceKey]model.TerraformInstance),
 			}
+			if m.factsEnabled {
+				projection.facts = &model.TerraformDocumentFacts{
+					Platform: model.TerraformFactsPlatform,
+					Coverage: model.TerraformCoverageUnproven,
+				}
+			}
 			m.rootResources[fm.ID] = projection
 		}
 		kind := blockKind(r)
@@ -82,13 +89,117 @@ func (m *rootMerge) addRootResources(resources []tfeval.ResolvedResource) int {
 			byName = make(map[string]interface{})
 			section[typ] = byName
 		}
-		byName[r.Name] = tfeval.AttributesToDocumentWithContext(m.ctx, r)
+		var valueFacts model.TerraformValueFacts
+		byName[r.Name], valueFacts = resolvedResourceDocument(m.ctx, r, m.factsEnabled)
+		if m.factsEnabled {
+			projection.facts.Subjects = append(projection.facts.Subjects,
+				terraformResourceSubjectFacts(r, fm.ID, kind, r.Name, valueFacts))
+		}
 		base := tfeval.ResourceBaseName(r.Name)
 		projection.instances[model.TerraformInstanceKey{Kind: rootSectionKind(r), Type: r.Type, Name: r.Name}] =
 			model.TerraformInstance{Label: base, Suffix: strings.TrimPrefix(r.Name, base)}
 		count++
 	}
 	return count
+}
+
+func terraformResourceSubjectFacts(
+	r *tfeval.ResolvedResource,
+	sourceID, kind, projectedName string,
+	valueFacts model.TerraformValueFacts,
+) model.TerraformSubjectFacts {
+	_, address, addressComplete := r.PartialAddress()
+	instanceSet := model.TerraformCompletenessUnproven
+	if r.InstanceSetComplete {
+		instanceSet = model.TerraformCompletenessComplete
+	}
+	return model.TerraformSubjectFacts{
+		SourceDocumentID: sourceID,
+		Path:             terraformSubjectPath(rootKindForBlock(kind), strings.TrimPrefix(kind, dataTypePrefix), projectedName),
+		Address:          address, AddressComplete: addressComplete,
+		InstanceSet: instanceSet, Values: valueFacts.Values, ValuesTruncated: valueFacts.Truncated,
+	}
+}
+
+func terraformSubjectPath(kind, typ, name string) model.TerraformFactPath {
+	return model.TerraformFactPath{
+		model.TerraformKeySegment(kind),
+		model.TerraformKeySegment(typ),
+		model.TerraformKeySegment(name),
+	}
+}
+
+func documentFactCoverage(
+	doc map[string]interface{}, subjects []model.TerraformSubjectFacts,
+) (coverage model.TerraformFactCoverage, reasons []string) {
+	keys, ok := documentSubjectKeys(doc)
+	if !ok {
+		return model.TerraformCoverageUnproven, []string{"document_subject_shape_unknown"}
+	}
+	if len(keys) == 0 {
+		return model.TerraformCoverageUnproven, []string{"no_subjects_emitted"}
+	}
+	factKeys, ok := factSubjectKeys(subjects)
+	if !ok {
+		return model.TerraformCoverageUnproven, []string{"fact_subject_mapping_unproven"}
+	}
+	return compareFactSubjectCoverage(keys, factKeys)
+}
+
+type factSubjectKey struct{ kind, typ, name string }
+
+func documentSubjectKeys(doc map[string]interface{}) (map[factSubjectKey]bool, bool) {
+	keys := make(map[factSubjectKey]bool)
+	for _, section := range []string{"resource", "data"} {
+		byType, ok := asStringMap(doc[section])
+		if !ok {
+			if doc[section] != nil {
+				return nil, false
+			}
+			continue
+		}
+		for typ, rawNames := range byType {
+			names, ok := asStringMap(rawNames)
+			if !ok {
+				return nil, false
+			}
+			for name := range names {
+				keys[factSubjectKey{section, typ, name}] = true
+			}
+		}
+	}
+	return keys, true
+}
+
+func factSubjectKeys(subjects []model.TerraformSubjectFacts) (map[factSubjectKey]bool, bool) {
+	factKeys := make(map[factSubjectKey]bool, len(subjects))
+	for _, subject := range subjects {
+		if len(subject.Path) != 3 || subject.Path[0].IsIndex || subject.Path[1].IsIndex || subject.Path[2].IsIndex {
+			return nil, false
+		}
+		key := factSubjectKey{subject.Path[0].Key, subject.Path[1].Key, subject.Path[2].Key}
+		if factKeys[key] {
+			return nil, false
+		}
+		factKeys[key] = true
+	}
+	return factKeys, true
+}
+
+func compareFactSubjectCoverage(
+	keys, factKeys map[factSubjectKey]bool,
+) (coverage model.TerraformFactCoverage, reasons []string) {
+	for key := range keys {
+		if !factKeys[key] {
+			return model.TerraformCoverageIncomplete, []string{"document_subject_without_fact"}
+		}
+	}
+	for key := range factKeys {
+		if !keys[key] {
+			return model.TerraformCoverageIncomplete, []string{"fact_subject_not_in_document"}
+		}
+	}
+	return model.TerraformCoverageComplete, nil
 }
 
 func rootSectionKind(r *tfeval.ResolvedResource) string {

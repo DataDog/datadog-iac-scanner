@@ -70,6 +70,86 @@ datadog-iac-scanner scan -p REPODIR -o OUTPUTDIR -q QUERYDIR1 -q QUERYDIR2
 
 Run `datadog-iac-scanner scan --help` to see all available flags.
 
+### Additive Terraform evaluator facts
+
+Terraform rules that need evaluator state can read the optional sidecar at
+`input._dd.documents[document_id]`. The key is the same `id` used by the
+corresponding entry in `input.document`; the sidecar does not change that
+document. Each document fact reports coverage for represented Terraform
+resource and data subjects only; `complete` does not prove that no other
+subject exists outside those entries. A subject's `source_document_id` points
+to the original HCL document, which can differ from the evaluated `document_id`
+for a module document. Paths are arrays of strings (object keys) and integers
+(collection indices). A sidecar entry has this shape:
+
+```json
+{
+  "platform": "terraform",
+  "coverage": "complete",
+  "subjects": [{
+    "source_document_id": "tf-root-id",
+    "path": ["resource", "aws_s3_bucket", "bucket"],
+    "address": "aws_s3_bucket.bucket",
+    "address_complete": true,
+    "instance_set": "complete",
+    "values": [{
+      "path": ["tags", "team"],
+      "native_state": "known",
+      "presentation": "native",
+      "children": "unknown"
+    }]
+  }]
+}
+```
+
+A rule can inspect facts independently of the legacy document, for example:
+
+```rego
+has_unknown_value if {
+  some document_id
+  facts := input._dd.documents[document_id]
+  some subject in facts.subjects
+  some value in subject.values
+  value.native_state == "unknown"
+}
+```
+
+| Field | Values | Meaning |
+|---|---|---|
+| `coverage`, `instance_set` | `complete`, `incomplete`, `unproven` | Completeness of facts for represented subjects in this OPA document, or completeness of that subject's instance set. `complete` does not establish that no other resource or data block exists outside the document. |
+| `platform` | `terraform` | The platform whose evaluator facts are represented by this entry. |
+| `reasons` | optional strings | Why coverage was reduced. Current reasons include `facts_truncated`, `shared_evaluation_context`, `document_subject_shape_unknown`, `no_subjects_emitted`, `fact_subject_mapping_unproven`, `document_subject_without_fact`, and `fact_subject_not_in_document`. |
+| `source_document_id`, `path` | string; mixed string/integer array | Original source document ID and the subject/value location in the legacy document shape. |
+| `address` | optional string | Evaluated Terraform subject address. Its completeness is reported separately. |
+| `address_complete` | `true`, `false` | Whether the subject address is fully known. This is independent of `instance_set`. |
+| `values` | array of value facts | Native state, presentation, child state, and typed path for extracted values; the array may be partial when truncated. |
+| `native_state` | `known`, `null`, `unknown`, `partial` | Evaluator state before legacy document presentation. |
+| `presentation` | `native`, `adapted`, `managed_reference`, `source_expression`, `unknown_placeholder`, `unproven` | How the existing document presents that value. Read this with `native_state`; `adapted` means legacy projection changed structure/content or the value contains non-native descendants. `children` independently reports nested membership. `unproven` means presentation fidelity could not be established, for example after extraction truncation. |
+| `children` | `closed`, `open`, `unknown` | Whether nested child paths are known from the evaluated/configuration shape. `closed` does not include provider defaults. |
+| `values_truncated` | `true` when present | Fact extraction hit its depth or node budget; the subject's `values` list may be partial. |
+
+Fact extraction is bounded to 64 levels and 8192 value records per subject.
+Truncated document coverage includes the `facts_truncated` reason. Missing facts,
+including absent document or value entries, mean unknown rather than proof that
+the configuration has no such resource or value.
+
+Fallback, plan-derived, external, or otherwise partial scopes may have no native
+facts or may be marked `unproven`/`incomplete`. A synthetic module document
+shared across caller contexts omits context-specific subjects and is marked
+`unproven`. These states must remain unknown to a consuming rule.
+
+The sidecar copies no attribute values or source expressions, though object
+keys and evaluated instance keys/addresses can appear in paths. The facts do not identify
+whether a value came from a variable default or whether it was marked
+sensitive; do not infer either from these fields. The legacy document and
+finding interface is retained. Fact extraction is enabled when a selected
+Terraform or common rule or loaded library may read input outside
+`input.document`; imported input aliases and whole-input references are treated
+conservatively. Facts-aware scans evaluate resource and data subjects
+conservatively rather than using type or subset shortcuts. When all selected
+Terraform/common rules and loaded libraries only read `input.document`, no
+native fact projections are allocated.
+
 ### CI/CD source parsing
 
 Canonical GitHub workflow files under `.github/workflows/` and GitLab entrypoints

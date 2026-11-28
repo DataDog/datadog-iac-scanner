@@ -81,6 +81,10 @@ type ResolvedResource struct {
 
 	// Data marks an instance of a data block rather than a resource.
 	Data bool
+	// InstanceSetComplete is true when evaluation enumerated every instance of
+	// this declaration in the current module context. It says nothing about
+	// other declarations or module callers.
+	InstanceSetComplete bool
 }
 
 // CallSite records one hop in a module call chain.
@@ -1153,12 +1157,24 @@ func (e *Evaluator) expandBlock(
 	}
 
 	if out, ok := e.expandCountInstances(ctx, rb, resName, evalCtx, makeOne, views); ok {
-		return out
+		return invalidateAmbiguousExpansion(out, rb)
 	}
 	if out, ok := e.expandForEachInstances(ctx, rb, resName, evalCtx, makeOne, views); ok {
-		return out
+		return invalidateAmbiguousExpansion(out, rb)
 	}
-	return []ResolvedResource{makeOne(resName, evalCtx)}
+	resource := makeOne(resName, evalCtx)
+	resource.InstanceSetComplete = rb.Body.Attributes[metaArgCount] == nil && rb.Body.Attributes[metaArgForEach] == nil
+	return []ResolvedResource{resource}
+}
+
+func invalidateAmbiguousExpansion(resources []ResolvedResource, block *hclsyntax.Block) []ResolvedResource {
+	if block.Body.Attributes[metaArgCount] == nil || block.Body.Attributes[metaArgForEach] == nil {
+		return resources
+	}
+	for i := range resources {
+		resources[i].InstanceSetComplete = false
+	}
+	return resources
 }
 
 func (e *Evaluator) expandCountInstances(
@@ -1198,6 +1214,11 @@ func (e *Evaluator) expandCountInstances(
 			resource := makeOne(fmt.Sprintf("%s[%d]", resName, i), child)
 			resource.InstanceKey = cty.NumberIntVal(int64(i))
 			out = append(out, resource)
+		}
+		if ctx.Err() == nil {
+			for i := range out {
+				out[i].InstanceSetComplete = true
+			}
 		}
 		return out, true
 	}
@@ -1264,6 +1285,7 @@ func (e *Evaluator) expandKnownForEachResources(
 	// Grown with append, never sized from the collection: an uncapped for_each
 	// from an untrusted repository must not allocate before the scan can stop.
 	out := make([]ResolvedResource, 0)
+	keysComplete := true
 	for it := fv.ElementIterator(); it.Next(); {
 		if ctx.Err() != nil {
 			break
@@ -1272,8 +1294,15 @@ func (e *Evaluator) expandKnownForEachResources(
 		keyStr := "__"
 		if s, ok := ctyutil.ConcreteString(k); ok {
 			keyStr = s
+		} else {
+			keysComplete = false
 		}
 		out = append(out, makeForEachResource(resName, keyStr, k, kv, evalCtx, makeOne))
+	}
+	if keysComplete && ctx.Err() == nil {
+		for i := range out {
+			out[i].InstanceSetComplete = true
+		}
 	}
 	return out
 }

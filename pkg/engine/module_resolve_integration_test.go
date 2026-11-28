@@ -246,7 +246,7 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 
 	var logs bytes.Buffer
 	ctx := zerolog.New(&logs).Level(zerolog.InfoLevel).WithContext(context.Background())
-	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...), nil)
+	ins.instantiateLocalModules(ctx, files, ruleTargetedResourceTypes(queries, ins.terraformRuleLibraries()...), nil, false)
 
 	out := logs.String()
 	if !strings.Contains(out, "tfeval: module instantiation summary") {
@@ -1167,7 +1167,8 @@ DatadogPolicy contains result if {
 			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
 				queries: []model.QueryMetadata{{Query: "data", Content: rule, Platform: "terraform", Aggregation: 1}},
 			})
-			vulns, err := ins.Inspect(t.Context(), "test", parseTerraform(t, path), []string{"terraform"})
+			files := parseTerraform(t, path)
+			vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
 			require.NoError(t, err)
 			require.Empty(t, ins.GetFailedQueries())
 			require.Len(t, vulns, tc.want)
@@ -1441,6 +1442,106 @@ DatadogPolicy contains result if {
 				require.Equal(t, writtenID, vulns[0].FileID, "root findings retain the original document identity")
 				require.Empty(t, vulns[0].ModuleCallChain)
 			}
+		})
+	}
+}
+
+func TestInstantiateLocalModules_CapturesRootFactsOnlyWhenRequested(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, root, "main.tf", `resource "aws_s3_bucket" "sibling" {
+  bucket = "sibling"
+  acl = "private"
+}
+
+resource "aws_s3_bucket" "b" {
+  count = 2
+  bucket = "counted"
+  acl = count.index == 1 ? "public-read" : "private"
+}
+
+`)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder})
+
+	files := parseTerraform(t, path)
+	ins.instantiateLocalModules(t.Context(), files, nil, nil, true)
+	require.Len(t, files, 1)
+	require.NotNil(t, files[0].TerraformFacts)
+	facts := files[0].TerraformFacts
+	require.Equal(t, model.TerraformFactsPlatform, facts.Platform)
+	require.Equal(t, model.TerraformCoverageComplete, facts.Coverage)
+	require.Empty(t, facts.Reasons)
+	require.Len(t, facts.Subjects, 3)
+	var singleton, indexed int
+	for _, subject := range facts.Subjects {
+		if subject.Path[2].Key == "sibling" {
+			singleton++
+			require.Equal(t, model.TerraformCompletenessComplete, subject.InstanceSet)
+			continue
+		}
+		indexed++
+		require.Equal(t, model.TerraformCompletenessComplete, subject.InstanceSet)
+		require.True(t, subject.AddressComplete)
+	}
+	require.Equal(t, 1, singleton)
+	require.Equal(t, 2, indexed)
+
+	legacyFiles := parseTerraform(t, path)
+	ins.instantiateLocalModules(t.Context(), legacyFiles, nil, nil, false)
+	require.Nil(t, legacyFiles[0].TerraformFacts, "legacy-only projection must not allocate evaluator facts")
+	legacyFiles[0].TerraformFacts = &model.TerraformDocumentFacts{Platform: "terraform", Coverage: model.TerraformCoverageComplete}
+	ins.instantiateLocalModules(t.Context(), legacyFiles, &ruleTargets{types: map[string]bool{"google_compute_instance": true}}, nil, true)
+	require.Nil(t, legacyFiles[0].TerraformFacts, "a failed or skipped projection must clear facts from an earlier scan")
+}
+
+func TestInspect_TerraformFactsQuerySeesRenderedStates(t *testing.T) {
+	for _, inventoryEnabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("inventory_%t", inventoryEnabled), func(t *testing.T) {
+			root := t.TempDir()
+			path := writeFile(t, root, "main.tf", `variable "values" {}
+resource "aws_s3_bucket" "b" {
+  acl = [for value in var.values : value if value != ""]
+  encoded = "jsonencode({foo = \"bar\"})"
+}
+`)
+			rule := `package datadog
+DatadogPolicy contains result if {
+  some doc in input.document
+  facts := input._dd.documents[doc.id]
+  some subject in facts.subjects
+  facts.coverage == "complete"
+  subject.path[0] == "resource"
+  subject.instance_set == "complete"
+  some value in subject.values
+  attribute := value.path[0]
+  expected := {"acl": {"native_state": "unknown", "presentation": "source_expression"}, "encoded": {"native_state": "known", "presentation": "adapted"}}
+  value.native_state == expected[attribute].native_state
+  value.presentation == expected[attribute].presentation
+  resourceType := subject.path[1]
+  resourceName := subject.path[2]
+  searchKey := sprintf("%s[%s].%s", [resourceType, resourceName, attribute])
+  result := {"documentId": doc.id, "resourceType": resourceType, "resourceName": resourceName, "searchKey": searchKey}
+}`
+			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+				queries: []model.QueryMetadata{{Query: "facts-placeholder", Content: rule, Platform: "terraform", Aggregation: 1}},
+			})
+			if inventoryEnabled {
+				ins.SetInventory(&collectingSink{})
+			}
+			files := parseTerraform(t, path)
+			for _, file := range files {
+				file.Platform = "terraform"
+			}
+			vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, 2)
+			lines := make(map[int]bool, len(vulns))
+			for _, vuln := range vulns {
+				require.Equal(t, "aws_s3_bucket", vuln.ResourceType)
+				require.Equal(t, "b", vuln.ResourceName)
+				lines[vuln.Line] = true
+			}
+			require.Equal(t, map[int]bool{3: true, 4: true}, lines)
 		})
 	}
 }

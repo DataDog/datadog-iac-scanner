@@ -81,14 +81,22 @@ func (c *Inspector) instantiateLocalModules(
 	files model.FileMetadatas,
 	targets *ruleTargets,
 	occurrences documentOccurrenceIndex,
+	factsEnabled bool,
 ) (
 	docs []model.Document,
 	syntheticFiles []*model.FileMetadata,
 	extras map[string][]extraCallerInfo,
 	moduleFiles map[string]*moduleFileCalls,
 ) {
+	// Facts are scan-scoped sidecars. Clear reused metadata before any failure
+	// boundary so a prior scan's proof cannot leak into this payload.
+	for _, f := range files {
+		if f != nil {
+			f.TerraformFacts = nil
+		}
+	}
 	resolver := c.buildRemoteResolver()
-	res := c.resolveModulesSafely(ctx, files, resolver, targets, occurrences)
+	res := c.resolveModulesSafely(ctx, files, resolver, targets, occurrences, factsEnabled)
 	contextLogger := logger.FromContext(ctx)
 	logModuleInstantiationSummary(&contextLogger, &res)
 	if !res.ok {
@@ -110,6 +118,15 @@ func (c *Inspector) instantiateLocalModules(
 			if projection := res.rootResources[f.ID]; projection != nil {
 				overlayRootResources(f.Document, projection)
 				f.TerraformInstances = projection.instances
+				if factsEnabled {
+					projection.facts.Coverage, projection.facts.Reasons = documentFactCoverage(f.Document, projection.facts.Subjects)
+					if subjectsTruncated(projection.facts.Subjects) {
+						projection.facts.Coverage = model.TerraformCoverageIncomplete
+						projection.facts.Reasons = appendFactReason(projection.facts.Reasons, "facts_truncated")
+					}
+					f.TerraformFacts = projection.facts
+					sortTerraformFactSubjects(f.TerraformFacts.Subjects)
+				}
 			}
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
@@ -170,6 +187,46 @@ func blockKind(r *tfeval.ResolvedResource) string {
 		return dataTypePrefix + r.Type
 	}
 	return r.Type
+}
+
+func rootKindForBlock(kind string) string {
+	if strings.HasPrefix(kind, dataTypePrefix) {
+		return dataRoot
+	}
+	return tfSectionResource
+}
+
+func appendFactReason(reasons []string, reason string) []string {
+	for _, existing := range reasons {
+		if existing == reason {
+			return reasons
+		}
+	}
+	reasons = append(reasons, reason)
+	sort.Strings(reasons)
+	return reasons
+}
+
+func subjectsTruncated(subjects []model.TerraformSubjectFacts) bool {
+	for _, subject := range subjects {
+		if subject.ValuesTruncated {
+			return true
+		}
+	}
+	return false
+}
+
+func sortTerraformFactSubjects(subjects []model.TerraformSubjectFacts) {
+	sort.Slice(subjects, func(i, j int) bool {
+		left, right := model.SourcePath(subjects[i].Path).DisplayKey(), model.SourcePath(subjects[j].Path).DisplayKey()
+		if left != right {
+			return left < right
+		}
+		if subjects[i].SourceDocumentID != subjects[j].SourceDocumentID {
+			return subjects[i].SourceDocumentID < subjects[j].SourceDocumentID
+		}
+		return subjects[i].Address < subjects[j].Address
+	})
 }
 
 // instantiatedIndex records which resource and data blocks of a file were
@@ -356,6 +413,7 @@ func (c *Inspector) resolveModulesSafely(
 	resolver tfeval.RemoteResolver,
 	targets *ruleTargets,
 	occurrences documentOccurrenceIndex,
+	factsEnabled bool,
 ) (res moduleResolutionResult) {
 	var inv *terraformInventory
 	defer func() {
@@ -374,7 +432,7 @@ func (c *Inspector) resolveModulesSafely(
 	inv = c.newTerraformInventory(lookup, externalModuleFile, occurrences)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
-		externalModuleFile, inv, c.terraformRootVars,
+		externalModuleFile, inv, c.terraformRootVars, factsEnabled,
 	)
 }
 
@@ -405,6 +463,8 @@ func evaluateRootModules(
 	moduleCalls *moduleCallIndex,
 	inv *terraformInventory,
 	overrides *terraformOverrides,
+	factsEnabled bool,
+	factFiles map[string]*model.FileMetadata,
 ) {
 	m := &rootMerge{
 		ctx: ctx, evaluator: evaluator, filesByDir: filesByDir, repoPath: repoPath, resolver: resolver,
@@ -413,7 +473,7 @@ func evaluateRootModules(
 		rootResources:    rootResources,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
-		overrides: overrides,
+		overrides: overrides, factsEnabled: factsEnabled, factFiles: factFiles,
 	}
 	next := 0
 	if workers := min(rootEvalWorkers, runtime.GOMAXPROCS(0), len(roots)); workers > 1 {
@@ -459,6 +519,8 @@ type rootMerge struct {
 	moduleCalls          *moduleCallIndex
 	inventory            *terraformInventory
 	overrides            *terraformOverrides
+	factsEnabled         bool
+	factFiles            map[string]*model.FileMetadata
 }
 
 func (m *rootMerge) merge(dir string, result *rootResult) {
@@ -514,7 +576,7 @@ func (m *rootMerge) merge(dir string, result *rootResult) {
 	}
 	docs, syn, count := instantiatedDocs(
 		m.ctx, result.resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup,
-		attributions, occurrences, occurrenceDocuments)
+		attributions, occurrences, occurrenceDocuments, m.factsEnabled, m.factFiles)
 	m.moduleCalls.record(result.instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
@@ -709,6 +771,7 @@ func resolveModuleDocuments(
 	externalModuleFile func(string) bool,
 	inv *terraformInventory,
 	rootVars map[string]cty.Value,
+	factsEnabled bool,
 ) moduleResolutionResult {
 	externalModuleFile = externalModuleFiles(repoPath, externalModuleFile)
 	base, err := terraformEvaluationBase(repoPath, fsys)
@@ -757,6 +820,7 @@ func resolveModuleDocuments(
 	// seen maps a content-based key to the primary docID so duplicate callers can
 	// be recorded in extras rather than emitted as separate OPA documents.
 	seen := make(map[docContentKey]string)
+	factFiles := newTerraformFactFileIndex(factsEnabled)
 	extras := make(map[string][]extraCallerInfo)
 	instantiated := make(instantiatedIndex)
 	rootResources := make(rootResourceProjection)
@@ -779,7 +843,7 @@ func resolveModuleDocuments(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
 		byAbsPath, seen, extras, instantiated, rootResources,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
-		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv, overrides,
+		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv, overrides, factsEnabled, factFiles,
 	)
 	if ctx.Err() != nil {
 		// The scan is stopping: report no resolution rather than one whose
@@ -844,6 +908,13 @@ func resolveModuleDocuments(
 	}
 	overrides.prepare(ctx, evaluator, &result, actualCalledDirs)
 	return result
+}
+
+func newTerraformFactFileIndex(enabled bool) map[string]*model.FileMetadata {
+	if !enabled {
+		return nil
+	}
+	return make(map[string]*model.FileMetadata)
 }
 
 // terraformEvaluationBase aligns relative disk paths with tfeval's absolute
@@ -1002,6 +1073,7 @@ type docGroup struct {
 	layer         int
 	entries       []instantiatedResource
 	attributions  map[model.TerraformBlock]*model.ModuleAttribution
+	facts         []model.TerraformSubjectFacts
 }
 
 func (g *docGroup) documentID() string {
@@ -1047,6 +1119,8 @@ func instantiatedDocs(
 	attributions *moduleAttributionCache,
 	occurrences map[*tfeval.ResolvedResource]*model.ResourceOccurrence,
 	occurrenceDocuments documentOccurrenceIndex,
+	factsEnabled bool,
+	factFiles map[string]*model.FileMetadata,
 ) (docs []model.Document, synthetic []*model.FileMetadata, resourceCount int) {
 	groups := make(map[string]*docGroup)
 	var order []string
@@ -1076,7 +1150,7 @@ func instantiatedDocs(
 		}
 		cck := callChainKey(r, repoPath)
 		base := tfeval.ResourceBaseName(r.Name)
-		attrs := tfeval.AttributesToDocumentWithContext(ctx, r)
+		attrs, valueFacts := resolvedResourceDocument(ctx, r, factsEnabled)
 		entry := instantiatedResource{
 			typ:       kind,
 			baseName:  base,
@@ -1103,6 +1177,9 @@ func instantiatedDocs(
 		g.attributions[moduleAttributionKey(kind, base)] =
 			attributions.attribution(r, repoPath, lookup)
 		g.entries = append(g.entries, entry)
+		if factsEnabled {
+			g.facts = append(g.facts, terraformResourceSubjectFacts(r, fm.ID, kind, base, valueFacts))
+		}
 		if occurrence := occurrences[r]; occurrence != nil {
 			// Deduplicated documents still need their own associations for
 			// findings cloned onto their callers.
@@ -1117,50 +1194,101 @@ func instantiatedDocs(
 
 	for _, key := range order {
 		g := groups[key]
-		docID := g.documentID()
-
-		contentKey := groupContentKey(g)
-		if primaryDocID, dup := seen[contentKey]; dup {
-			extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
-				callChain:    g.callChain,
-				docID:        docID,
-				attributions: cloneModuleAttributions(g.attributions),
-			})
-			continue
+		doc, file, emitted := emitInstantiatedGroup(g, seen, extras, factsEnabled, factFiles)
+		if emitted {
+			docs = append(docs, doc)
+			synthetic = append(synthetic, file)
 		}
-		seen[contentKey] = docID
-
-		resource := make(map[string]interface{})
-		var data map[string]interface{}
-		for i := range g.entries {
-			e := &g.entries[i]
-			blocks, typ := resource, e.typ
-			if dataType, ok := strings.CutPrefix(e.typ, dataTypePrefix); ok {
-				if data == nil {
-					data = make(map[string]interface{})
-				}
-				blocks, typ = data, dataType
-			}
-			byName, ok := blocks[typ].(map[string]interface{})
-			if !ok {
-				byName = make(map[string]interface{})
-				blocks[typ] = byName
-			}
-			byName[e.baseName] = e.attrs
-		}
-
-		doc := model.Document{
-			"id":       docID,
-			"file":     g.fm.FilePath,
-			"resource": resource,
-		}
-		if data != nil {
-			doc["data"] = data
-		}
-		docs = append(docs, doc)
-		synthetic = append(synthetic, newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions))
 	}
 	return docs, synthetic, resourceCount
+}
+
+func emitInstantiatedGroup(
+	g *docGroup,
+	seen map[docContentKey]string,
+	extras map[string][]extraCallerInfo,
+	factsEnabled bool,
+	factFiles map[string]*model.FileMetadata,
+) (model.Document, *model.FileMetadata, bool) {
+	docID := g.documentID()
+	contentKey := groupContentKey(g)
+	if primaryDocID, duplicate := seen[contentKey]; duplicate {
+		if factsEnabled {
+			invalidateSharedContextFacts(factFiles, primaryDocID)
+		}
+		extras[primaryDocID] = append(extras[primaryDocID], extraCallerInfo{
+			callChain: g.callChain, docID: docID, attributions: cloneModuleAttributions(g.attributions),
+		})
+		return nil, nil, false
+	}
+	seen[contentKey] = docID
+	resource, data := instantiatedGroupSections(g)
+	doc := model.Document{"id": docID, "file": g.fm.FilePath, "resource": resource}
+	if data != nil {
+		doc["data"] = data
+	}
+	file := newInstanceFileMetadata(g.fm, docID, g.callChain, g.attributions)
+	if factsEnabled {
+		file.TerraformFacts = moduleDocumentFacts(doc, g.facts)
+		factFiles[docID] = file
+	}
+	return doc, file, true
+}
+
+func instantiatedGroupSections(g *docGroup) (resource, data map[string]interface{}) {
+	resource = make(map[string]interface{})
+	for i := range g.entries {
+		entry := &g.entries[i]
+		blocks, typ := resource, entry.typ
+		if dataType, ok := strings.CutPrefix(entry.typ, dataTypePrefix); ok {
+			if data == nil {
+				data = make(map[string]interface{})
+			}
+			blocks, typ = data, dataType
+		}
+		byName, ok := blocks[typ].(map[string]interface{})
+		if !ok {
+			byName = make(map[string]interface{})
+			blocks[typ] = byName
+		}
+		byName[entry.baseName] = entry.attrs
+	}
+	return resource, data
+}
+
+func resolvedResourceDocument(
+	ctx context.Context,
+	r *tfeval.ResolvedResource,
+	factsEnabled bool,
+) (map[string]interface{}, model.TerraformValueFacts) {
+	if !factsEnabled {
+		return tfeval.AttributesToDocumentWithContext(ctx, r), model.TerraformValueFacts{}
+	}
+	return tfeval.AttributesToDocumentWithFacts(ctx, r)
+}
+
+func invalidateSharedContextFacts(factFiles map[string]*model.FileMetadata, primaryDocID string) {
+	if primary := factFiles[primaryDocID]; primary != nil && primary.TerraformFacts != nil {
+		primary.TerraformFacts.Subjects = nil
+		primary.TerraformFacts.Coverage = model.TerraformCoverageUnproven
+		primary.TerraformFacts.Reasons = appendFactReason(primary.TerraformFacts.Reasons, "shared_evaluation_context")
+	}
+}
+
+func moduleDocumentFacts(doc model.Document, subjects []model.TerraformSubjectFacts) *model.TerraformDocumentFacts {
+	sortTerraformFactSubjects(subjects)
+	coverage, reasons := documentFactCoverage(map[string]interface{}(doc), subjects)
+	facts := &model.TerraformDocumentFacts{
+		Platform: model.TerraformFactsPlatform,
+		Coverage: coverage,
+		Reasons:  reasons,
+		Subjects: subjects,
+	}
+	if subjectsTruncated(subjects) {
+		facts.Coverage = model.TerraformCoverageIncomplete
+		facts.Reasons = appendFactReason(facts.Reasons, "facts_truncated")
+	}
+	return facts
 }
 
 // groupContentKey identifies a document by the module call address it belongs
@@ -1244,6 +1372,7 @@ func newInstanceFileMetadata(
 	clone := fm.ShallowCopy()
 	clone.ID = id
 	clone.Document = model.Document{}
+	clone.TerraformFacts = nil
 	clone.ModuleCallChain = callChain
 	clone.ModuleAttributions = cloneModuleAttributions(attributions)
 	if fm.LineInfoDocument != nil {

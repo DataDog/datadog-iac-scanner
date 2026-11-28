@@ -100,6 +100,9 @@ type QueryLoader struct {
 	// single-document rule subsetting remains provably sound).
 	commonReadsInput    bool
 	genericReadsInput   map[string]bool
+	commonNeedsFacts    bool
+	genericNeedsFacts   map[string]bool
+	queryNeedsFacts     map[terraformFactsQueryKey]bool
 	genericSubtreeFuncs map[string]map[string]map[string]bool
 }
 
@@ -612,8 +615,12 @@ func (c *Inspector) Inspect(
 	platforms []string) ([]model.Vulnerability, error) {
 	contextLogger := logger.FromContext(ctx)
 	contextLogger.Debug().Msg("engine.Inspect()")
+	// Facts belong to one evaluation pass. Clear them even when this scan skips
+	// module instantiation, so reused FileMetadata cannot leak a prior sidecar.
+	clearTerraformFacts(files)
 
 	queries := c.getQueriesByPlat(platforms)
+	factsEnabled := c.QueryLoader.TerraformFactsRequested(queries, includesTerraform(platforms))
 	occurrences := c.inventoryDocuments(ctx, files)
 
 	var moduleDocs []model.Document
@@ -621,8 +628,8 @@ func (c *Inspector) Inspect(
 	var moduleFiles map[string]*moduleFileCalls
 	var syntheticFiles []*model.FileMetadata
 	if shouldInstantiateLocalModules(platforms, files) {
-		targets := ruleTargetedResourceTypes(queries, c.terraformRuleLibraries()...)
-		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets, occurrences)
+		targets := terraformRuleTargets(queries, factsEnabled, c.terraformRuleLibraries()...)
+		moduleDocs, syntheticFiles, moduleExtras, moduleFiles = c.instantiateLocalModules(ctx, files, targets, occurrences, factsEnabled)
 		// A canceled scan must not scan the modules that were evaluated only in
 		// part; instantiateLocalModules mutates nothing in that case.
 		if err := ctx.Err(); err != nil {
@@ -667,7 +674,7 @@ func (c *Inspector) Inspect(
 	// payload partitioning.
 	filesMap := files.ToMap()
 
-	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries)
+	payloads, err := c.buildPlatformPayloads(ctx, filesMap, combinedFiles.Documents, moduleDocs, queries, factsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -746,6 +753,14 @@ func (c *Inspector) Inspect(
 
 	c.releasePostEvalFileData(filesMap)
 	return vulnerabilities, nil
+}
+
+func clearTerraformFacts(files model.FileMetadatas) {
+	for _, file := range files {
+		if file != nil {
+			file.TerraformFacts = nil
+		}
+	}
 }
 
 // suppressAtCallSite honors the caller file's disable command and ignore
@@ -1946,6 +1961,7 @@ func (c *Inspector) buildPlatformPayloads(
 	filesMap map[string]*model.FileMetadata,
 	combinedDocs, moduleDocs []model.Document,
 	queries []model.QueryMetadata,
+	factsEnabled bool,
 ) (platformPayloads, error) {
 	allDocs, bucketsPerDoc, unknownDocs := partitionDocsByPlatform(filesMap, combinedDocs, moduleDocs)
 
@@ -1961,15 +1977,36 @@ func (c *Inspector) buildPlatformPayloads(
 	}
 
 	terms := make([]*ast.Term, len(allDocs))
+	var factsTerms []*ast.Term
+	var docIDs []string
+	if factsEnabled {
+		factsTerms = make([]*ast.Term, len(allDocs))
+		docIDs = make([]string, len(allDocs))
+	}
 	idxBuilder := newDocIndexBuilder(neededPlatforms)
 	cons := newPayloadHashCons()
 	for i, doc := range allDocs {
+		var factsMetadata *model.FileMetadata
+		if factsEnabled {
+			docIDs[i], factsMetadata = terraformFactsForDocument(doc, filesMap)
+		}
 		idxBuilder.addDoc(doc, bucketsPerDoc[i])
 		v, err := c.interfaceToPayloadValue(ctx, doc, cons)
 		if err != nil {
 			return platformPayloads{}, err
 		}
 		terms[i] = ast.NewTerm(v)
+		if factsMetadata != nil {
+			if docMap, ok := doc.(map[string]interface{}); ok {
+				adjustTerraformFactsForPayloadTransform(factsMetadata.TerraformFacts, docMap, cons.jsonencodeCache)
+			}
+			factValue, err := ast.InterfaceToValue(factsMetadata.TerraformFacts)
+			if err != nil {
+				return platformPayloads{}, fmt.Errorf("convert Terraform facts for document %q: %w", docIDs[i], err)
+			}
+			factsTerms[i] = ast.NewTerm(factValue)
+			factsMetadata.TerraformFacts = nil
+		}
 		allDocs[i] = nil
 		if c.releaseDocumentsAfterPayload {
 			releaseDocumentTree(i, filesMap, combinedDocs, moduleDocs)
@@ -1977,6 +2014,9 @@ func (c *Inspector) buildPlatformPayloads(
 	}
 
 	payloads, platformTerms := assemblePlatformPayloads(terms, bucketsPerDoc, unknownDocs, neededPlatforms, needFullPayload)
+	if factsEnabled {
+		payloads = attachTerraformFacts(payloads, factsTerms, docIDs, bucketsPerDoc, unknownDocs, neededPlatforms)
+	}
 	payloads.index = idxBuilder.finish(platformTerms)
 	return payloads, nil
 }
@@ -2049,10 +2089,16 @@ func releaseDocumentTree(
 		if id, ok := combinedDocs[i]["id"].(string); ok {
 			if fm := filesMap[id]; fm != nil {
 				fm.Document = nil
+				fm.TerraformFacts = nil
 			}
 		}
 		combinedDocs[i] = nil
 		return
+	}
+	if id, ok := moduleDocs[i-len(combinedDocs)]["id"].(string); ok {
+		if fm := filesMap[id]; fm != nil {
+			fm.TerraformFacts = nil
+		}
 	}
 	moduleDocs[i-len(combinedDocs)] = nil
 }
@@ -2181,6 +2227,15 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 			lib.LibraryInputData,
 		)
 	}
+	queryNeedsFacts := make(map[terraformFactsQueryKey]bool, len(queries))
+	for i := range queries {
+		query := &queries[i]
+		if canonicalPlatformKey(query.Platform) != platformTerraform && canonicalPlatformKey(query.Platform) != platformCommon {
+			continue
+		}
+		mod, parseErr := parseQueryForPlan(query, i)
+		queryNeedsFacts[terraformFactsKey(query)] = parseErr != nil || moduleNeedsTerraformFacts(mod)
+	}
 
 	return QueryLoader{
 		commonLibrary:       commonLibrary,
@@ -2192,6 +2247,9 @@ func prepareQueries(queries []model.QueryMetadata, commonLibrary source.RegoLibr
 		platformKeyBases:    platformKeyBases,
 		commonReadsInput:    moduleReadsInput(parsedCommon),
 		genericReadsInput:   genericReadsInput,
+		commonNeedsFacts:    moduleNeedsTerraformFacts(parsedCommon),
+		genericNeedsFacts:   terraformLibraryFactsNeeds(parsedGeneric),
+		queryNeedsFacts:     queryNeedsFacts,
 		genericSubtreeFuncs: genericSubtreeFuncs,
 	}, nil
 }
@@ -2365,6 +2423,7 @@ var pkgDatadogDecl = regexp.MustCompile(`(?m)^(\s*)package\s+datadog\b`)
 type ruleExecPlan struct {
 	mod           *ast.Module
 	parseFailed   bool
+	usesTFacts    bool
 	isPartialSet  bool
 	subsetPayload ast.Value
 	subsetKey     string
@@ -2387,15 +2446,19 @@ func (q *QueryLoader) planQueries(
 	_ = utils.ForEach(ctx, queries, utils.PoolOptions{Workers: numWorkers, CPUBound: true},
 		func(_ context.Context, _ model.QueryMetadata, i int) error {
 			query := &queries[i]
-			renamed := pkgDatadogDecl.ReplaceAllString(query.Content, fmt.Sprintf("${1}package datadog.q%d", i))
-			mod, parseErr := ast.ParseModuleWithOpts(query.Query, renamed,
-				ast.ParserOptions{RegoVersion: ast.RegoV1})
+			mod, parseErr := parseQueryForPlan(query, i)
 			if parseErr != nil {
 				plans[i].parseFailed = true
+				plans[i].usesTFacts = canonicalPlatformKey(query.Platform) == platformTerraform
 				return nil
 			}
 			plans[i].mod = mod
 			plans[i].isPartialSet = isPartialSetPolicy(mod)
+			plans[i].usesTFacts = canonicalPlatformKey(query.Platform) == platformTerraform &&
+				(q.commonNeedsFacts || q.genericNeedsFacts[query.Platform] || moduleNeedsTerraformFacts(mod))
+			if plans[i].usesTFacts {
+				return nil
+			}
 			if docIdx != nil {
 				libReadsInput := q.commonReadsInput || q.genericReadsInput[query.Platform]
 				filter := analyzeRuleFilter(mod, query.Platform, libReadsInput, q.genericSubtreeFuncs[query.Platform])

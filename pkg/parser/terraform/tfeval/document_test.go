@@ -9,13 +9,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -26,10 +29,13 @@ func TestCtyValueToDocument(t *testing.T) {
 		want  interface{}
 	}{
 		{"string", cty.StringVal("hello"), "hello"},
+		{"placeholder-like string", cty.StringVal(UnknownAttributePlaceholder), UnknownAttributePlaceholder},
+		{"expression-like string", cty.StringVal("${var.value}"), "${var.value}"},
 		{"bool", cty.True, true},
 		{"number", cty.NumberIntVal(42), json.Number("42")},
 		{"null", cty.NullVal(cty.String), nil},
 		{"unknown", cty.UnknownVal(cty.DynamicPseudoType), UnknownAttributePlaceholder},
+		{"nil", cty.NilVal, UnknownAttributePlaceholder},
 		{
 			"list",
 			cty.TupleVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")}),
@@ -50,6 +56,175 @@ func TestCtyValueToDocument(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTerraformValueFactsDescribeNativeStateWithoutValues(t *testing.T) {
+	capsuleType := cty.Capsule("test capsule", reflect.TypeOf(struct{}{}))
+	tests := []struct {
+		name  string
+		value cty.Value
+		state model.TerraformNativeValueState
+		path  model.TerraformFactPath
+	}{
+		{"known", cty.StringVal("secret-literal-291"), model.TerraformNativeKnown, model.TerraformFactPath{model.TerraformKeySegment("value")}},
+		{"placeholder text is still known", cty.StringVal(UnknownAttributePlaceholder), model.TerraformNativeKnown, model.TerraformFactPath{model.TerraformKeySegment("value")}},
+		{"expression text is still known", cty.StringVal("${var.value}"), model.TerraformNativeKnown, model.TerraformFactPath{model.TerraformKeySegment("value")}},
+		{"null", cty.NullVal(cty.String), model.TerraformNativeNull, model.TerraformFactPath{model.TerraformKeySegment("value")}},
+		{"unknown", cty.UnknownVal(cty.String), model.TerraformNativeUnknown, model.TerraformFactPath{model.TerraformKeySegment("value")}},
+		{"partial", cty.ObjectVal(map[string]cty.Value{"known": cty.StringVal("yes"), "unknown": cty.UnknownVal(cty.String)}), model.TerraformNativePartial, model.TerraformFactPath{model.TerraformKeySegment("value")}},
+		{"unsupported capsule", cty.CapsuleVal(capsuleType, &struct{}{}), model.TerraformNativeKnown, model.TerraformFactPath{model.TerraformKeySegment("value")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			facts := &terraformValueFacts{}
+			_ = ctyValueToDocumentWithFacts(tt.value, &attrSource{}, nil, facts, tt.path)
+			if len(facts.values) == 0 || facts.values[0].NativeState != tt.state {
+				t.Fatalf("facts = %#v, want first native state %q", facts.values, tt.state)
+			}
+			if tt.name == "unsupported capsule" && len(facts.values) != 1 {
+				t.Fatalf("unsupported value emitted %d facts at one path, want one", len(facts.values))
+			}
+			encoded, err := json.Marshal(facts.values)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(encoded), "secret-literal-291") {
+				t.Fatalf("facts unexpectedly contain a concrete value: %s", encoded)
+			}
+		})
+	}
+	facts := &terraformValueFacts{}
+	got := ctyValueToDocumentWithFacts(cty.NilVal, &attrSource{}, nil, facts, model.TerraformFactPath{model.TerraformKeySegment("missing")})
+	if got != UnknownAttributePlaceholder || len(facts.values) != 0 {
+		t.Fatalf("NilVal rendered as %#v with facts %#v, want unresolved placeholder and no fact", got, facts.values)
+	}
+}
+
+func TestTerraformValueFactsBudgetTruncatesWithoutChangingDocument(t *testing.T) {
+	wide := make(map[string]cty.Value, maxTerraformFactNodes+1)
+	for i := 0; i < maxTerraformFactNodes+1; i++ {
+		wide[fmt.Sprintf("key-%05d", i)] = cty.StringVal("value")
+	}
+	value := cty.ObjectVal(wide)
+	facts := &terraformValueFacts{values: make([]model.TerraformValueFact, 0, 8)}
+	got := ctyValueToDocumentWithFacts(value, &attrSource{}, nil, facts, model.TerraformFactPath{model.TerraformKeySegment("value")})
+	want := ctyValueToDocument(value, &attrSource{}, nil)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("facts changed rendered document")
+	}
+	if len(facts.values) > maxTerraformFactNodes || !facts.truncated {
+		t.Fatalf("facts count=%d truncated=%v, want at most %d and truncated", len(facts.values), facts.truncated, maxTerraformFactNodes)
+	}
+	if facts.values[0].Presentation != model.TerraformPresentationUnproven || facts.values[0].Children != model.TerraformChildrenClosed {
+		t.Fatalf("truncated aggregate fact = %#v, want unproven presentation and closed membership", facts.values[0])
+	}
+}
+
+func TestTerraformValueFactsDepthBudget(t *testing.T) {
+	value := cty.StringVal("leaf")
+	for i := 0; i < maxTerraformFactDepth+10; i++ {
+		value = cty.ObjectVal(map[string]cty.Value{"child": value})
+	}
+	facts := &terraformValueFacts{}
+	_ = ctyValueToDocumentWithFacts(value, &attrSource{}, nil, facts, model.TerraformFactPath{model.TerraformKeySegment("value")})
+	if !facts.truncated {
+		t.Fatal("deep facts were not marked truncated")
+	}
+	if facts.values[0].Presentation != model.TerraformPresentationUnproven {
+		t.Fatalf("truncated ancestor presentation = %q, want unproven", facts.values[0].Presentation)
+	}
+	for _, fact := range facts.values {
+		if len(fact.Path) > maxTerraformFactDepth {
+			t.Fatalf("fact path length %d exceeds cap %d", len(fact.Path), maxTerraformFactDepth)
+		}
+	}
+}
+
+func BenchmarkAttributesToDocumentWithFacts(b *testing.B) {
+	for _, size := range []int{4096, 8192} {
+		attrs := make(map[string]cty.Value, size)
+		for i := 0; i < size; i++ {
+			attrs[fmt.Sprintf("key-%05d", i)] = cty.StringVal("value")
+		}
+		for _, withFacts := range []bool{false, true} {
+			mode := "legacy"
+			if withFacts {
+				mode = "facts"
+			}
+			b.Run(fmt.Sprintf("%s/attrs_%d", mode, size), func(b *testing.B) {
+				ctx := context.Background()
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					r := ResolvedResource{
+						Attributes: attrs,
+						Scope: &ModuleScope{
+							evalCtx: &hcl.EvalContext{Variables: map[string]cty.Value{}},
+							sources: map[string][]byte{},
+						},
+					}
+					if withFacts {
+						_, _ = AttributesToDocumentWithFacts(ctx, &r)
+					} else {
+						_ = AttributesToDocumentWithContext(ctx, &r)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestTerraformValueFactsBudgetIsDeterministic(t *testing.T) {
+	attrs := make(map[string]cty.Value, maxTerraformFactNodes+2)
+	for i := 0; i < maxTerraformFactNodes+2; i++ {
+		attrs[fmt.Sprintf("key-%05d", i)] = cty.StringVal("value")
+	}
+	r := ResolvedResource{Attributes: attrs}
+	_, first := AttributesToDocumentWithFacts(context.Background(), &r)
+	_, second := AttributesToDocumentWithFacts(context.Background(), &r)
+	firstJSON, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondJSON, err := json.Marshal(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(firstJSON, secondJSON) {
+		t.Fatal("truncated facts differ across identical renders")
+	}
+	if len(first.Values) != maxTerraformFactNodes || !first.Truncated {
+		t.Fatalf("facts count=%d truncated=%v, want exactly %d and truncated", len(first.Values), first.Truncated, maxTerraformFactNodes)
+	}
+}
+
+func TestTerraformValueFactsMarkCertificateEnrichmentAdapted(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "test", "fixtures", "test_certificate", "certificate.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := writeModule(t, t.TempDir(), "mod", map[string]string{
+		"certificate.pem": string(fixture),
+		"main.tf":         `resource "example_certificate" "this" { certificate_body = "certificate.pem" }`,
+	})
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := findResource(t, resources, "example_certificate", "this")
+	doc, facts := AttributesToDocumentWithFacts(context.Background(), &r)
+	if _, ok := doc["certificate_body"].(map[string]interface{}); !ok {
+		t.Fatalf("certificate_body = %#v, want enriched object", doc["certificate_body"])
+	}
+	for _, fact := range facts.Values {
+		if len(fact.Path) == 1 && fact.Path[0].Key == "certificate_body" {
+			if fact.Presentation != model.TerraformPresentationAdapted || fact.Children != model.TerraformChildrenUnknown {
+				t.Fatalf("certificate_body fact = %#v, want adapted and unknown children", fact)
+			}
+			return
+		}
+	}
+	t.Fatal("certificate_body fact not found")
 }
 
 func TestAttributesToDocumentPreservesUnknownKeys(t *testing.T) {
@@ -76,7 +251,12 @@ func documentFor(t *testing.T, dir, typ, name string) map[string]interface{} {
 		t.Fatalf("EvaluateModule: %v", err)
 	}
 	r := findResource(t, resources, typ, name)
-	return AttributesToDocument(&r)
+	legacy := AttributesToDocument(&r)
+	withFacts, _ := AttributesToDocumentWithFacts(context.Background(), &r)
+	if !reflect.DeepEqual(legacy, withFacts) {
+		t.Fatalf("facts-enabled document differs from legacy conversion:\nlegacy: %#v\nwith facts: %#v", legacy, withFacts)
+	}
+	return legacy
 }
 
 func TestAttributesToDocumentKeepsReferenceText(t *testing.T) {
@@ -89,6 +269,7 @@ resource "aws_s3_bucket" "logs" {
 resource "aws_s3_bucket_logging" "this" {
   bucket        = aws_s3_bucket.target.id
   target_bucket = aws_s3_bucket.logs.bucket
+  nested        = { ref = aws_s3_bucket.logs.bucket, literal = "literal" }
   keys          = [aws_kms_key.a.arn, "literal-key"]
   indexed       = aws_subnet.private[0].id
   computed      = timestamp()
@@ -101,6 +282,25 @@ resource "aws_s3_bucket_logging" "this" {
 	})
 
 	doc := documentFor(t, dir, "aws_s3_bucket_logging", "this")
+	resources, _, _, err := New().EvaluateModule(context.Background(), dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := findResource(t, resources, "aws_s3_bucket_logging", "this")
+	_, facts := AttributesToDocumentWithFacts(context.Background(), &r)
+	if got := findTerraformFact(t, facts, "target_bucket"); got.Presentation != model.TerraformPresentationManagedReference {
+		t.Errorf("target_bucket presentation = %q, want managed_reference", got.Presentation)
+	}
+	if got := findTerraformFact(t, facts, "rule"); got.Presentation != model.TerraformPresentationAdapted {
+		t.Errorf("rule presentation = %q, want adapted", got.Presentation)
+	}
+	nested := findTerraformFact(t, facts, "nested")
+	if nested.Presentation != model.TerraformPresentationAdapted || nested.Children != model.TerraformChildrenClosed {
+		t.Errorf("nested fact = %#v, want adapted with closed children", nested)
+	}
+	if got := findTerraformFactAtPath(t, facts, "nested", "ref"); got.Presentation != model.TerraformPresentationManagedReference {
+		t.Errorf("nested.ref presentation = %q, want managed_reference", got.Presentation)
+	}
 
 	// A reference to a resource outside the module stays unresolved, but the
 	// reference text is what lets rules associate the two resources.
@@ -132,6 +332,38 @@ resource "aws_s3_bucket_logging" "this" {
 	if got := rules["role_arn"]; got != "${aws_iam_role.replication.arn}" {
 		t.Errorf("rule.role_arn = %#v, want ${aws_iam_role.replication.arn}", got)
 	}
+}
+
+func findTerraformFact(t *testing.T, facts model.TerraformValueFacts, key string) model.TerraformValueFact {
+	t.Helper()
+	for _, fact := range facts.Values {
+		if len(fact.Path) == 1 && !fact.Path[0].IsIndex && fact.Path[0].Key == key {
+			return fact
+		}
+	}
+	t.Fatalf("fact %q not found in %#v", key, facts.Values)
+	return model.TerraformValueFact{}
+}
+
+func findTerraformFactAtPath(t *testing.T, facts model.TerraformValueFacts, keys ...string) model.TerraformValueFact {
+	t.Helper()
+	for _, fact := range facts.Values {
+		if len(fact.Path) != len(keys) {
+			continue
+		}
+		matches := true
+		for i, key := range keys {
+			if fact.Path[i].IsIndex || fact.Path[i].Key != key {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return fact
+		}
+	}
+	t.Fatalf("fact path %q not found in %#v", keys, facts.Values)
+	return model.TerraformValueFact{}
 }
 
 // Reference text is recovered only when building the document, so a resource

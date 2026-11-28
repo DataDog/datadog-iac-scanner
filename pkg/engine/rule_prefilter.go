@@ -600,6 +600,54 @@ func moduleReadsInput(mod *ast.Module) bool {
 	return found
 }
 
+// moduleNeedsTerraformFacts reports whether a module might read the additive
+// Terraform facts envelope. Only references provably rooted at
+// input.document are safe to ignore here. Imported input aliases and whole
+// input references are conservative positives.
+func moduleNeedsTerraformFacts(mod *ast.Module) bool {
+	if mod == nil {
+		return false
+	}
+	if moduleHasInputImport(mod) {
+		return true
+	}
+	needsFacts := false
+	inputRoots := make(map[*ast.Term]struct{})
+	ast.WalkRefs(mod, func(ref ast.Ref) bool {
+		if len(ref) == 0 || !ref[0].Equal(ast.InputRootDocument) {
+			return false
+		}
+		inputRoots[ref[0]] = struct{}{}
+		if len(ref) < 2 {
+			needsFacts = true
+			return true
+		}
+		key, ok := ref[1].Value.(ast.String)
+		if !ok || key != regoInputDocumentKey {
+			needsFacts = true
+			return true
+		}
+		return false
+	})
+	if needsFacts {
+		return true
+	}
+	// A bare `input` variable (including passing the whole object to a helper)
+	// is not represented as an input-rooted Ref. Ignore the root term when it
+	// belongs to the provable legacy `input.document` reference.
+	ast.WalkTerms(mod, func(term *ast.Term) bool {
+		if v, ok := term.Value.(ast.Var); ok && v == ast.InputRootDocument.Value {
+			if _, isRefRoot := inputRoots[term]; isRefRoot {
+				return false
+			}
+			needsFacts = true
+			return true
+		}
+		return false
+	})
+	return needsFacts
+}
+
 // moduleUsesUnsafeBuiltin reports whether mod references any blocked builtin
 // anywhere in its expressions (including nested calls inside assignments).
 func moduleUsesUnsafeBuiltin(mod *ast.Module) bool {

@@ -7,6 +7,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,18 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestTerraformFactPathJSONPreservesTypedSegments(t *testing.T) {
+	path := TerraformFactPath{
+		TerraformKeySegment("resource"),
+		TerraformKeySegment("example"),
+		TerraformIndexSegment(0),
+		TerraformKeySegment("0"),
+	}
+	encoded, err := json.Marshal(path)
+	require.NoError(t, err)
+	require.JSONEq(t, `["resource","example",0,"0"]`, string(encoded))
+}
 
 // TestExtensions_MatchedFilesRegex tests the functions [MatchedFilesRegex()] and all the methods called by them
 func TestExtensions_MatchedFilesRegex(t *testing.T) {
@@ -202,7 +215,7 @@ func TestDetectionView_ReleaseSubstringIndex(t *testing.T) {
 		return result
 	})
 	for i := range substringIndexAfterScans {
-		_, ok := view.LinesContaining(string(rune('a' + i%26)) + string(rune('A'+i/26)))
+		_, ok := view.LinesContaining(string(rune('a'+i%26)) + string(rune('A'+i/26)))
 		require.True(t, ok)
 	}
 	require.NotNil(t, view.linesLazy.index)

@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/ctyutil"
+	"github.com/DataDog/datadog-iac-scanner/pkg/model"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/dynamicblock"
 	"github.com/DataDog/datadog-iac-scanner/pkg/parser/terraform/localdata"
@@ -47,6 +48,12 @@ func AttributesToDocument(r *ResolvedResource) map[string]interface{} {
 // any data-source expansion needed to render unresolved document references.
 func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) map[string]interface{} {
 	doc := attributesToDocument(r.Attributes, r.Body, r.DynamicCounts, r.documentScope, newRenderer(ctx, r))
+	_ = enrichResourceDocument(ctx, r, doc)
+	return doc
+}
+
+func enrichResourceDocument(ctx context.Context, r *ResolvedResource, doc map[string]interface{}) bool {
+	before, existed := doc["certificate_body"]
 	// Keep the legacy certificate representation for every evaluated resource,
 	// including effective override bodies. Use the expression's own file when
 	// fields come from different configuration files.
@@ -56,7 +63,10 @@ func AttributesToDocumentWithContext(ctx context.Context, r *ResolvedResource) m
 				writtenCertificate(attr, r.Scope.sources))
 		}
 	}
-	return doc
+	after, exists := doc["certificate_body"]
+	_, beforeObject := before.(map[string]interface{})
+	_, afterObject := after.(map[string]interface{})
+	return existed && exists && !beforeObject && afterObject
 }
 
 // The JSON-to-HCL conversion can change expression offsets. Use the original
@@ -151,7 +161,7 @@ func documentIteration(r *ResolvedResource) map[string]cty.Value {
 		return nil
 	}
 	if r.InstanceKey.Type() == cty.Number {
-		return map[string]cty.Value{"count": cty.ObjectVal(map[string]cty.Value{"index": r.InstanceKey})}
+		return map[string]cty.Value{metaArgCount: cty.ObjectVal(map[string]cty.Value{countIndexKey: r.InstanceKey})}
 	}
 	value := cty.DynamicVal
 	if collection, ok := r.Attributes[metaArgForEach]; ok && ctyutil.Materialized(collection) && collection.CanIterateElements() {
@@ -160,7 +170,7 @@ func documentIteration(r *ResolvedResource) map[string]cty.Value {
 			_, value = it.Element()
 		}
 	}
-	return map[string]cty.Value{"each": cty.ObjectVal(map[string]cty.Value{"key": r.InstanceKey, "value": value})}
+	return map[string]cty.Value{rootEach: cty.ObjectVal(map[string]cty.Value{forEachKeyKey: r.InstanceKey, forEachValueKey: value})}
 }
 
 const (
@@ -453,10 +463,40 @@ func (s *attrSource) blocksFromCounts(n int) (blocks []*hclsyntax.Block, ok bool
 func attributesToDocument(
 	attrs map[string]cty.Value, body *hclsyntax.Body, dynamic DynamicCounts, scope *documentScope, rd *documentRenderer,
 ) map[string]interface{} {
+	return attributesToDocumentWithFacts(attrs, body, dynamic, scope, rd, nil)
+}
+
+func attributesToDocumentWithFacts(
+	attrs map[string]cty.Value,
+	body *hclsyntax.Body,
+	dynamic DynamicCounts,
+	scope *documentScope,
+	rd *documentRenderer,
+	facts *terraformValueFacts,
+) map[string]interface{} {
 	out := make(map[string]interface{}, len(attrs))
-	for key, val := range attrs {
+	if facts == nil {
+		for key, val := range attrs {
+			src := sourceFor(body, key, dynamic, nil, scope)
+			out[key] = ctyValueToDocument(val, &src, rd)
+		}
+		return out
+	}
+	keys := make([]string, 0, len(attrs))
+	for key := range attrs {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		val := attrs[key]
 		src := sourceFor(body, key, dynamic, nil, scope)
-		out[key] = ctyValueToDocument(val, &src, rd)
+		var path model.TerraformFactPath
+		if facts.nodes >= maxTerraformFactNodes {
+			facts.markTruncated()
+		} else {
+			path = model.TerraformFactPath{model.TerraformKeySegment(key)}
+		}
+		out[key] = ctyValueToDocumentWithFacts(val, &src, rd, facts, path)
 	}
 	return out
 }
@@ -572,66 +612,209 @@ func asWrittenCount(dynamic DynamicCounts, b *hclsyntax.Block) (int, bool) {
 // rd renders unresolved values and retains direct resource references for
 // legacy joins. Known collections retain their source mapping for that purpose.
 func ctyValueToDocument(v cty.Value, src *attrSource, rd *documentRenderer) interface{} {
-	rendered, renderer, ok := rd.renderValue(v, src)
+	return ctyValueToDocumentWithFacts(v, src, rd, nil, nil)
+}
+
+func ctyValueToDocumentWithFacts(
+	v cty.Value,
+	src *attrSource,
+	rd *documentRenderer,
+	facts *terraformValueFacts,
+	path model.TerraformFactPath,
+) interface{} {
+	if facts != nil && (len(path) > maxTerraformFactDepth || facts.nodes >= maxTerraformFactNodes) {
+		facts.markTruncated()
+		return ctyValueToDocument(v, src, rd)
+	}
+	rendered, renderer, presentation, ok := rd.renderValue(v, src)
 	if ok {
+		if facts != nil {
+			facts.append(path, nativeFactState(v), presentation, model.TerraformChildrenUnknown)
+		}
 		return rendered
 	}
 	rd = renderer
-	if !v.IsKnown() {
-		if rd == nil {
-			return unresolvedToDocument(src.expr, nil)
+	if v == cty.NilVal {
+		var renderer *partial.Renderer
+		if rd != nil {
+			renderer = rd.Renderer
 		}
-		return unresolvedToDocument(src.expr, rd.Renderer)
+		value, _ := unresolvedToDocumentWithPresentation(src.expr, renderer)
+		return value
+	}
+	if !v.IsKnown() {
+		return unresolvedValueToDocument(src, rd, facts, path)
 	}
 	if v.IsNull() {
+		if facts != nil {
+			facts.append(path, model.TerraformNativeNull, model.TerraformPresentationNative, model.TerraformChildrenUnknown)
+		}
 		return nil
 	}
+	return knownValueToDocument(v, src, rd, facts, path)
+}
 
+func unresolvedValueToDocument(
+	src *attrSource, rd *documentRenderer, facts *terraformValueFacts, path model.TerraformFactPath,
+) interface{} {
+	var renderer *partial.Renderer
+	if rd != nil {
+		renderer = rd.Renderer
+	}
+	value, presentation := unresolvedToDocumentWithPresentation(src.expr, renderer)
+	if facts != nil {
+		facts.append(path, model.TerraformNativeUnknown, presentation, model.TerraformChildrenUnknown)
+	}
+	return value
+}
+
+func knownValueToDocument(
+	v cty.Value, src *attrSource, rd *documentRenderer, facts *terraformValueFacts, path model.TerraformFactPath,
+) interface{} {
 	t := v.Type()
-	switch t {
-	case cty.String:
-		return v.AsString()
-	case cty.Bool:
-		return v.True()
-	case cty.Number:
-		// json.Number avoids float64 precision loss for large integers.
-		return json.Number(v.AsBigFloat().Text('f', -1))
+	if !isDocumentableType(t) {
+		if facts != nil {
+			facts.append(path, nativeFactState(v), model.TerraformPresentationUnknownPlaceholder, model.TerraformChildrenUnknown)
+		}
+		return UnknownAttributePlaceholder
 	}
+	children, factIndex := knownValueFacts(v, src, facts, path)
+	if factsNeedLegacyAggregate(facts, v, path) {
+		facts.markTruncated()
+		facts.markUnproven(factIndex)
+		return ctyValueToDocument(v, src, rd)
+	}
+	if facts != nil && t.IsSetType() && !v.IsWhollyKnown() {
+		// Set display indices can reorder when a member is unknown.
+		return ctyValueToDocument(v, src, rd)
+	}
+	if scalar, ok := ctyScalarToDocument(v); ok {
+		return scalar
+	}
+	if facts != nil && factIndex >= 0 {
+		facts.pushAncestor(factIndex)
+	}
+	value, childState := aggregateValueToDocument(v, src, rd, facts, path, children)
+	if facts != nil && factIndex >= 0 {
+		facts.popAncestor()
+		facts.values[factIndex].Children = childState
+	}
+	return value
+}
 
-	switch {
-	case t.IsTupleType(), t.IsListType(), t.IsSetType():
-		return ctySeqToDocument(v, src, rd)
-	case t.IsObjectType(), t.IsMapType():
-		return ctyMapToDocument(v, src, rd)
+func factsNeedLegacyAggregate(facts *terraformValueFacts, v cty.Value, path model.TerraformFactPath) bool {
+	if facts == nil || !isDocumentAggregate(v.Type()) || !hasChildren(v) {
+		return false
 	}
-	return UnknownAttributePlaceholder
+	return len(path) >= maxTerraformFactDepth || facts.nodes >= maxTerraformFactNodes
+}
+
+func knownValueFacts(
+	v cty.Value, src *attrSource, facts *terraformValueFacts, path model.TerraformFactPath,
+) (children model.TerraformChildrenState, factIndex int) {
+	if facts == nil {
+		return model.TerraformChildrenUnknown, -1
+	}
+	state := nativeFactState(v)
+	presentation := nativeFactPresentation(v, src)
+	children = nativeFactChildren(v, src, presentation)
+	factIndex = facts.append(path, state, presentation, children)
+	return
+}
+
+func ctyScalarToDocument(v cty.Value) (interface{}, bool) {
+	switch v.Type() {
+	case cty.String:
+		return v.AsString(), true
+	case cty.Bool:
+		return v.True(), true
+	case cty.Number:
+		return json.Number(v.AsBigFloat().Text('f', -1)), true
+	default:
+		return nil, false
+	}
+}
+
+func aggregateValueToDocument(
+	v cty.Value, src *attrSource, rd *documentRenderer, facts *terraformValueFacts,
+	path model.TerraformFactPath, children model.TerraformChildrenState,
+) (interface{}, model.TerraformChildrenState) {
+	t := v.Type()
+	if t.IsTupleType() || t.IsListType() || t.IsSetType() {
+		return ctySeqToDocumentWithFacts(v, src, rd, facts, path), children
+	}
+	if t.IsObjectType() || t.IsMapType() {
+		return ctyMapToDocumentWithFacts(v, src, rd, facts, path)
+	}
+	return UnknownAttributePlaceholder, children
+}
+
+func isDocumentAggregate(t cty.Type) bool {
+	return t.IsTupleType() || t.IsListType() || t.IsSetType() || t.IsObjectType() || t.IsMapType()
+}
+
+func hasChildren(v cty.Value) bool {
+	if v == cty.NilVal || v.IsMarked() || !v.IsKnown() || v.IsNull() {
+		return false
+	}
+	t := v.Type()
+	switch {
+	case t.IsTupleType():
+		return t.Length() > 0
+	case t.IsObjectType():
+		return len(t.AttributeTypes()) > 0
+	case t.IsListType(), t.IsSetType(), t.IsMapType():
+		return v.LengthInt() > 0
+	default:
+		return false
+	}
+}
+
+func isDocumentableType(t cty.Type) bool {
+	return isDocumentAggregate(t) || t.Equals(cty.String) || t.Equals(cty.Bool) || t.Equals(cty.Number)
+}
+
+func unresolvedToDocumentWithPresentation(expr hclsyntax.Expression, rd *partial.Renderer) (interface{}, model.TerraformPresentation) {
+	if expr == nil {
+		return UnknownAttributePlaceholder, model.TerraformPresentationUnknownPlaceholder
+	}
+	if rd == nil {
+		rd = &partial.Renderer{}
+	}
+	if value, ok := rd.Render(expr); ok {
+		return ctyValueToDocument(value, &attrSource{}, nil), model.TerraformPresentationSourceExpression
+	}
+	return UnknownAttributePlaceholder, model.TerraformPresentationUnknownPlaceholder
 }
 
 // renderValue handles source-aware presentation before ordinary cty conversion.
 // Known collections keep their renderer so nested reference identity survives.
-func (rd *documentRenderer) renderValue(v cty.Value, src *attrSource) (interface{}, *documentRenderer, bool) {
+func (rd *documentRenderer) renderValue(
+	v cty.Value,
+	src *attrSource,
+) (interface{}, *documentRenderer, model.TerraformPresentation, bool) {
 	if rd == nil {
-		return nil, nil, false
+		return nil, nil, model.TerraformPresentationNative, false
 	}
 	rd = rd.withSource(src)
 	canRender := src.expr != nil && !readsIterator(src.expr, src.iterators)
 	if canRender {
 		if text, ok := managedReferenceText(src.expr, rd.Ctx, rd.managedRoots); ok {
-			return text, nil, true
+			return text, nil, model.TerraformPresentationManagedReference, true
 		}
 	}
 	if v.IsWhollyKnown() {
 		if !v.CanIterateElements() {
 			rd = nil
 		}
-		return nil, rd, false
+		return nil, rd, model.TerraformPresentationNative, false
 	}
 	if canRender {
 		if rendered, ok := rd.RenderUnresolved(src.expr); ok {
-			return ctyValueToDocument(rendered, &attrSource{}, nil), nil, true
+			return ctyValueToDocument(rendered, &attrSource{}, nil), nil, model.TerraformPresentationSourceExpression, true
 		}
 	}
-	return nil, rd, false
+	return nil, rd, model.TerraformPresentationNative, false
 }
 
 // managedReferenceText preserves exact resource links in the legacy payload,
@@ -663,17 +846,35 @@ func readsIterator(expr hclsyntax.Expression, iterators []string) bool {
 
 // ctySeqToDocument converts a tuple/list/set to a slice.
 func ctySeqToDocument(v cty.Value, src *attrSource, rd *documentRenderer) []interface{} {
+	return ctySeqToDocumentWithFacts(v, src, rd, nil, nil)
+}
+
+func ctySeqToDocumentWithFacts(
+	v cty.Value,
+	src *attrSource,
+	rd *documentRenderer,
+	facts *terraformValueFacts,
+	path model.TerraformFactPath,
+) []interface{} {
+	if facts != nil && (len(path) >= maxTerraformFactDepth || facts.nodes >= maxTerraformFactNodes) {
+		facts.markTruncated()
+		return ctySeqToDocument(v, src, rd)
+	}
 	n := v.LengthInt()
 	elemSrcs := seqElementSources(src, n)
 	list := make([]interface{}, 0, n)
-	i := 0
-	for it := v.ElementIterator(); it.Next(); i++ {
+	for i, it := 0, v.ElementIterator(); it.Next(); i++ {
 		_, ev := it.Element()
 		var es attrSource
 		if i < len(elemSrcs) {
 			es = elemSrcs[i]
 		}
-		list = append(list, ctyValueToDocument(ev, &es, rd))
+		childFacts := facts
+		childPath, capture := facts.childPath(path, model.TerraformIndexSegment(i))
+		if facts != nil && !capture {
+			childFacts = nil
+		}
+		list = append(list, ctyValueToDocumentWithFacts(ev, &es, rd, childFacts, childPath))
 	}
 	return list
 }
@@ -721,6 +922,47 @@ func blockSource(src *attrSource, block *hclsyntax.Block) attrSource {
 // ctyMapToDocument converts an object/map to a Go map; non-string or unknown
 // keys are skipped (keys are always strings in well-formed Terraform).
 func ctyMapToDocument(v cty.Value, src *attrSource, rd *documentRenderer) map[string]interface{} {
+	obj, _ := ctyMapToDocumentWithFacts(v, src, rd, nil, nil)
+	return obj
+}
+
+func ctyMapToDocumentWithFacts(
+	v cty.Value,
+	src *attrSource,
+	rd *documentRenderer,
+	facts *terraformValueFacts,
+	path model.TerraformFactPath,
+) (map[string]interface{}, model.TerraformChildrenState) {
+	if facts != nil && (len(path) >= maxTerraformFactDepth || facts.nodes >= maxTerraformFactNodes) {
+		facts.markTruncated()
+		return ctyMapToDocument(v, src, rd), nativeFactChildren(v, src, nativeFactPresentation(v, src))
+	}
+	body, rd, src := mapDocumentSource(src, rd)
+	items := objectConsSources(src.expr)
+	obj := make(map[string]interface{}, v.LengthInt())
+	children := model.TerraformChildrenClosed
+	for it := v.ElementIterator(); it.Next(); {
+		key, ev := it.Element()
+		name, ok := ctyutil.ConcreteString(key)
+		if !ok {
+			children = model.TerraformChildrenOpen
+			continue
+		}
+		childFacts := facts
+		childPath, capture := facts.childPath(path, model.TerraformKeySegment(name))
+		if facts != nil && (!capture || key.IsMarked()) {
+			childFacts = nil
+			if key.IsMarked() {
+				children = model.TerraformChildrenUnknown
+			}
+		}
+		es := mapElementSource(body, items, src, name)
+		obj[name] = ctyValueToDocumentWithFacts(ev, &es, rd, childFacts, childPath)
+	}
+	return obj, mapChildrenState(children, src.dynamic)
+}
+
+func mapDocumentSource(src *attrSource, rd *documentRenderer) (*hclsyntax.Body, *documentRenderer, *attrSource) {
 	body := src.body
 	if blocks := src.blocksFor(1); body == nil && len(blocks) == 1 && src.labelDepth >= len(blocks[0].Labels) {
 		body = blocks[0].Body
@@ -730,27 +972,29 @@ func ctyMapToDocument(v cty.Value, src *attrSource, rd *documentRenderer) map[st
 		}
 		src = &block
 	}
-	items := objectConsSources(src.expr)
+	return body, rd, src
+}
 
-	obj := make(map[string]interface{}, v.LengthInt())
-	for it := v.ElementIterator(); it.Next(); {
-		key, ev := it.Element()
-		name, ok := ctyutil.ConcreteString(key)
-		if !ok {
-			continue
+func mapChildrenState(children model.TerraformChildrenState, dynamic DynamicCounts) model.TerraformChildrenState {
+	for _, count := range dynamic {
+		if count == unknownDynamicCount {
+			return model.TerraformChildrenOpen
 		}
-		var es attrSource
-		switch {
-		case body != nil:
-			es = sourceFor(body, name, src.dynamic, src.iterators, src.scope)
-		case items[name] != nil:
-			es = attrSource{expr: items[name], iterators: src.iterators}
-		case len(src.blocks) > 0:
-			es = labeledBlockSource(src, name)
-		}
-		obj[name] = ctyValueToDocument(ev, &es, rd)
 	}
-	return obj
+	return children
+}
+
+func mapElementSource(body *hclsyntax.Body, items map[string]hclsyntax.Expression, src *attrSource, name string) attrSource {
+	switch {
+	case body != nil:
+		return sourceFor(body, name, src.dynamic, src.iterators, src.scope)
+	case items[name] != nil:
+		return attrSource{expr: items[name], iterators: src.iterators}
+	case len(src.blocks) > 0:
+		return labeledBlockSource(src, name)
+	default:
+		return attrSource{}
+	}
 }
 
 func labeledBlockSource(src *attrSource, label string) attrSource {
@@ -806,22 +1050,6 @@ func objectConsSources(expr hclsyntax.Expression) map[string]hclsyntax.Expressio
 		out[key] = item.ValueExpr
 	}
 	return out
-}
-
-// unresolvedToDocument renders a value that failed to evaluate from its
-// expression. A collection is reported as unknown as a whole when any part of
-// it is, so it has to be rebuilt from the expression rather than from the value.
-func unresolvedToDocument(expr hclsyntax.Expression, rd *partial.Renderer) interface{} {
-	if expr == nil {
-		return UnknownAttributePlaceholder
-	}
-	if rd == nil {
-		rd = &partial.Renderer{}
-	}
-	if v, ok := rd.Render(expr); ok {
-		return ctyValueToDocument(v, &attrSource{}, nil)
-	}
-	return UnknownAttributePlaceholder
 }
 
 // RemoteResolver maps a non-local module call to its selected directory and acquired package root.

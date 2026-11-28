@@ -139,10 +139,12 @@ resource "aws_s3_bucket" "from_module" { bucket = "logs" }
 `})
 	stack := writeModule(t, root, "stack", map[string]string{"main.tf": `
 variable "unknown_items" {}
+variable "unknown_count" {}
 resource "aws_s3_bucket" "counted" {
   count = 2
   bucket = "count-${count.index}"
 }
+
 resource "aws_s3_bucket" "keyed" {
   for_each = { first = "one", second = "two" }
   bucket = each.value
@@ -151,6 +153,19 @@ resource "aws_s3_bucket" "unexpanded" { bucket = "plain" }
 resource "aws_s3_bucket" "unknown" {
   for_each = var.unknown_items
   bucket = each.key
+}
+resource "aws_s3_bucket" "unknown_count" {
+  count = var.unknown_count
+  bucket = "unknown-count"
+}
+resource "aws_s3_bucket" "fractional_count" {
+  count = 1.5
+  bucket = "fractional-count"
+}
+resource "aws_s3_bucket" "both_meta" {
+  count = 1
+  for_each = { one = "one" }
+  bucket = "ambiguous"
 }
 module "child" {
   source = "../child"
@@ -161,12 +176,16 @@ module "child" {
 	require.NoError(t, err)
 	addresses := make(map[string]bool, len(resources))
 	for _, resource := range resources {
+		if resource.Name == "counted[0]" || resource.Name == "counted[1]" || strings.HasPrefix(resource.Name, "keyed[") || resource.Name == "unexpanded" {
+			require.True(t, resource.InstanceSetComplete, resource.Name)
+		}
 		address, ok := resource.TerraformAddress()
 		if ok {
 			addresses[address] = true
 		}
 	}
 	require.Equal(t, map[string]bool{
+		"aws_s3_bucket.both_meta[0]":                true,
 		"aws_s3_bucket.counted[0]":                  true,
 		"aws_s3_bucket.counted[1]":                  true,
 		`aws_s3_bucket.keyed["first"]`:              true,
@@ -177,12 +196,39 @@ module "child" {
 	}, addresses)
 	for _, resource := range resources {
 		if resource.Name == "unknown" {
+			require.False(t, resource.InstanceSetComplete)
 			_, ok := resource.TerraformAddress()
 			require.False(t, ok, "unresolved for_each must not claim a concrete instance address")
+		}
+		if resource.Name == "unknown_count" {
+			require.False(t, resource.InstanceSetComplete)
+			_, ok := resource.TerraformAddress()
+			require.False(t, ok, "unresolved count must not claim a concrete instance address")
+		}
+		if resource.Name == "fractional_count" || resource.Name == "both_meta[0]" {
+			require.False(t, resource.InstanceSetComplete, resource.Name)
 		}
 	}
 }
 
+func TestForEachInstanceSetCompletenessDependsOnKnownMembership(t *testing.T) {
+	makeOne := func(name string, _ *hcl.EvalContext) ResolvedResource { return ResolvedResource{Name: name} }
+	evaluator := New()
+	ctx := context.Background()
+	parent := &hcl.EvalContext{}
+
+	knownKeys := cty.MapVal(map[string]cty.Value{"known": cty.UnknownVal(cty.String)})
+	mapResources := evaluator.expandKnownForEachResources(ctx, knownKeys, "mapped", parent, makeOne)
+	require.Len(t, mapResources, 1)
+	require.True(t, mapResources[0].InstanceSetComplete, "unknown map values do not make the key set unknown")
+
+	unknownSetMember := cty.SetVal([]cty.Value{cty.StringVal("known"), cty.UnknownVal(cty.String)})
+	setResources := evaluator.expandKnownForEachResources(ctx, unknownSetMember, "set", parent, makeOne)
+	require.NotEmpty(t, setResources)
+	for _, resource := range setResources {
+		require.False(t, resource.InstanceSetComplete, "an unresolved set member leaves collection membership uncertain")
+	}
+}
 func TestResolvedResourceTerraformAddressQuotesForEachKeysAsHCL(t *testing.T) {
 	for _, tc := range []struct{ key, want string }{
 		{`quote"slash\`, `aws_s3_bucket.web["quote\"slash\\"]`},

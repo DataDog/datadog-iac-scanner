@@ -446,6 +446,7 @@ func TestBuildPlatformPayloadsReusesEquivalentFullPayload(t *testing.T) {
 		documents,
 		nil,
 		queries,
+		false,
 	)
 
 	require.NoError(t, err)
@@ -454,6 +455,7 @@ func TestBuildPlatformPayloadsReusesEquivalentFullPayload(t *testing.T) {
 		reflect.ValueOf(payloads.full).Pointer(),
 		reflect.ValueOf(payloads.byPlatform["terraform"]).Pointer(),
 	)
+	require.Nil(t, payloads.byPlatform["terraform"].(ast.Object).Get(ast.StringTerm("_dd")))
 }
 
 func TestBuildPlatformPayloadsSharesSubtreesAndReleases(t *testing.T) {
@@ -472,7 +474,7 @@ func TestBuildPlatformPayloadsSharesSubtreesAndReleases(t *testing.T) {
 
 	inspector := &Inspector{releaseDocumentsAfterPayload: true}
 	payloads, err := inspector.buildPlatformPayloads(
-		context.Background(), filesMap, combined, nil, queries)
+		context.Background(), filesMap, combined, nil, queries, false)
 	require.NoError(t, err)
 
 	// Progressive release: every source document is dropped after conversion.
@@ -490,6 +492,346 @@ func TestBuildPlatformPayloadsSharesSubtreesAndReleases(t *testing.T) {
 	meta2 := arr.Elem(1).Value.(ast.Object).Get(ast.StringTerm("metadata")).Value
 	require.Equal(t, reflect.ValueOf(meta1).Pointer(), reflect.ValueOf(meta2).Pointer(),
 		"shared child subtrees must map to one ast.Value")
+}
+
+func TestClearTerraformFacts(t *testing.T) {
+	facts := &model.TerraformDocumentFacts{Platform: "terraform", Coverage: model.TerraformCoverageComplete}
+	files := model.FileMetadatas{
+		&model.FileMetadata{ID: "stale", TerraformFacts: facts},
+		&model.FileMetadata{ID: "empty"},
+		nil,
+	}
+
+	clearTerraformFacts(files)
+
+	require.Nil(t, files[0].TerraformFacts, "facts from a prior scan must not survive reuse")
+	require.Nil(t, files[1].TerraformFacts)
+}
+
+func TestTerraformFactsPayloadIsAdditiveAndPlatformScoped(t *testing.T) {
+	rootFacts := &model.TerraformDocumentFacts{
+		Platform: "terraform",
+		Coverage: model.TerraformCoverageComplete,
+		Subjects: []model.TerraformSubjectFacts{{
+			SourceDocumentID: "root-id",
+			Path:             model.TerraformFactPath{model.TerraformKeySegment("resource"), model.TerraformKeySegment("aws_s3_bucket"), model.TerraformKeySegment("bucket")},
+			Address:          "aws_s3_bucket.bucket",
+			AddressComplete:  true,
+			InstanceSet:      model.TerraformCompletenessComplete,
+			Values: []model.TerraformValueFact{{
+				Path:         model.TerraformFactPath{model.TerraformKeySegment("tags"), model.TerraformIndexSegment(0)},
+				NativeState:  model.TerraformNativeKnown,
+				Presentation: model.TerraformPresentationNative,
+				Children:     model.TerraformChildrenUnknown,
+			}, {
+				Path:         model.TerraformFactPath{model.TerraformKeySegment("payload")},
+				NativeState:  model.TerraformNativeKnown,
+				Presentation: model.TerraformPresentationNative,
+				Children:     model.TerraformChildrenUnknown,
+			}, {
+				Path:         model.TerraformFactPath{model.TerraformKeySegment("encoded_string")},
+				NativeState:  model.TerraformNativeKnown,
+				Presentation: model.TerraformPresentationNative,
+				Children:     model.TerraformChildrenUnknown,
+			}, {
+				Path:         model.TerraformFactPath{model.TerraformKeySegment("source_jsonencode")},
+				NativeState:  model.TerraformNativeUnknown,
+				Presentation: model.TerraformPresentationSourceExpression,
+				Children:     model.TerraformChildrenUnknown,
+			}, {
+				Path:         model.TerraformFactPath{model.TerraformKeySegment("config")},
+				NativeState:  model.TerraformNativeKnown,
+				Presentation: model.TerraformPresentationNative,
+				Children:     model.TerraformChildrenClosed,
+			}, {
+				Path:         model.TerraformFactPath{model.TerraformKeySegment("config"), model.TerraformKeySegment("payload")},
+				NativeState:  model.TerraformNativeKnown,
+				Presentation: model.TerraformPresentationNative,
+				Children:     model.TerraformChildrenUnknown,
+			}},
+		}},
+	}
+	moduleFacts := &model.TerraformDocumentFacts{
+		Platform: "terraform",
+		Coverage: model.TerraformCoverageUnproven,
+		Subjects: []model.TerraformSubjectFacts{{
+			SourceDocumentID: "module-source-id",
+			Path:             model.TerraformFactPath{model.TerraformKeySegment("resource"), model.TerraformKeySegment("aws_s3_bucket"), model.TerraformKeySegment("this")},
+			Address:          "module.child.aws_s3_bucket.this",
+			AddressComplete:  true,
+			InstanceSet:      model.TerraformCompletenessUnproven,
+		}},
+	}
+	filesMap := map[string]*model.FileMetadata{
+		"root-id":        {ID: "root-id", Platform: "terraform", TerraformFacts: rootFacts},
+		"module-eval-id": {ID: "module-eval-id", Platform: "terraform", TerraformFacts: moduleFacts},
+		"fallback-id":    {ID: "fallback-id", Platform: "terraform"},
+		"k8s-id":         {ID: "k8s-id", Platform: "kubernetes"},
+	}
+	rootDocument := model.Document{
+		"id": "root-id",
+		"resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{"bucket": map[string]interface{}{
+			"tags":              []interface{}{"team"},
+			"payload":           `jsonencode({foo = "bar"})`,
+			"encoded_string":    `jsonencode("x")`,
+			"source_jsonencode": `jsonencode({bar = "baz"})`,
+			"config":            map[string]interface{}{"payload": `jsonencode({nested = "value"})`},
+		}}},
+		"_dd": map[string]interface{}{"documents": "caller-controlled"},
+	}
+	fallbackDocument := model.Document{"id": "fallback-id", "resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{"fallback": map[string]interface{}{}}}}
+	moduleDocument := model.Document{"id": "module-eval-id", "resource": map[string]interface{}{"aws_s3_bucket": map[string]interface{}{"this": map[string]interface{}{}}}}
+	k8sDocument := model.Document{"id": "k8s-id", "kind": "Pod"}
+	payloads, err := (&Inspector{}).buildPlatformPayloads(
+		context.Background(), filesMap, []model.Document{rootDocument, k8sDocument, fallbackDocument}, []model.Document{moduleDocument},
+		[]model.QueryMetadata{{Platform: "terraform"}, {Platform: "k8s"}, {Platform: "docker"}, {Platform: "common"}}, true,
+	)
+	require.NoError(t, err)
+
+	tfInput := payloads.byPlatform[platformTerraform].(ast.Object)
+	docs := tfInput.Get(ast.StringTerm("document")).Value.(*ast.Array)
+	require.Equal(t, 3, docs.Len())
+	// The original document remains byte-for-byte structurally the same; the
+	// sidecar is separate and keyed by the evaluated OPA document IDs.
+	expectedRoot, err := ast.InterfaceToValue(rootDocument)
+	require.NoError(t, err)
+	expectedRoot = (&Inspector{}).TransformJsonencodeInPayload(context.Background(), expectedRoot)
+	require.Zero(t, ast.Compare(expectedRoot, docs.Elem(0).Value))
+	require.Equal(t, "caller-controlled", string(docs.Elem(0).Value.(ast.Object).
+		Get(ast.StringTerm("_dd")).Value.(ast.Object).Get(ast.StringTerm("documents")).Value.(ast.String)))
+	factDocs := tfInput.Get(ast.StringTerm("_dd")).Value.(ast.Object).
+		Get(ast.StringTerm("documents")).Value.(ast.Object)
+	require.NotNil(t, factDocs.Get(ast.StringTerm("root-id")))
+	require.Equal(t, ast.String("terraform"), factDocs.Get(ast.StringTerm("root-id")).Value.(ast.Object).Get(ast.StringTerm("platform")).Value)
+	require.NotNil(t, factDocs.Get(ast.StringTerm("module-eval-id")))
+	require.Nil(t, factDocs.Get(ast.StringTerm("fallback-id")), "missing fallback facts must stay absent rather than look complete")
+	require.Nil(t, factDocs.Get(ast.StringTerm("k8s-id")))
+	rootSubjects := factDocs.Get(ast.StringTerm("root-id")).Value.(ast.Object).
+		Get(ast.StringTerm("subjects")).Value.(*ast.Array)
+	require.Equal(t, "root-id", string(rootSubjects.Elem(0).Value.(ast.Object).
+		Get(ast.StringTerm("source_document_id")).Value.(ast.String)))
+	rootValues := rootSubjects.Elem(0).Value.(ast.Object).Get(ast.StringTerm("values")).Value.(*ast.Array)
+	var mixedPath, payloadPath, encodedStringPath, sourceExpressionPath, configPath, configPayloadPath *ast.Array
+	var payloadFact, encodedStringFact, sourceExpressionFact, configFact, configPayloadFact ast.Object
+	for i := 0; i < rootValues.Len(); i++ {
+		fact := rootValues.Elem(i).Value.(ast.Object)
+		path := fact.Get(ast.StringTerm("path")).Value.(*ast.Array)
+		if path.Len() == 2 && path.Elem(0).Value == ast.String("tags") {
+			mixedPath = path
+		}
+		if path.Len() == 1 && path.Elem(0).Value == ast.String("payload") {
+			payloadPath, payloadFact = path, fact
+		}
+		if path.Len() == 1 && path.Elem(0).Value == ast.String("encoded_string") {
+			encodedStringPath, encodedStringFact = path, fact
+		}
+		if path.Len() == 1 && path.Elem(0).Value == ast.String("source_jsonencode") {
+			sourceExpressionPath, sourceExpressionFact = path, fact
+		}
+		if path.Len() == 1 && path.Elem(0).Value == ast.String("config") {
+			configPath, configFact = path, fact
+		}
+		if path.Len() == 2 && path.Elem(0).Value == ast.String("config") {
+			configPayloadPath, configPayloadFact = path, fact
+		}
+	}
+	require.NotNil(t, mixedPath)
+	require.Equal(t, ast.String("tags"), mixedPath.Elem(0).Value)
+	require.Equal(t, ast.Number("0"), mixedPath.Elem(1).Value)
+	require.NotNil(t, payloadPath)
+	require.NotNil(t, encodedStringPath)
+	require.NotNil(t, sourceExpressionPath)
+	require.NotNil(t, configPath)
+	require.NotNil(t, configPayloadPath)
+	for _, fact := range []ast.Object{payloadFact, encodedStringFact} {
+		require.Equal(t, ast.String("known"), fact.Get(ast.StringTerm("native_state")).Value)
+		require.Equal(t, ast.String("adapted"), fact.Get(ast.StringTerm("presentation")).Value)
+		require.Equal(t, ast.String("unknown"), fact.Get(ast.StringTerm("children")).Value)
+	}
+	require.Equal(t, ast.String("unknown"), sourceExpressionFact.Get(ast.StringTerm("native_state")).Value)
+	require.Equal(t, ast.String("adapted"), sourceExpressionFact.Get(ast.StringTerm("presentation")).Value)
+	require.Equal(t, ast.String("unknown"), sourceExpressionFact.Get(ast.StringTerm("children")).Value)
+	require.Equal(t, ast.String("adapted"), configFact.Get(ast.StringTerm("presentation")).Value)
+	require.Equal(t, ast.String("closed"), configFact.Get(ast.StringTerm("children")).Value)
+	require.Equal(t, ast.String("adapted"), configPayloadFact.Get(ast.StringTerm("presentation")).Value)
+	require.Equal(t, ast.String("unknown"), configPayloadFact.Get(ast.StringTerm("children")).Value)
+	rootResource := docs.Elem(0).Value.(ast.Object).Get(ast.StringTerm("resource")).Value.(ast.Object).
+		Get(ast.StringTerm("aws_s3_bucket")).Value.(ast.Object).
+		Get(ast.StringTerm("bucket")).Value.(ast.Object)
+	payload := rootResource.Get(ast.StringTerm("payload")).Value.(ast.Object)
+	require.Equal(t, ast.String("bar"), payload.Get(ast.StringTerm("foo")).Value)
+	require.Equal(t, ast.String("x"), rootResource.Get(ast.StringTerm("encoded_string")).Value)
+	sourceExpression := rootResource.Get(ast.StringTerm("source_jsonencode")).Value.(ast.Object)
+	require.Equal(t, ast.String("baz"), sourceExpression.Get(ast.StringTerm("bar")).Value)
+	config := rootResource.Get(ast.StringTerm("config")).Value.(ast.Object)
+	configPayload := config.Get(ast.StringTerm("payload")).Value.(ast.Object)
+	require.Equal(t, ast.String("value"), configPayload.Get(ast.StringTerm("nested")).Value)
+	moduleSubjects := factDocs.Get(ast.StringTerm("module-eval-id")).Value.(ast.Object).
+		Get(ast.StringTerm("subjects")).Value.(*ast.Array)
+	require.Equal(t, "module-source-id", string(moduleSubjects.Elem(0).Value.(ast.Object).
+		Get(ast.StringTerm("source_document_id")).Value.(ast.String)))
+
+	k8sInput := payloads.byPlatform[platformKubernetes].(ast.Object)
+	require.Nil(t, k8sInput.Get(ast.StringTerm("_dd")), "non-Terraform platform payloads must not receive Terraform facts")
+	emptyPlatformInput := payloads.byPlatform["docker"].(ast.Object)
+	require.Nil(t, emptyPlatformInput.Get(ast.StringTerm("_dd")), "empty platform payloads must not receive facts from other platforms")
+	commonInput := payloads.full.(ast.Object)
+	commonFacts := commonInput.Get(ast.StringTerm("_dd")).Value.(ast.Object).
+		Get(ast.StringTerm("documents")).Value.(ast.Object)
+	require.NotNil(t, commonFacts.Get(ast.StringTerm("root-id")), "common rules receive the full payload, including Terraform facts")
+	// Facts were serialized into the payload, so source fact trees are released
+	// even when ordinary source document release is disabled.
+	require.Nil(t, filesMap["root-id"].TerraformFacts)
+	require.Nil(t, filesMap["module-eval-id"].TerraformFacts)
+}
+
+func TestModuleNeedsTerraformFactsIsConservative(t *testing.T) {
+	tests := []struct {
+		name string
+		rego string
+		want bool
+	}{
+		{name: "legacy document only", rego: `package p
+p if { input.document.resource.aws_s3_bucket }`, want: false},
+		{name: "sidecar reference", rego: `package p
+p if { input._dd.documents["id"] }`, want: true},
+		{name: "dynamic input root", rego: `package p
+p if { input[section].resource }`, want: true},
+		{name: "sidecar used as a nested selector", rego: `package p
+p if { input.document.resource[input._dd.path] }`, want: true},
+		{name: "whole input", rego: `package p
+p if { object.get(input, "_dd", {}) }`, want: true},
+		{name: "input alias", rego: `package p
+import input as scan_input
+p if { scan_input.document }`, want: true},
+		{name: "unrelated input key", rego: `package p
+p if { input.arguments.rule_id }`, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mod, err := ast.ParseModule("facts.rego", tt.rego)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, moduleNeedsTerraformFacts(mod))
+		})
+	}
+}
+
+func TestTerraformFactsRequestedIncludesLibrariesAndCommonQueries(t *testing.T) {
+	legacyQuery := model.QueryMetadata{
+		Query: "legacy.rego", Platform: "terraform",
+		Content: "package datadog\np if { input.document.resource.aws_s3_bucket }",
+	}
+	factsQuery := model.QueryMetadata{
+		Query: "facts.rego", Platform: "terraform",
+		Content: "package datadog\np if { input._dd.documents[\"id\"] }",
+	}
+	commonFactsQuery := model.QueryMetadata{
+		Query: "common-facts.rego", Platform: "common",
+		Content: "package datadog\np if { input._dd.documents[\"id\"] }",
+	}
+	tests := []struct {
+		name              string
+		query             model.QueryMetadata
+		terraformSelected bool
+		commonNeedsFacts  bool
+		genericNeedsFacts map[string]bool
+		want              bool
+	}{
+		{name: "legacy query and libraries", query: legacyQuery, terraformSelected: true, want: false},
+		{name: "query reads facts", query: factsQuery, terraformSelected: true, want: true},
+		{name: "common library reads facts", query: legacyQuery, terraformSelected: true, commonNeedsFacts: true, want: true},
+		{name: "unused generic helper reads facts", query: legacyQuery, terraformSelected: true, genericNeedsFacts: map[string]bool{"terraform": true}, want: true},
+		{name: "common rule reads facts for Terraform payload", query: commonFactsQuery, terraformSelected: true, want: true},
+		{name: "common rule without Terraform scan", query: commonFactsQuery, terraformSelected: false, want: false},
+		{name: "malformed query is conservative", query: model.QueryMetadata{Query: "bad.rego", Platform: "terraform", Content: "package datadog\np if {"}, terraformSelected: true, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := QueryLoader{commonNeedsFacts: tt.commonNeedsFacts, genericNeedsFacts: tt.genericNeedsFacts}
+			require.Equal(t, tt.want, loader.TerraformFactsRequested([]model.QueryMetadata{tt.query}, tt.terraformSelected))
+		})
+	}
+}
+
+func TestFactsAwareQueriesBypassLegacyDocumentPrefilter(t *testing.T) {
+	idx := &docIndex{platformTerms: map[string][]*ast.Term{platformTerraform: nil}}
+	tests := []struct {
+		name   string
+		query  model.QueryMetadata
+		loader QueryLoader
+	}{
+		{
+			name: "query reads facts",
+			query: model.QueryMetadata{Query: "facts.rego", Platform: "terraform", Content: `package datadog
+DatadogPolicy contains "finding" if {
+  input.document.resource.aws_s3_bucket
+  input._dd.documents[_]
+}`},
+			loader: QueryLoader{},
+		},
+		{
+			name: "library reads facts",
+			query: model.QueryMetadata{Query: "legacy.rego", Platform: "terraform", Content: `package datadog
+DatadogPolicy contains "finding" if {
+  input.document.resource.aws_s3_bucket
+}`},
+			loader: QueryLoader{genericNeedsFacts: map[string]bool{"terraform": true}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plans := tt.loader.planQueries(context.Background(), []model.QueryMetadata{tt.query}, idx, 1)
+			require.Len(t, plans, 1)
+			require.True(t, plans[0].usesTFacts)
+			require.True(t, plans[0].isPartialSet)
+			require.False(t, plans[0].skip)
+			require.Nil(t, plans[0].subsetPayload)
+		})
+	}
+}
+
+func TestPrepareQueriesScansLoadedLibrariesForFactsReads(t *testing.T) {
+	query := model.QueryMetadata{
+		Query: "legacy.rego", Platform: "terraform",
+		Content: "package datadog\np if { input.document.resource.aws_s3_bucket }",
+	}
+	tests := []struct {
+		name      string
+		common    string
+		terraform string
+		want      bool
+	}{
+		{
+			name:      "common library reads facts",
+			common:    "package common\nunused_fact if { input._dd.documents[_] }",
+			terraform: "package generic.terraform\n",
+			want:      true,
+		},
+		{
+			name:      "unused platform helper reads facts",
+			common:    "package common\n",
+			terraform: "package generic.terraform\nunused_fact if { input._dd.documents[_] }",
+			want:      true,
+		},
+		{
+			name:      "document-only libraries remain legacy",
+			common:    "package common\nlegacy if { input.document.id }",
+			terraform: "package generic.terraform\nlegacy if { input.document.resource }",
+			want:      false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader, err := prepareQueries(
+				[]model.QueryMetadata{query},
+				source.RegoLibraries{LibraryCode: tt.common, LibraryInputData: "{}"},
+				map[string]source.RegoLibraries{"terraform": {LibraryCode: tt.terraform, LibraryInputData: "{}"}},
+				cacheTracker{},
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, loader.TerraformFactsRequested([]model.QueryMetadata{query}, true))
+		})
+	}
 }
 
 func TestEngine_selectPlatformPayload(t *testing.T) {

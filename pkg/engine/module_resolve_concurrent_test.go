@@ -54,7 +54,7 @@ func evaluateRootsWith(t *testing.T, workers int, root string, roots []string, f
 	var synthetic []*model.FileMetadata
 	evaluateRootModules(context.Background(), evaluator, roots, filesByDir, root, nil, nil, nil,
 		byAbsPath, seen, extras, instantiated, rootResources, out.Successful, out.Unresolved, out.Called,
-		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls, nil, nil)
+		&docs, &synthetic, &out.ResourceCount, &out.RootEvalOK, moduleCalls, nil, nil, false, make(map[string]*model.FileMetadata))
 
 	encode := func(v any) string {
 		b, err := json.Marshal(v)

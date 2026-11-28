@@ -52,13 +52,13 @@ resource "aws_s3_bucket" "example" {
 		files.SortByDocumentKey()
 		ctx := t.Context()
 		ins := newTestInspector(t, inspectorOpts{repoPath: root})
-		moduleDocs, synthetic, _, _ := ins.instantiateLocalModules(ctx, files, nil, nil)
+		moduleDocs, synthetic, _, _ := ins.instantiateLocalModules(ctx, files, nil, nil, false)
 		require.Len(t, synthetic, 4)
 		require.Len(t, moduleDocs, len(synthetic))
 
 		combined := files.Combine(ctx, false)
 		payloads, err := ins.buildPlatformPayloads(ctx, append(files, synthetic...).ToMap(),
-			combined.Documents, moduleDocs, []model.QueryMetadata{{Platform: "terraform"}})
+			combined.Documents, moduleDocs, []model.QueryMetadata{{Platform: "terraform"}}, false)
 		require.NoError(t, err)
 		payload := payloads.byPlatform["terraform"].(ast.Object).Get(ast.StringTerm("document")).Value.(*ast.Array)
 		require.Equal(t, len(combined.Documents)+len(synthetic), payload.Len())

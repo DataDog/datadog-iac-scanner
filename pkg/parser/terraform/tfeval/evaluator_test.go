@@ -914,6 +914,9 @@ resource "aws_s3_bucket" "this" {
 	}
 	names := make(map[string]bool)
 	for _, r := range got {
+		if !r.InstanceSetComplete {
+			t.Fatalf("known count instance %s has incomplete instance set", r.Name)
+		}
 		v := r.Attributes["bucket"]
 		if v.IsKnown() && v.Type() == cty.String {
 			names[v.AsString()] = true
@@ -976,6 +979,9 @@ resource "aws_s3_bucket" "this" {
 	}
 	buckets := make(map[string]bool)
 	for _, r := range got {
+		if !r.InstanceSetComplete {
+			t.Fatalf("known for_each instance %s has incomplete instance set", r.Name)
+		}
 		if v := r.Attributes["bucket"]; v.IsKnown() && v.Type() == cty.String {
 			buckets[v.AsString()] = true
 		}
