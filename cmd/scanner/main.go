@@ -41,6 +41,7 @@ func main() {
 			testRulesAction,
 			serveAction,
 			fetchBundleAction,
+			pulumiEvalAction,
 		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
