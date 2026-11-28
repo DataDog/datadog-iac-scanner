@@ -106,7 +106,7 @@ type CallSite struct {
 // ModuleScope is a module's local value expressions with the var and local
 // values its blocks were evaluated with, so a value can be traced back to the
 // module inputs it reads after evaluation. Read-only after evaluation, except
-// for the concurrency-safe partial-document memo.
+// for the concurrency-safe partial-document and presentation memos.
 type ModuleScope struct {
 	Locals map[string]hclsyntax.Expression
 	// Bodies are the module's parsed files, from which the resource and data
@@ -126,6 +126,11 @@ type ModuleScope struct {
 	// needed to render partial documents after authoritative evaluation finishes.
 	renderedData *sync.Map
 	dataSources  map[documentDataKey]documentDataSource
+
+	// presentation is derived from the final evaluation context and static
+	// resource declarations, and shared by every rendered resource in the scope.
+	presentationOnce sync.Once
+	presentation     *documentPresentation
 
 	// localGraph is the graph of the module directory's locals, which gives
 	// the order they resolve in and which of the roots that change during

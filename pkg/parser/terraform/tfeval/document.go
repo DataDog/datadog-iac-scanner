@@ -82,6 +82,31 @@ type documentRenderer struct {
 	managedRoots map[string]bool
 }
 
+type documentPresentation struct {
+	ctx          *hcl.EvalContext
+	managedRoots map[string]bool
+}
+
+// documentPresentation is initialized lazily because the evaluation context is
+// authoritative only after module evaluation completes. The cached context is
+// read-only and renderer bindings are always added in child scopes.
+func (s *ModuleScope) documentPresentation() *documentPresentation {
+	s.presentationOnce.Do(func() {
+		presentation := *s.evalCtx
+		presentation.Variables = maps.Clone(s.evalCtx.Variables)
+		managedRoots := make(map[string]bool)
+		if s.static != nil && s.static.resources != nil {
+			graph := s.static.resources
+			for _, block := range graph.blocks[:graph.resources] {
+				presentation.Variables[block.Labels[0]] = cty.DynamicVal
+				managedRoots[block.Labels[0]] = true
+			}
+		}
+		s.presentation = &documentPresentation{ctx: &presentation, managedRoots: managedRoots}
+	})
+	return s.presentation
+}
+
 func newRenderer(scanCtx context.Context, r *ResolvedResource) *documentRenderer {
 	if r == nil || r.Scope == nil || r.Scope.evalCtx == nil {
 		return &documentRenderer{Renderer: &partial.Renderer{}}
@@ -91,20 +116,11 @@ func newRenderer(scanCtx context.Context, r *ResolvedResource) *documentRenderer
 	// resources through their reference text. Keep those namespaces unknown
 	// only in the presentation context; never feed rendered references back
 	// into count/for_each, conditions, or native evaluation.
-	presentation := *r.Scope.evalCtx
-	presentation.Variables = maps.Clone(r.Scope.evalCtx.Variables)
-	managedRoots := make(map[string]bool)
-	if r.Scope.static != nil {
-		graph := r.Scope.static.resources
-		for _, block := range graph.blocks[:graph.resources] {
-			presentation.Variables[block.Labels[0]] = cty.DynamicVal
-			managedRoots[block.Labels[0]] = true
-		}
-	}
+	presentation := r.Scope.documentPresentation()
 	rd := &partial.Renderer{
-		Ctx: &presentation, Source: partial.FileSources(r.Scope.sources), Reference: references.forFile(nil),
+		Ctx: presentation.ctx, Source: partial.FileSources(r.Scope.sources), Reference: references.forFile(nil),
 	}
-	return &documentRenderer{Renderer: rd.WithBindings(documentIteration(r)), references: references, managedRoots: managedRoots}
+	return &documentRenderer{Renderer: rd.WithBindings(documentIteration(r)), references: references, managedRoots: presentation.managedRoots}
 }
 
 func (r *documentRenderer) withSource(src *attrSource) *documentRenderer {
