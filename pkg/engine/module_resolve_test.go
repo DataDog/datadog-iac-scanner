@@ -35,7 +35,7 @@ func TestUnqualifiedDataOverrideSource(t *testing.T) {
 	key := model.TerraformBlock{Kind: "data", Type: "local_file", Name: "example"}
 	sources := map[model.TerraformBlock]*model.TerraformOverrideSource{key: source}
 	blocks := model.Document{"local_file": model.Document{"example": model.Document{}}}
-	file := &model.FileMetadata{TerraformOverrides: withUnqualifiedDataOverrides(sources, model.Document{"data": blocks})}
+	file := &model.FileMetadata{TerraformOverrides: withUnqualifiedDataOverrides(sources, model.Document{"data": blocks}, nil)}
 	finding, declaration := terraformFindingSource(file, nil, "local_file[example].filename")
 	require.NotNil(t, finding)
 	require.Equal(t, "override", finding.SourceFileID)
@@ -43,11 +43,82 @@ func TestUnqualifiedDataOverrideSource(t *testing.T) {
 	finding, _ = terraformFindingSource(file, nil, "resource.local_file[example].filename")
 	require.Nil(t, finding)
 
-	file.TerraformOverrides = withUnqualifiedDataOverrides(sources, model.Document{"resource": blocks, "data": blocks})
+	file.TerraformOverrides = withUnqualifiedDataOverrides(sources, model.Document{"resource": blocks, "data": blocks}, nil)
 	finding, _ = terraformFindingSource(file, nil, "local_file[example].filename")
 	require.Nil(t, finding)
 	finding, _ = terraformFindingSource(file, nil, "data.local_file[example].filename")
 	require.NotNil(t, finding)
+}
+
+func TestUnqualifiedExpandedDataOverrideSource(t *testing.T) {
+	source := &model.TerraformOverrideSource{Fields: map[string]string{"filename": "override"}}
+	dataBlock := model.TerraformBlock{Kind: "data", Type: "local_file", Name: "example"}
+	sources := map[model.TerraformBlock]*model.TerraformOverrideSource{dataBlock: source}
+	for _, tc := range []struct {
+		name      string
+		instances map[model.TerraformInstanceKey]model.TerraformInstance
+		resources model.Document
+		wantAlias bool
+	}{
+		{
+			name: "counted data",
+			instances: map[model.TerraformInstanceKey]model.TerraformInstance{
+				{Kind: "data", Type: "local_file", Name: "example[0]"}: {Label: "example", Suffix: "[0]"},
+				{Kind: "data", Type: "local_file", Name: "example[1]"}: {Label: "example", Suffix: "[1]"},
+			},
+			wantAlias: true,
+		},
+		{
+			name: "for_each data",
+			instances: map[model.TerraformInstanceKey]model.TerraformInstance{
+				{Kind: "data", Type: "local_file", Name: `example["a"]`}: {Label: "example", Suffix: `["a"]`},
+				{Kind: "data", Type: "local_file", Name: `example["z"]`}: {Label: "example", Suffix: `["z"]`},
+			},
+			wantAlias: true,
+		},
+		{
+			name: "expanded same-named managed resource stays ambiguous",
+			instances: map[model.TerraformInstanceKey]model.TerraformInstance{
+				{Kind: "data", Type: "local_file", Name: "example[0]"}:     {Label: "example", Suffix: "[0]"},
+				{Kind: "resource", Type: "local_file", Name: "example[0]"}: {Label: "example", Suffix: "[0]"},
+			},
+			resources: model.Document{"local_file": model.Document{"example[0]": model.Document{}}},
+		},
+		{
+			name: "for_each managed instance stays ambiguous",
+			instances: map[model.TerraformInstanceKey]model.TerraformInstance{
+				{Kind: "data", Type: "local_file", Name: `example["z"]`}:         {Label: "example", Suffix: `["z"]`},
+				{Kind: "resource", Type: "local_file", Name: `example["other"]`}: {Label: "example", Suffix: `["other"]`},
+			},
+			resources: model.Document{"local_file": model.Document{`example["other"]`: model.Document{}}},
+		},
+		{
+			name: "zero instances do not create alias",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dataNames := model.Document{}
+			for key := range tc.instances {
+				if key.Kind == "data" {
+					dataNames[key.Name] = model.Document{}
+				}
+			}
+			document := model.Document{"data": model.Document{"local_file": dataNames}}
+			if len(tc.resources) > 0 {
+				document["resource"] = tc.resources
+			}
+			got := withUnqualifiedDataOverrides(sources, document, tc.instances)
+			_, gotAlias := got[model.TerraformBlock{Type: "local_file", Name: "example"}]
+			require.Equal(t, tc.wantAlias, gotAlias)
+			if gotAlias {
+				file := &model.FileMetadata{TerraformOverrides: got}
+				finding, declaration := terraformFindingSource(file, nil, "local_file[example].filename")
+				require.NotNil(t, finding)
+				require.Equal(t, "override", finding.SourceFileID)
+				require.Equal(t, dataBlock, declaration)
+			}
+		})
+	}
 }
 
 func TestTerraformLegacyPath(t *testing.T) {

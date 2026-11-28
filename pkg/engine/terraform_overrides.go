@@ -172,12 +172,16 @@ func (o *terraformOverrides) apply(files model.FileMetadatas, docs []model.Docum
 	}
 	for i, synthetic := range syntheticFiles {
 		if file := o.byPath[absPath(synthetic.FilePath, o.repoPath)]; file != nil {
-			synthetic.TerraformOverrides = withUnqualifiedDataOverrides(file.TerraformOverrides, docs[i])
+			synthetic.TerraformOverrides = withUnqualifiedDataOverrides(
+				file.TerraformOverrides, docs[i], synthetic.TerraformInstances,
+			)
 		}
 	}
 	for _, file := range files {
 		if file != nil && len(file.TerraformOverrides) > 0 {
-			file.TerraformOverrides = withUnqualifiedDataOverrides(file.TerraformOverrides, file.Document)
+			file.TerraformOverrides = withUnqualifiedDataOverrides(
+				file.TerraformOverrides, file.Document, file.TerraformInstances,
+			)
 		}
 	}
 }
@@ -186,13 +190,18 @@ func (o *terraformOverrides) apply(files model.FileMetadatas, docs []model.Docum
 // only in documents where the data block has no same-named managed resource.
 // The document itself may be released before finding source lookup.
 func withUnqualifiedDataOverrides(
-	sources map[model.TerraformBlock]*model.TerraformOverrideSource, document model.Document,
+	sources map[model.TerraformBlock]*model.TerraformOverrideSource,
+	document model.Document,
+	instances map[model.TerraformInstanceKey]model.TerraformInstance,
 ) map[model.TerraformBlock]*model.TerraformOverrideSource {
+	if len(sources) == 0 {
+		return sources
+	}
+	present := terraformDocumentBlocks(document, instances)
 	var aliased map[model.TerraformBlock]*model.TerraformOverrideSource
-	data := docAsMap(document[dataRoot])
-	resources := docAsMap(document[terraformResourceBlock])
 	for key, source := range sources {
-		if key.Kind == dataRoot && docAsMap(data[key.Type])[key.Name] != nil && docAsMap(resources[key.Type])[key.Name] == nil {
+		if key.Kind == dataRoot && present[model.TerraformBlock{Kind: dataRoot, Type: key.Type, Name: key.Name}] &&
+			!present[model.TerraformBlock{Kind: terraformResourceBlock, Type: key.Type, Name: key.Name}] {
 			if aliased == nil {
 				aliased = maps.Clone(sources)
 			}
@@ -204,6 +213,27 @@ func withUnqualifiedDataOverrides(
 		return aliased
 	}
 	return sources
+}
+
+func terraformDocumentBlocks(
+	document model.Document,
+	instances map[model.TerraformInstanceKey]model.TerraformInstance,
+) map[model.TerraformBlock]bool {
+	present := make(map[model.TerraformBlock]bool)
+	for _, section := range []string{terraformResourceBlock, dataRoot} {
+		for typ, rawBlocks := range docAsMap(document[section]) {
+			for name := range docAsMap(rawBlocks) {
+				present[model.TerraformBlock{Kind: section, Type: typ, Name: name}] = true
+			}
+		}
+	}
+	for key, instance := range instances {
+		indexed := model.TerraformBlock(key)
+		if present[indexed] {
+			present[model.TerraformBlock{Kind: key.Kind, Type: key.Type, Name: instance.Label}] = true
+		}
+	}
+	return present
 }
 
 func setTerraformBlock(file *model.FileMetadata, key model.TerraformBlock, document map[string]interface{}) {

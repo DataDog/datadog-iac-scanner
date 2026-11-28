@@ -1175,6 +1175,55 @@ DatadogPolicy contains result if {
 	}
 }
 
+func TestInspect_RootExpandedDataOverrideSource(t *testing.T) {
+	for _, tc := range []struct {
+		name, expansion, overrideValue, address, resourceType, searchPrefix string
+	}{
+		{"count unqualified", "count = 2", `count.index == 1 ? "public" : "private"`, "data.local_file.f[1]", "local_file", "local_file"},
+		{"for_each unqualified", `for_each = { a = "private", z = "public" }`, `each.key == "z" ? "public" : "private"`, `data.local_file.f["z"]`, "local_file", "local_file"},
+		{"count qualified", "count = 2", `count.index == 1 ? "public" : "private"`, "data.local_file.f[1]", "data.local_file", "data.local_file"},
+		{"for_each qualified", `for_each = { a = "private", z = "public" }`, `each.key == "z" ? "public" : "private"`, `data.local_file.f["z"]`, "data.local_file", "data.local_file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			main := writeFile(t, root, "main.tf", fmt.Sprintf(`data "local_file" "f" {
+  %s
+  filename = "private"
+}
+`, tc.expansion))
+			override := writeFile(t, root, "override.tf", fmt.Sprintf(`data "local_file" "f" {
+  filename = %s
+}
+`, tc.overrideValue))
+			rule := fmt.Sprintf(`package datadog
+DatadogPolicy contains result if {
+  some i, name
+  input.document[i].data.local_file[name].filename == "public"
+  result := {
+    "documentId": input.document[i].id,
+    "resourceType": %q,
+    "resourceName": name,
+    "searchKey": sprintf("%s[%%s].filename", [name]),
+  }
+}`, tc.resourceType, tc.searchPrefix)
+			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+				queries: []model.QueryMetadata{{Query: "data-override", Content: rule, Platform: "terraform", Aggregation: 1}},
+			})
+			ins.SetInventory(&collectingSink{})
+			files := append(parseTerraform(t, main), parseTerraform(t, override)...)
+			vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, 1)
+			require.Equal(t, "f", vulns[0].ResourceName)
+			require.Equal(t, "override.tf", filepath.Base(vulns[0].FileName))
+			require.Equal(t, 2, vulns[0].Line)
+			require.Len(t, vulns[0].ResourceOccurrences, 1)
+			require.Equal(t, tc.address, vulns[0].ResourceOccurrences[0].Terraform.Address)
+		})
+	}
+}
+
 func TestInspect_RootGoogleIAMPolicyDataDuplicateGuard(t *testing.T) {
 	const rule = `package datadog
 options := {"user:", "allUsers", "allAuthenticatedUsers"}
