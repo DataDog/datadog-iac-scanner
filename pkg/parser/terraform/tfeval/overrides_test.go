@@ -84,7 +84,7 @@ func TestVariableOverrideDefaultParity(t *testing.T) {
 	}
 }
 
-func TestExplicitRootVarsOnlyAffectEffectiveOverrides(t *testing.T) {
+func TestExplicitRootVarsApplyToEveryRoot(t *testing.T) {
 	root := t.TempDir()
 	e := New()
 	e.SetExplicitRootVars(map[string]cty.Value{"value": cty.StringVal("selected")})
@@ -92,8 +92,8 @@ func TestExplicitRootVarsOnlyAffectEffectiveOverrides(t *testing.T) {
 	for _, tc := range []struct {
 		name, override, want string
 	}{
-		{"plain", "", "automatic"},
-		{"orphan", `resource "example" "orphan" { other = true }`, "automatic"},
+		{"plain", "", "selected"},
+		{"orphan", `resource "example" "orphan" { other = true }`, "selected"},
 		{"matched", `resource "example" "this" { other = true }`, "selected"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

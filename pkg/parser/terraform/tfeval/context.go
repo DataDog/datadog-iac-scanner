@@ -26,7 +26,7 @@ func (e *Evaluator) newModuleScope(
 		evalCtx.Variables[name] = value
 	}
 	scope := &ModuleScope{
-		Locals: parsed.localExprs, Bodies: parsed.bodies, Var: vars, evalCtx: evalCtx, sources: parsed.sources,
+		Locals: parsed.localExprs, Bodies: parsed.bodies, Var: vars, evalCtx: evalCtx, sources: parsed.sources, fsys: e.fsys,
 		localGraph: parsed.locals, static: parsed.static, renderedData: &sync.Map{},
 	}
 	e.noteCycles(ctx, dir, parsed.locals)

@@ -463,8 +463,7 @@ func resolveLocalDir(callerDir, source string) string {
 // LoadRootVars reads the variable definitions files Terraform loads on its own
 // from dir (see tfpath.AutoloadedVarFiles) and returns a variable map for use as
 // root-module inputs, reading through the evaluator's filesystem. Later files
-// override earlier ones. When an effective resource or data override needs
-// evaluator-rendered values, explicitly selected inputs take precedence.
+// override earlier ones. Explicitly selected scan inputs take precedence.
 // Files that fail to read or parse are silently skipped.
 // Only files listed in dir are read: MemFS records ReadFile misses as
 // escalation signals, so absent files must not be probed.
@@ -498,7 +497,7 @@ func (e *Evaluator) LoadRootVarsWithContext(ctx context.Context, dir string) map
 			}
 		}
 	}
-	if len(e.explicitRootVars) != 0 && len(e.ResourceOverrides(ctx, dir)) != 0 {
+	if len(e.explicitRootVars) != 0 {
 		maps.Copy(out, e.explicitRootVars)
 	}
 	return out

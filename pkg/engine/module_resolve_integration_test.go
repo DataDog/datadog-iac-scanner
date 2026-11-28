@@ -1011,3 +1011,436 @@ resource "aws_s3_bucket" "this" { acl = var.acl }
 	require.Empty(t, ins.GetFailedQueries())
 	require.NotEmpty(t, vulns, "rule should fire on resolved module resource")
 }
+
+// Exercise the existing rule interface against evaluated root instances. Each
+// positive expansion has a private first instance so a finding proves later
+// instances were projected, rather than just the declaration scanned once.
+func TestInspect_RootResourceInstances(t *testing.T) {
+	for _, tc := range []struct {
+		name, config, tfvars string
+		files                map[string]string
+		want                 int
+	}{
+		{name: "literal", config: `resource "aws_s3_bucket" "b" { acl = "public-read" }`, want: 1},
+		{name: "locals and defaults", config: `
+variable "acl" { default = "PUBLIC-READ" }
+locals { acl = lower(var.acl) }
+resource "aws_s3_bucket" "b" { acl = local.acl }
+`, want: 1},
+		{name: "cross-file inputs", config: `resource "aws_s3_bucket" "b" { acl = local.acl }`,
+			files: map[string]string{"inputs.tf": `
+variable "acl" { default = "PUBLIC-READ" }
+locals { acl = lower(var.acl) }
+`}, want: 1},
+		{name: "resource reference", config: `
+resource "aws_s3_bucket" "source" {
+  bucket = "2"
+  acl = "private"
+}
+resource "aws_s3_bucket" "b" {
+  count = tonumber(aws_s3_bucket.source.bucket)
+  acl = count.index == 1 ? "public-read" : "private"
+}
+`, want: 1},
+		{name: "module output", config: `
+module "settings" { source = "./settings" }
+resource "aws_s3_bucket" "b" { acl = module.settings.acl }
+`, files: map[string]string{"settings/main.tf": `output "acl" { value = "public-read" }`}, want: 1},
+		{name: "automatic variable file", config: `
+variable "acl" { default = "private" }
+resource "aws_s3_bucket" "b" { acl = var.acl }
+`, tfvars: `acl = "public-read"`, want: 1},
+		{name: "count", config: `resource "aws_s3_bucket" "b" {
+  count = 2
+  acl = count.index == 1 ? "public-read" : "private"
+}`, want: 1},
+		{name: "count both instances", config: `resource "aws_s3_bucket" "b" {
+  count = 2
+  acl = "public-read"
+}`, want: 2},
+		{name: "for_each", config: `resource "aws_s3_bucket" "b" {
+  for_each = { a = "private", z = "public-read" }
+  acl = each.key == "z" ? each.value : "private"
+}`, want: 1},
+		{name: "for_each both instances", config: `resource "aws_s3_bucket" "b" {
+  for_each = { a = "public-read", z = "public-read" }
+  acl = each.value
+}`, want: 2},
+		{name: "zero count", config: `resource "aws_s3_bucket" "b" {
+  count = 0
+  acl = "public-read"
+}`},
+		{name: "empty for_each", config: `resource "aws_s3_bucket" "b" {
+  for_each = {}
+  acl = "public-read"
+}`},
+		{name: "unknown count invariant", config: `
+variable "n" {}
+resource "aws_s3_bucket" "b" {
+  count = var.n
+  acl = "public-read"
+}`, want: 1},
+		{name: "unknown count dependent", config: `
+variable "n" {}
+resource "aws_s3_bucket" "b" {
+  count = var.n
+  acl = count.index == 1 ? "public-read" : "private"
+}`},
+		{name: "unknown for_each dependent", config: `
+variable "buckets" {}
+resource "aws_s3_bucket" "b" {
+  for_each = var.buckets
+  acl = each.value
+}`},
+		{name: "terraform json", config: `{
+  "variable": {"acl": {"default": "public-read"}},
+  "resource": {"aws_s3_bucket": {"b": {
+    "count": 2,
+    "acl": "${count.index == 1 ? var.acl : \"private\"}"
+  }}}
+}`, want: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			filename := "main.tf"
+			if tc.name == "terraform json" {
+				filename += ".json"
+			}
+			path := writeFile(t, root, filename, tc.config)
+			if tc.tfvars != "" {
+				writeFile(t, root, "terraform.tfvars", tc.tfvars)
+			}
+			files := parseTerraform(t, path)
+			for name, content := range tc.files {
+				support := writeFile(t, filepath.Dir(filepath.Join(root, name)), filepath.Base(name), content)
+				files = append(files, parseTerraform(t, support)...)
+			}
+			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+				queries: []model.QueryMetadata{{Query: "acl", Content: aclRule, Platform: "terraform", Aggregation: 1}},
+			})
+			vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, tc.want)
+			for _, v := range vulns {
+				require.Equal(t, "b", v.ResourceName)
+				require.Empty(t, v.ModuleCallChain, "root findings must retain their identity")
+				attribute := "acl ="
+				if tc.name == "terraform json" {
+					attribute = `"acl":`
+				}
+				line := 1 + strings.Count(tc.config[:strings.LastIndex(tc.config, attribute)], "\n")
+				require.Equal(t, line, v.Line, "the finding must point at the written attribute")
+			}
+			if tc.want == 2 {
+				require.Equal(t, model.FindingIdentity(&vulns[0]), model.FindingIdentity(&vulns[1]),
+					"instances of one written declaration keep distinct raw results while reporting the same declaration identity")
+			}
+		})
+	}
+}
+
+func TestInspect_RootDataInstances(t *testing.T) {
+	const rule = `package datadog
+DatadogPolicy contains result if {
+  some name, i
+  input.document[i].data.local_file[name].filename == "public"
+  result := {
+    "documentId": input.document[i].id,
+    "resourceType": "data.local_file",
+    "resourceName": name,
+    "searchKey": sprintf("data.local_file[%s].filename", [name]),
+  }
+}`
+	for _, tc := range []struct {
+		name, expansion, filename string
+		want                      int
+	}{
+		{"count", "count = 2", `count.index == 1 ? "public" : "private"`, 1},
+		{"for_each", `for_each = { a = "private", z = "public" }`, "each.value", 1},
+		{"zero", "count = 0", `"public"`, 0},
+		{"empty", "for_each = {}", `"public"`, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := writeFile(t, root, "main.tf", fmt.Sprintf("data \"local_file\" \"f\" {\n%s\nfilename = %s\n}", tc.expansion, tc.filename))
+			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+				queries: []model.QueryMetadata{{Query: "data", Content: rule, Platform: "terraform", Aggregation: 1}},
+			})
+			vulns, err := ins.Inspect(t.Context(), "test", parseTerraform(t, path), []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, tc.want)
+		})
+	}
+}
+
+func TestInspect_RootExpandedDataOverrideSource(t *testing.T) {
+	for _, tc := range []struct {
+		name, expansion, overrideValue, address, resourceType, searchPrefix string
+	}{
+		{"count unqualified", "count = 2", `count.index == 1 ? "public" : "private"`, "data.local_file.f[1]", "local_file", "local_file"},
+		{"for_each unqualified", `for_each = { a = "private", z = "public" }`, `each.key == "z" ? "public" : "private"`, `data.local_file.f["z"]`, "local_file", "local_file"},
+		{"count qualified", "count = 2", `count.index == 1 ? "public" : "private"`, "data.local_file.f[1]", "data.local_file", "data.local_file"},
+		{"for_each qualified", `for_each = { a = "private", z = "public" }`, `each.key == "z" ? "public" : "private"`, `data.local_file.f["z"]`, "data.local_file", "data.local_file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			main := writeFile(t, root, "main.tf", fmt.Sprintf(`data "local_file" "f" {
+  %s
+  filename = "private"
+}
+`, tc.expansion))
+			override := writeFile(t, root, "override.tf", fmt.Sprintf(`data "local_file" "f" {
+  filename = %s
+}
+`, tc.overrideValue))
+			rule := fmt.Sprintf(`package datadog
+DatadogPolicy contains result if {
+  some i, name
+  input.document[i].data.local_file[name].filename == "public"
+  result := {
+    "documentId": input.document[i].id,
+    "resourceType": %q,
+    "resourceName": name,
+    "searchKey": sprintf("%s[%%s].filename", [name]),
+  }
+}`, tc.resourceType, tc.searchPrefix)
+			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+				queries: []model.QueryMetadata{{Query: "data-override", Content: rule, Platform: "terraform", Aggregation: 1}},
+			})
+			ins.SetInventory(&collectingSink{})
+			files := append(parseTerraform(t, main), parseTerraform(t, override)...)
+			vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, 1)
+			require.Equal(t, "f", vulns[0].ResourceName)
+			require.Equal(t, "override.tf", filepath.Base(vulns[0].FileName))
+			require.Equal(t, 2, vulns[0].Line)
+			require.Len(t, vulns[0].ResourceOccurrences, 1)
+			require.Equal(t, tc.address, vulns[0].ResourceOccurrences[0].Terraform.Address)
+		})
+	}
+}
+
+func TestInspect_RootGoogleIAMPolicyDataDuplicateGuard(t *testing.T) {
+	const rule = `package datadog
+options := {"user:", "allUsers", "allAuthenticatedUsers"}
+DatadogPolicy contains result if {
+  some i, name
+  policy := input.document[i].data.google_iam_policy[name]
+  some optio in options
+  check_member(policy.binding, optio)
+  valid_role(policy.binding)
+  result := {"documentId": input.document[i].id, "resourceType": "google_iam_policy", "resourceName": name, "searchKey": sprintf("google_iam_policy[%s].binding.role", [name])}
+}
+DatadogPolicy contains result if {
+  some i in input.document
+  some resourceType, resourcesOfType in i.resource
+  some name, resource in resourcesOfType
+  is_string(resource.policy_data)
+  startswith(resource.policy_data, "{")
+  policy := json.unmarshal(resource.policy_data)
+  some binding in policy.bindings
+  some optio in options
+  check_member(binding, optio)
+  valid_role(binding)
+  not reported_at_data_block(i, binding, optio)
+  result := {"documentId": i.id, "resourceType": resourceType, "resourceName": name, "searchKey": sprintf("%s[%s].policy_data", [resourceType, name])}
+}
+reported_at_data_block(doc, binding, optio) if {
+  not doc._dd_tfplan_meta
+  some policy in doc.data.google_iam_policy
+  is_object(policy.binding)
+  policy.binding.role == binding.role
+  check_member(policy.binding, optio)
+}
+check_member(resource, prefix) if {
+  some member in resource.members
+  startswith(member, prefix)
+}
+valid_role(resource) if {
+  is_string(resource.role)
+  resource.role != ""
+}
+`
+	root := t.TempDir()
+	path := writeFile(t, root, "main.tf", `data "google_iam_policy" "positive" {
+  binding {
+    role = "roles/apigee.runtimeAgent"
+    members = ["user:jane@example.com"]
+  }
+}
+resource "google_project_iam_policy" "positive" {
+  project = "your-project-id"
+  policy_data = data.google_iam_policy.positive.policy_data
+}
+`)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+		queries: []model.QueryMetadata{{Query: "iam", Content: rule, Platform: "terraform", Aggregation: 1}},
+	})
+	vulns, err := ins.Inspect(t.Context(), "test", parseTerraform(t, path), []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1, "the applied policy must be suppressed when the sibling data policy has the same binding")
+	require.Equal(t, "google_iam_policy", vulns[0].ResourceType)
+}
+
+func TestInspect_AmbiguousRootStillProjectsCalledModule(t *testing.T) {
+	root := t.TempDir()
+	main := writeFile(t, root, "main.tf", `resource "aws_s3_bucket" "duplicate" { acl = "private" }
+module "child" { source = "./child" }
+`)
+	duplicate := writeFile(t, root, "duplicate.tf", `resource "aws_s3_bucket" "duplicate" { acl = "private" }`)
+	child := writeFile(t, filepath.Join(root, "child"), "main.tf", `resource "aws_s3_bucket" "from_child" { acl = "public-read" }`)
+	files := append(parseTerraform(t, main), parseTerraform(t, duplicate)...)
+	files = append(files, parseTerraform(t, child)...)
+	ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+		queries: []model.QueryMetadata{{Query: "acl", Content: aclRule, Platform: "terraform", Aggregation: 1}},
+	})
+	vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
+	require.NoError(t, err)
+	require.Empty(t, ins.GetFailedQueries())
+	require.Len(t, vulns, 1, "ambiguous root declarations must keep their legacy input while valid child instances remain projected")
+	require.Equal(t, "from_child", vulns[0].ResourceName)
+	require.Contains(t, vulns[0].ModuleCallChain, "module.child")
+}
+
+func TestInspect_RootCountFindingLinksOnlyAffectedInstance(t *testing.T) {
+	const structuredAlias = `package datadog
+DatadogPolicy contains result if {
+  some i, name
+  input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
+  result := {"_dd_id": input.document[i].id, "path": ["resource", "aws_s3_bucket", name, "acl"], "resourceType": "aws_s3_bucket", "resourceName": "reported alias"}
+}`
+	const structuredWithoutDisplayFields = `package datadog
+DatadogPolicy contains result if {
+  some i, name
+  input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
+  result := {"_dd_id": input.document[i].id, "path": ["resource", "aws_s3_bucket", name, "acl"]}
+}`
+	for _, tc := range []struct {
+		name, rule, config, override, wantName, wantFile string
+		wantLine                                         int
+	}{
+		{name: "legacy bracket", rule: aclRule, wantName: "b"},
+		{name: "legacy dotted", rule: strings.ReplaceAll(aclRule, "aws_s3_bucket[%s].acl", "aws_s3_bucket.%s.acl"), wantName: "b"},
+		{name: "legacy alias", rule: `package datadog
+DatadogPolicy contains result if {
+  some i, name
+  input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
+  result := {"documentId": input.document[i].id, "resourceType": "aws_s3_bucket", "resourceName": "reported alias", "searchKey": sprintf("aws_s3_bucket.%s.acl", [name])}
+}`, wantName: "reported alias"},
+		{name: "structured alias", rule: structuredAlias, wantName: "reported alias"},
+		{name: "structured without display fields", rule: structuredWithoutDisplayFields},
+		{
+			name: "override contribution",
+			rule: aclRule,
+			config: `resource "aws_s3_bucket" "b" {
+  count = 2
+  acl = "private"
+}`,
+			override: `resource "aws_s3_bucket" "b" {
+  acl = count.index == 1 ? "public-read" : "private"
+}`,
+			wantName: "b", wantFile: "override.tf", wantLine: 2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			config := tc.config
+			if config == "" {
+				config = `resource "aws_s3_bucket" "b" {
+  count = 2
+  acl = count.index == 1 ? "public-read" : "private"
+}
+`
+			}
+			path := writeFile(t, root, "main.tf", config)
+			overridePath := ""
+			if tc.override != "" {
+				overridePath = writeFile(t, root, "override.tf", tc.override)
+			}
+			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+				queries: []model.QueryMetadata{{Query: "acl", Content: tc.rule, Platform: "terraform", Aggregation: 1}},
+			})
+			ins.SetInventory(&collectingSink{})
+			files := parseTerraform(t, path)
+			if overridePath != "" {
+				files = append(files, parseTerraform(t, overridePath)...)
+			}
+			vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, 1)
+			require.Equal(t, tc.wantName, vulns[0].ResourceName)
+			if tc.wantFile != "" {
+				require.Equal(t, tc.wantFile, filepath.Base(vulns[0].FileName))
+				require.Equal(t, tc.wantLine, vulns[0].Line)
+			}
+			require.Len(t, vulns[0].ResourceOccurrences, 1)
+			require.Equal(t, "aws_s3_bucket.b[1]", vulns[0].ResourceOccurrences[0].Terraform.Address)
+		})
+	}
+}
+
+func TestInspect_RootInstancesRetainSameFileContextOnce(t *testing.T) {
+	root := t.TempDir()
+	path := writeFile(t, root, "main.tf", `resource "aws_s3_bucket" "sibling" {
+  bucket = "sibling"
+  acl = "private"
+}
+resource "aws_s3_bucket" "b" {
+  count = 2
+  bucket = "counted"
+  acl = count.index == 1 ? "public-read" : "private"
+}
+`)
+	for _, tc := range []struct {
+		name, rule string
+		want       int
+	}{
+		{
+			name: "later instance joins its singleton sibling",
+			rule: `package datadog
+DatadogPolicy contains result if {
+  some i, name
+  input.document[i].resource.aws_s3_bucket[name].acl == "public-read"
+  input.document[i].resource.aws_s3_bucket.sibling.bucket == "sibling"
+  result := {"documentId": input.document[i].id, "resourceType": "aws_s3_bucket", "resourceName": name, "searchKey": sprintf("aws_s3_bucket[%s].acl", [name])}
+}`,
+			want: 1,
+		},
+		{
+			name: "aggregate sees singleton once",
+			rule: `package datadog
+DatadogPolicy contains result if {
+  documents := [doc.id | some doc in input.document; doc.resource.aws_s3_bucket.sibling.bucket == "sibling"]
+  count(documents) == 1
+  some doc in input.document
+  doc.resource.aws_s3_bucket.sibling.bucket == "sibling"
+  result := {"documentId": doc.id, "resourceType": "aws_s3_bucket", "resourceName": "sibling", "searchKey": "aws_s3_bucket.sibling.bucket"}
+}`,
+			want: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files := parseTerraform(t, path)
+			writtenID := files[0].ID
+			ins := newTestInspector(t, inspectorOpts{repoPath: root, vb: DefaultVulnerabilityBuilder,
+				queries: []model.QueryMetadata{{Query: "root-context", Content: tc.rule, Platform: "terraform", Aggregation: 1}},
+			})
+			vulns, err := ins.Inspect(t.Context(), "test", files, []string{"terraform"})
+			require.NoError(t, err)
+			require.Empty(t, ins.GetFailedQueries())
+			require.Len(t, vulns, tc.want)
+			if tc.name == "later instance joins its singleton sibling" {
+				require.Equal(t, "b", vulns[0].ResourceName)
+				require.Equal(t, 8, vulns[0].Line)
+				require.Equal(t, writtenID, vulns[0].FileID, "root findings retain the original document identity")
+				require.Empty(t, vulns[0].ModuleCallChain)
+			}
+		})
+	}
+}

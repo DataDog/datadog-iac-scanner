@@ -163,7 +163,9 @@ func TestEvaluateModule_JSONConfigInputPropagated(t *testing.T) {
   "resource": {
     "aws_s3_bucket": {
       "this": {
-        "bucket": "${local.prefixed}"
+        "bucket": "${local.prefixed}",
+        "selected": "${var.bucket_name == \"my-bucket\" ? \"selected\" : \"other\"}",
+        "items": "${[var.bucket_name, \"second\"]}"
       }
     }
   }
@@ -178,6 +180,8 @@ func TestEvaluateModule_JSONConfigInputPropagated(t *testing.T) {
 
 	r := findResource(t, resources, "aws_s3_bucket", "this")
 	requireString(t, r.Attributes, "bucket", "my-bucket-json")
+	requireString(t, r.Attributes, "selected", "selected")
+	require.Equal(t, cty.TupleVal([]cty.Value{cty.StringVal("my-bucket"), cty.StringVal("second")}), r.Attributes["items"])
 }
 
 func TestEvaluateModule_JSONNullDefault(t *testing.T) {

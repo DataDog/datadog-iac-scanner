@@ -132,7 +132,10 @@ func parseJSONInterpolation(expr hcl.Expression, src []byte) hclsyntax.Expressio
 	if err != nil {
 		unquoted = strings.TrimSpace(raw)
 	}
-	parsed, diags := hclsyntax.ParseExpression([]byte(strconv.Quote(unquoted)), "", expr.Range().Start)
+	// JSON has already escaped the surrounding string. Parse its decoded
+	// template directly: quoting it again also escapes string literals inside
+	// interpolations, making expressions such as condition ? "a" : "b" invalid.
+	parsed, diags := hclsyntax.ParseTemplate([]byte(unquoted), expr.Range().Filename, expr.Range().Start)
 	if diags.HasErrors() {
 		return nil
 	}
