@@ -202,7 +202,7 @@ type resourceSchedule struct {
 
 func (e *Evaluator) scheduleResources(
 	ctx context.Context, blocks []*hclsyntax.Block, scope *ModuleScope, evalCtx *hcl.EvalContext,
-	data *moduleData, addr string, chain *callChain, hasOutputs bool,
+	data *moduleData, addr string, chain *callChain, hasOutputs, allowFilter bool,
 ) []ResolvedResource {
 	g := scope.static.resources
 	s := &resourceSchedule{
@@ -232,7 +232,7 @@ func (e *Evaluator) scheduleResources(
 	s.staticLocalCount = len(s.localValues)
 
 	var needed []bool
-	if addr == "" && e.rootResourceFilter != nil && !hasOutputs {
+	if allowFilter && !hasOutputs {
 		needed = neededScheduleUnits(g, scope.fileInputs, e.rootResourceFilter)
 	}
 	for i, c := range g.components {

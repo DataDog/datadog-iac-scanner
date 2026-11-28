@@ -52,6 +52,7 @@ type terraformOverrides struct {
 	repoPath    string
 	byPath      map[string]*model.FileMetadata
 	definitions map[overrideDefinition]*overrideProjection
+	dirs        map[string]bool
 	fragments   instantiatedIndex
 }
 
@@ -67,9 +68,15 @@ func scanTerraformOverrides(
 			}
 			for _, config := range evaluator.ResourceOverrides(ctx, dir) {
 				if overrides == nil {
-					overrides = &terraformOverrides{repoPath: repoPath, byPath: byPath,
-						definitions: make(map[overrideDefinition]*overrideProjection), fragments: make(instantiatedIndex)}
+					overrides = &terraformOverrides{
+						repoPath:    repoPath,
+						byPath:      byPath,
+						definitions: make(map[overrideDefinition]*overrideProjection),
+						dirs:        make(map[string]bool),
+						fragments:   make(instantiatedIndex),
+					}
 				}
+				overrides.dirs[filepath.Clean(dir)] = true
 				overrides.add(config)
 			}
 			break
@@ -98,8 +105,8 @@ func (o *terraformOverrides) add(config tfeval.ResourceOverride) {
 	}
 }
 
-func (o *terraformOverrides) hasDefinitions() bool {
-	return o != nil && len(o.definitions) > 0
+func (o *terraformOverrides) hasDir(dir string) bool {
+	return o != nil && o.dirs[filepath.Clean(dir)]
 }
 
 func (o *terraformOverrides) record(

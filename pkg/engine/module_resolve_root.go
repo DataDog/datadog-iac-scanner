@@ -7,6 +7,11 @@ package engine
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/json"
+	"math"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -66,6 +71,7 @@ func projectRootResources(
 	repoPath string,
 	targets *ruleTargets,
 ) (projected rootResourceProjection, count int) {
+	var cons *rootTreeCons
 	for i := range resources {
 		r := &resources[i]
 		if r.ModuleAddress != "" || !targets.matches(r.Type) {
@@ -77,6 +83,7 @@ func projectRootResources(
 		}
 		if projected == nil {
 			projected = make(rootResourceProjection)
+			cons = newRootTreeCons()
 		}
 		projection := projected[fm.ID]
 		if projection == nil {
@@ -102,7 +109,8 @@ func projectRootResources(
 			byName = make(map[string]interface{})
 			section[typ] = byName
 		}
-		byName[r.Name] = tfeval.AttributesToDocumentWithContext(ctx, r)
+		doc := tfeval.AttributesToDocumentWithContext(ctx, r)
+		byName[r.Name] = cons.cons(doc)
 		base := tfeval.ResourceBaseName(r.Name)
 		if r.Name != base {
 			if projection.instances == nil {
@@ -114,6 +122,210 @@ func projectRootResources(
 		count++
 	}
 	return projected, count
+}
+
+// rootTreeCons deduplicates structurally identical map and slice subtrees
+// produced by root resource projection within a single root (for example
+// shared local tag maps, dynamic blocks, and repeated count/for_each attributes).
+// Canonical subtrees are read-only downstream and allow buildPlatformPayloads
+// to hit its O(1) pointer memo instead of re-converting every duplicate copy.
+type rootTreeCons struct {
+	byContent map[docContentKey][]interface{}
+	hashes    map[uintptr]docContentKey
+}
+
+func newRootTreeCons() *rootTreeCons {
+	return &rootTreeCons{
+		byContent: make(map[docContentKey][]interface{}),
+		hashes:    make(map[uintptr]docContentKey),
+	}
+}
+
+func (c *rootTreeCons) cons(v interface{}) interface{} {
+	res, _, _ := c.consWithHash(v)
+	return res
+}
+
+func (c *rootTreeCons) consWithHash(v interface{}) (interface{}, docContentKey, bool) {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		return c.consMap(t)
+	case []interface{}:
+		return c.consSlice(t)
+	default:
+		h, ok := hashRootScalar(v)
+		return v, h, ok
+	}
+}
+
+func (c *rootTreeCons) consMap(m map[string]interface{}) (interface{}, docContentKey, bool) {
+	ptr := reflect.ValueOf(m).Pointer()
+	if h, ok := c.hashes[ptr]; ok {
+		return m, h, true
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	h := mixRootByte(rootConsBase, 'M')
+	shareable := true
+	for _, k := range keys {
+		child, ch, ok := c.consWithHash(m[k])
+		m[k] = child
+		if !ok {
+			shareable = false
+			continue
+		}
+		h = mixRootString(h, k)
+		h = mixRootKey(h, ch)
+	}
+	if !shareable {
+		return m, docContentKey{}, false
+	}
+	for _, existing := range c.byContent[h] {
+		if em, ok := existing.(map[string]interface{}); ok && sameRootMap(em, m) {
+			return em, h, true
+		}
+	}
+	c.byContent[h] = append(c.byContent[h], m)
+	c.hashes[ptr] = h
+	return m, h, true
+}
+
+func (c *rootTreeCons) consSlice(s []interface{}) (interface{}, docContentKey, bool) {
+	ptr := reflect.ValueOf(s).Pointer()
+	if h, ok := c.hashes[ptr]; ok {
+		return s, h, true
+	}
+	h := mixRootByte(rootConsBase, 'S')
+	shareable := true
+	for i := range s {
+		child, ch, ok := c.consWithHash(s[i])
+		s[i] = child
+		if !ok {
+			shareable = false
+			continue
+		}
+		h = mixRootKey(h, ch)
+	}
+	if !shareable {
+		return s, docContentKey{}, false
+	}
+	for _, existing := range c.byContent[h] {
+		if es, ok := existing.([]interface{}); ok && sameRootSlice(es, s) {
+			return es, h, true
+		}
+	}
+	c.byContent[h] = append(c.byContent[h], s)
+	c.hashes[ptr] = h
+	return s, h, true
+}
+
+func sameRootMap(a, b map[string]interface{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, va := range a {
+		vb, ok := b[k]
+		if !ok || !sameRootValue(va, vb) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameRootSlice(a, b []interface{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !sameRootValue(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameRootValue(a, b interface{}) bool {
+	switch ta := a.(type) {
+	case map[string]interface{}:
+		tb, ok := b.(map[string]interface{})
+		return ok && reflect.ValueOf(ta).Pointer() == reflect.ValueOf(tb).Pointer() && len(ta) == len(tb)
+	case []interface{}:
+		tb, ok := b.([]interface{})
+		return ok && reflect.ValueOf(ta).Pointer() == reflect.ValueOf(tb).Pointer() && len(ta) == len(tb)
+	case float64:
+		tb, ok := b.(float64)
+		return ok && math.Float64bits(ta) == math.Float64bits(tb)
+	default:
+		return a == b
+	}
+}
+
+var rootConsBase = docContentKey{a: 1469598103934665603, b: 2166136261}
+
+func mixRootByte(k docContentKey, b byte) docContentKey {
+	const (
+		primeA = 1099511628211
+		primeB = 16777619
+	)
+	return docContentKey{
+		a: (k.a ^ uint64(b)) * primeA,
+		b: (k.b ^ uint64(b)) * primeB,
+	}
+}
+
+func mixRootKey(k, x docContentKey) docContentKey {
+	const (
+		primeA = 1099511628211
+		primeB = 16777619
+	)
+	return docContentKey{
+		a: (k.a ^ x.a) * primeA,
+		b: (k.b ^ x.b) * primeB,
+	}
+}
+
+func mixRootString(k docContentKey, s string) docContentKey {
+	const (
+		primeA = 1099511628211
+		primeB = 16777619
+	)
+	a, b := k.a, k.b
+	for i := 0; i < len(s); i++ {
+		c := uint64(s[i])
+		a = (a ^ c) * primeA
+		b = (b ^ c) * primeB
+	}
+	return docContentKey{a: (a ^ 0xff) * primeA, b: (b ^ 0xff) * primeB}
+}
+
+func hashRootScalar(v interface{}) (docContentKey, bool) {
+	k := rootConsBase
+	switch t := v.(type) {
+	case nil:
+		return mixRootByte(k, 'N'), true
+	case bool:
+		if t {
+			return mixRootByte(k, 'T'), true
+		}
+		return mixRootByte(k, 'F'), true
+	case string:
+		return mixRootString(mixRootByte(k, 's'), t), true
+	case json.Number:
+		return mixRootString(mixRootByte(k, 'n'), string(t)), true
+	case float64:
+		var buf [8]byte
+		binary.LittleEndian.PutUint64(buf[:], math.Float64bits(t))
+		k = mixRootByte(k, 'f')
+		for _, b := range buf {
+			k = mixRootByte(k, b)
+		}
+		return k, true
+	default:
+		return docContentKey{}, false
+	}
 }
 
 func collectRootSuppressed(

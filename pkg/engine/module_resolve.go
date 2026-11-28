@@ -554,7 +554,7 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 	}
 	// Tokens bound the roots evaluated but not yet merged. Workers take a token
 	// before an index, so the roots in flight are always the next ones to merge.
-	window := make(chan struct{}, workers)
+	window := make(chan struct{}, 2*workers)
 	stop := make(chan struct{})
 	var (
 		mu       sync.Mutex
@@ -624,10 +624,10 @@ func (m *rootMerge) evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, 
 			r.rootProjection, r.rootCount = projectRootResources(ctx, r.resources, m.byAbsPath, m.repoPath, m.targets)
 		}
 		// Once root resources are projected, drop them when neither inventory
-		// nor overrides need the raw cty resources in merge. Also release the
-		// root's parse cache entry immediately so in-flight roots do not pin
-		// HCL ASTs across the worker window.
-		if m.inventory == nil && !m.overrides.hasDefinitions() {
+		// nor overrides in this root need the raw cty resources in merge. Also
+		// release the root's parse cache entry immediately so in-flight roots do
+		// not pin HCL ASTs across the worker window.
+		if m.inventory == nil && !m.overrides.hasDir(dir) {
 			r.resources = filterChildResources(r.resources)
 			worker.ForgetRootParse(dir)
 		}
@@ -792,7 +792,7 @@ func resolveModuleDocuments(
 		evaluator.SetRemoteResolver(resolver)
 	}
 	overrides := scanTerraformOverrides(ctx, evaluator, byAbsPath, filesByDir, repoPath)
-	if inv == nil && targets != nil && !overrides.hasDefinitions() {
+	if inv == nil && targets != nil {
 		evaluator.SetRootResourceFilter(targets.matches)
 	}
 

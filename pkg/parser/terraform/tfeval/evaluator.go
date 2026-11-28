@@ -688,9 +688,10 @@ func (e *Evaluator) finalizeChainEvaluation(
 ) (*resourceTree, map[string]cty.Value, error) {
 	e.applyModuleOutputs(ctx, evalCtx, scope, data, moduleOutputs)
 
-	evalOutputs := len(parsed.outputs) > 0 && (addr != "" || e.rootResourceFilter == nil)
+	allowFilter := addr == "" && e.rootResourceFilter != nil && len(parsed.overrides) == 0
+	evalOutputs := len(parsed.outputs) > 0 && !allowFilter
 	rootResources := e.scheduleResources(
-		ctx, resourceBlocks, scope, evalCtx, data, addr, chain, evalOutputs,
+		ctx, resourceBlocks, scope, evalCtx, data, addr, chain, evalOutputs, allowFilter,
 	)
 
 	scope.Local = evalCtx.Variables["local"]
@@ -1147,9 +1148,11 @@ func (e *Evaluator) expandBlock(
 	typeName, resName := rb.Labels[0], rb.Labels[1]
 
 	// Attributes that ignore each/count evaluate identically in every instance.
-	// Single-instance root resources are only evaluated once, so they skip both
-	// per-block and cross-call memoization.
-	hasExpansion := rb.Body.Attributes[metaArgCount] != nil || rb.Body.Attributes[metaArgForEach] != nil
+	// Single-instance root resources without nested blocks (which may include
+	// dynamic blocks) are only evaluated once, so they skip per-block memoization.
+	hasExpansion := rb.Body.Attributes[metaArgCount] != nil ||
+		rb.Body.Attributes[metaArgForEach] != nil ||
+		len(rb.Body.Blocks) > 0
 	var memo *invariantMemo
 	if hasExpansion || addr != "" {
 		memo = newInvariantMemo()

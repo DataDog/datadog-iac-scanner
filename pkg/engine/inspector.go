@@ -1223,6 +1223,8 @@ func (c *Inspector) interfaceToPayloadValue(
 		return c.stringToPayloadValue(ctx, v, cons), nil
 	case bool:
 		return ast.Boolean(v), nil
+	case json.Number:
+		return ast.Number(v), nil
 	case nil:
 		return ast.Null{}, nil
 	default:
