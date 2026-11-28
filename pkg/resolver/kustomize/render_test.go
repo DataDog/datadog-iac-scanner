@@ -1682,3 +1682,19 @@ func BenchmarkPlan(b *testing.B) {
 		Plan(abs, nil, content, canonical)
 	}
 }
+
+func TestAdapterStatDirectoryThroughOverlay(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("MemFS keys are forward-slash paths")
+	}
+	mem := vfs.NewMemFS(map[string][]byte{"/ws/app/kustomization.yaml": []byte("x")})
+	a := &adapter{fsys: vfs.NewOverlay(mem, map[string][]byte{"/ws/gen/a.yaml": []byte("y")}), root: "/ws"}
+	for _, dir := range []string{"/ws/app", "/ws/gen"} {
+		if _, info, ok := a.stat(dir); !ok || !info.IsDir() {
+			t.Errorf("stat(%s) = ok %v, want a directory", dir, ok)
+		}
+	}
+	if _, _, ok := a.stat("/ws/nope"); ok {
+		t.Error("stat of a missing directory succeeded")
+	}
+}

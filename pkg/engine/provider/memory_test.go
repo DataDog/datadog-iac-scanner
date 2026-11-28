@@ -179,3 +179,12 @@ func TestMemoryWalkInventoryRendersNoChartWithoutYAMLPlatform(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []InventoryFile{{Path: "infra/main.tf", Ext: ".tf"}}, files)
 }
+
+func TestMemorySourceProvider_RecordMissingThroughOverlay(t *testing.T) {
+	mem := vfs.NewMemFS(map[string][]byte{"/ws/a.tf": []byte("a")})
+	NewMemorySourceProvider(vfs.NewOverlay(mem, nil), nil, nil, nil).RecordMissing("/ws/chart")
+	require.Equal(t, []string{"/ws/chart"}, mem.MissingFiles())
+
+	// Over the real disk it stays a no-op.
+	NewMemorySourceProvider(vfs.NewOverlay(vfs.DiskFS{}, nil), nil, nil, nil).RecordMissing("/ws/chart")
+}

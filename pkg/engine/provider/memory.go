@@ -160,7 +160,7 @@ func (m *MemorySourceProvider) ReadFile(p string) ([]byte, error) {
 // RecordMissing records an escalation request when the provider's FS tracks
 // missing paths (the in-memory one does; the real disk cannot).
 func (m *MemorySourceProvider) RecordMissing(path string) {
-	if r, ok := m.fsys.(vfs.MissingRecorder); ok {
+	if r, ok := vfs.Unwrap(m.fsys).(vfs.MissingRecorder); ok {
 		r.RecordMissing(path)
 	}
 }

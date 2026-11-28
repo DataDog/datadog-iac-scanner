@@ -253,7 +253,7 @@ func newAttacher(ctx context.Context, fsys vfs.FS, idx *chartIndex, root string,
 // inMemory reports an in-memory FS, which cannot reach the host and turns a
 // missing dependency into a request for the client to push it.
 func inMemory(fsys vfs.FS) bool {
-	_, ok := fsys.(vfs.MissingRecorder)
+	_, ok := vfs.Unwrap(fsys).(vfs.MissingRecorder)
 	return ok
 }
 

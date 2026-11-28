@@ -102,7 +102,7 @@ func (a *adapter) stat(p string) (string, fs.FileInfo, bool) {
 	info, err := a.fsys.Stat(abs)
 	if err != nil {
 		// MemFS knows only files; its directories are synthesized from them.
-		if d, ok := a.fsys.(interface {
+		if d, ok := vfs.Unwrap(a.fsys).(interface {
 			DirInfo(string) (fs.FileInfo, bool)
 		}); ok {
 			if info, ok := d.DirInfo(abs); ok {

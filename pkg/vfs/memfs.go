@@ -54,6 +54,14 @@ func normalize(p string) string {
 	return filepath.ToSlash(filepath.Clean(p))
 }
 
+// AbsOrClean returns fsys.Abs(p), or filepath.Clean(p) when fsys cannot resolve it.
+func AbsOrClean(fsys FS, p string) string {
+	if abs, err := fsys.Abs(p); err == nil {
+		return abs
+	}
+	return filepath.Clean(p)
+}
+
 func notExist(op, name string) error {
 	return &fs.PathError{Op: op, Path: name, Err: syscall.ENOENT}
 }
@@ -116,31 +124,17 @@ func (m *MemFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 	children := make(map[string]childInfo)
 	for p, content := range m.files {
-		var rel string
-		if dir == "." {
-			rel = p
-		} else if r, ok := underDir(p, dir); ok {
-			rel = r
-		} else {
+		name, isDir, ok := childOf(p, dir)
+		if !ok {
 			continue
 		}
-		if rel == "" {
-			continue
-		}
-		if seg, _, found := strings.Cut(rel, "/"); found {
-			// A descendant: its first path segment is an immediate subdirectory.
-			// An absolute key under dir "." has an empty first segment ("" for
-			// "/ws/main.tf"), which names no directory — skip it rather than
-			// synthesizing an entry called "".
-			if seg == "" {
-				continue
-			}
-			if _, ok := children[seg]; !ok {
-				children[seg] = childInfo{isDir: true}
+		if isDir {
+			if _, seen := children[name]; !seen {
+				children[name] = childInfo{isDir: true}
 			}
 			continue
 		}
-		children[rel] = childInfo{size: int64(len(content))}
+		children[name] = childInfo{size: int64(len(content))}
 	}
 
 	if len(children) == 0 {
@@ -251,6 +245,26 @@ func underDir(p, dir string) (string, bool) {
 		return after, true
 	}
 	return "", false
+}
+
+// childOf returns the immediate child of dir that the normalized path p lives
+// under, and whether it is a subdirectory. dir "." matches every relative path.
+func childOf(p, dir string) (name string, isDir, ok bool) {
+	rel := p
+	if dir != "." {
+		if rel, ok = underDir(p, dir); !ok {
+			return "", false, false
+		}
+	}
+	if rel == "" {
+		return "", false, false
+	}
+	seg, _, nested := strings.Cut(rel, "/")
+	// An empty first segment (an absolute key under ".") names no entry.
+	if seg == "" {
+		return "", false, false
+	}
+	return seg, nested, true
 }
 
 // memFileInfo is a minimal fs.FileInfo for in-memory entries.
