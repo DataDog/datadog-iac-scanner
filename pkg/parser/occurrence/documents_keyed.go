@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
+	"github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/cicd/gitlab"
 	"github.com/DataDog/datadog-iac-scanner/pkg/platforms"
 	"gopkg.in/yaml.v3"
 )
@@ -488,17 +489,11 @@ func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index i
 	}
 	lines := e.yamlFile(f).lines
 	var rows []model.ResourceOccurrence
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		key, value := root.Content[i], root.Content[i+1]
-		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || strings.HasPrefix(key.Value, ".") || gitLabGlobalKeyword(key.Value) {
+	for declaration := range gitlab.Declarations(root) {
+		if declaration.Kind != gitlab.Job || declaration.Mapping() == nil {
 			continue
 		}
-		if value.Kind == yaml.AliasNode {
-			value = value.Alias
-		}
-		if value == nil || value.Kind != yaml.MappingNode {
-			continue
-		}
+		key, i := declaration.Key, declaration.Index
 		span := childSpan(root, i, doc.end, lines)
 		source := lineSource(span.start, span.end)
 		rows = append(rows, model.ResourceOccurrence{
@@ -510,15 +505,4 @@ func (e *documentEnumerator) gitLabJobOccurrences(f *model.FileMetadata, index i
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].ResourceName < rows[j].ResourceName })
 	return rows
-}
-
-// GitLab global/header keywords, including deprecated global job defaults.
-// Job-level keywords such as release, artifacts and hooks remain valid names.
-func gitLabGlobalKeyword(key string) bool {
-	switch key {
-	case "default", "include", "stages", "variables", "workflow", "spec",
-		"image", "services", "cache", "before_script", "after_script", "types":
-		return true
-	}
-	return false
 }
