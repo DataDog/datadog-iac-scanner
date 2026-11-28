@@ -14,6 +14,7 @@ import (
 	"maps"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +28,6 @@ import (
 	"github.com/DataDog/datadog-iac-scanner/pkg/tfpath"
 	"github.com/DataDog/datadog-iac-scanner/pkg/vfs"
 	"github.com/cespare/xxhash/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/rs/zerolog"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -48,6 +48,7 @@ type moduleResolutionResult struct {
 	docs                 []model.Document
 	syntheticFiles       []*model.FileMetadata
 	rootResources        rootResourceProjection
+	rootApplied          map[string]bool
 	suppressed           instantiatedIndex
 	calledDirs           map[string]bool
 	successfulRoots      map[string]bool
@@ -99,17 +100,19 @@ func (c *Inspector) instantiateLocalModules(
 		if f == nil || !tfpath.IsConfig(f.FilePath) {
 			continue
 		}
-		if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
-			if res.unresolvedModuleDirs[moduleFileDir(f.FilePath, res.evaluationBase)] {
-				continue
-			}
-			// Drop projected blocks and successfully evaluated root declarations
-			// with no instances. Failed evaluations retain their original input.
-			// Other blocks (variable/output/locals) remain available to rules.
-			removeInstantiatedResources(f.Document, replaced)
-			if projection := res.rootResources[f.ID]; projection != nil {
-				overlayRootResources(f.Document, projection)
-				f.TerraformInstances = projection.instances
+		if !res.rootApplied[f.ID] {
+			if replaced := res.suppressed[f.ID]; len(replaced) > 0 {
+				if res.unresolvedModuleDirs[moduleFileDir(f.FilePath, res.evaluationBase)] {
+					continue
+				}
+				// Drop projected blocks and successfully evaluated root declarations
+				// with no instances. Failed evaluations retain their original input.
+				// Other blocks (variable/output/locals) remain available to rules.
+				removeInstantiatedResources(f.Document, replaced)
+				if projection := res.rootResources[f.ID]; projection != nil {
+					overlayRootResources(f.Document, projection)
+					f.TerraformInstances = projection.instances
+				}
 			}
 		}
 		// Only remove local module call-sites that were instantiated; remote/registry
@@ -374,7 +377,7 @@ func (c *Inspector) resolveModulesSafely(
 	inv = c.newTerraformInventory(lookup, externalModuleFile, occurrences)
 	return resolveModuleDocuments(
 		ctx, files, c.repoPath, resolver, targets, lookup, c.mergeAllow, c.fsys,
-		externalModuleFile, inv, c.terraformRootVars,
+		externalModuleFile, inv, c.terraformRootVars, make(map[string]bool),
 	)
 }
 
@@ -395,6 +398,7 @@ func evaluateRootModules(
 	extras map[string][]extraCallerInfo,
 	instantiated instantiatedIndex,
 	rootResources rootResourceProjection,
+	rootApplied map[string]bool,
 	successfulRoots map[string]bool,
 	unresolvedModuleDirs map[string]bool,
 	actualCalledDirs map[string]bool,
@@ -411,6 +415,7 @@ func evaluateRootModules(
 		targets: targets, lookup: lookup, byAbsPath: byAbsPath, seen: seen, extras: extras,
 		instantiated: instantiated, successfulRoots: successfulRoots, unresolvedModuleDirs: unresolvedModuleDirs,
 		rootResources:    rootResources,
+		rootApplied:      rootApplied,
 		actualCalledDirs: actualCalledDirs, extra: extra, syntheticFiles: syntheticFiles,
 		resourceCount: resourceCount, rootEvalOK: rootEvalOK, moduleCalls: moduleCalls, inventory: inv,
 		overrides: overrides,
@@ -424,7 +429,7 @@ func evaluateRootModules(
 		return
 	}
 	for _, dir := range roots[next:] {
-		result := evaluateRoot(ctx, evaluator, dir)
+		result := m.evaluateRoot(ctx, evaluator, dir)
 		evaluator.AddNotEvaluatedDirs(result.notEvaluated)
 		m.merge(dir, &result)
 	}
@@ -452,6 +457,7 @@ type rootMerge struct {
 	unresolvedModuleDirs map[string]bool
 	actualCalledDirs     map[string]bool
 	rootResources        rootResourceProjection
+	rootApplied          map[string]bool
 	extra                *[]model.Document
 	syntheticFiles       *[]*model.FileMetadata
 	resourceCount        *int
@@ -480,18 +486,16 @@ func (m *rootMerge) merge(dir string, result *rootResult) {
 		}
 		return
 	}
-	rootDeclarationsUnique := uniqueRootDeclarations(result.declarations)
-	if !rootDeclarationsUnique {
+	if !result.rootDeclarationsUnique {
 		// The native evaluator remains useful for best-effort inventory, but
 		// duplicate root addresses cannot safely replace individual source blocks.
 		// Called child modules still have independent source documents and remain
 		// safe to project.
 		log := logger.FromContext(m.ctx)
 		log.Warn().Str("root", dir).Msg("tfeval: keeping ambiguous root on the legacy document path")
-	}
-	if rootDeclarationsUnique {
+	} else {
 		// Root suppression includes declarations with zero instances.
-		m.recordRootDeclarations(result.declarations)
+		m.recordRootSuppressed(result.rootSuppressed)
 	}
 	// This also records live overrides in successfully evaluated child modules.
 	m.overrides.record(m.ctx, m.evaluator, result.resources)
@@ -508,9 +512,12 @@ func (m *rootMerge) merge(dir string, result *rootResult) {
 		m.actualCalledDirs[d] = true
 	}
 	attributions := newModuleAttributionCache()
-	var rootCount int
-	if rootDeclarationsUnique {
-		rootCount = m.addRootResources(result.resources)
+	if result.rootDeclarationsUnique {
+		if m.rootApplied != nil && !m.unresolvedModuleDirs[dir] && !slices.Contains(result.notEvaluated, dir) {
+			m.applyRootProjection(dir, result.rootProjection)
+		} else if len(result.rootProjection) > 0 {
+			m.mergeRootProjection(result.rootProjection)
+		}
 	}
 	docs, syn, count := instantiatedDocs(
 		m.ctx, result.resources, m.byAbsPath, m.repoPath, m.targets, m.seen, m.extras, m.instantiated, m.lookup,
@@ -518,18 +525,21 @@ func (m *rootMerge) merge(dir string, result *rootResult) {
 	m.moduleCalls.record(result.instances, m.repoPath, m.lookup, attributions)
 	*m.extra = append(*m.extra, docs...)
 	*m.syntheticFiles = append(*m.syntheticFiles, syn...)
-	*m.resourceCount += count + rootCount
+	*m.resourceCount += count + result.rootCount
 }
 
 // rootResult is a root evaluated by a worker.
 type rootResult struct {
-	resources    []tfeval.ResolvedResource
-	declarations []*hclsyntax.Block
-	instances    []tfeval.ModuleInstance
-	childDirs    map[string]bool
-	err          error
-	notEvaluated []string
-	panicked     any
+	resources              []tfeval.ResolvedResource
+	rootDeclarationsUnique bool
+	rootSuppressed         []rootSuppressedBlock
+	rootProjection         rootResourceProjection
+	rootCount              int
+	instances              []tfeval.ModuleInstance
+	childDirs              map[string]bool
+	err                    error
+	notEvaluated           []string
+	panicked               any
 }
 
 // evaluateConcurrently evaluates roots on workers and merges them in order, so
@@ -544,7 +554,7 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 	}
 	// Tokens bound the roots evaluated but not yet merged. Workers take a token
 	// before an index, so the roots in flight are always the next ones to merge.
-	window := make(chan struct{}, 2*workers)
+	window := make(chan struct{}, workers)
 	stop := make(chan struct{})
 	var (
 		mu       sync.Mutex
@@ -572,7 +582,7 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 					return
 				default:
 				}
-				results[i] <- evaluateRoot(m.ctx, worker, roots[i])
+				results[i] <- m.evaluateRoot(m.ctx, worker, roots[i])
 			}
 		})
 	}
@@ -596,7 +606,7 @@ func (m *rootMerge) evaluateConcurrently(ctx context.Context, roots []string, wo
 	return len(roots)
 }
 
-func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
+func (m *rootMerge) evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r rootResult) {
 	defer func() {
 		if p := recover(); p != nil {
 			r = rootResult{panicked: p}
@@ -607,9 +617,42 @@ func evaluateRoot(ctx context.Context, worker *tfeval.Evaluator, dir string) (r 
 	r.resources, _, r.childDirs, r.err = worker.EvaluateModule(ctx, dir, worker.LoadRootVarsWithContext(ctx, dir))
 	r.instances = worker.TakeModuleInstances()
 	if r.err == nil {
-		r.declarations = worker.ResourceDeclarations(ctx, dir)
+		declarations := worker.ResourceDeclarations(ctx, dir)
+		r.rootDeclarationsUnique = uniqueRootDeclarations(declarations)
+		if r.rootDeclarationsUnique {
+			r.rootSuppressed = collectRootSuppressed(declarations, m.byAbsPath, m.repoPath, m.targets)
+			r.rootProjection, r.rootCount = projectRootResources(ctx, r.resources, m.byAbsPath, m.repoPath, m.targets)
+		}
+		// Once root resources are projected, drop them when neither inventory
+		// nor overrides need the raw cty resources in merge. Also release the
+		// root's parse cache entry immediately so in-flight roots do not pin
+		// HCL ASTs across the worker window.
+		if m.inventory == nil && !m.overrides.hasDefinitions() {
+			r.resources = filterChildResources(r.resources)
+			worker.ForgetRootParse(dir)
+		}
 	}
 	return r
+}
+
+func filterChildResources(resources []tfeval.ResolvedResource) []tfeval.ResolvedResource {
+	hasChild := false
+	for i := range resources {
+		if resources[i].ModuleAddress != "" {
+			hasChild = true
+			break
+		}
+	}
+	if !hasChild {
+		return nil
+	}
+	out := make([]tfeval.ResolvedResource, 0, len(resources))
+	for i := range resources {
+		if resources[i].ModuleAddress != "" {
+			out = append(out, resources[i])
+		}
+	}
+	return out
 }
 
 // collectNotEvaluatedDirs marks the directories the evaluator skipped, and
@@ -709,6 +752,7 @@ func resolveModuleDocuments(
 	externalModuleFile func(string) bool,
 	inv *terraformInventory,
 	rootVars map[string]cty.Value,
+	rootApplied map[string]bool,
 ) moduleResolutionResult {
 	externalModuleFile = externalModuleFiles(repoPath, externalModuleFile)
 	base, err := terraformEvaluationBase(repoPath, fsys)
@@ -748,6 +792,9 @@ func resolveModuleDocuments(
 		evaluator.SetRemoteResolver(resolver)
 	}
 	overrides := scanTerraformOverrides(ctx, evaluator, byAbsPath, filesByDir, repoPath)
+	if inv == nil && targets != nil && !overrides.hasDefinitions() {
+		evaluator.SetRootResourceFilter(targets.matches)
+	}
 
 	// staticCalledDirs is used only to classify root vs. child dirs before evaluation.
 	// Suppression and stripping are driven by actualCalledDirs (evaluation results).
@@ -777,7 +824,7 @@ func resolveModuleDocuments(
 
 	evaluateRootModules(
 		ctx, evaluator, evaluatedRoots, filesByDir, repoPath, resolver, targets, lookup,
-		byAbsPath, seen, extras, instantiated, rootResources,
+		byAbsPath, seen, extras, instantiated, rootResources, rootApplied,
 		successfulRoots, unresolvedModuleDirs, actualCalledDirs,
 		&extra, &syntheticFiles, &resourceCount, &rootEvalOK, moduleCalls, inv, overrides,
 	)
@@ -801,33 +848,14 @@ func resolveModuleDocuments(
 		return moduleResolutionResult{rootCount: len(roots)}
 	}
 
-	// A call site is only stripped once the module behind it actually produced
-	// instantiated documents. Stripping it otherwise — because evaluation
-	// resolved nothing, or because the module's files are not part of the scan
-	// — would remove the call-site rule branches without putting anything in
-	// their place.
-	strippedDirs := make(map[string]bool, len(actualCalledDirs))
-	for dir := range actualCalledDirs {
-		// A directory with any unevaluated call site keeps its call sites too. The
-		// resolved instances no longer stand in for the whole directory, so removing
-		// the call-site blocks would drop the rules that match them for an instance
-		// that has nothing else representing it.
-		if unresolvedModuleDirs[dir] {
-			continue
-		}
-		for _, f := range filesByDir[dir] {
-			if len(instantiated[f.ID]) > 0 {
-				strippedDirs[dir] = true
-				break
-			}
-		}
-	}
+	strippedDirs := collectStrippedDirs(actualCalledDirs, unresolvedModuleDirs, filesByDir, instantiated)
 
 	scrubInstantiatedForUnresolvedDirs(instantiated, files, unresolvedModuleDirs, repoPath)
 
 	result := moduleResolutionResult{
 		evaluationBase:       repoPath,
 		rootResources:        rootResources,
+		rootApplied:          rootApplied,
 		docs:                 extra,
 		syntheticFiles:       syntheticFiles,
 		suppressed:           instantiated,
@@ -844,6 +872,29 @@ func resolveModuleDocuments(
 	}
 	overrides.prepare(ctx, evaluator, &result, actualCalledDirs)
 	return result
+}
+
+// collectStrippedDirs returns the called directories whose call sites may be
+// stripped because evaluation produced instantiated documents without any
+// unresolved call site.
+func collectStrippedDirs(
+	actualCalledDirs, unresolvedModuleDirs map[string]bool,
+	filesByDir map[string][]*model.FileMetadata,
+	instantiated instantiatedIndex,
+) map[string]bool {
+	strippedDirs := make(map[string]bool, len(actualCalledDirs))
+	for dir := range actualCalledDirs {
+		if unresolvedModuleDirs[dir] {
+			continue
+		}
+		for _, f := range filesByDir[dir] {
+			if len(instantiated[f.ID]) > 0 {
+				strippedDirs[dir] = true
+				break
+			}
+		}
+	}
+	return strippedDirs
 }
 
 // terraformEvaluationBase aligns relative disk paths with tfeval's absolute

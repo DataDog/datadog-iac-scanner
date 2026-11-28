@@ -25,6 +25,8 @@ import (
 	yamlParser "github.com/DataDog/datadog-iac-scanner/pkg/parser/yaml/default"
 	"github.com/DataDog/datadog-iac-scanner/pkg/resolver"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
+	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
 // TestService tests the functions [GetVulnerabilities(), StartScan()] and all the methods called by them
@@ -286,4 +288,24 @@ func TestGetCountTerraformResourcesMatchesRegexp(t *testing.T) {
 	for _, in := range inputs {
 		require.Equal(t, len(oracle.FindAll([]byte(in), -1)), GetCountTerraformResources([]byte(in)), in)
 	}
+}
+
+func TestNormalizeDocumentValue_DocumentAndCtySimpleJSON(t *testing.T) {
+	input := model.Document{
+		"str":   ctyjson.SimpleJSONValue{Value: cty.StringVal("hello")},
+		"num":   ctyjson.SimpleJSONValue{Value: cty.NumberIntVal(42)},
+		"bool":  ctyjson.SimpleJSONValue{Value: cty.True},
+		"null":  ctyjson.SimpleJSONValue{Value: cty.NullVal(cty.String)},
+		"list":  ctyjson.SimpleJSONValue{Value: cty.TupleVal([]cty.Value{cty.StringVal("a"), cty.NumberIntVal(7)})},
+		"obj":   ctyjson.SimpleJSONValue{Value: cty.ObjectVal(map[string]cty.Value{"k": cty.StringVal("v")})},
+		"empty": ctyjson.SimpleJSONValue{Value: cty.EmptyObjectVal},
+		"nested": model.Document{
+			"ptr": &ctyjson.SimpleJSONValue{Value: cty.StringVal("p")},
+		},
+	}
+	got, changed := normalizeDocumentValue(input)
+	require.True(t, changed)
+	want, ok := normalizeViaJSON(input)
+	require.True(t, ok)
+	require.Equal(t, want, got)
 }

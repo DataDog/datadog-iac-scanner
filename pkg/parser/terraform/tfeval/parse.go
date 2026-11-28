@@ -50,6 +50,32 @@ var reservedModuleAttrs = map[string]bool{
 func parseDir(
 	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS,
 ) ([]*hclsyntax.Body, map[string][]byte, error) {
+	return parseDirFiltered(ctx, dir, packageRoot, allow, fsys, false)
+}
+
+var rootEvalMarkers = [...][]byte{
+	[]byte("resource"),
+	[]byte("data"),
+	[]byte("module"),
+	[]byte("variable"),
+	[]byte("locals"),
+}
+
+func mayAffectRootEvaluation(src []byte, path string) bool {
+	if tfpath.IsJSONConfig(path) || tfpath.IsOverrideFile(filepath.Base(path)) {
+		return true
+	}
+	for _, m := range rootEvalMarkers {
+		if bytes.Contains(src, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseDirFiltered(
+	ctx context.Context, dir, packageRoot string, allow map[string]struct{}, fsys vfs.FS, skipNonEval bool,
+) ([]*hclsyntax.Body, map[string][]byte, error) {
 	if fsys == nil {
 		fsys = vfs.Default()
 	}
@@ -73,6 +99,9 @@ func parseDir(
 		}
 		src, rErr := tfmodules.ReadConfigFile(ctx, fsys, path, packageRoot)
 		if rErr != nil {
+			continue
+		}
+		if skipNonEval && !mayAffectRootEvaluation(src, path) {
 			continue
 		}
 		if body, ok := parseConfigBody(src, path); ok {

@@ -71,8 +71,11 @@ func modulesReadResources(dp *dirParse) bool {
 // Direct traversal aliases through locals are followed without runtime object
 // identity or marks, so no evaluator metadata escapes into values.
 func referencedResourceAttrs(dp *dirParse) map[string][]string {
+	if len(dp.resources) == 0 {
+		return nil
+	}
 	r := resourceAttrReader{
-		expanded: map[string]bool{}, locals: dp.localExprs,
+		expanded: make(map[string]bool, len(dp.resources)), locals: dp.localExprs,
 		aliases: map[string]hcl.Traversal{}, attrs: map[string][]string{},
 	}
 	for _, b := range dp.resources {
@@ -84,7 +87,12 @@ func referencedResourceAttrs(dp *dirParse) map[string][]string {
 		r.expanded[b.Labels[0]+"."+b.Labels[1]] = count || each
 	}
 	for _, body := range dp.bodies {
-		_ = hclsyntax.VisitAll(body, r.visit)
+		for _, block := range body.Blocks {
+			switch block.Type {
+			case scheduledResource, blockTypeData, "locals", blockTypeModule, "output":
+				_ = hclsyntax.VisitAll(block.Body, r.visit)
+			}
+		}
 	}
 	for key, names := range r.attrs {
 		slices.Sort(names)

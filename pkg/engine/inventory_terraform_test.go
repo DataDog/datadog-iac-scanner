@@ -143,7 +143,7 @@ func TestInventoryEvaluatesRootsNoRuleTargets(t *testing.T) {
 
 	sink := &collectingSink{}
 	inv := &terraformInventory{sink: sink, repoPath: repo}
-	with := resolveModuleDocuments(context.Background(), files, repo, nil, targets, nil, nil, vfs.DiskFS{}, nil, inv, nil)
+	with := resolveModuleDocuments(context.Background(), files, repo, nil, targets, nil, nil, vfs.DiskFS{}, nil, inv, nil, nil)
 	require.Equal(t, without, with, "the inventory changes nothing the findings use")
 	require.Len(t, sink.rows, 1)
 	require.Equal(t, "random_id.x", sink.rows[0].ResourcePath)

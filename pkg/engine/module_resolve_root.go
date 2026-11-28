@@ -6,6 +6,7 @@
 package engine
 
 import (
+	"context"
 	"strings"
 
 	"github.com/DataDog/datadog-iac-scanner/pkg/model"
@@ -52,43 +53,156 @@ func overlayRootResources(doc map[string]interface{}, projection *rootDocumentRe
 	}
 }
 
-func (m *rootMerge) addRootResources(resources []tfeval.ResolvedResource) int {
-	count := 0
+type rootSuppressedBlock struct {
+	fileID string
+	kind   string
+	name   string
+}
+
+func projectRootResources(
+	ctx context.Context,
+	resources []tfeval.ResolvedResource,
+	byAbsPath map[string]*model.FileMetadata,
+	repoPath string,
+	targets *ruleTargets,
+) (projected rootResourceProjection, count int) {
 	for i := range resources {
 		r := &resources[i]
-		if r.ModuleAddress != "" || !m.targets.matches(r.Type) {
+		if r.ModuleAddress != "" || !targets.matches(r.Type) {
 			continue
 		}
-		fm := m.byAbsPath[absPath(r.DefinedIn, m.repoPath)]
+		fm := byAbsPath[absPath(r.DefinedIn, repoPath)]
 		if fm == nil {
 			continue
 		}
-		projection := m.rootResources[fm.ID]
+		if projected == nil {
+			projected = make(rootResourceProjection)
+		}
+		projection := projected[fm.ID]
 		if projection == nil {
-			projection = &rootDocumentResources{
-				resources: make(map[string]map[string]interface{}),
-				data:      make(map[string]map[string]interface{}),
-				instances: make(map[model.TerraformInstanceKey]model.TerraformInstance),
-			}
-			m.rootResources[fm.ID] = projection
+			projection = &rootDocumentResources{}
+			projected[fm.ID] = projection
 		}
 		kind := blockKind(r)
-		section, typ := projection.resources, kind
+		var section map[string]map[string]interface{}
+		typ := kind
 		if dataType, ok := strings.CutPrefix(kind, dataTypePrefix); ok {
+			if projection.data == nil {
+				projection.data = make(map[string]map[string]interface{})
+			}
 			section, typ = projection.data, dataType
+		} else {
+			if projection.resources == nil {
+				projection.resources = make(map[string]map[string]interface{})
+			}
+			section = projection.resources
 		}
 		byName := section[typ]
 		if byName == nil {
 			byName = make(map[string]interface{})
 			section[typ] = byName
 		}
-		byName[r.Name] = tfeval.AttributesToDocumentWithContext(m.ctx, r)
+		byName[r.Name] = tfeval.AttributesToDocumentWithContext(ctx, r)
 		base := tfeval.ResourceBaseName(r.Name)
-		projection.instances[model.TerraformInstanceKey{Kind: rootSectionKind(r), Type: r.Type, Name: r.Name}] =
-			model.TerraformInstance{Label: base, Suffix: strings.TrimPrefix(r.Name, base)}
+		if r.Name != base {
+			if projection.instances == nil {
+				projection.instances = make(map[model.TerraformInstanceKey]model.TerraformInstance)
+			}
+			projection.instances[model.TerraformInstanceKey{Kind: rootSectionKind(r), Type: r.Type, Name: r.Name}] =
+				model.TerraformInstance{Label: base, Suffix: strings.TrimPrefix(r.Name, base)}
+		}
 		count++
 	}
-	return count
+	return projected, count
+}
+
+func collectRootSuppressed(
+	blocks []*hclsyntax.Block,
+	byAbsPath map[string]*model.FileMetadata,
+	repoPath string,
+	targets *ruleTargets,
+) []rootSuppressedBlock {
+	// Successful root evaluation accounts for every parsed declaration, including
+	// blocks with count = 0 or an empty for_each. Those have no resource value
+	// to project, but their as-written copy must not produce findings either.
+	suppressed := make([]rootSuppressedBlock, 0, len(blocks))
+	for _, block := range blocks {
+		if len(block.Labels) != 2 || !targets.matches(block.Labels[0]) {
+			continue
+		}
+		file := byAbsPath[absPath(block.TypeRange.Filename, repoPath)]
+		if file == nil {
+			continue
+		}
+		kind := block.Labels[0]
+		if block.Type == dataRoot {
+			kind = dataTypePrefix + kind
+		}
+		suppressed = append(suppressed, rootSuppressedBlock{
+			fileID: file.ID,
+			kind:   kind,
+			name:   block.Labels[1],
+		})
+	}
+	return suppressed
+}
+
+func (m *rootMerge) applyRootProjection(dir string, projected rootResourceProjection) {
+	for _, f := range m.filesByDir[dir] {
+		if f == nil {
+			continue
+		}
+		replaced := m.instantiated[f.ID]
+		if len(replaced) == 0 {
+			continue
+		}
+		removeInstantiatedResources(f.Document, replaced)
+		if projection := projected[f.ID]; projection != nil {
+			overlayRootResources(f.Document, projection)
+			f.TerraformInstances = projection.instances
+		}
+		m.rootApplied[f.ID] = true
+	}
+}
+
+func (m *rootMerge) mergeRootProjection(projected rootResourceProjection) {
+	for fileID, proj := range projected {
+		existing := m.rootResources[fileID]
+		if existing == nil {
+			m.rootResources[fileID] = proj
+			continue
+		}
+		for typ, names := range proj.resources {
+			if existing.resources == nil {
+				existing.resources = make(map[string]map[string]interface{})
+			}
+			if existing.resources[typ] == nil {
+				existing.resources[typ] = names
+				continue
+			}
+			for name, attrs := range names {
+				existing.resources[typ][name] = attrs
+			}
+		}
+		for typ, names := range proj.data {
+			if existing.data == nil {
+				existing.data = make(map[string]map[string]interface{})
+			}
+			if existing.data[typ] == nil {
+				existing.data[typ] = names
+				continue
+			}
+			for name, attrs := range names {
+				existing.data[typ][name] = attrs
+			}
+		}
+		for k, v := range proj.instances {
+			if existing.instances == nil {
+				existing.instances = make(map[model.TerraformInstanceKey]model.TerraformInstance)
+			}
+			existing.instances[k] = v
+		}
+	}
 }
 
 func rootSectionKind(r *tfeval.ResolvedResource) string {
@@ -113,22 +227,8 @@ func uniqueRootDeclarations(blocks []*hclsyntax.Block) bool {
 	return true
 }
 
-func (m *rootMerge) recordRootDeclarations(blocks []*hclsyntax.Block) {
-	// Successful root evaluation accounts for every parsed declaration, including
-	// blocks with count = 0 or an empty for_each. Those have no resource value
-	// to project, but their as-written copy must not produce findings either.
-	for _, block := range blocks {
-		if len(block.Labels) != 2 || !m.targets.matches(block.Labels[0]) {
-			continue
-		}
-		file := m.byAbsPath[absPath(block.TypeRange.Filename, m.repoPath)]
-		if file == nil {
-			continue
-		}
-		kind := block.Labels[0]
-		if block.Type == dataRoot {
-			kind = dataTypePrefix + kind
-		}
-		m.instantiated.add(file.ID, kind, block.Labels[1])
+func (m *rootMerge) recordRootSuppressed(blocks []rootSuppressedBlock) {
+	for _, b := range blocks {
+		m.instantiated.add(b.fileID, b.kind, b.name)
 	}
 }

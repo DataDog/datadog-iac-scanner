@@ -3485,3 +3485,44 @@ resource "aws_subnet" "s" { cidr_block = var.cidr }
 		})
 	}
 }
+
+func TestEvaluateModule_RootResourceFilterKeepsTransitiveDeps(t *testing.T) {
+	dir := writeModule(t, t.TempDir(), "root", map[string]string{
+		"providers.tf": `
+terraform { required_version = ">= 1.5" }
+provider "aws" { region = "us-east-1" }
+`,
+		"outputs.tf": `
+output "leaf_id" { value = null_resource.unused.id }
+`,
+		"main.tf": `
+resource "null_resource" "dep" {
+  triggers = { name = "from-dep" }
+}
+
+resource "null_resource" "unused" {
+  triggers = { name = "unused" }
+}
+
+resource "aws_s3_bucket" "target" {
+  bucket = null_resource.dep.triggers.name
+}
+`,
+	})
+	base := New()
+	base.SetRootResourceFilter(func(typ string) bool { return typ == "aws_s3_bucket" })
+	fork := base.Fork()
+
+	resources, outputs, _, err := fork.EvaluateModule(t.Context(), dir, nil)
+	require.NoError(t, err)
+	require.Nil(t, outputs)
+
+	byTypeName := map[string]ResolvedResource{}
+	for _, r := range resources {
+		byTypeName[r.Type+"."+r.Name] = r
+	}
+	require.Contains(t, byTypeName, "aws_s3_bucket.target")
+	require.Contains(t, byTypeName, "null_resource.dep", "transitive dependency of targeted resource must be evaluated")
+	require.NotContains(t, byTypeName, "null_resource.unused", "untargeted leaf resource should be skipped")
+	requireString(t, byTypeName["aws_s3_bucket.target"].Attributes, "bucket", "from-dep")
+}
